@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
-use crate::model::ModelGroup;
+use super::model_group::ModelGroup;
 
 bitflags! {
     #[derive(Clone, Copy)]
@@ -31,9 +31,8 @@ impl<'de> Deserialize<'de> for ResourceFlags {
         let flags: Vec<String> = Vec::deserialize(deserializer)?;
         let mut result = ResourceFlags::empty();
         for flag in flags {
-            match flag.as_str() {
-                "Completed" => result.insert(ResourceFlags::Completed),
-                _ => {}
+            if flag.as_str() == "Completed" {
+                result.insert(ResourceFlags::Completed)
             }
         }
         Ok(result)

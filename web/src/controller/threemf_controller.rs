@@ -3,29 +3,18 @@ use crate::{
     web_app_state::WebAppState,
 };
 use axum::extract::Path;
-use axum::extract::{Multipart, State};
+use axum::extract::State;
 use axum::{Json, response::Response};
 use axum::{
     Router,
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{get, post},
 };
 use axum_login::login_required;
-use db::model::ModelFlags;
 use db::model_db;
-use serde::Deserialize;
-use service::{cleanse_evil_from_name, import_service, import_state::ImportState};
-use std::path::PathBuf;
-use std::str::FromStr;
-use time::OffsetDateTime;
-use tokio::fs;
 
 use crate::error::ApplicationError;
-use db::blob_db;
-use db::model_db::{ModelFilterOptions, ModelOrderBy};
-use serde::Serialize;
-use service::export_service;
 use service::threemf_service;
 
 pub fn router() -> Router<WebAppState> {
@@ -54,7 +43,8 @@ mod get {
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
 
-        let model = model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await?;
+        let model =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await?;
 
         if model.is_empty() {
             return Ok((StatusCode::NOT_FOUND, "Model not found").into_response());
@@ -68,7 +58,10 @@ mod get {
 }
 
 mod post {
-    use db::{model::{Blob, ModelGroupMeta}, random_hex_32, time_now};
+    use db::{
+        model::{blob::Blob, model_group::ModelGroupMeta},
+        random_hex_32, time_now,
+    };
     use service::thumbnail_service;
 
     use crate::web_import_state::WebImportStateEmitter;
@@ -82,7 +75,8 @@ mod post {
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
 
-        let model = model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await?;
+        let model =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await?;
 
         if model.is_empty() {
             return Ok((StatusCode::NOT_FOUND, "Model not found").into_response());
@@ -99,10 +93,17 @@ mod post {
             .flat_map(|f| f.model_ids.clone())
             .collect();
 
-        let models = model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await?;
+        let models =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await?;
         let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
 
-        thumbnail_service::generate_thumbnails(&blobs, &app_state.app_state, false, &mut import_state).await?;
+        thumbnail_service::generate_thumbnails(
+            &blobs,
+            &app_state.app_state,
+            false,
+            &mut import_state,
+        )
+        .await?;
 
         Ok(Json(ModelGroupMeta {
             id: import_state.imported_models[0].group_id.unwrap(),
@@ -111,6 +112,7 @@ mod post {
             last_modified: time_now(),
             resource_id: None,
             unique_global_id: random_hex_32(),
-        }).into_response())
+        })
+        .into_response())
     }
 }

@@ -11,7 +11,7 @@ use axum::{
 };
 use axum_login::login_required;
 use db::group_db::{GroupFilterOptions, GroupOrderBy};
-use db::model::ModelGroupMeta;
+use db::model::model_group::ModelGroupMeta;
 use db::{group_db, random_hex_32, time_now};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -73,9 +73,21 @@ mod get {
             &app_state.app_state.db,
             &user,
             GroupFilterOptions {
-                model_ids: if params.model_ids.is_empty() { model_ids_from_str } else { Some(params.model_ids) },
-                group_ids: if params.group_ids.is_empty() { None } else { Some(params.group_ids) },
-                label_ids: if params.label_ids.is_empty() { None } else { Some(params.label_ids) },
+                model_ids: if params.model_ids.is_empty() {
+                    model_ids_from_str
+                } else {
+                    Some(params.model_ids)
+                },
+                group_ids: if params.group_ids.is_empty() {
+                    None
+                } else {
+                    Some(params.group_ids)
+                },
+                label_ids: if params.label_ids.is_empty() {
+                    None
+                } else {
+                    Some(params.label_ids)
+                },
                 order_by: params
                     .order_by
                     .map(|s| GroupOrderBy::from_str(&s).unwrap_or(GroupOrderBy::NameAsc)),
@@ -99,17 +111,23 @@ mod get {
         let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
         let user = match user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await? {
             Some(u) => u,
-            _ => return Err(ApplicationError::InternalError(
-                "Share owner user not found.".into(),
-            )),
+            _ => {
+                return Err(ApplicationError::InternalError(
+                    "Share owner user not found.".into(),
+                ));
+            }
         };
 
         let groups = group_db::get_groups(
-            &app_state.app_state.db, 
-            &user, 
+            &app_state.app_state.db,
+            &user,
             GroupFilterOptions {
                 model_ids: share.model_ids.into(),
-                group_ids: if params.group_ids.is_empty() { None } else { Some(params.group_ids) },
+                group_ids: if params.group_ids.is_empty() {
+                    None
+                } else {
+                    Some(params.group_ids)
+                },
                 label_ids: None,
                 order_by: params
                     .order_by
@@ -119,8 +137,9 @@ mod get {
                 page_size: params.page_size,
                 include_ungrouped_models: params.include_ungrouped_models.unwrap_or(true),
                 allow_incomplete_groups: true,
-            }
-        ).await?;
+            },
+        )
+        .await?;
 
         Ok(Json(groups.items).into_response())
     }

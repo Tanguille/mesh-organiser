@@ -1,34 +1,39 @@
+use crate::error::ApplicationError;
+use crate::user::Backend;
 use crate::{user::AuthSession, web_app_state::WebAppState};
+use axum::extract::Path;
 use axum::{
+    Json, Router,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use axum_login::login_required;
-use crate::user::Backend;
-use axum::extract::Path;
+use db::model::user::UserPermissions;
 use db::user_db;
-use service::export_service;
 use serde::{Deserialize, Serialize};
-use crate::error::ApplicationError;
-use db::model::UserPermissions;
+use service::export_service;
 
 pub fn router() -> Router<WebAppState> {
-    Router::new()
-        .nest(
-            "/api/v1",
-            Router::new()
-                .route("/users", get(get::get_users))
-                .route("/users", post(post::add_user))
-                .route("/users/{user_id}", put(put::edit_user))
-                .route("/users/{user_id}", delete(delete::delete_user))
-                .route("/users/{user_id}/token", delete(delete::generate_new_sync_token))
-                .route("/users/{user_id}/password", put(put::edit_user_password))
-                .route("/users/{user_id}/permissions", put(put::edit_user_permissions))
-                .route_layer(login_required!(Backend))
-        )
+    Router::new().nest(
+        "/api/v1",
+        Router::new()
+            .route("/users", get(get::get_users))
+            .route("/users", post(post::add_user))
+            .route("/users/{user_id}", put(put::edit_user))
+            .route("/users/{user_id}", delete(delete::delete_user))
+            .route(
+                "/users/{user_id}/token",
+                delete(delete::generate_new_sync_token),
+            )
+            .route("/users/{user_id}/password", put(put::edit_user_password))
+            .route(
+                "/users/{user_id}/permissions",
+                put(put::edit_user_permissions),
+            )
+            .route_layer(login_required!(Backend)),
+    )
 }
 
 mod get {
@@ -85,7 +90,8 @@ mod post {
             &params.user_name,
             &params.user_email,
             &params.user_password,
-        ).await?;
+        )
+        .await?;
 
         user_db::scramble_validity_token(&app_state.app_state.db, id).await?;
 
@@ -121,7 +127,8 @@ mod put {
             user_id,
             &params.user_name,
             &params.user_email,
-        ).await?;
+        )
+        .await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -145,11 +152,7 @@ mod put {
             ));
         }
 
-        user_db::edit_user_password(
-            &app_state.app_state.db,
-            user_id,
-            &params.new_password,
-        ).await?;
+        user_db::edit_user_password(&app_state.app_state.db, user_id, &params.new_password).await?;
 
         user_db::scramble_validity_token(&app_state.app_state.db, user_id).await?;
 
@@ -175,11 +178,7 @@ mod put {
             ));
         }
 
-        user_db::set_user_permissions(
-            &app_state.app_state.db,
-            user_id,
-            params.permissions,
-        ).await?;
+        user_db::set_user_permissions(&app_state.app_state.db, user_id, params.permissions).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -194,13 +193,13 @@ mod delete {
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        
+
         if !user.permissions.contains(UserPermissions::Admin) && user.id != user_id {
             return Err(ApplicationError::InternalError(
                 "Insufficient permissions to delete this user.".into(),
             ));
         }
-        
+
         user_db::delete_user(&app_state.app_state.db, user_id).await?;
 
         export_service::delete_dead_blobs(&app_state.app_state).await?;

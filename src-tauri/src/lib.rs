@@ -3,27 +3,21 @@ use crate::tauri_app_state::InitialState;
 use crate::tauri_app_state::TauriAppState;
 use crate::tauri_import_state::import_state_new_tauri;
 use arboard::Clipboard;
-use base64::prelude::*;
 use db::group_db;
-use db::model::Blob;
-use db::{
-    label_db,
-    model::{ModelFlags, Resource, ResourceFlags, User},
-    model_db,
-};
-use db::{model::ModelGroupMeta, user_db};
+use db::model::blob::Blob;
+use db::model::user::User;
+use db::{model::model_group::ModelGroupMeta, model_db, user_db};
 use db::{random_hex_32, time_now};
 use error::ApplicationError;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use service::AppState;
 use service::Configuration;
 use service::StoredConfiguration;
 use service::ThreemfMetadata;
 use service::export_service;
-use service::export_service::get_temp_dir;
 use service::import_state::ImportState;
 use service::stored_to_configuration;
-use service::{download_file_service, import_service, slicer_service::Slicer};
+use service::{download_file_service, slicer_service::Slicer};
 use service::{threemf_service, thumbnail_service};
 use std::fs::File;
 use std::io::prelude::*;
@@ -65,8 +59,7 @@ async fn set_configuration(
     state: State<'_, TauriAppState>,
     app_handle: AppHandle,
 ) -> Result<(), ApplicationError> {
-    let mut configuration = configuration;
-    let deep_link_state_changed = state.write_configuration(&mut configuration);
+    let deep_link_state_changed = state.write_configuration(&configuration);
 
     if deep_link_state_changed {
         state.configure_deep_links(&app_handle);
@@ -89,7 +82,7 @@ async fn get_slicers() -> Result<Vec<SlicerEntry>, ApplicationError> {
 
             Ok(SlicerEntry {
                 slicer: f,
-                installed: installed,
+                installed,
             })
         })
         .collect()
@@ -118,7 +111,8 @@ async fn open_in_slicer(
             .await?;
 
     if let Some(slicer) = &state.get_configuration().slicer {
-        let (_, paths) = export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
+        let (_, paths) =
+            export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
         slicer.open(paths, &state.app_state).await?;
     }
 
@@ -151,14 +145,16 @@ async fn open_in_folder(
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
             .await?;
 
-    let temp_dir = match as_zip {
-        true => export_service::export_zip_to_temp_folder(models, &state.app_state).await?.temp_dir,
-        false => {
-            let (temp_dir, _) = export_service::export_to_temp_folder(models, &state.app_state, false, "export")
-            .await?;
+    let temp_dir = if as_zip {
+        export_service::export_zip_to_temp_folder(models, &state.app_state)
+            .await?
+            .temp_dir
+    } else {
+        let (temp_dir, _) =
+            export_service::export_to_temp_folder(models, &state.app_state, false, "export")
+                .await?;
 
-            temp_dir
-        },
+        temp_dir
     };
 
     service::open_folder_in_explorer(&temp_dir);
@@ -244,6 +240,7 @@ struct Site {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_lines)]
 async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), ApplicationError> {
     let cloned_handle = app_handle.clone();
     if let Some(window) = app_handle.webview_windows().get("secondary") {
@@ -272,11 +269,11 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         },
     ];
 
-    println!("Opening new window with URL: {}", url);
+    println!("Opening new window with URL: {url}");
 
     let mut submenu = SubmenuBuilder::new(&app_handle, "Sites");
 
-    for site in sites.iter() {
+    for site in &sites {
         submenu = submenu.text(site.url, site.name);
     }
 
@@ -329,23 +326,23 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
     })
     .on_navigation(move |f| {
         let url = f.to_string();
-        println!("Navigated to: {}", url);
+        println!("Navigated to: {url}");
 
         if let Some(deep_link) = extract_deep_link(&url) {
             println!("Extracted deep link: {:?}", &deep_link);
 
             let window = cloned_handle.get_webview_window("secondary");
 
-            if let Some(window) = window {
-                if let Ok(source_url) = window.url() {
-                    let _ = cloned_handle.emit(
-                        "deep-link",
-                        DeepLinkEmit {
-                            download_url: deep_link,
-                            source_url: Some(source_url.to_string()),
-                        },
-                    );
-                }
+            if let Some(window) = window
+                && let Ok(source_url) = window.url()
+            {
+                let _ = cloned_handle.emit(
+                    "deep-link",
+                    DeepLinkEmit {
+                        download_url: deep_link,
+                        source_url: Some(source_url.to_string()),
+                    },
+                );
             }
 
             return false;
@@ -364,8 +361,8 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
             destination: _,
         } = &event
         {
-            println!("Download started: {:?}", url);
-            let _ = f.app_handle().emit("download-started", url).unwrap();
+            println!("Download started: {url:?}");
+            let () = f.app_handle().emit("download-started", url).unwrap();
             let _ = f.window().set_title("Downloading model...");
         }
 
@@ -374,24 +371,24 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
             path,
             success,
         } = event
+            && path.is_some()
+            && success
         {
-            if path.is_some() && success {
-                let path = path.unwrap();
-                let handle = f.app_handle();
+            let path = path.unwrap();
+            let handle = f.app_handle();
 
-                println!("Download finished: {:?}", path);
-                let _ = handle
-                    .emit(
-                        "download-finished",
-                        DownloadFinishedEvent {
-                            path: String::from(path.to_str().unwrap()),
-                            url: String::from(f.url().unwrap()),
-                        },
-                    )
-                    .unwrap();
+            println!("Download finished: {}", path.display());
+            let () = handle
+                .emit(
+                    "download-finished",
+                    DownloadFinishedEvent {
+                        path: String::from(path.to_str().unwrap()),
+                        url: String::from(f.url().unwrap()),
+                    },
+                )
+                .unwrap();
 
-                let _ = f.window().set_title("Download complete");
-            }
+            let _ = f.window().set_title("Download complete");
         }
 
         true
@@ -418,8 +415,8 @@ fn extract_deep_link(data: &str) -> Option<String> {
     ];
 
     for start in possible_starts {
-        if data.starts_with(start) {
-            let encoded = data[start.len()..].to_string();
+        if let Some(stripped) = data.strip_prefix(start) {
+            let encoded = stripped.to_string();
 
             if data.starts_with("elegooslicer") {
                 return Some(encoded);
@@ -441,8 +438,8 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
     ];
 
     for start in possible_starts {
-        if data.starts_with(start) {
-            let encoded = data[start.len()..].to_string();
+        if let Some(stripped) = data.strip_prefix(start) {
+            let encoded = stripped.to_string();
 
             match serde_html_form::from_str::<AccountLinkEmit>(&encoded) {
                 Ok(e) => return Some(e),
@@ -457,7 +454,7 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
 fn remove_temp_paths() -> Result<(), ApplicationError> {
     let threshold = std::time::Duration::from_secs(5 * 60);
     let now = std::time::SystemTime::now();
-    for entry in std::fs::read_dir(&std::env::temp_dir())? {
+    for entry in std::fs::read_dir(std::env::temp_dir())? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir()
@@ -467,25 +464,27 @@ fn remove_temp_paths() -> Result<(), ApplicationError> {
                 .to_str()
                 .unwrap()
                 .starts_with("meshorganiser_")
+            && let Ok(metadata) = std::fs::metadata(&path)
+            && let Ok(modified) = metadata.modified()
+            && now
+                .duration_since(modified)
+                .unwrap_or(std::time::Duration::ZERO)
+                >= threshold
         {
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if let Ok(modified) = metadata.modified() {
-                    if now
-                        .duration_since(modified)
-                        .unwrap_or(std::time::Duration::ZERO)
-                        >= threshold
-                    {
-                        println!("Removing temporary path {:?}", path);
-                        std::fs::remove_dir_all(&path)?;
-                    }
-                }
-            }
+            println!("Removing temporary path {}", path.display());
+            std::fs::remove_dir_all(&path)?;
         }
     }
 
     Ok(())
 }
 
+/// Reads the configuration from the settings file.
+///
+/// # Panics
+///
+/// Panics if the configuration file exists but cannot be read or parsed as valid JSON.
+#[must_use]
 pub fn read_configuration(app_data_path: &str) -> Configuration {
     let path = PathBuf::from(app_data_path);
     let path = path.join("settings.json");
@@ -501,10 +500,16 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 
     let stored_configuration: StoredConfiguration =
         serde_json::from_str(&json).expect("Failed to parse configuration");
-    return stored_to_configuration(stored_configuration);
+    stored_to_configuration(stored_configuration)
 }
 
+/// Initializes and runs the Tauri application.
+///
+/// # Panics
+///
+/// Panics if the Tauri application fails to build or initialize.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(clippy::too_many_lines)]
 pub fn run() {
     thread::spawn(move || {
         let _ = remove_temp_paths();
@@ -515,7 +520,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
 
             if argv.len() == 2
@@ -525,13 +530,13 @@ pub fn run() {
 
                 if let Some(deep_link) = deep_link
                 {
-                    println!("Emitting deep link {:?}", deep_link);
-                    _app.emit("deep-link", DeepLinkEmit { download_url: deep_link, source_url: None } ).unwrap();
+                    println!("Emitting deep link {deep_link:?}");
+                    app.emit("deep-link", DeepLinkEmit { download_url: deep_link, source_url: None } ).unwrap();
                 }
                 else if let Some(account_link) = account_link
                 {
                     println!("Emitting account link");
-                    _app.emit("account-link", account_link ).unwrap();
+                    app.emit("account-link", account_link ).unwrap();
                 }
                 else
                 {
@@ -540,7 +545,7 @@ pub fn run() {
             }
             else
             {
-                let window = _app.get_webview_window("main");
+                let window = app.get_webview_window("main");
 
                 if let Some(window) = window {
                     let _ = window.unminimize();
@@ -557,13 +562,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                if window.label() == "main" {
+            if let tauri::WindowEvent::Destroyed = event
+                && window.label() == "main" {
                     for window in window.app_handle().webview_windows() {
                         let _ = window.1.close();
                     }
                 }
-            }
         })
         .setup(|app| {
             tauri::async_runtime::block_on(async move {
@@ -591,10 +595,10 @@ pub fn run() {
 
                     if let Ok(mut file) = File::create(loc)
                     {
-                        let _ = writeln!(file, "Panic occurred: {error_message}\n{info}\n{:#?}", info);
+                        let _ = writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
                     }
 
-                    println!("Panic occurred: {error_message}\n{:?}", info);
+                    println!("Panic occurred: {error_message}\n{info:?}");
                 }));
 
                 let config = read_configuration(&app_data_path);
@@ -605,18 +609,18 @@ pub fn run() {
 
                 let mut initial_state = InitialState {
                     deep_link_url: None,
-                    max_parallelism: std::thread::available_parallelism()
+                    max_parallelism: thread::available_parallelism()
                         .unwrap_or(std::num::NonZeroUsize::new(6).unwrap())
                         .get(),
                     collapse_sidebar: config.collapse_sidebar,
                     account_link: None,
                 };
 
-                let argv = std::env::args();
+                let mut argv = std::env::args();
 
                 if argv.len() == 2
                 {
-                    let arg = argv.skip(1).next().unwrap();
+                    let arg = argv.nth(1).unwrap();
                     let deep_link = extract_deep_link(&arg);
                     let account_link = extract_account_link_via_deep_link(&arg);
 
@@ -638,9 +642,9 @@ pub fn run() {
                         db: Arc::new(db),
                         configuration: Mutex::new(config),
                         import_mutex: Arc::new(tokio::sync::Mutex::new(())),
-                        app_data_path: app_data_path,
+                        app_data_path,
                     },
-                    initial_state: initial_state,
+                    initial_state,
                     current_user: Arc::new(Mutex::new(user)),
                 };
 
@@ -652,7 +656,7 @@ pub fn run() {
                     });
                 }
 
-                state.configure_deep_links(&app.handle());
+                state.configure_deep_links(app.handle());
 
                 app.manage(state);
             });
@@ -725,11 +729,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 
-    app.run(|_app_handle, e| {
+    app.run(|app_handle, e| {
         if let tauri::RunEvent::ExitRequested { .. } = e {
             // Close sqlite db
             tauri::async_runtime::block_on(async move {
-                let app_state = _app_handle.state::<TauriAppState>();
+                let app_state = app_handle.state::<TauriAppState>();
                 app_state.app_state.db.close().await;
             });
         }

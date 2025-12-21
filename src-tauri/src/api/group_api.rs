@@ -2,13 +2,14 @@ use std::{str::FromStr, time::Instant};
 
 use db::{
     group_db::{self, GroupOrderBy},
-    model::{ModelGroup, ModelGroupMeta, User},
+    model::model_group::{ModelGroup, ModelGroupMeta},
     random_hex_32, time_now,
 };
 use tauri::State;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn get_groups(
     model_ids: Option<Vec<i64>>,
@@ -29,7 +30,12 @@ pub async fn get_groups(
             model_ids,
             group_ids,
             label_ids,
-            order_by: order_by.map(|s| GroupOrderBy::from_str(&s).unwrap_or(GroupOrderBy::NameAsc)),
+            order_by: order_by
+                .map(|s| GroupOrderBy::from_str(&s))
+                .transpose()
+                .map_err(|_| ApplicationError::InternalError(
+                    "Invalid order_by value. Valid values are: CreatedAsc, CreatedDesc, NameAsc, NameDesc, ModifiedAsc, ModifiedDesc".to_string()
+                ))?,
             text_search,
             page,
             page_size,

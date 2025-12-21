@@ -1,7 +1,6 @@
+use bitflags::bitflags;
 use password_auth::generate_hash;
 use serde::{Deserialize, Serialize};
-use bitflags::bitflags;
-use sha2::{Digest, Sha256};
 
 bitflags! {
     #[derive(Debug)]
@@ -52,16 +51,16 @@ impl<'de> Deserialize<'de> for UserPermissions {
 
 #[derive(Serialize, Debug)]
 pub struct User {
-    pub id : i64,
-    pub username : String,
-    pub email : String,
-    pub created_at : String,
-    pub sync_url : Option<String>,
-    pub sync_token : Option<String>,
-    pub last_sync : Option<String>,
-    pub permissions : UserPermissions,
+    pub id: i64,
+    pub username: String,
+    pub email: String,
+    pub created_at: String,
+    pub sync_url: Option<String>,
+    pub sync_token: Option<String>,
+    pub last_sync: Option<String>,
+    pub permissions: UserPermissions,
     #[serde(skip_serializing)]
-    pub password_hash : String,
+    pub password_hash: String,
 }
 
 impl Clone for User {
@@ -75,7 +74,9 @@ impl Clone for User {
             sync_token: self.sync_token.clone(),
             last_sync: self.last_sync.clone(),
             password_hash: self.password_hash.clone(),
-            permissions: unsafe { UserPermissions::from_bits(self.permissions.bits()).unwrap_unchecked() },
+            permissions: unsafe {
+                UserPermissions::from_bits(self.permissions.bits()).unwrap_unchecked()
+            },
         }
     }
 }

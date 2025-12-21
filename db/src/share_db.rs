@@ -1,11 +1,13 @@
 use sqlx::QueryBuilder;
 
-use crate::{DbError, db_context::DbContext, model::{Share, User}, model_db, random_hex_32, time_now};
+use crate::{
+    DbError,
+    db_context::DbContext,
+    model::{share::Share, user::User},
+    model_db, random_hex_32, time_now,
+};
 
-pub async fn get_shares(
-    db: &DbContext,
-    user: &User,
-) -> Result<Vec<Share>, DbError> {
+pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbError> {
     let shares = sqlx::query!("
         SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(shares_models.model_id) AS \"share_model_ids: String\"
         FROM shares
@@ -17,29 +19,29 @@ pub async fn get_shares(
         .fetch_all(db)
         .await?;
 
-    Ok(shares.into_iter().map(|share| {
-        let model_ids: Vec<i64> = match share.share_model_ids {
-            Some(ids_str) => ids_str
-                .split(',')
-                .filter_map(|s| s.parse::<i64>().ok())
-                .collect(),
-            None => Vec::new(),
-        };
+    Ok(shares
+        .into_iter()
+        .map(|share| {
+            let model_ids: Vec<i64> = match share.share_model_ids {
+                Some(ids_str) => ids_str
+                    .split(',')
+                    .filter_map(|s| s.parse::<i64>().ok())
+                    .collect(),
+                None => Vec::new(),
+            };
 
-        Share {
-            id: share.share_id,
-            created_at: share.share_created_at,
-            share_name: share.share_name,
-            user_id: share.share_user_id,
-            model_ids,
-        }
-    }).collect())
+            Share {
+                id: share.share_id,
+                created_at: share.share_created_at,
+                share_name: share.share_name,
+                user_id: share.share_user_id,
+                model_ids,
+            }
+        })
+        .collect())
 }
 
-pub async fn get_share_via_id(
-    db: &DbContext,
-    share_id: &str,
-) -> Result<Share, DbError> {
+pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, DbError> {
     let share = sqlx::query!("
         SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(shares_models.model_id) AS \"share_model_ids: String\"
         FROM shares
@@ -63,7 +65,7 @@ pub async fn get_share_via_id(
         created_at: share.share_created_at,
         share_name: share.share_name,
         user_id: share.share_user_id,
-        model_ids: model_ids,
+        model_ids,
     })
 }
 
@@ -79,9 +81,13 @@ pub async fn set_model_ids_on_share(
         return Err(DbError::RowNotFound);
     }
 
-    let share = sqlx::query!("SELECT share_id FROM shares WHERE share_id = ? AND share_user_id = ?", share_id, user.id)
-        .fetch_optional(db)
-        .await?;
+    let share = sqlx::query!(
+        "SELECT share_id FROM shares WHERE share_id = ? AND share_user_id = ?",
+        share_id,
+        user.id
+    )
+    .fetch_optional(db)
+    .await?;
 
     if share.is_none() {
         return Err(DbError::RowNotFound);
@@ -103,14 +109,14 @@ pub async fn set_model_ids_on_share(
     Ok(())
 }
 
-pub async fn delete_share(
-    db: &DbContext,
-    user: &User,
-    share_id: &str,
-) -> Result<(), DbError> {
-    sqlx::query!("DELETE FROM shares WHERE share_id = ? AND share_user_id = ?", share_id, user.id)
-        .execute(db)
-        .await?;
+pub async fn delete_share(db: &DbContext, user: &User, share_id: &str) -> Result<(), DbError> {
+    sqlx::query!(
+        "DELETE FROM shares WHERE share_id = ? AND share_user_id = ?",
+        share_id,
+        user.id
+    )
+    .execute(db)
+    .await?;
 
     Ok(())
 }
@@ -124,9 +130,9 @@ pub async fn create_share(
     let now = time_now();
 
     sqlx::query!("
-        INSERT INTO shares (share_id, share_user_id, share_created_at, share_name)VALUES (?, ?, ?, ?)", 
-        random_hex, 
-        user.id, 
+        INSERT INTO shares (share_id, share_user_id, share_created_at, share_name)VALUES (?, ?, ?, ?)",
+        random_hex,
+        user.id,
         now,
         share_name)
         .execute(db)
@@ -141,15 +147,17 @@ pub async fn rename_share(
     share_id: &str,
     new_name: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!("
-        UPDATE shares 
-        SET share_name = ? 
-        WHERE share_id = ? AND share_user_id = ?", 
-        new_name, 
-        share_id, 
-        user.id)
-        .execute(db)
-        .await?;
+    sqlx::query!(
+        "
+        UPDATE shares
+        SET share_name = ?
+        WHERE share_id = ? AND share_user_id = ?",
+        new_name,
+        share_id,
+        user.id
+    )
+    .execute(db)
+    .await?;
 
     Ok(())
 }

@@ -1,8 +1,8 @@
-use std::{path::PathBuf, thread, u32};
+use std::path::{Path, PathBuf};
 
 use async_zip::tokio::read::seek::ZipFileReader;
 use chrono::Utc;
-use db::model::{Model, User};
+use db::model::{Model, user::User};
 use indexmap::IndexMap;
 use itertools::join;
 use regex::Regex;
@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use stl_io::Vector;
 use tokio::{fs::File, io::BufReader};
 
-use crate::{AppState, ServiceError, cleanse_evil_from_name, export_service, import_service, import_state::ImportState};
+use crate::{
+    AppState, ServiceError, cleanse_evil_from_name, export_service, import_service,
+    import_state::ImportState,
+};
 
 #[derive(Deserialize)]
 pub struct ProjectSettingsConfig {
@@ -31,7 +34,9 @@ pub struct ThreemfMetadata {
 async fn parse_project_settings_config(data: String) -> Result<ThreemfMetadata, ServiceError> {
     let parsed_data = serde_json::from_str::<ProjectSettingsConfig>(&data)?;
 
-    let nozzle_diameter = parsed_data.nozzle_diameter.get(0)
+    let nozzle_diameter = parsed_data
+        .nozzle_diameter
+        .first()
         .and_then(|s| s.parse::<f32>().ok());
 
     let layer_height = parsed_data.layer_height.parse::<f32>().ok();
@@ -60,44 +65,43 @@ async fn parse_slicer_pe_config(data: String) -> Result<ThreemfMetadata, Service
         supports_enabled: None,
     };
 
-    match data.lines().find(|line| line.starts_with("; nozzle_diameter = ")) {
-        Some(line) => {
-            let value = line.trim_start_matches("; nozzle_diameter = ").trim();
-            let nozzle_diameters = value.split(',').collect::<Vec<&str>>();
+    if let Some(line) = data
+        .lines()
+        .find(|line| line.starts_with("; nozzle_diameter = "))
+    {
+        let value = line.trim_start_matches("; nozzle_diameter = ").trim();
+        let nozzle_diameters = value.split(',').collect::<Vec<&str>>();
 
-            threemf.nozzle_diameter = nozzle_diameters.get(0)
-                .and_then(|s| s.parse::<f32>().ok());
-        },
-        None => {}
+        threemf.nozzle_diameter = nozzle_diameters.first().and_then(|s| s.parse::<f32>().ok());
     }
 
-    match data.lines().find(|line| line.starts_with("; layer_height = ")) {
-        Some(line) => {
-            let value = line.trim_start_matches("; layer_height = ").trim();
+    if let Some(line) = data
+        .lines()
+        .find(|line| line.starts_with("; layer_height = "))
+    {
+        let value = line.trim_start_matches("; layer_height = ").trim();
 
-            threemf.layer_height = value.parse::<f32>().ok();
-        },
-        None => {}
+        threemf.layer_height = value.parse::<f32>().ok();
     }
 
-    match data.lines().find(|line| line.starts_with("; filament_type = ")) {
-        Some(line) => {
-            let value = line.trim_start_matches("; filament_type = ").trim();
-            threemf.material_type = Some(value.replace(";", ", "));
-        },
-        None => {}
+    if let Some(line) = data
+        .lines()
+        .find(|line| line.starts_with("; filament_type = "))
+    {
+        let value = line.trim_start_matches("; filament_type = ").trim();
+        threemf.material_type = Some(value.replace(";", ", "));
     }
 
-    match data.lines().find(|line| line.starts_with("; support_material =")) {
-        Some(line) => {
-            let value = line.trim_start_matches("; support_material =").trim();
-            threemf.supports_enabled = match value {
-                "1" => Some(true),
-                "0" => Some(false),
-                _ => None,
-            };
-        },
-        None => {}
+    if let Some(line) = data
+        .lines()
+        .find(|line| line.starts_with("; support_material ="))
+    {
+        let value = line.trim_start_matches("; support_material =").trim();
+        threemf.supports_enabled = match value {
+            "1" => Some(true),
+            "0" => Some(false),
+            _ => None,
+        };
     }
 
     Ok(threemf)
@@ -107,8 +111,9 @@ pub fn parse_model_settings_config(data: String) -> IndexMap<u32, String> {
     let mut names_map = IndexMap::new();
 
     let re = Regex::new(
-        r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#
-    ).unwrap();
+        r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#,
+    )
+    .unwrap();
 
     for captures in re.captures_iter(&data) {
         let part_id = captures[1].parse::<u32>().unwrap_or(u32::MAX);
@@ -119,12 +124,14 @@ pub fn parse_model_settings_config(data: String) -> IndexMap<u32, String> {
     names_map
 }
 
-pub async fn fetch_model_settings_config_from_3mf(threemf_path : PathBuf) -> Result<IndexMap<u32, String>, ServiceError> {
+pub async fn fetch_model_settings_config_from_3mf(
+    threemf_path: PathBuf,
+) -> Result<IndexMap<u32, String>, ServiceError> {
     let zip_file = File::open(threemf_path).await?;
     let mut buffered_reader = BufReader::new(zip_file);
     let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
 
-    let entries : Vec<_> = zip.file().entries().iter().cloned().collect();
+    let entries: Vec<_> = zip.file().entries().to_vec();
 
     for (i, entry) in entries.iter().enumerate() {
         let entry_filename = match entry.filename().as_str() {
@@ -140,12 +147,19 @@ pub async fn fetch_model_settings_config_from_3mf(threemf_path : PathBuf) -> Res
         }
     }
 
-    return Err(ServiceError::InternalError("Failed to extract model settings".to_string()));
+    Err(ServiceError::InternalError(
+        "Failed to extract model settings".to_string(),
+    ))
 }
 
-pub async fn extract_metadata(model : &Model, app_state: &AppState) -> Result<ThreemfMetadata, ServiceError> {
+pub async fn extract_metadata(
+    model: &Model,
+    app_state: &AppState,
+) -> Result<ThreemfMetadata, ServiceError> {
     if !model.blob.filetype.contains("3mf") {
-        return Err(ServiceError::InternalError("Model is not a 3MF file".to_string()));
+        return Err(ServiceError::InternalError(
+            "Model is not a 3MF file".to_string(),
+        ));
     }
 
     let temp_dir = std::env::temp_dir().join("meshorganiser_metadata_action");
@@ -153,13 +167,14 @@ pub async fn extract_metadata(model : &Model, app_state: &AppState) -> Result<Th
         std::fs::create_dir(&temp_dir)?;
     }
 
-    let theemf_path = export_service::get_path_from_model(&temp_dir, &model, app_state, true).await?;
-    
+    let theemf_path =
+        export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
+
     let zip_file = File::open(theemf_path).await?;
     let mut buffered_reader = BufReader::new(zip_file);
     let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
 
-    let entries : Vec<_> = zip.file().entries().iter().cloned().collect();
+    let entries: Vec<_> = zip.file().entries().to_vec();
 
     for (i, entry) in entries.iter().enumerate() {
         let entry_filename = match entry.filename().as_str() {
@@ -182,10 +197,16 @@ pub async fn extract_metadata(model : &Model, app_state: &AppState) -> Result<Th
         }
     }
 
-    return Err(ServiceError::InternalError("Failed to extract metadata".to_string()));
+    Err(ServiceError::InternalError(
+        "Failed to extract metadata".to_string(),
+    ))
 }
 
-fn extract_models_inner(theemf_path : PathBuf, temp_dir : &PathBuf, names_map : IndexMap<u32, String>) -> Result<(), ServiceError> {
+fn extract_models_inner(
+    theemf_path: &Path,
+    temp_dir: &Path,
+    names_map: IndexMap<u32, String>,
+) -> Result<(), ServiceError> {
     let handle = std::fs::File::open(theemf_path)?;
     let threemf_model = threemf::read(handle)?;
 
@@ -197,27 +218,29 @@ fn extract_models_inner(theemf_path : PathBuf, temp_dir : &PathBuf, names_map : 
 
     for obj in objects {
         let mesh = obj.mesh.as_ref().unwrap();
-        
+
         let obj_name = match names_map.get(&(obj.id as u32)) {
             Some(name) => name.clone(),
-            None => obj.name.as_ref()
+            None => obj
+                .name
+                .as_ref()
                 .map(|s| cleanse_evil_from_name(s))
-                .unwrap_or_else(|| format!("object_{}", obj.id))
+                .unwrap_or_else(|| format!("object_{}", obj.id)),
         };
-        
+
         let stl_path = temp_dir.join(format!("{}.stl", obj_name));
 
         let mut triangles = Vec::new();
-        
+
         for triangle in &mesh.triangles.triangle {
-            let v1 = &mesh.vertices.vertex[triangle.v1 as usize];
-            let v2 = &mesh.vertices.vertex[triangle.v2 as usize];
-            let v3 = &mesh.vertices.vertex[triangle.v3 as usize];
-            
+            let v1 = &mesh.vertices.vertex[triangle.v1];
+            let v2 = &mesh.vertices.vertex[triangle.v2];
+            let v3 = &mesh.vertices.vertex[triangle.v3];
+
             let vertex1 = [v1.x as f32, v1.y as f32, v1.z as f32];
             let vertex2 = [v2.x as f32, v2.y as f32, v2.z as f32];
             let vertex3 = [v3.x as f32, v3.y as f32, v3.z as f32];
-            
+
             let edge1 = [
                 vertex2[0] - vertex1[0],
                 vertex2[1] - vertex1[1],
@@ -233,7 +256,7 @@ fn extract_models_inner(theemf_path : PathBuf, temp_dir : &PathBuf, names_map : 
                 edge1[2] * edge2[0] - edge1[0] * edge2[2],
                 edge1[0] * edge2[1] - edge1[1] * edge2[0],
             ];
-            
+
             triangles.push(stl_io::Triangle {
                 normal: Vector(normal),
                 vertices: [Vector(vertex1), Vector(vertex2), Vector(vertex3)],
@@ -247,9 +270,15 @@ fn extract_models_inner(theemf_path : PathBuf, temp_dir : &PathBuf, names_map : 
     Ok(())
 }
 
-pub async fn extract_models(model : &Model, user: &User, app_state: &AppState) -> Result<ImportState, ServiceError> {
+pub async fn extract_models(
+    model: &Model,
+    user: &User,
+    app_state: &AppState,
+) -> Result<ImportState, ServiceError> {
     if !model.blob.filetype.contains("3mf") {
-        return Err(ServiceError::InternalError("Model is not a 3MF file".to_string()));
+        return Err(ServiceError::InternalError(
+            "Model is not a 3MF file".to_string(),
+        ));
     }
 
     let mut temp_dir = std::env::temp_dir().join(format!(
@@ -258,7 +287,8 @@ pub async fn extract_models(model : &Model, user: &User, app_state: &AppState) -
     ));
     std::fs::create_dir(&temp_dir)?;
 
-    let theemf_path = export_service::get_path_from_model(&temp_dir, &model, app_state, true).await?;
+    let theemf_path =
+        export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
 
     let safe_model_name = cleanse_evil_from_name(&model.name);
     temp_dir.push(safe_model_name);
@@ -267,15 +297,19 @@ pub async fn extract_models(model : &Model, user: &User, app_state: &AppState) -
 
     {
         let temp_dir = temp_dir.clone();
-        let names_map = fetch_model_settings_config_from_3mf(theemf_path.clone()).await.unwrap_or_default();
+        let names_map = fetch_model_settings_config_from_3mf(theemf_path.clone())
+            .await
+            .unwrap_or_default();
 
         tokio::task::spawn_blocking(move || {
-            extract_models_inner(theemf_path, &temp_dir, names_map)
-        }).await??;
+            extract_models_inner(&theemf_path, &temp_dir, names_map)
+        })
+        .await??;
     }
 
     let import_state = ImportState::new(model.link.clone(), false, true, false, user.clone());
-    let result = import_service::import_path(temp_dir.to_str().unwrap(), app_state, import_state).await?;
+    let result =
+        import_service::import_path(temp_dir.to_str().unwrap(), app_state, import_state).await?;
 
     Ok(result)
 }

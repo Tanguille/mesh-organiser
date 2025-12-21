@@ -1,5 +1,10 @@
 use db::{
-    label_db, label_keyword_db, model::{Label, LabelKeyword, LabelMeta}, random_hex_32, time_now
+    label_db, label_keyword_db,
+    model::{
+        label::{Label, LabelMeta},
+        label_keyword::LabelKeyword,
+    },
+    random_hex_32, time_now,
 };
 use tauri::State;
 
@@ -36,7 +41,7 @@ pub async fn add_label(
     .await?;
 
     Ok(LabelMeta {
-        id: id,
+        id,
         name: label_name.to_string(),
         color: label_color,
         last_modified: time_now(),

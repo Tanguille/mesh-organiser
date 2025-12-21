@@ -64,7 +64,7 @@ impl Serialize for ServiceError {
                 state.serialize_field("error_type", "TaskExecutionFailedError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
-            },
+            }
             ServiceError::ThreemfError(inner) => {
                 state.serialize_field("error_type", "ThreemfError")?;
                 state.serialize_field("error_message", &self.to_string())?;

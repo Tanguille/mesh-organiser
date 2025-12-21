@@ -31,7 +31,7 @@ pub fn convert_label_meta_list_to_map(labels: Vec<LabelMeta>) -> IndexMap<i64, L
 
 #[derive(Serialize, Debug)]
 pub struct Label {
-    pub meta : LabelMeta,
+    pub meta: LabelMeta,
     pub children: Vec<LabelMeta>,
     pub effective_labels: Vec<LabelMeta>,
     pub has_parent: bool,

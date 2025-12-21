@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum_login::{AuthUser as AxumAuthUser, AuthnBackend, UserId};
-use db::{db_context::DbContext, model::User, user_db};
+use db::{db_context::DbContext, model::user::User, user_db};
 use password_auth::verify_password;
 use serde::{Deserialize, Serialize};
 use tokio::task;
@@ -35,7 +35,9 @@ impl AuthUser {
             id: self.id,
             username: self.username.clone(),
             email: self.email.clone(),
-            permissions: db::model::UserPermissions::from_bits_truncate(self.permissions as u32),
+            permissions: db::model::user::UserPermissions::from_bits_truncate(
+                self.permissions as u32,
+            ),
             password_hash: String::new(),
             last_sync: None,
             sync_token: None,

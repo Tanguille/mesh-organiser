@@ -1,8 +1,18 @@
 use indexmap::IndexMap;
 
-use crate::{DbError, db_context::DbContext, label_db::{self, set_last_updated_on_label}, model::{LabelKeyword, User}, util::time_now};
+use crate::{
+    DbError,
+    db_context::DbContext,
+    label_db::{self, set_last_updated_on_label},
+    model::{label_keyword::LabelKeyword, user::User},
+    util::time_now,
+};
 
-pub async fn get_keywords_for_label(db: &DbContext, user: &User, label_id: i64) -> Result<Vec<LabelKeyword>, DbError> {
+pub async fn get_keywords_for_label(
+    db: &DbContext,
+    user: &User,
+    label_id: i64,
+) -> Result<Vec<LabelKeyword>, DbError> {
     let rows = sqlx::query!(
         "SELECT keyword_id, keyword_name FROM label_keywords JOIN labels ON label_keywords.keyword_label_id = labels.label_id WHERE keyword_label_id = ? AND label_user_id = ?",
         label_id,
@@ -22,7 +32,10 @@ pub async fn get_keywords_for_label(db: &DbContext, user: &User, label_id: i64) 
     Ok(result)
 }
 
-pub async fn get_all_keywords(db: &DbContext, user: &User) -> Result<IndexMap<i64, Vec<LabelKeyword>>, DbError> {
+pub async fn get_all_keywords(
+    db: &DbContext,
+    user: &User,
+) -> Result<IndexMap<i64, Vec<LabelKeyword>>, DbError> {
     let rows = sqlx::query!(
         "SELECT keyword_id, keyword_name, keyword_label_id FROM label_keywords JOIN labels ON label_keywords.keyword_label_id = labels.label_id WHERE label_user_id = ?",
         user.id
@@ -43,10 +56,16 @@ pub async fn get_all_keywords(db: &DbContext, user: &User) -> Result<IndexMap<i6
     Ok(result)
 }
 
-pub async fn set_keywords_for_label(db: &DbContext, user: &User, label_id: i64, keywords: Vec<String>, update_timestamp : Option<&str>) -> Result<(), DbError> {
+pub async fn set_keywords_for_label(
+    db: &DbContext,
+    user: &User,
+    label_id: i64,
+    keywords: Vec<String>,
+    update_timestamp: Option<&str>,
+) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
-    let hex = label_db::get_unique_id_from_label_id(db, user, label_id).await?;
+    let _hex = label_db::get_unique_id_from_label_id(db, user, label_id).await?;
 
     sqlx::query!(
         "DELETE FROM label_keywords WHERE keyword_label_id = ?",

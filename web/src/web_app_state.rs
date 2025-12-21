@@ -11,10 +11,6 @@ impl WebAppState {
         self.app_state.get_configuration()
     }
 
-    pub fn get_model_dir(&self) -> PathBuf {
-        self.app_state.get_model_dir()
-    }
-
     pub fn get_image_dir(&self) -> PathBuf {
         self.app_state.get_image_dir()
     }

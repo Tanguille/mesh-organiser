@@ -2,23 +2,35 @@ use crate::{
     user::{AuthSession, Backend},
     web_app_state::WebAppState,
 };
-use axum::{Router, http::StatusCode, response::IntoResponse, routing::{get, post}};
-use axum_login::login_required;
 use async_zip::tokio::read::seek::ZipFileReader;
 use axum::{
-    body::Body,
-    extract::{Path, State}, response::Response,
+    Router,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
 };
+use axum::{
+    body::Body,
+    extract::{Path, State},
+    response::Response,
+};
+use axum_login::login_required;
 
+use crate::error::ApplicationError;
+use axum::Json;
 use axum_extra::extract::Query;
-use db::{model::{Blob, User}, model_db, user_db};
+use db::{
+    model::{blob::Blob, user::User},
+    model_db, user_db,
+};
 use serde::Deserialize;
-use service::{cleanse_evil_from_name, convert_zip_to_extension, export_service::get_model_path_for_blob, is_zipped_file_extension};
+use service::export_service;
+use service::{
+    cleanse_evil_from_name, convert_zip_to_extension, export_service::get_model_path_for_blob,
+    is_zipped_file_extension,
+};
 use tokio::{fs::File, io::BufReader};
 use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
-use axum::Json;
-use service::export_service;
-use crate::error::ApplicationError;
 
 pub fn router() -> Router<WebAppState> {
     Router::new().nest(
@@ -30,7 +42,10 @@ pub fn router() -> Router<WebAppState> {
             .route_layer(login_required!(Backend))
             .route("/blobs/{sha256}/thumb", get(get::get_blob_thumb))
             .route("/blobs/{sha256}/download", get(get::download_model))
-            .route("/blobs/download/{zip_dir}", get(get::get_blobs_zip_download))
+            .route(
+                "/blobs/download/{zip_dir}",
+                get(get::get_blobs_zip_download),
+            ),
     )
 }
 
@@ -47,7 +62,7 @@ mod get {
     async fn extract_user_via_id_and_hash(
         app_state: &WebAppState,
         user_id: i64,
-        user_hash: &String,
+        user_hash: &str,
     ) -> Option<User> {
         let user = match user_db::get_user_by_id(&app_state.app_state.db, user_id).await {
             Ok(Some(u)) => u,
@@ -61,10 +76,7 @@ mod get {
         Some(user)
     }
 
-    async fn extract_user_via_share_id(
-        app_state: &WebAppState,
-        share_id: &String,
-    ) -> Option<User> {
+    async fn extract_user_via_share_id(app_state: &WebAppState, share_id: &str) -> Option<User> {
         let share = match db::share_db::get_share_via_id(&app_state.app_state.db, share_id).await {
             Ok(s) => s,
             _ => return None,
@@ -83,42 +95,46 @@ mod get {
         State(app_state): State<WebAppState>,
         Query(params): Query<DownloadModelParams>,
     ) -> Response {
-
         let user = match params {
             DownloadModelParams {
                 user_id: Some(user_id),
                 user_hash: Some(user_hash),
                 share_id: None,
-            } => {
-                match extract_user_via_id_and_hash(&app_state, user_id, &user_hash).await {
-                    Some(u) => u,
-                    None => return StatusCode::NOT_FOUND.into_response(),
-                }
-            }
+            } => match extract_user_via_id_and_hash(&app_state, user_id, &user_hash).await {
+                Some(u) => u,
+                None => return StatusCode::NOT_FOUND.into_response(),
+            },
             DownloadModelParams {
                 user_id: None,
                 user_hash: None,
                 share_id: Some(share_id),
-            } => {
-                match extract_user_via_share_id(&app_state, &share_id).await {
-                    Some(u) => u,
-                    None => return StatusCode::NOT_FOUND.into_response(),
-                }
-            }
+            } => match extract_user_via_share_id(&app_state, &share_id).await {
+                Some(u) => u,
+                None => return StatusCode::NOT_FOUND.into_response(),
+            },
             _ => return StatusCode::NOT_FOUND.into_response(),
         };
 
-        let model_id = match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &blob_sha256).await {
-            Ok(Some(m)) => m,
-            _ => return StatusCode::NOT_FOUND.into_response(),
-        };
+        let model_id =
+            match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &blob_sha256)
+                .await
+            {
+                Ok(Some(m)) => m,
+                _ => return StatusCode::NOT_FOUND.into_response(),
+            };
 
-        let model = match model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await {
+        let model = match model_db::get_models_via_ids(
+            &app_state.app_state.db,
+            &user,
+            vec![model_id],
+        )
+        .await
+        {
             Ok(m) => m,
             Err(_) => return StatusCode::NOT_FOUND.into_response(),
         };
 
-        if model.len() <= 0 {
+        if model.is_empty() {
             return StatusCode::NOT_FOUND.into_response();
         }
 
@@ -128,9 +144,13 @@ mod get {
             return StatusCode::NOT_FOUND.into_response();
         }
 
-        let filename = format!("{}.{}", cleanse_evil_from_name(&model.name).trim(), convert_zip_to_extension(&model.blob.filetype)).to_ascii_lowercase();
-        let mut response = get_blob_bytes_inner(&model.blob, &app_state)
-            .await;
+        let filename = format!(
+            "{}.{}",
+            cleanse_evil_from_name(&model.name).trim(),
+            convert_zip_to_extension(&model.blob.filetype)
+        )
+        .to_ascii_lowercase();
+        let mut response = get_blob_bytes_inner(&model.blob, &app_state).await;
 
         response.headers_mut().insert(
             axum::http::header::CONTENT_DISPOSITION,
@@ -138,7 +158,7 @@ mod get {
                 .parse()
                 .unwrap(),
         );
-        
+
         response
     }
 
@@ -157,14 +177,13 @@ mod get {
                 Err(_) => return StatusCode::NOT_FOUND.into_response(),
             };
 
-        if model.len() <= 0 {
+        if model.is_empty() {
             return StatusCode::NOT_FOUND.into_response();
         }
 
         let model = &model[0];
 
-        get_blob_bytes_inner(&model.blob, &app_state)
-            .await
+        get_blob_bytes_inner(&model.blob, &app_state).await
     }
 
     pub async fn get_blob_bytes(
@@ -205,14 +224,11 @@ mod get {
         let buffered_reader = BufReader::new(file);
         let stream = ReaderStream::new(buffered_reader);
 
-        return Body::from_stream(stream).into_response();
+        Body::from_stream(stream).into_response()
     }
 
-    async fn get_blob_bytes_inner(
-        blob: &Blob,
-        app_state: &WebAppState,
-    ) -> Response {
-        let src_file_path = get_model_path_for_blob(&blob, &app_state.app_state);
+    async fn get_blob_bytes_inner(blob: &Blob, app_state: &WebAppState) -> Response {
+        let src_file_path = get_model_path_for_blob(blob, &app_state.app_state);
 
         let file = match File::open(src_file_path).await {
             Ok(f) => f,
@@ -233,11 +249,11 @@ mod get {
 
             let stream = ReaderStream::new(file.compat());
 
-            return Body::from_stream(stream).into_response();
+            Body::from_stream(stream).into_response()
         } else {
             let stream = ReaderStream::new(buffered_reader);
 
-            return Body::from_stream(stream).into_response();
+            Body::from_stream(stream).into_response()
         }
     }
 
@@ -287,10 +303,9 @@ mod get {
                 .unwrap(),
         );
 
-        return Ok(response);
+        Ok(response)
     }
 }
-
 
 mod post {
     use super::*;
@@ -305,25 +320,36 @@ mod post {
 
         // TODO: This is slow, optimise later
         for sha256 in blob_sha256s {
-            let id = match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &sha256).await {
-                Ok(Some(m)) => m,
-                _ => return Ok(StatusCode::NOT_FOUND.into_response()),
-            };
+            let id =
+                match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &sha256)
+                    .await
+                {
+                    Ok(Some(m)) => m,
+                    _ => return Ok(StatusCode::NOT_FOUND.into_response()),
+                };
 
             model_ids.push(id);
         }
         let model_ids_len = model_ids.len();
-        let models = match model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await {
-            Ok(m) => m,
-            Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
-        };
-        
+        let models =
+            match model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await {
+                Ok(m) => m,
+                Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+            };
+
         if models.len() != model_ids_len {
             return Ok(StatusCode::NOT_FOUND.into_response());
         }
-        
+
         let path = export_service::export_zip_to_temp_folder(models, &app_state.app_state).await?;
 
-        Ok(Json(path.temp_dir.file_name().unwrap().to_string_lossy().to_string()).into_response())
+        Ok(Json(
+            path.temp_dir
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        )
+        .into_response())
     }
 }

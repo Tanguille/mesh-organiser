@@ -10,8 +10,10 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use axum_login::login_required;
-use db::model::{ResourceFlags, ResourceMeta};
-use db::{random_hex_32, resource_db, time_now};
+use db::{
+    model::resource::{ResourceFlags, ResourceMeta},
+    random_hex_32, resource_db, time_now,
+};
 use serde::Deserialize;
 use service::resource_service;
 
@@ -94,7 +96,6 @@ mod post {
 }
 
 mod put {
-    use crate::controller::EditGlobalId;
 
     use super::*;
 
@@ -135,7 +136,7 @@ mod put {
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
-    
+
     #[derive(Deserialize)]
     pub struct SetResourceOnGroupParams {
         pub resource_id: Option<i64>,

@@ -1,14 +1,11 @@
 use regex::Regex;
-use std::{
-    ffi::OsStr,
-    io::Read,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::ffi::OsStr;
+use std::process::Command;
+use std::{io::Read, path::PathBuf};
 
-use crate::service_error::ServiceError;
+use crate::error::ApplicationError;
 
-pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
+pub fn prettify_file_name(file: &PathBuf, is_dir: bool) -> String {
     let extension = file.extension();
     let mut file_name: String = String::from(
         file.file_name()
@@ -17,8 +14,13 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
             .unwrap(),
     );
 
-    if !is_dir && let Some(ext) = extension {
-        file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
+    if !is_dir {
+        match extension {
+            Some(ext) => {
+                file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
+            }
+            None => {}
+        }
     }
 
     let remove_whitespace = Regex::new(r" {2,}").unwrap();
@@ -50,8 +52,7 @@ pub fn cleanse_evil_from_name(name: &str) -> String {
     )
 }
 
-pub fn open_folder_in_explorer(path: &Path) {
-    let path = path.to_str().unwrap();
+pub fn open_folder_in_explorer(path: &str) {
     #[cfg(target_os = "windows")]
     {
         let _ = Command::new("explorer").arg(path).output().unwrap();
@@ -68,7 +69,8 @@ pub fn open_folder_in_explorer(path: &Path) {
     }
 }
 
-pub fn get_folder_size(path: &PathBuf) -> u64 {
+pub fn get_folder_size(path: &str) -> u64 {
+    let path = PathBuf::from(path);
     std::fs::read_dir(path)
         .unwrap()
         .map(|f| f.unwrap().metadata().unwrap().len())
@@ -78,7 +80,7 @@ pub fn get_folder_size(path: &PathBuf) -> u64 {
 pub fn is_zippable_file_extension(extension: &str) -> bool {
     let lowercase = extension.to_lowercase();
 
-    ["stl", "obj", "step", "gcode"]
+    vec!["stl", "obj", "step", "gcode"]
         .iter()
         .any(|f| lowercase.as_str().eq(*f))
 }
@@ -86,7 +88,7 @@ pub fn is_zippable_file_extension(extension: &str) -> bool {
 pub fn is_zipped_file_extension(extension: &str) -> bool {
     let lowercase = extension.to_lowercase();
 
-    ["stl.zip", "obj.zip", "step.zip", "gcode.zip"]
+    vec!["stl.zip", "obj.zip", "step.zip", "gcode.zip"]
         .iter()
         .any(|f| lowercase.as_str().eq(*f))
 }
@@ -115,7 +117,7 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
     })
 }
 
-pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
+pub fn read_file_as_text(path: &PathBuf) -> Result<String, ApplicationError> {
     let mut file = std::fs::File::open(path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;

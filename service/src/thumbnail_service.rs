@@ -1,18 +1,27 @@
 use std::{panic, path::PathBuf};
 
-use db::{blob_db, model::Blob};
+use db::{blob_db, model::blob::Blob};
 use image::imageops::FilterType::Triangle;
 use libmeshthumbnail::{extract_image, parse_model, render};
 use tokio::task::JoinSet;
 use vek::{Vec2, Vec3};
 
-use crate::{AppState, ServiceError, export_service::{get_image_path_for_blob, get_model_path_for_blob}, import_state::{ImportState, ImportStatus}};
+use crate::{
+    AppState, ServiceError,
+    export_service::{get_image_path_for_blob, get_model_path_for_blob},
+    import_state::{ImportState, ImportStatus},
+};
 
 const IMAGE_WIDTH: usize = 400;
 const IMAGE_HEIGHT: usize = 400;
 const IMAGE_SIZE: Vec2<usize> = Vec2::new(IMAGE_WIDTH, IMAGE_HEIGHT);
 
-fn render(model_path: &PathBuf, image_path: &PathBuf, color: Vec3<u8>, rotation: Vec3<f32>) -> Result<(), ServiceError> {
+fn render(
+    model_path: &PathBuf,
+    image_path: &PathBuf,
+    color: Vec3<u8>,
+    rotation: Vec3<f32>,
+) -> Result<(), ServiceError> {
     let mesh = match parse_model::handle_parse(model_path) {
         Ok(Some(mesh)) => mesh,
         Ok(None) => {
@@ -20,7 +29,7 @@ fn render(model_path: &PathBuf, image_path: &PathBuf, color: Vec3<u8>, rotation:
                 "Could not generate thumbnail for model at path {:?}: unsupported format",
                 model_path
             )));
-        },
+        }
         Err(err) => {
             return Err(ServiceError::InternalError(format!(
                 "Error parsing model at path {:?} for thumbnail generation: {}",
@@ -29,19 +38,22 @@ fn render(model_path: &PathBuf, image_path: &PathBuf, color: Vec3<u8>, rotation:
         }
     };
 
-    let thumbnail = render::render(
-        &mesh, 
-        IMAGE_SIZE, 
-        rotation,
-        color, 
-        1.0);
+    let thumbnail = render::render(&mesh, IMAGE_SIZE, rotation, color, 1.0);
 
     thumbnail.save(image_path)?;
 
     Ok(())
 }
 
-fn process(model_path: &PathBuf, image_path: &PathBuf, color: Vec3<u8>, rotation: Vec3<f32>, fallback_3mf_thumbnail : bool, prefer_3mf_thumbnail : bool, prefer_gcode_thumbnail : bool) -> Result<(), ServiceError> {
+fn process(
+    model_path: &PathBuf,
+    image_path: &PathBuf,
+    color: Vec3<u8>,
+    rotation: Vec3<f32>,
+    fallback_3mf_thumbnail: bool,
+    prefer_3mf_thumbnail: bool,
+    prefer_gcode_thumbnail: bool,
+) -> Result<(), ServiceError> {
     let filename = model_path.to_string_lossy().to_lowercase();
 
     let extension = match filename {
@@ -60,25 +72,27 @@ fn process(model_path: &PathBuf, image_path: &PathBuf, color: Vec3<u8>, rotation
         }
     };
 
-    if (prefer_3mf_thumbnail && extension == "3mf")
-        || (prefer_gcode_thumbnail && (extension == "gcode" || extension == "gcode.zip")) {
-            if let Ok(Some(mut image)) = extract_image::handle_extract_image(&model_path) {
-                image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
-                image.save(&image_path)?;
-                return Ok(());
-            }
-        }
+    if ((prefer_3mf_thumbnail && extension == "3mf")
+        || (prefer_gcode_thumbnail && (extension == "gcode" || extension == "gcode.zip")))
+        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
+    {
+        image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
+        image.save(image_path)?;
+        return Ok(());
+    }
 
     if render(model_path, image_path, color, rotation).is_ok() {
         return Ok(());
     }
 
-    if fallback_3mf_thumbnail && !prefer_3mf_thumbnail && extension == "3mf" {
-        if let Ok(Some(mut image)) = extract_image::handle_extract_image(&model_path) {
-            image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
-            image.save(&image_path)?;
-            return Ok(());
-        }
+    if fallback_3mf_thumbnail
+        && !prefer_3mf_thumbnail
+        && extension == "3mf"
+        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
+    {
+        image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
+        image.save(image_path)?;
+        return Ok(());
     }
 
     Err(ServiceError::InternalError(format!(
@@ -138,9 +152,7 @@ pub async fn generate_thumbnails(
 
             (model_path, image_path)
         })
-        .filter(|(_, image_path)| {
-            overwrite || !image_path.exists()
-        })
+        .filter(|(_, image_path)| overwrite || !image_path.exists())
         .collect();
 
     import_state.update_total_model_count(paths.len());
@@ -149,30 +161,38 @@ pub async fn generate_thumbnails(
     let mut active = 0;
 
     for (model_path, image_path) in paths {
-        let color = color.clone();
-        let rotation = rotation.clone();
         futures.spawn_blocking(move || {
             // Ignore errors for now
-            let _ = process(&model_path, &image_path, color, rotation, fallback_3mf_thumbnail, prefer_3mf_thumbnail, prefer_gcode_thumbnail);
+            let _ = process(
+                &model_path,
+                &image_path,
+                color,
+                rotation,
+                fallback_3mf_thumbnail,
+                prefer_3mf_thumbnail,
+                prefer_gcode_thumbnail,
+            );
         });
         active += 1;
 
-        if active >= max_concurrent {
-            if let Some(res) = futures.join_next().await {
-                match res {
-                    Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
-                    Err(err) => panic!("{err}"),
-                    Ok(_) => {
-                        active -= 1;
-                        import_state.update_finished_thumbnails_count(1);
-                    }
+        if active >= max_concurrent
+            && let Some(res) = futures.join_next().await
+        {
+            match res {
+                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
+                Err(err) => panic!("{err}"),
+                Ok(_) => {
+                    active -= 1;
+                    import_state.update_finished_thumbnails_count(1);
                 }
             }
         }
     }
 
     futures.join_all().await;
-    import_state.update_finished_thumbnails_count(import_state.model_count - import_state.finished_thumbnails_count);
+    import_state.update_finished_thumbnails_count(
+        import_state.model_count - import_state.finished_thumbnails_count,
+    );
     import_state.update_status(ImportStatus::FinishedThumbnails);
     Ok(())
 }
