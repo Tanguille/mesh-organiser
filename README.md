@@ -6,15 +6,18 @@ Competes with your downloads folder for storing 3d models.
 
 ## Install
 
-Download for:
-- [Windows](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_x64_en-US_windows.msi) (.msi)
+Download desktop edition for:
+
+- [Windows](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_x64_en-US.msi) (.msi)
 - Macos
-    - [aarch64/Arm based chips (M-line)](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_aarch64_darwin.dmg)
-    - [x64/Intel based chips](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_x64_darwin.dmg)
+  - [aarch64/Arm based chips (M-line)](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_aarch64_darwin.dmg)
+  - [x64/Intel based chips](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_x64_darwin.dmg)
 - Linux
-    - [Debian/Ubuntu](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_amd64_linux.deb) (.deb)
-    - [Fedora/RHEL](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser-1.9.0-1.x86_64_linux.rpm) (.rpm)
-    - Note: Only slicers installed via flatpak are supported
+  - [Debian/Ubuntu](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_amd64_linux.deb) (.deb)
+  - [Fedora/RHEL](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser-1.9.0-1.x86_64_linux.rpm) (.rpm)
+  - Note: Only slicers installed via flatpak are supported
+
+See the [Web folder](./web/README.md) for server (Mesh Organiser as website) installation instructions.
 
 See the [Releases](https://github.com/suchmememanyskill/mesh-organiser/releases) tab for more downloads and release notes
 
@@ -29,28 +32,32 @@ If you really like this program, consider donating on [Ko-Fi](https://ko-fi.com/
 Note: To open 'Open in ...' links from these websites, you need to enable them in settings. By default they are disabled to not overwrite any integrations you may currently have.
 
 ### [Thingiverse](https://www.thingiverse.com/)
+
 - Redirect 'Open in Cura' to app (see settings)
 - Import .zip (models only)
-    - Will automatically make group with .zip name
+  - Will automatically make group with .zip name
 
 ### [Printables](https://www.printables.com)
+
 - Redirect 'Open in PrusaSlicer' (and other slicers) to app (see settings)
-    - When using redirect from Printables, the link field is automatically filled
+  - When using redirect from Printables, the link field is automatically filled
 - Import .zip (models only)
-    - Will automatically make group with .zip name
+  - Will automatically make group with .zip name
 
 ### [Makerworld](https://makerworld.com)
+
 - Redirect 'Open in Bambu Studio' to app (see settings)
 - Ability to extract both model and thumbnail image (see settings)
 
 ## Structure breakdown
 
 The app knows 4 layers of organisation:
+
 - Model: A singular 3d model of any kind
 - Group: A collection of 3d models with a strong relationship (like multiple parts of a bigger model)
-    - Groups their contents are not intended to be edited after creation. Use Labels for this goal.
+  - Groups their contents are not intended to be edited after creation. Use Labels for this goal.
 - Label: A collection of 3d models with a weak relationship (like multiple models/groups of the same type; like 'wall art' or 'puzzle')
-    - Labels thier contents can be edited at any time using the label dropdown menu on groups, models or a collection of models.
+  - Labels thier contents can be edited at any time using the label dropdown menu on groups, models or a collection of models.
 - Project: A collection of groups needed to complete a project. Also offers a folder to store instructions (.pdf), or other misc files.
 
 ## Additional features
@@ -61,16 +68,18 @@ The app knows 4 layers of organisation:
 - Import .gcode files
 - Open slicer after importing from website (see settings, disabled by default)
 - Supported slicers: PrusaSlicer, OrcaSlicer, Cura, Bambu Studio
-    - Request more via the [Issues tab](https://github.com/suchmememanyskill/mesh-organiser/issues)
+  - Request more via the [Issues tab](https://github.com/suchmememanyskill/mesh-organiser/issues)
 - Deduplicates imported models using a hash
-    - Importing the same model twice will not duplicate it; it'll be registered as the same model
+  - Importing the same model twice will not duplicate it; it'll be registered as the same model
 
 ## Credits
 
 Developed by [Sims](https://github.com/suchmememanyskill)
+
 - With development help from [dorkeline](https://github.com/dorkeline) and Ajadaz
 - With testing help from atomique13, ioan18 and einso
 
 Links:
+
 - [Thumbnail Generator](https://github.com/suchmememanyskill/mesh-thumbnail)
 - [Report an issue / Request a feature](https://github.com/suchmememanyskill/mesh-organiser/issues)

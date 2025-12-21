@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, read_dir};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::AppHandle;
 use zip;
@@ -57,7 +57,7 @@ pub fn get_model_count(
         }
     } else if path_buff.extension().is_some() && path_buff.extension().unwrap() == "zip" {
         get_model_count_from_zip(path, configuration)
-    } else if is_supported_extension(&path_buff, &configuration) {
+    } else if is_supported_extension(&path_buff, configuration) {
         Ok(1)
     } else {
         Err(ApplicationError::InternalError(String::from(
@@ -115,7 +115,7 @@ pub fn import_path_inner(
     Ok(())
 }
 
-pub fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_state: &AppState) {
+pub fn add_labels_by_keywords(new_models: &[ImportedModelsSet], app_state: &AppState) {
     let db = &app_state.db;
     let model_ids = new_models
         .iter()
@@ -159,7 +159,7 @@ pub fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_state: &A
                     return all_keywords_map[part].clone();
                 }
 
-                return vec![];
+                vec![]
             })
             .filter(|l| {
                 !model
@@ -236,24 +236,22 @@ fn import_models_from_dir(
 
     thread_pool.install(|| {
         entries.par_iter().for_each(|entry| {
-            let link;
-
-            if entry.file_name().take().unwrap() == ".link" {
-                link = Some(read_file_as_text(&entry).unwrap());
+            let link = if entry.file_name().unwrap() == ".link" {
+                Some(read_file_as_text(entry).unwrap())
             } else {
-                link = origin_url.clone();
-            }
+                origin_url.clone()
+            };
 
-            if !is_supported_extension(&entry, &configuration) {
+            if !is_supported_extension(entry, &configuration) {
                 return;
             }
 
-            let file_name = util::prettify_file_name(&entry, false);
+            let file_name = util::prettify_file_name(entry, false);
             let extension = entry.extension().unwrap().to_str().unwrap();
             let file_size = entry.metadata().unwrap().len() as usize;
 
             {
-                let mut file = File::open(&entry).unwrap();
+                let mut file = File::open(entry).unwrap();
 
                 let id = import_single_model(
                     &mut file, extension, file_size, &file_name, link, app_state,
@@ -265,7 +263,7 @@ fn import_models_from_dir(
             }
 
             if delete_after_import {
-                let _ = fs::remove_file(&entry);
+                let _ = fs::remove_file(entry);
             }
         });
     });
@@ -291,7 +289,7 @@ fn import_models_from_zip(
     import_state.add_new_import_set(Some(group_name), app_handle);
 
     {
-        let zip_file = File::open(&path)?;
+        let zip_file = File::open(path)?;
         let mut archive = zip::ZipArchive::new(zip_file)?;
 
         for i in 0..archive.len() {
@@ -301,7 +299,7 @@ fn import_models_from_zip(
                 None => continue,
             };
 
-            if outpath.file_name().take().unwrap() == ".link" {
+            if outpath.file_name().unwrap() == ".link" {
                 let mut file_contents: Vec<u8> = Vec::new();
                 file.read_to_end(&mut file_contents)?;
                 temp_str = String::from_utf8(file_contents).unwrap();
@@ -359,9 +357,8 @@ where
     let bytes = hasher.finalize();
     let hash = String::from(&format!("{:x}", bytes)[0..32]);
 
-    match model::get_model_id_via_sha256_sync(&hash, &app_state.db) {
-        Some(id) => return Ok(id),
-        None => (),
+    if let Some(id) = model::get_model_id_via_sha256_sync(&hash, &app_state.db) {
+        return Ok(id);
     }
 
     let new_extension = convert_extension_to_zip(file_type);
@@ -391,10 +388,10 @@ where
         &app_state.db,
     );
 
-    return Ok(id);
+    Ok(id)
 }
 
-fn is_supported_extension(path: &PathBuf, configuration: &Configuration) -> bool {
+fn is_supported_extension(path: &Path, configuration: &Configuration) -> bool {
     match path.extension() {
         Some(ext) => {
             let lowercase = ext.to_str().unwrap().to_lowercase();
@@ -431,7 +428,7 @@ fn get_model_count_from_dir(
 ) -> Result<usize, ApplicationError> {
     let size = read_dir(path)?
         .map(|f| f.unwrap().path())
-        .filter(|f| f.is_file() && is_supported_extension(&f, &configuration))
+        .filter(|f| f.is_file() && is_supported_extension(f, configuration))
         .count();
 
     Ok(size)
@@ -441,7 +438,7 @@ fn get_model_count_from_zip(
     path: &str,
     configuration: &Configuration,
 ) -> Result<usize, ApplicationError> {
-    let zip_file = File::open(&path)?;
+    let zip_file = File::open(path)?;
     let mut archive = zip::ZipArchive::new(zip_file)?;
     let mut count = 0;
 
@@ -452,7 +449,7 @@ fn get_model_count_from_zip(
             None => continue,
         };
 
-        if is_supported_extension(&outpath, &configuration) {
+        if is_supported_extension(&outpath, configuration) {
             count += 1;
         }
     }

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 
 use tauri::AppHandle;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -20,15 +20,15 @@ pub async fn generate_all_thumbnails(
 ) -> Result<(), ApplicationError> {
     let models = model::get_models(&app_state.db).await;
 
-    let mut import_state = &mut ImportState::new(None, false, false);
+    let import_state = &mut ImportState::new(None, false, false);
 
-    generate_thumbnails(&models, app_state, app_handle, overwrite, &mut import_state).await?;
+    generate_thumbnails(&models, app_state, app_handle, overwrite, import_state).await?;
 
     Ok(())
 }
 
 pub async fn generate_thumbnails(
-    models: &Vec<Model>,
+    models: &[Model],
     app_state: &AppState,
     app_handle: &AppHandle,
     overwrite: bool,
@@ -52,9 +52,8 @@ pub async fn generate_thumbnails(
         .iter()
         .map(|f| {
             let new_path = model_path.join(format!("{}.{}", f.sha256, f.filetype));
-            let text_path = new_path.to_str().unwrap().to_string();
 
-            text_path
+            new_path.to_str().unwrap().to_string()
         })
         .collect();
 
@@ -66,7 +65,6 @@ pub async fn generate_thumbnails(
     struct D {
         thumbnail_count: usize,
         listener: tauri::async_runtime::Receiver<tauri_plugin_shell::process::CommandEvent>,
-        child: tauri_plugin_shell::process::CommandChild,
     }
 
     let mut commands: Vec<C> = paths
@@ -104,36 +102,12 @@ pub async fn generate_thumbnails(
 
             command = command.args(slice);
 
-            //println!("{:?}", command);
-
             C {
                 command,
                 thumbnail_count: len,
             }
         })
         .collect();
-    /*
-        #[cfg(debug_assertions)]
-        {
-            while !commands.is_empty() {
-                let command_wrapper = commands.pop().unwrap();
-                let result = command_wrapper.command.output().await;
-                match result {
-                    Ok(output) => {
-                        if !output.status.success() {
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            println!("Error: {}", stderr);
-                        }
-                    }
-                    Err(e) => {
-                        println!("Failed to execute command: {}", e);
-                    }
-                }
-            }
-
-            return Ok(());
-        }
-    */
 
     let mut running = Vec::new();
 
@@ -147,7 +121,6 @@ pub async fn generate_thumbnails(
             running.push(D {
                 thumbnail_count: command.thumbnail_count,
                 listener: a.0,
-                child: a.1,
             });
         } else {
             let mut i = 0;
