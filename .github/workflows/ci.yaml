@@ -1,0 +1,45 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - main
+
+    pull_request:
+        types: [opened, synchronize, reopened]
+
+permissions: read-all
+
+concurrency:
+    # Make sure we only run one pipeline at a time for this branch.
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build_and_check:
+        runs-on: ubuntu-latest
+        env:
+            CARGO_INCREMENTAL: 0
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+            - name: Setup Rust toolchain
+              uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+              with:
+                  components: rustfmt, clippy
+
+            - run: cargo fmt --all -- --check
+
+            - name: Detect unused dependencies
+              uses: bnjbvr/cargo-machete@7959c845782fed02ee69303126d4a12d64f1db18 # v0.9.1
+
+            - run: cargo build --workspace
+            - run: cargo clippy --workspace --all-targets --all-features
+
+            # TODO: CI for node
+            # - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+            #   with:
+            #       node-version: lts/*
+            #       cache: npm
+            # - run: npm ci
