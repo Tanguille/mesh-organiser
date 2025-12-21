@@ -1,7 +1,10 @@
 use crate::util::{cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension};
 use crate::{db::model::Model, error::ApplicationError};
 use chrono::Utc;
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use super::app_state::AppState;
 
@@ -20,7 +23,7 @@ pub fn export_to_temp_folder(
 
     let paths: Vec<PathBuf> = models
         .iter()
-        .map(|f| get_path_from_model(&temp_dir, f, &app_state, lazy).unwrap())
+        .map(|f| get_path_from_model(&temp_dir, f, app_state, lazy).unwrap())
         .collect();
 
     if app_state.get_configuration().export_metadata {
@@ -52,7 +55,7 @@ pub fn get_bytes_from_model(
     Ok(buffer)
 }
 
-fn ensure_unique_file(base_path: &PathBuf, file_name: &str, extension: &str) -> PathBuf {
+fn ensure_unique_file(base_path: &Path, file_name: &str, extension: &str) -> PathBuf {
     let mut counter = 1;
     let mut new_file_name = base_path.join(format!("{}.{}", file_name, extension));
 
@@ -61,11 +64,11 @@ fn ensure_unique_file(base_path: &PathBuf, file_name: &str, extension: &str) -> 
         counter += 1;
     }
 
-    return new_file_name;
+    new_file_name
 }
 
 fn get_path_from_model(
-    temp_dir: &PathBuf,
+    temp_dir: &Path,
     model: &Model,
     app_state: &AppState,
     lazy: bool,

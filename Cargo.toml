@@ -1,0 +1,74 @@
+[workspace]
+members = ["db", "service", "web", "src-tauri"]
+resolver = "2"
+
+[workspace.lints.rust]
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+# Priority is needed so our config below is respected over the pedantic group
+pedantic = { level = "warn", priority = -1 }
+redundant_clone = "warn"
+unnecessary_self_imports = "warn"
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+
+[workspace.dependencies]
+arboard = "3.6.1"
+async_zip = "0.0.18"
+axum = "0.8.8"
+axum-extra = "0.12.3"
+axum-login = "0.18.0"
+axum-messages = "0.8.0"
+bitflags = "2.10.0"
+chrono = "0.4.42"
+content_disposition = "0.4.0"
+db = { path = "db" }
+futures = "0.3.31"
+hex = "0.4.3"
+htmlescape = "0.3.1"
+image = "0.25.9"
+indexmap = "2.12.1"
+itertools = "0.14.0"
+libmeshthumbnail = { git = "https://github.com/suchmememanyskill/mesh-thumbnail", branch = "software" }
+password-auth = "1.0.0"
+rand = "0.9.2"
+regex = "1.12.2"
+reqwest = "0.12.26"
+serde = "1.0.228"
+serde_html_form = "0.2.8"
+serde_json = "1.0.145"
+service = { path = "service" }
+sha2 = "0.10.9"
+sqlx = "0.8.6"
+stl_io = "0.10.0"
+strum = "0.27.2"
+tauri = "2"
+tauri-build = "2.5.3"
+tauri-plugin-deep-link = "2.4.5"
+tauri-plugin-dialog = "2.4.2"
+tauri-plugin-fs = "2.4.4"
+tauri-plugin-http = "2.5.4"
+tauri-plugin-opener = "2"
+tauri-plugin-os = "2.3.2"
+tauri-plugin-process = "2.3.1"
+tauri-plugin-updater = "2.9.0"
+thiserror = "2.0.17"
+threemf = { git = "https://github.com/suchmememanyskill/3mf-rs", rev = "d78e731b2fcf127692380332ad2708aec65dee68" }
+time = "0.3.44"
+tokio = "1.48.0"
+tokio-util = "0.7.17"
+tower-http = "0.6.8"
+tower-sessions = { version = "0.14.0", default-features = false }
+tower-sessions-sqlx-store = "0.15.0"
+tracing-subscriber = "0.3.22"
+urlencoding = "2.1.3"
+vek = "0.17.2"
+zip = "6.0.0"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

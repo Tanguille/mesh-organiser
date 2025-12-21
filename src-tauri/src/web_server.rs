@@ -1,11 +1,11 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::path::PathBuf;
 
-use actix_web::{App, HttpResponse, HttpServer, get, middleware, web};
 use actix_cors::Cors;
+use actix_web::{App, HttpResponse, HttpServer, get, middleware, web};
 use async_zip::base::read::seek::ZipFileReader;
 use tauri::{AppHandle, Manager};
 use tokio::{fs::File, io::BufReader};
-use tokio_util::{io::ReaderStream, compat::FuturesAsyncReadCompatExt};
+use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
 
 use crate::{db, service::app_state::AppState, util::is_zipped_file_extension};
 
@@ -15,9 +15,7 @@ struct TauriAppState {
 
 #[actix_web::main]
 pub async fn init(app: AppHandle) -> std::io::Result<()> {
-    let tauri_app = web::Data::new(TauriAppState {
-        app,
-    });
+    let tauri_app = web::Data::new(TauriAppState { app });
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -37,13 +35,16 @@ pub async fn init(app: AppHandle) -> std::io::Result<()> {
 }
 
 #[get("/models/{id}")]
-pub async fn download_model(id: web::Path<u32>, data: web::Data<TauriAppState>) -> actix_web::HttpResponse {
+pub async fn download_model(
+    id: web::Path<u32>,
+    data: web::Data<TauriAppState>,
+) -> actix_web::HttpResponse {
     let app_state = data.app.state::<AppState>();
 
     let id = id.into_inner() as i64;
     let model = db::model::get_models_by_id(vec![id], &app_state.db).await;
 
-    if model.len() <= 0 {
+    if model.is_empty() {
         return HttpResponse::NotFound().body("Model not found");
     }
 
@@ -61,24 +62,28 @@ pub async fn download_model(id: web::Path<u32>, data: web::Data<TauriAppState>) 
     if is_zipped_file_extension(&model.filetype) {
         let archive = match ZipFileReader::with_tokio(buffered_reader).await {
             Ok(a) => a,
-            Err(_) => return HttpResponse::InternalServerError().body("Failed to read zip archive"),
+            Err(_) => {
+                return HttpResponse::InternalServerError().body("Failed to read zip archive");
+            }
         };
         let file = match archive.into_entry(0).await {
             Ok(f) => f,
-            Err(_) => return HttpResponse::InternalServerError().body("Failed to read file from zip archive"),
+            Err(_) => {
+                return HttpResponse::InternalServerError()
+                    .body("Failed to read file from zip archive");
+            }
         };
 
         let stream = ReaderStream::new(file.compat());
 
-        return HttpResponse::Ok()
+        HttpResponse::Ok()
             .content_type("application/octet-stream")
-            .streaming(stream);
-    } 
-    else {
+            .streaming(stream)
+    } else {
         let stream = ReaderStream::new(buffered_reader);
 
-        return HttpResponse::Ok()
+        HttpResponse::Ok()
             .content_type("application/octet-stream")
-            .streaming(stream);
+            .streaming(stream)
     }
 }

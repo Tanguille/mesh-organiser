@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    mesh_organiser_lib::run()
+    mesh_organiser_lib::run();
 }
