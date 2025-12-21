@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use db::{blob_db, model::User, model_db};
+use db::{blob_db, model_db};
 use serde::Serialize;
 use service::export_service;
 use tauri::{State, ipc::Response};
@@ -19,7 +19,7 @@ pub async fn get_model_bytes(
     )
     .await?;
 
-    if model.len() <= 0 {
+    if model.is_empty() {
         return Err(ApplicationError::InternalError(String::from(
             "Failed to find model",
         )));
@@ -35,13 +35,10 @@ pub async fn get_blob_bytes(
     sha256: String,
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
-    let blob = match blob_db::get_blob_via_sha256(&state.app_state.db, &sha256).await? {
-        Some(b) => b,
-        None => {
-            return Err(ApplicationError::InternalError(String::from(
-                "Failed to find blob",
-            )));
-        }
+    let Some(blob) = blob_db::get_blob_via_sha256(&state.app_state.db, &sha256).await? else {
+        return Err(ApplicationError::InternalError(String::from(
+            "Failed to find blob",
+        )));
     };
 
     // Todo: This is not a streamed response. Less efficient than the streaming we did before!
@@ -53,7 +50,7 @@ pub async fn get_blob_bytes(
 #[derive(Serialize)]
 pub struct BlobPath {
     blob_id: i64,
-    blob_path: PathBuf
+    blob_path: PathBuf,
 }
 
 #[tauri::command]
@@ -62,7 +59,13 @@ pub async fn blobs_to_path(
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<BlobPath>, ApplicationError> {
     let blobs = blob_db::get_blobs_via_ids(&state.app_state.db, blob_ids).await?;
-    let paths = blobs.into_iter().map(|b| BlobPath { blob_id: b.id, blob_path: export_service::get_model_path_for_blob(&b, &state.app_state) }).collect();
+    let paths = blobs
+        .into_iter()
+        .map(|b| BlobPath {
+            blob_id: b.id,
+            blob_path: export_service::get_model_path_for_blob(&b, &state.app_state),
+        })
+        .collect();
 
     Ok(paths)
 }

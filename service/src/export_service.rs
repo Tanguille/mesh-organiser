@@ -1,27 +1,24 @@
 use crate::ASYNC_MULT;
-use crate::util::{cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension};
 use crate::service_error::ServiceError;
-use async_zip::{Compression, ZipEntryBuilder};
+use crate::util::{cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension};
 use async_zip::tokio::read::seek::ZipFileReader;
 use async_zip::tokio::write::ZipFileWriter;
-use db::blob_db;
-use db::model::{Blob, Model};
+use async_zip::{Compression, ZipEntryBuilder};
 use chrono::Utc;
-use futures::AsyncWriteExt;
+use db::blob_db;
+use db::model::{Model, blob::Blob};
 use itertools::Itertools;
-use tokio::fs::File;
-use tokio::io::{BufReader, BufWriter};
-use tokio::task::JoinSet;
-use tokio_util::compat::{FuturesAsyncReadCompatExt, FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
+use std::collections::HashSet;
 use std::panic;
 use std::path::PathBuf;
-use std::collections::HashSet;
+use tokio::fs::File;
+use tokio::io::BufReader;
+use tokio::task::JoinSet;
+use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use super::app_state::AppState;
 
-pub fn get_temp_dir(
-    action: &str,
-) -> PathBuf {
+pub fn get_temp_dir(action: &str) -> PathBuf {
     let temp_dir = std::env::temp_dir().join(format!(
         "meshorganiser_{}_action_{}",
         action,
@@ -31,10 +28,7 @@ pub fn get_temp_dir(
     temp_dir
 }
 
-pub fn get_model_path_for_blob(
-    blob: &Blob,
-    app_state: &AppState,
-) -> PathBuf {
+pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
     if let Some(disk_path) = &blob.disk_path {
         PathBuf::from(disk_path)
     } else {
@@ -43,10 +37,7 @@ pub fn get_model_path_for_blob(
     }
 }
 
-pub fn get_image_path_for_blob(
-    blob: &Blob,
-    app_state: &AppState,
-) -> PathBuf {
+pub fn get_image_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
     let base_dir = app_state.get_image_dir();
     base_dir.join(format!("{}.png", blob.sha256))
 }
@@ -81,40 +72,52 @@ pub async fn export_to_temp_folder(
         let app_state = app_state.clone();
         active += 1;
 
-        futures.spawn(async move { 
+        futures.spawn(async move {
             let model = model;
             get_path_from_model(&temp_dir, &model, &app_state, lazy).await
         });
 
-        if active >= max {
-            if let Some(res) = futures.join_next().await {
-                match res {
-                    Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
-                    Err(err) => panic!("{err}"),
-                    Ok(res) => {
-                        if let Ok(res) = res {
-                            paths.push(res);
-                        }
-                        active -= 1;
-                    },
+        if active >= max
+            && let Some(res) = futures.join_next().await
+        {
+            match res {
+                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
+                Err(err) => panic!("{err}"),
+                Ok(res) => {
+                    if let Ok(res) = res {
+                        paths.push(res);
+                    }
+                    active -= 1;
                 }
             }
         }
     }
 
-    paths.extend(futures.join_all().await.into_iter().filter(|r| r.is_ok()).map(|r| r.unwrap()));
+    paths.extend(futures.join_all().await.into_iter().flatten());
 
     Ok((temp_dir, paths))
 }
 
-fn name_collection_of_models(models : &[Model]) -> String {
-    let set : Vec<i64> = models.iter().map(|m| m.group.as_ref().map(|g| g.id).unwrap_or(-1)).unique().collect();
+fn name_collection_of_models(models: &[Model]) -> String {
+    let set: Vec<i64> = models
+        .iter()
+        .map(|m| m.group.as_ref().map(|g| g.id).unwrap_or(-1))
+        .unique()
+        .collect();
 
     if set.len() == 1 && set[0] > 0 {
         return cleanse_evil_from_name(&models[0].group.as_ref().unwrap().name);
     }
 
-    cleanse_evil_from_name(&format!("{}{}", models.iter().take(5).map(|m| &m.name).join("+"), if models.len() > 5 { format!("+{} more...", models.len() - 5) } else { "".to_string() }))
+    cleanse_evil_from_name(&format!(
+        "{}{}",
+        models.iter().take(5).map(|m| &m.name).join("+"),
+        if models.len() > 5 {
+            format!("+{} more...", models.len() - 5)
+        } else {
+            "".to_string()
+        }
+    ))
 }
 
 pub struct ExportZipResult {
@@ -146,7 +149,10 @@ pub async fn export_zip_to_temp_folder(
     for model in models {
         let cleansed_name = cleanse_evil_from_name(&model.name);
         let extension = convert_zip_to_extension(&model.blob.filetype);
-        let builder = ZipEntryBuilder::new(format!("{}.{}", cleansed_name, extension).into(), Compression::Deflate);
+        let builder = ZipEntryBuilder::new(
+            format!("{}.{}", cleansed_name, extension).into(),
+            Compression::Deflate,
+        );
         let mut stream_writer = writer.write_entry_stream(builder).await?;
 
         // TODO: Find a way to reuse this
@@ -157,17 +163,17 @@ pub async fn export_zip_to_temp_folder(
             let mut buffered_reader = BufReader::new(model_file);
             let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
             let mut file = zip.reader_with_entry(0).await?;
-            
+
             futures::io::copy(&mut file, &mut stream_writer).await?;
         } else {
             let mut model_file = model_file.compat();
             futures::io::copy(&mut model_file, &mut stream_writer).await?;
         }
 
-        stream_writer.close().await?; 
+        stream_writer.close().await?;
         println!("Added model {} to zip", model.name);
     }
-    
+
     writer.close().await?;
 
     Ok(ExportZipResult {
@@ -205,14 +211,18 @@ pub async fn get_bytes_from_blob(
     Ok(buffer)
 }
 
-pub fn ensure_unique_file_full_filename(base_path: &PathBuf, file_name : &str) -> PathBuf {
+pub fn ensure_unique_file_full_filename(base_path: &PathBuf, file_name: &str) -> PathBuf {
     let extension = file_name.split(".").last().unwrap();
     let base_file_name = &file_name[..file_name.len() - extension.len() - 1];
 
-    ensure_unique_file(base_path, base_file_name, extension)
+    ensure_unique_file(base_path.as_ref(), base_file_name, extension)
 }
 
-pub fn ensure_unique_file(base_path: &PathBuf, file_name: &str, extension: &str) -> PathBuf {
+pub fn ensure_unique_file(
+    base_path: &std::path::Path,
+    file_name: &str,
+    extension: &str,
+) -> PathBuf {
     let mut counter = 1;
     let mut new_file_name = base_path.join(format!("{}.{}", file_name, extension));
 
@@ -221,11 +231,11 @@ pub fn ensure_unique_file(base_path: &PathBuf, file_name: &str, extension: &str)
         counter += 1;
     }
 
-    return new_file_name;
+    new_file_name
 }
 
 pub async fn get_path_from_model(
-    temp_dir: &PathBuf,
+    temp_dir: &std::path::Path,
     model: &Model,
     app_state: &AppState,
     lazy: bool,
@@ -255,10 +265,10 @@ pub async fn get_path_from_model(
 }
 
 pub fn get_size_of_blobs(
-    blobs: &Vec<String>, // Sha256's
+    blobs: &[String], // Sha256's
     app_state: &AppState,
 ) -> Result<u64, ServiceError> {
-    let base_dir = PathBuf::from(app_state.get_model_dir());
+    let base_dir = app_state.get_model_dir();
     let mut total_size: u64 = 0;
     let hashset = blobs.iter().cloned().collect::<HashSet<String>>();
 
@@ -294,25 +304,24 @@ pub fn get_size_of_blobs(
     Ok(total_size)
 }
 
-pub async fn delete_dead_blobs(
-    app_state: &AppState,
-) -> Result<(), ServiceError> {
+pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError> {
     let blobs = blob_db::get_and_delete_dead_blobs(&app_state.db).await?;
 
     for blob in blobs {
         let model_path = get_model_path_for_blob(&blob, app_state);
         let image_path = get_image_path_for_blob(&blob, app_state);
 
-        if blob.disk_path.is_none() && model_path.exists() {
-            if let Err(e) = std::fs::remove_file(model_path) {
-                eprintln!("Failed to remove dead blob model file: {}", e);
-            }
+        if blob.disk_path.is_none()
+            && model_path.exists()
+            && let Err(e) = std::fs::remove_file(model_path)
+        {
+            eprintln!("Failed to remove dead blob model file: {}", e);
         }
 
-        if image_path.exists() {
-            if let Err(e) = std::fs::remove_file(image_path) {
-                eprintln!("Failed to remove dead blob image file: {}", e);
-            }
+        if image_path.exists()
+            && let Err(e) = std::fs::remove_file(image_path)
+        {
+            eprintln!("Failed to remove dead blob image file: {}", e);
         }
     }
     Ok(())

@@ -1,6 +1,11 @@
 use rand::Rng;
 
-use crate::{DbError, db_context::DbContext, model::{User, UserPermissions, hash_password}, random_hex_32, time_now};
+use crate::{
+    DbError,
+    db_context::DbContext,
+    model::user::{User, UserPermissions, hash_password},
+    random_hex_32, time_now,
+};
 
 struct UserDbQuery {
     user_id: i64,
@@ -15,17 +20,17 @@ struct UserDbQuery {
 }
 
 impl UserDbQuery {
-    fn to_user(self) -> User {
+    fn to_user(&self) -> User {
         User {
             id: self.user_id,
-            username: self.user_name,
-            email: self.user_email,
-            created_at: self.user_created_at,
-            last_sync: self.user_last_sync,
-            sync_token: self.user_sync_token,
-            sync_url: self.user_sync_url,
+            username: self.user_name.clone(),
+            email: self.user_email.clone(),
+            created_at: self.user_created_at.clone(),
+            last_sync: self.user_last_sync.clone(),
+            sync_token: self.user_sync_token.clone(),
+            sync_url: self.user_sync_url.clone(),
             permissions: UserPermissions::from_bits_truncate(self.user_permissions as u32),
-            password_hash: self.user_password_hash,
+            password_hash: self.user_password_hash.clone(),
         }
     }
 }
@@ -69,7 +74,12 @@ pub async fn get_user_by_id(db: &DbContext, user_id: i64) -> Result<Option<User>
     Ok(row.map(|r| r.to_user()))
 }
 
-pub async fn add_user(db: &DbContext, username: &str, email: &str, password: &str) -> Result<i64, DbError> {
+pub async fn add_user(
+    db: &DbContext,
+    username: &str,
+    email: &str,
+    password: &str,
+) -> Result<i64, DbError> {
     let now = time_now();
     let id = rand::rng().random::<u32>() as i64;
     let password = hash_password(password);
@@ -90,7 +100,12 @@ pub async fn add_user(db: &DbContext, username: &str, email: &str, password: &st
     Ok(user_id)
 }
 
-pub async fn edit_user_min(db: &DbContext, user_id: i64, username: &str, email: &str) -> Result<(), DbError> {
+pub async fn edit_user_min(
+    db: &DbContext,
+    user_id: i64,
+    username: &str,
+    email: &str,
+) -> Result<(), DbError> {
     sqlx::query!(
         "UPDATE users SET user_name = ?, user_email = ? WHERE user_id = ?",
         username,
@@ -103,7 +118,15 @@ pub async fn edit_user_min(db: &DbContext, user_id: i64, username: &str, email: 
     Ok(())
 }
 
-pub async fn edit_user(db: &DbContext, user_id: i64, username: &str, email: &str, user_last_sync: Option<String>, user_sync_token: Option<String>, user_sync_url: Option<String>) -> Result<(), DbError> {
+pub async fn edit_user(
+    db: &DbContext,
+    user_id: i64,
+    username: &str,
+    email: &str,
+    user_last_sync: Option<String>,
+    user_sync_token: Option<String>,
+    user_sync_url: Option<String>,
+) -> Result<(), DbError> {
     sqlx::query!(
         "UPDATE users SET user_name = ?, user_email = ?, user_last_sync = ?, user_sync_token = ?, user_sync_url = ? WHERE user_id = ?",
         username,
@@ -119,7 +142,11 @@ pub async fn edit_user(db: &DbContext, user_id: i64, username: &str, email: &str
     Ok(())
 }
 
-pub async fn edit_user_last_sync_time(db: &DbContext, user_id: i64, user_last_sync: &str) -> Result<(), DbError> {
+pub async fn edit_user_last_sync_time(
+    db: &DbContext,
+    user_id: i64,
+    user_last_sync: &str,
+) -> Result<(), DbError> {
     sqlx::query!(
         "UPDATE users SET user_last_sync = ? WHERE user_id = ?",
         user_last_sync,
@@ -131,9 +158,19 @@ pub async fn edit_user_last_sync_time(db: &DbContext, user_id: i64, user_last_sy
     Ok(())
 }
 
-pub async fn set_user_sync_token(db: &DbContext, user_id: i64, sync_token: &str, sync_url: &str, online : bool) -> Result<(), DbError> {
+pub async fn set_user_sync_token(
+    db: &DbContext,
+    user_id: i64,
+    sync_token: &str,
+    sync_url: &str,
+    online: bool,
+) -> Result<(), DbError> {
     let clear_bits = (UserPermissions::OnlineAccount.bits() ^ u32::MAX) as i64;
-    let set_bits = if online { UserPermissions::OnlineAccount.bits() as i64 } else { 0 };
+    let set_bits = if online {
+        UserPermissions::OnlineAccount.bits() as i64
+    } else {
+        0
+    };
 
     sqlx::query!(
         "UPDATE users SET user_sync_token = ?, user_sync_url = ?, user_last_sync = NULL, user_permissions = (user_permissions & ?) | ? WHERE user_id = ?",
@@ -191,7 +228,11 @@ pub async fn scramble_login_token(db: &DbContext, user_id: i64) -> Result<(), Db
     Ok(())
 }
 
-pub async fn edit_user_password(db: &DbContext, user_id: i64, password: &str) -> Result<(), DbError> {
+pub async fn edit_user_password(
+    db: &DbContext,
+    user_id: i64,
+    password: &str,
+) -> Result<(), DbError> {
     let password = hash_password(password);
     sqlx::query!(
         "UPDATE users SET user_password_hash = ? WHERE user_id = ?",
@@ -204,7 +245,11 @@ pub async fn edit_user_password(db: &DbContext, user_id: i64, password: &str) ->
     Ok(())
 }
 
-pub async fn set_user_permissions(db: &DbContext, user_id: i64, permissions: UserPermissions) -> Result<(), DbError> {
+pub async fn set_user_permissions(
+    db: &DbContext,
+    user_id: i64,
+    permissions: UserPermissions,
+) -> Result<(), DbError> {
     let bits = permissions.bits() as i64;
     sqlx::query!(
         "UPDATE users SET user_permissions = ? WHERE user_id = ?",
@@ -218,12 +263,9 @@ pub async fn set_user_permissions(db: &DbContext, user_id: i64, permissions: Use
 }
 
 pub async fn delete_user(db: &DbContext, user_id: i64) -> Result<(), DbError> {
-    sqlx::query!(
-        "DELETE FROM users WHERE user_id = ?",
-        user_id
-    )
-    .execute(db)
-    .await?;
+    sqlx::query!("DELETE FROM users WHERE user_id = ?", user_id)
+        .execute(db)
+        .await?;
 
     Ok(())
 }
@@ -248,7 +290,10 @@ pub async fn get_user_by_email(db: &DbContext, email: &str) -> Result<Option<Use
     Ok(row.map(|r| r.to_user()))
 }
 
-pub async fn get_user_by_sync_token(db: &DbContext, sync_token: &str) -> Result<Option<User>, DbError> {
+pub async fn get_user_by_sync_token(
+    db: &DbContext,
+    sync_token: &str,
+) -> Result<Option<User>, DbError> {
     let row = sqlx::query_as!(
         UserDbQuery,
         "SELECT user_id, 

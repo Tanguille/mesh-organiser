@@ -1,9 +1,9 @@
 use super::Slicer;
-use db::model::Model;
-use crate::service_error::ServiceError;
 use crate::app_state::AppState;
 use crate::export_service::export_to_temp_folder;
+use crate::service_error::ServiceError;
 use crate::slicer_service::open_custom_slicer;
+use db::model::Model;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -16,7 +16,11 @@ impl Slicer {
         get_slicer_path(&self).is_some()
     }
 
-    pub async fn open(&self, paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
+    pub async fn open(
+        &self,
+        paths: Vec<PathBuf>,
+        app_state: &AppState,
+    ) -> Result<(), ServiceError> {
         if let Slicer::Custom = self {
             return open_custom_slicer(paths, app_state).await;
         }

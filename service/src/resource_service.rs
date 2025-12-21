@@ -1,5 +1,5 @@
-use db::model::{Resource, ResourceMeta, User};
 use crate::{service_error::ServiceError, util::open_folder_in_explorer};
+use db::model::{resource::ResourceMeta, user::User};
 
 use super::app_state::AppState;
 

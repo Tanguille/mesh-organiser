@@ -1,5 +1,9 @@
 use std::{
-    env, fs::File, io::Write, path::PathBuf, sync::{Arc, Mutex}
+    env,
+    fs::File,
+    io::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
 use axum::{
@@ -20,13 +24,18 @@ use db::{
 use service::{AppState, Configuration, StoredConfiguration, stored_to_configuration};
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
-use tower_http::{compression::CompressionLayer, services::{ServeDir, ServeFile}};
+use tower_http::{
+    compression::CompressionLayer,
+    services::{ServeDir, ServeFile},
+};
 use tower_sessions::cookie::Key;
 use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::{
     controller::{
-        auth_controller, blob_controller, group_controller, label_controller, model_controller, page_controller, resource_controller, share_controller, threemf_controller, user_controller
+        auth_controller, blob_controller, group_controller, label_controller, model_controller,
+        page_controller, resource_controller, share_controller, threemf_controller,
+        user_controller,
     },
     user::{AuthSession, Backend},
     web_app_state::WebAppState,
@@ -68,8 +77,8 @@ impl App {
             .parse::<u16>()
             .expect("SERVER_PORT must be a valid u16");
 
-        let config_path =
-            env::var("APP_CONFIG_PATH").expect(&expected_env_error_msg("APP_CONFIG_PATH"));
+        let config_path = env::var("APP_CONFIG_PATH")
+            .unwrap_or_else(|_| panic!("{}", expected_env_error_msg("APP_CONFIG_PATH")));
         let config_path = PathBuf::from(config_path);
 
         if !config_path.exists() {
@@ -106,7 +115,7 @@ impl App {
                 app_data_path: data_dir.to_str().unwrap().to_string(),
                 import_mutex: Arc::new(tokio::sync::Mutex::new(())),
             },
-            port: port,
+            port,
         };
 
         let session_store = SqliteStore::new(db_clone);
@@ -125,7 +134,10 @@ impl App {
             }
         };
 
-        println!("Password for local account for this session: {}", local_pass);
+        println!(
+            "Password for local account for this session: {}",
+            local_pass
+        );
 
         user_db::edit_user_password(&web_app_state.app_state.db, 1, &local_pass).await?;
         user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;

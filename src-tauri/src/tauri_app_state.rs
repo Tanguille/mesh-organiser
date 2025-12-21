@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use db::model::User;
+use db::model::user::User;
 use serde::{Deserialize, Serialize};
 use service::{AppState, Configuration};
 use tauri::AppHandle;
@@ -37,14 +37,6 @@ impl TauriAppState {
 
     pub fn get_model_dir(&self) -> PathBuf {
         self.app_state.get_model_dir()
-    }
-
-    pub fn get_image_dir(&self) -> PathBuf {
-        self.app_state.get_image_dir()
-    }
-
-    pub fn get_resources_dir(&self) -> PathBuf {
-        self.app_state.get_resources_dir()
     }
 
     pub fn get_current_user(&self) -> User {

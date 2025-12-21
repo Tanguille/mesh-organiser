@@ -15,7 +15,7 @@ mod web_import_state;
 fn remove_temp_paths() -> Result<(), ApplicationError> {
     let threshold = std::time::Duration::from_secs(5 * 60);
     let now = std::time::SystemTime::now();
-    for entry in std::fs::read_dir(&std::env::temp_dir())? {
+    for entry in std::fs::read_dir(std::env::temp_dir())? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir()
@@ -25,19 +25,15 @@ fn remove_temp_paths() -> Result<(), ApplicationError> {
                 .to_str()
                 .unwrap()
                 .starts_with("meshorganiser_")
+            && let Ok(metadata) = std::fs::metadata(&path)
+            && let Ok(modified) = metadata.modified()
+            && now
+                .duration_since(modified)
+                .unwrap_or(std::time::Duration::ZERO)
+                >= threshold
         {
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if let Ok(modified) = metadata.modified() {
-                    if now
-                        .duration_since(modified)
-                        .unwrap_or(std::time::Duration::ZERO)
-                        >= threshold
-                    {
-                        println!("Removing temporary path {:?}", path);
-                        std::fs::remove_dir_all(&path)?;
-                    }
-                }
-            }
+            println!("Removing temporary path {:?}", path);
+            std::fs::remove_dir_all(&path)?;
         }
     }
 

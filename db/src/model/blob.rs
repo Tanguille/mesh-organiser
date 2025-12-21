@@ -7,5 +7,5 @@ pub struct Blob {
     pub filetype: String,
     pub size: i64,
     pub added: String,
-    pub disk_path: Option<String>
+    pub disk_path: Option<String>,
 }

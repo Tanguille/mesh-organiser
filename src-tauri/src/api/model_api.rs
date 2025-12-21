@@ -1,20 +1,19 @@
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::ImportState;
 use crate::TauriAppState;
 use crate::error::ApplicationError;
 use crate::tauri_import_state::import_state_new_tauri;
-use db::blob_db;
-use db::model::{Blob, ModelFlags, User};
-use db::model_db::{self, ModelFilterOptions, ModelOrderBy};
+use db::model::{ModelFlags, blob::Blob};
+use db::model_db;
+use db::model_db::{ModelFilterOptions, ModelOrderBy};
 use itertools::Itertools;
 use serde::Serialize;
-use service::export_service::{get_image_path_for_blob, get_model_path_for_blob};
 use service::import_state::ImportStatus;
 use service::{export_service, import_service, thumbnail_service};
 use tauri::{AppHandle, State};
 
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 #[tauri::command]
 pub async fn add_model(
     path: &str,
@@ -54,19 +53,22 @@ pub async fn add_model(
         .await?;
 
     let models_len = models.len();
-    let (_, paths) = export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
+    let (_, paths) =
+        export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
 
-    if open_in_slicer && models_len > 0 {
-        if let Some(slicer) = &state.get_configuration().slicer {
-            slicer.open(paths, &state.app_state).await?;
-        }
+    if open_in_slicer
+        && models_len > 0
+        && let Some(slicer) = &state.get_configuration().slicer
+    {
+        slicer.open(paths, &state.app_state).await?;
     }
 
-    println!("Import finished: {:?}", import_state);
+    println!("Import finished: {import_state:?}");
     import_state.status = ImportStatus::Finished;
     Ok(import_state)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn get_models(
     model_ids: Option<Vec<i64>>,
@@ -87,7 +89,11 @@ pub async fn get_models(
             group_ids,
             label_ids,
             order_by: order_by
-                .map(|s| ModelOrderBy::from_str(&s).unwrap_or(ModelOrderBy::AddedDesc)),
+                .map(|s| ModelOrderBy::from_str(&s))
+                .transpose()
+                .map_err(|_| ApplicationError::InternalError(
+                    "Invalid order_by value. Valid values are: AddedAsc, AddedDesc, NameAsc, NameDesc, SizeAsc, SizeDesc, ModifiedAsc, ModifiedDesc".to_string()
+                ))?,
             model_flags,
             text_search,
             page,
@@ -99,6 +105,7 @@ pub async fn get_models(
     Ok(models.items)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn edit_model(
     model_id: i64,
@@ -110,7 +117,7 @@ pub async fn edit_model(
     model_global_id: Option<&str>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    db::model_db::edit_model(
+    model_db::edit_model(
         &state.app_state.db,
         &state.get_current_user(),
         model_id,
@@ -123,7 +130,7 @@ pub async fn edit_model(
     .await?;
 
     if let Some(global_id) = model_global_id {
-        db::model_db::edit_model_global_id(
+        model_db::edit_model_global_id(
             &state.app_state.db,
             &state.get_current_user(),
             model_id,
@@ -188,8 +195,7 @@ pub async fn get_model_count(
     state: State<'_, TauriAppState>,
 ) -> Result<usize, ApplicationError> {
     let count =
-        db::model_db::get_model_count(&state.app_state.db, &state.get_current_user(), flags)
-            .await?;
+        model_db::get_model_count(&state.app_state.db, &state.get_current_user(), flags).await?;
 
     Ok(count)
 }
@@ -208,7 +214,7 @@ pub async fn get_model_disk_space_usage(
     let local = export_service::get_size_of_blobs(&data.blob_sha256, &state.app_state)?;
 
     Ok(ModelDiskSpaceUsage {
-        size_uncompressed: data.total_size as u64,
+        size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
         size_compressed: local,
     })
 }

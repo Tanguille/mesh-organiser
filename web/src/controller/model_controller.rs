@@ -21,7 +21,6 @@ use time::OffsetDateTime;
 use tokio::fs;
 
 use crate::error::ApplicationError;
-use db::blob_db;
 use db::model_db::{ModelFilterOptions, ModelOrderBy};
 use serde::Serialize;
 use service::export_service;
@@ -44,7 +43,7 @@ pub fn router() -> Router<WebAppState> {
 
 mod get {
     use axum_extra::extract::Query;
-    use db::{model::User, share_db};
+    use db::{model::user::User, share_db};
 
     use super::*;
 
@@ -73,11 +72,23 @@ mod get {
 
         let models = model_db::get_models(
             &app_state.app_state.db,
-            &user,
+            user,
             ModelFilterOptions {
-                model_ids: if params.model_ids.is_empty() { None } else { Some(params.model_ids) },
-                group_ids: if params.group_ids.is_empty() { None } else { Some(params.group_ids) },
-                label_ids: if params.label_ids.is_empty() { None } else { Some(params.label_ids) },
+                model_ids: if params.model_ids.is_empty() {
+                    None
+                } else {
+                    Some(params.model_ids)
+                },
+                group_ids: if params.group_ids.is_empty() {
+                    None
+                } else {
+                    Some(params.group_ids)
+                },
+                label_ids: if params.label_ids.is_empty() {
+                    None
+                } else {
+                    Some(params.label_ids)
+                },
                 order_by: params
                     .order_by
                     .map(|s| ModelOrderBy::from_str(&s).unwrap_or(ModelOrderBy::AddedDesc)),
@@ -111,16 +122,25 @@ mod get {
 
         params.model_ids = match params.model_ids.is_empty() {
             true => vec![],
-            false => share.model_ids.into_iter().filter(|x| params.model_ids.contains(x)).collect(),
+            false => share
+                .model_ids
+                .into_iter()
+                .filter(|x| params.model_ids.contains(x))
+                .collect(),
         };
 
         params.group_ids = vec![];
         params.label_ids = vec![];
-        
-        get_models_inner(&app_state, &User { 
-            id: share.user_id,
-            ..Default::default()
-        }, params).await
+
+        get_models_inner(
+            &app_state,
+            &User {
+                id: share.user_id,
+                ..Default::default()
+            },
+            params,
+        )
+        .await
     }
 
     #[derive(Deserialize)]
@@ -140,7 +160,16 @@ mod get {
         Query(params): Query<GetModelCountParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        let count = model_db::get_model_count(&app_state.app_state.db, &user, if params.model_flags.is_empty() { None } else { Some(params.model_flags)}).await?;
+        let count = model_db::get_model_count(
+            &app_state.app_state.db,
+            &user,
+            if params.model_flags.is_empty() {
+                None
+            } else {
+                Some(params.model_flags)
+            },
+        )
+        .await?;
 
         Ok(Json(GetModelCountResponse { count }).into_response())
     }
@@ -214,7 +243,7 @@ mod put {
 }
 
 mod delete {
-    use db::model::User;
+    use db::model::user::User;
     use service::export_service::delete_dead_blobs;
 
     use super::*;
@@ -225,7 +254,7 @@ mod delete {
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        
+
         delete_model_inner(&app_state, &user, vec![model_id]).await?;
         delete_dead_blobs(&app_state.app_state).await?;
 
@@ -243,7 +272,7 @@ mod delete {
         Json(params): Json<DeleteModelsParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        
+
         delete_model_inner(&app_state, &user, params.model_ids).await?;
         delete_dead_blobs(&app_state.app_state).await?;
 
@@ -256,8 +285,7 @@ mod delete {
         model_ids: Vec<i64>,
     ) -> Result<(), ApplicationError> {
         let ids_len = model_ids.len();
-        let models =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await?;
+        let models = model_db::get_models_via_ids(&app_state.app_state.db, user, model_ids).await?;
 
         if models.len() != ids_len {
             return Err(ApplicationError::InternalError(String::from(
@@ -274,7 +302,7 @@ mod delete {
 }
 
 mod post {
-    use db::{model::Blob, random_hex_32};
+    use db::{model::blob::Blob, random_hex_32};
     use service::thumbnail_service;
     use tokio::io::AsyncWriteExt;
 
@@ -314,8 +342,15 @@ mod post {
 
             let file_path = temp_dir.join(cleanse_evil_from_name(&file_name));
 
-            if !(import_service::is_supported_extension(&file_path, &config) 
-                || file_path.extension().unwrap().to_str().unwrap().to_lowercase() == "zip") {
+            if !(import_service::is_supported_extension(&file_path, &config)
+                || file_path
+                    .extension()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_lowercase()
+                    == "zip")
+            {
                 continue;
             }
 
@@ -323,8 +358,12 @@ mod post {
 
             while let Some(chunk) = field.chunk().await? {
                 #[cfg(debug_assertions)]
-                println!("Writing chunk of size {} for file {}", chunk.len(), file_name);
-                file.write(&chunk).await?;
+                println!(
+                    "Writing chunk of size {} for file {}",
+                    chunk.len(),
+                    file_name
+                );
+                file.write_all(&chunk).await?;
             }
 
             file.flush().await?;
@@ -340,11 +379,25 @@ mod post {
 
         let mut model_ids: Vec<i64> = vec![];
 
-        let mut import_state = ImportState::new_with_emitter(None, false, true, false, user.clone(), Box::new(WebImportStateEmitter {}));
+        let mut import_state = ImportState::new_with_emitter(
+            None,
+            false,
+            true,
+            false,
+            user.clone(),
+            Box::new(WebImportStateEmitter {}),
+        );
 
         for path in paths {
             println!("Importing file: {}", path.to_string_lossy());
-            import_state = ImportState::new_with_emitter(link.clone(), false, true, false, user.clone(), Box::new(WebImportStateEmitter {}));
+            import_state = ImportState::new_with_emitter(
+                link.clone(),
+                false,
+                true,
+                false,
+                user.clone(),
+                Box::new(WebImportStateEmitter {}),
+            );
             import_state = import_service::import_path(
                 &path.to_string_lossy(),
                 &app_state.app_state,
@@ -355,10 +408,17 @@ mod post {
             model_ids.extend(&import_state.imported_models[0].model_ids);
         }
 
-        let models = model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids.clone()).await?;
+        let models =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids.clone()).await?;
         let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
 
-        thumbnail_service::generate_thumbnails(&blobs, &app_state.app_state, false, &mut import_state).await?;
+        thumbnail_service::generate_thumbnails(
+            &blobs,
+            &app_state.app_state,
+            false,
+            &mut import_state,
+        )
+        .await?;
 
         Ok(Json(model_ids).into_response())
     }

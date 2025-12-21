@@ -1,4 +1,9 @@
-use axum::{Router, extract::{Path, State}, response::{Html, Response}, routing::get};
+use axum::{
+    Router,
+    extract::{Path, State},
+    response::Html,
+    routing::get,
+};
 use db::{share_db, user_db};
 use tokio::fs;
 use tower_http::services::ServeFile;
@@ -48,8 +53,22 @@ async fn serve_share_page(
     };
 
     html = html
-        .replace("content=\"Mesh Organiser\"", &format!("content=\"Share: {}\"", htmlescape::encode_attribute(&share.share_name)))
-        .replace("content=\"A personal 3d printing model library.\"", &format!("content=\"Shared by user {}. Contains {} model{}.\"", htmlescape::encode_attribute(&user.username), share.model_ids.len(), if share.model_ids.len() >= 2 { "s" } else { "" }));
+        .replace(
+            "content=\"Mesh Organiser\"",
+            &format!(
+                "content=\"Share: {}\"",
+                htmlescape::encode_attribute(&share.share_name)
+            ),
+        )
+        .replace(
+            "content=\"A personal 3d printing model library.\"",
+            &format!(
+                "content=\"Shared by user {}. Contains {} model{}.\"",
+                htmlescape::encode_attribute(&user.username),
+                share.model_ids.len(),
+                if share.model_ids.len() >= 2 { "s" } else { "" }
+            ),
+        );
 
     Ok(Html(html))
 }

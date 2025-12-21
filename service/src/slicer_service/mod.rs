@@ -1,12 +1,10 @@
 mod base;
 use std::path::PathBuf;
 
-use db::model::Model;
-
 pub use base::*;
 use std::process::Command;
 
-use crate::{app_state, export_service::export_to_temp_folder, service_error::ServiceError};
+use crate::service_error::ServiceError;
 
 use super::app_state::AppState;
 
@@ -20,7 +18,7 @@ mod linux;
 mod macos;
 
 pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-    if paths.len() == 0 {
+    if paths.is_empty() {
         return Err(ServiceError::InternalError(String::from(
             "No models to open",
         )));

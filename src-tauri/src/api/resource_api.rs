@@ -1,11 +1,14 @@
 use db::{
-    model::{ModelGroup, Resource, ResourceFlags, ResourceMeta},
+    model::{
+        model_group::ModelGroup,
+        resource::{ResourceFlags, ResourceMeta},
+    },
     random_hex_32, resource_db, time_now,
 };
 use service::resource_service;
 use tauri::State;
 
-use crate::{api, error::ApplicationError, tauri_app_state::TauriAppState};
+use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 
 #[tauri::command]
 pub async fn get_resources(
@@ -31,7 +34,7 @@ pub async fn add_resource(
     .await?;
 
     Ok(ResourceMeta {
-        id: id,
+        id,
         name: resource_name.to_string(),
         flags: ResourceFlags::empty(),
         created: time_now(),

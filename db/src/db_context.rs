@@ -6,7 +6,7 @@ use std::time::Duration;
 
 pub type DbContext = Pool<Sqlite>;
 
-pub async fn setup_db(sqlite_path : &PathBuf, sqlite_backup_dir : &PathBuf) -> DbContext {
+pub async fn setup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) -> DbContext {
     let url = format!(
         "sqlite:{}",
         sqlite_path.to_str().expect("path should be something")
@@ -48,15 +48,16 @@ pub async fn setup_db(sqlite_path : &PathBuf, sqlite_backup_dir : &PathBuf) -> D
 async fn get_db_migration_count(db: &DbContext) -> usize {
     let row: (i64,) = match sqlx::query_as("SELECT COUNT(*) as count FROM _sqlx_migrations")
         .fetch_one(db)
-        .await {
-            Ok(r) => r,
-            Err(_) => return 0,
-        };
-        
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return 0,
+    };
+
     row.0 as usize
 }
 
-fn backup_db(sqlite_path : &PathBuf, sqlite_backup_dir : &PathBuf) {
+fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
     let timestamp = chrono::Utc::now().timestamp_millis();
 
     if !sqlite_path.exists() {
@@ -70,7 +71,7 @@ fn backup_db(sqlite_path : &PathBuf, sqlite_backup_dir : &PathBuf) {
     let backup_file_path = sqlite_backup_dir.join(format!("{}.sqlite", timestamp));
     std::fs::copy(sqlite_path, &backup_file_path).expect("Failed to create backup");
 
-    let mut backups: Vec<_> = std::fs::read_dir(&sqlite_backup_dir)
+    let mut backups: Vec<_> = std::fs::read_dir(sqlite_backup_dir)
         .expect("Failed to read backup directory")
         .filter_map(|entry| {
             entry.ok().filter(|e| {

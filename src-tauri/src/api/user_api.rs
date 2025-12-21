@@ -1,5 +1,5 @@
 use db::{
-    model::{User, hash_password},
+    model::user::{User, hash_password},
     user_db,
 };
 use service::export_service;
@@ -54,18 +54,12 @@ pub async fn edit_user(
     user_id: i64,
     user_name: &str,
     user_email: &str,
-    user_last_sync: Option<String>,
-    user_sync_token: Option<String>,
-    user_sync_url: Option<String>,
+    _user_last_sync: Option<String>,
+    _user_sync_token: Option<String>,
+    _user_sync_url: Option<String>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    user_db::edit_user_min(
-        &state.app_state.db,
-        user_id,
-        user_name,
-        user_email,
-    )
-    .await?;
+    user_db::edit_user_min(&state.app_state.db, user_id, user_name, user_email).await?;
 
     Ok(())
 }
@@ -76,12 +70,7 @@ pub async fn set_last_sync_time(
     user_last_sync: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    user_db::edit_user_last_sync_time(
-        &state.app_state.db,
-        user_id,
-        user_last_sync,
-    )
-    .await?;
+    user_db::edit_user_last_sync_time(&state.app_state.db, user_id, user_last_sync).await?;
 
     Ok(())
 }
@@ -106,9 +95,7 @@ pub async fn set_sync_state(
 }
 
 #[tauri::command]
-pub async fn unset_sync_state(
-    state: State<'_, TauriAppState>,
-) -> Result<(), ApplicationError> {
+pub async fn unset_sync_state(state: State<'_, TauriAppState>) -> Result<(), ApplicationError> {
     user_db::clear_user_sync(&state.app_state.db, state.get_current_user().id).await?;
 
     Ok(())

@@ -1,13 +1,24 @@
-use std::{cmp::Reverse, u32};
-use itertools::{Itertools, join};
+use crate::{
+    DbError, PaginatedResponse,
+    db_context::DbContext,
+    model::{
+        Model, ModelFlags,
+        model_group::{ModelGroup, ModelGroupMeta},
+        resource::ResourceMeta,
+        user::User,
+    },
+    model_db::{self, ModelFilterOptions},
+    random_hex_32, resource_db,
+    util::time_now,
+};
 use indexmap::IndexMap;
+use itertools::{Itertools, join};
 use sqlx::Row;
-use crate::{DbError, PaginatedResponse, db_context::DbContext, model::{Model, ModelFlags, ModelGroup, ModelGroupMeta, ResourceMeta, User}, model_db::{self, ModelFilterOptions}, random_hex_32, resource_db, util::time_now};
+use std::cmp::Reverse;
 use strum::EnumString;
 
 #[derive(Debug, PartialEq, EnumString)]
-pub enum GroupOrderBy
-{
+pub enum GroupOrderBy {
     CreatedAsc,
     CreatedDesc,
     NameAsc,
@@ -17,28 +28,28 @@ pub enum GroupOrderBy
 }
 
 #[derive(Default)]
-pub struct GroupFilterOptions
-{
+pub struct GroupFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
     pub label_ids: Option<Vec<i64>>,
     pub order_by: Option<GroupOrderBy>,
     pub text_search: Option<String>,
-    pub page : u32,
-    pub page_size : u32,
-    pub include_ungrouped_models : bool,
-    pub allow_incomplete_groups : bool,
+    pub page: u32,
+    pub page_size: u32,
+    pub include_ungrouped_models: bool,
+    pub allow_incomplete_groups: bool,
 }
 
 // TODO: This is insanely inefficient
-fn convert_model_list_to_groups(models : Vec<Model>, include_ungrouped_models : bool, group_resource_map : &IndexMap<i64, ResourceMeta>) -> Vec<ModelGroup>
-{
+fn convert_model_list_to_groups(
+    models: Vec<Model>,
+    include_ungrouped_models: bool,
+    group_resource_map: &IndexMap<i64, ResourceMeta>,
+) -> Vec<ModelGroup> {
     let mut index_map: IndexMap<i64, ModelGroup> = IndexMap::new();
 
-    for mut model in models 
-    {
-        let group_meta = match model.group.take()
-        {
+    for mut model in models {
+        let group_meta = match model.group.take() {
             Some(g) => g,
             None => {
                 if !include_ungrouped_models {
@@ -46,7 +57,7 @@ fn convert_model_list_to_groups(models : Vec<Model>, include_ungrouped_models : 
                 }
 
                 ModelGroupMeta {
-                    id: model.id * -1,
+                    id: -model.id,
                     name: model.name.clone(),
                     created: model.added.clone(),
                     resource_id: None,
@@ -69,8 +80,7 @@ fn convert_model_list_to_groups(models : Vec<Model>, include_ungrouped_models : 
         group.flags |= unsafe { ModelFlags::from_bits(model.flags.bits()).unwrap_unchecked() };
 
         for label in &model.labels {
-            if group.labels.iter().any(|f| f.id == label.id)
-            {
+            if group.labels.iter().any(|f| f.id == label.id) {
                 continue;
             }
 
@@ -84,36 +94,60 @@ fn convert_model_list_to_groups(models : Vec<Model>, include_ungrouped_models : 
 }
 
 // TODO: This should probably not return the entire model group, but just the meta and counts
-pub async fn get_groups(db: &DbContext, user : &User, options : GroupFilterOptions) -> Result<PaginatedResponse<ModelGroup>, DbError> {
+pub async fn get_groups(
+    db: &DbContext,
+    user: &User,
+    options: GroupFilterOptions,
+) -> Result<PaginatedResponse<ModelGroup>, DbError> {
     let filtered_on_labels = options.label_ids.is_some();
     let filtered_on_text = options.text_search.is_some();
     let filtered_on_models = options.model_ids.is_some();
 
     let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
 
-    let models = model_db::get_models(db, user, ModelFilterOptions {
-        model_ids: options.model_ids,
-        group_ids: options.group_ids,
-        label_ids: options.label_ids,
-        text_search: options.text_search,
-        page: 1,
-        page_size: u32::MAX,
-        ..Default::default()
-    }).await?;
-
-    let mut groups = convert_model_list_to_groups(models.items, options.include_ungrouped_models, &group_resource_map);
-
-    // It's possible we don't have the entire group here. Re-fetching groups
-    if (filtered_on_labels || filtered_on_text || filtered_on_models) && !options.allow_incomplete_groups {
-        let group_ids : Vec<i64> = groups.iter().filter(|f| f.meta.id >= 0).map(|f| f.meta.id).collect();
-        let fake_models : Vec<ModelGroup> = groups.into_iter().filter(|f| f.meta.id < 0).collect();
-
-        let models = model_db::get_models(db, user, ModelFilterOptions { 
-            group_ids: Some(group_ids), 
-            page: 1, 
+    let models = model_db::get_models(
+        db,
+        user,
+        ModelFilterOptions {
+            model_ids: options.model_ids,
+            group_ids: options.group_ids,
+            label_ids: options.label_ids,
+            text_search: options.text_search,
+            page: 1,
             page_size: u32::MAX,
             ..Default::default()
-        }).await?;
+        },
+    )
+    .await?;
+
+    let mut groups = convert_model_list_to_groups(
+        models.items,
+        options.include_ungrouped_models,
+        &group_resource_map,
+    );
+
+    // It's possible we don't have the entire group here. Re-fetching groups
+    if (filtered_on_labels || filtered_on_text || filtered_on_models)
+        && !options.allow_incomplete_groups
+    {
+        let group_ids: Vec<i64> = groups
+            .iter()
+            .filter(|f| f.meta.id >= 0)
+            .map(|f| f.meta.id)
+            .collect();
+        let fake_models: Vec<ModelGroup> = groups.into_iter().filter(|f| f.meta.id < 0).collect();
+
+        let models = model_db::get_models(
+            db,
+            user,
+            ModelFilterOptions {
+                group_ids: Some(group_ids),
+                page: 1,
+                page_size: u32::MAX,
+                ..Default::default()
+            },
+        )
+        .await?;
 
         // TODO: Make option to split off non-complete groups into their own groups
 
@@ -127,20 +161,25 @@ pub async fn get_groups(db: &DbContext, user : &User, options : GroupFilterOptio
         GroupOrderBy::NameAsc => groups.sort_by_cached_key(|f| f.meta.name.clone()),
         GroupOrderBy::NameDesc => groups.sort_by_cached_key(|f| Reverse(f.meta.name.clone())),
         GroupOrderBy::ModifiedAsc => groups.sort_by_cached_key(|f| f.meta.last_modified.clone()),
-        GroupOrderBy::ModifiedDesc => groups.sort_by_cached_key(|f| Reverse(f.meta.last_modified.clone())),
+        GroupOrderBy::ModifiedDesc => {
+            groups.sort_by_cached_key(|f| Reverse(f.meta.last_modified.clone()))
+        }
     }
 
-    let offset = ((options.page as u32 - 1) * options.page_size as u32) as usize;
+    let offset = ((options.page - 1) * options.page_size) as usize;
 
     Ok(PaginatedResponse {
-        items: groups.into_iter().skip(offset).take(options.page_size as usize).collect(),
+        items: groups
+            .into_iter()
+            .skip(offset)
+            .take(options.page_size as usize)
+            .collect(),
         page: options.page,
-        page_size: options.page_size
+        page_size: options.page_size,
     })
 }
 
-async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<String, DbError>
-{
+async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<String, DbError> {
     let row = sqlx::query!(
         "SELECT group_unique_global_id FROM models_group WHERE group_id = ?",
         group_id
@@ -151,8 +190,10 @@ async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<St
     Ok(row.group_unique_global_id)
 }
 
-async fn get_unqiue_ids_from_group_ids(db: &DbContext, group_ids: &[i64]) -> Result<IndexMap<i64, String>, DbError>
-{
+async fn get_unqiue_ids_from_group_ids(
+    db: &DbContext,
+    group_ids: &[i64],
+) -> Result<IndexMap<i64, String>, DbError> {
     let mut id_map = IndexMap::new();
     let ids = join(group_ids.iter(), ",");
 
@@ -161,11 +202,7 @@ async fn get_unqiue_ids_from_group_ids(db: &DbContext, group_ids: &[i64]) -> Res
         ids
     );
 
-    let rows = sqlx::query(
-        &query
-    )
-    .fetch_all(db)
-    .await?;
+    let rows = sqlx::query(&query).fetch_all(db).await?;
 
     for row in rows {
         id_map.insert(row.get("group_id"), row.get("group_unique_global_id"));
@@ -179,15 +216,19 @@ pub async fn set_group_id_on_models(
     user: &User,
     group_id: Option<i64>,
     model_ids: Vec<i64>,
-    update_timestamp : Option<&str>
+    update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
     // TODO: Remove clone
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
     let models = model_db::get_models_via_ids(db, user, model_ids.clone()).await?;
-    let mut old_group_ids: Vec<i64> = models.iter().filter_map(|m| m.group.as_ref().map(|g| g.id)).unique().collect();
+    let mut old_group_ids: Vec<i64> = models
+        .iter()
+        .filter_map(|m| m.group.as_ref().map(|g| g.id))
+        .unique()
+        .collect();
     let mut group_ids = get_unqiue_ids_from_group_ids(db, &old_group_ids).await?;
-    
+
     if group_ids.len() != old_group_ids.len() {
         return Err(DbError::RowNotFound);
     }
@@ -217,11 +258,16 @@ pub async fn set_group_id_on_models(
     Ok(())
 }
 
-pub async fn add_empty_group(db: &DbContext, user : &User, group_name: &str, update_timestamp : Option<&str>) -> Result<i64, DbError> {
+pub async fn add_empty_group(
+    db: &DbContext,
+    user: &User,
+    group_name: &str,
+    update_timestamp: Option<&str>,
+) -> Result<i64, DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
     let unique_global_id = random_hex_32();
-    
+
     let result = sqlx::query!(
         "INSERT INTO models_group (group_name, group_created, group_user_id, group_last_modified, group_unique_global_id) VALUES (?, ?, ?, ?, ?)",
         group_name,
@@ -237,7 +283,13 @@ pub async fn add_empty_group(db: &DbContext, user : &User, group_name: &str, upd
     Ok(group_id)
 }
 
-pub async fn edit_group(db: &DbContext, user : &User, group_id: i64, group_name: &str, update_timestamp : Option<&str>) -> Result<(), DbError> {
+pub async fn edit_group(
+    db: &DbContext,
+    user: &User,
+    group_id: i64,
+    group_name: &str,
+    update_timestamp: Option<&str>,
+) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
 
@@ -254,9 +306,16 @@ pub async fn edit_group(db: &DbContext, user : &User, group_id: i64, group_name:
     Ok(())
 }
 
-pub async fn edit_group_global_id(db: &DbContext, user : &User, group_id: i64, unique_global_id: &str) -> Result<(), DbError> {
+pub async fn edit_group_global_id(
+    db: &DbContext,
+    user: &User,
+    group_id: i64,
+    unique_global_id: &str,
+) -> Result<(), DbError> {
     if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument("Unique Global ID must be 32 characters long".to_string()));
+        return Err(DbError::InvalidArgument(
+            "Unique Global ID must be 32 characters long".to_string(),
+        ));
     }
 
     sqlx::query!(
@@ -271,7 +330,7 @@ pub async fn edit_group_global_id(db: &DbContext, user : &User, group_id: i64, u
     Ok(())
 }
 
-pub async fn delete_group(db: &DbContext, user : &User, group_id: i64) -> Result<(), DbError> {
+pub async fn delete_group(db: &DbContext, user: &User, group_id: i64) -> Result<(), DbError> {
     sqlx::query!(
         "DELETE FROM models_group WHERE group_id = ? AND group_user_id = ?",
         group_id,
@@ -292,13 +351,25 @@ pub async fn delete_dead_groups(db: &DbContext) -> Result<(), DbError> {
     .await?;
 
     for row in dead_group_ids {
-        delete_group(db, &User { id: row.group_user_id.unwrap(), ..Default::default()}, row.group_id.unwrap()).await?;
+        delete_group(
+            db,
+            &User {
+                id: row.group_user_id.unwrap(),
+                ..Default::default()
+            },
+            row.group_id.unwrap(),
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-pub async fn get_group_count(db: &DbContext, user : &User, include_ungrouped_models : bool) -> Result<usize, DbError> {
+pub async fn get_group_count(
+    db: &DbContext,
+    user: &User,
+    include_ungrouped_models: bool,
+) -> Result<usize, DbError> {
     let mut group_count = 0;
 
     let group_query = sqlx::query!(
@@ -324,15 +395,24 @@ pub async fn get_group_count(db: &DbContext, user : &User, include_ungrouped_mod
     Ok(group_count)
 }
 
-pub async fn get_group_via_id(db: &DbContext, user : &User, group_id: i64) -> Result<Option<ModelGroup>, DbError> {
+pub async fn get_group_via_id(
+    db: &DbContext,
+    user: &User,
+    group_id: i64,
+) -> Result<Option<ModelGroup>, DbError> {
     let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
 
-    let models = model_db::get_models(db, user, ModelFilterOptions {
-        group_ids: Some(vec![group_id]),
-        page: 1,
-        page_size: u32::MAX,
-        ..Default::default()
-    }).await?;
+    let models = model_db::get_models(
+        db,
+        user,
+        ModelFilterOptions {
+            group_ids: Some(vec![group_id]),
+            page: 1,
+            page_size: u32::MAX,
+            ..Default::default()
+        },
+    )
+    .await?;
 
     let mut groups = convert_model_list_to_groups(models.items, false, &group_resource_map);
 
@@ -343,7 +423,12 @@ pub async fn get_group_via_id(db: &DbContext, user : &User, group_id: i64) -> Re
     Ok(Some(groups.remove(0)))
 }
 
-pub async fn set_last_updated_on_group(db: &DbContext, user: &User, group_id: i64, timestamp: &str) -> Result<(), DbError> {
+pub async fn set_last_updated_on_group(
+    db: &DbContext,
+    user: &User,
+    group_id: i64,
+    timestamp: &str,
+) -> Result<(), DbError> {
     sqlx::query!(
         "UPDATE models_group SET group_last_modified = ? WHERE group_id = ? AND group_user_id = ?",
         timestamp,
@@ -356,7 +441,12 @@ pub async fn set_last_updated_on_group(db: &DbContext, user: &User, group_id: i6
     Ok(())
 }
 
-pub async fn set_last_updated_on_groups(db: &DbContext, user: &User, group_ids: &[i64], timestamp: &str) -> Result<(), DbError> {
+pub async fn set_last_updated_on_groups(
+    db: &DbContext,
+    user: &User,
+    group_ids: &[i64],
+    timestamp: &str,
+) -> Result<(), DbError> {
     let ids_placeholder = join(group_ids.iter(), ",");
 
     let formatted_query = format!(

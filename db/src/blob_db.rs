@@ -1,7 +1,7 @@
 use itertools::join;
 use sqlx::Row;
 
-use crate::{DbError, db_context::DbContext, model::Blob, util::time_now};
+use crate::{DbError, db_context::DbContext, model::blob::Blob, util::time_now};
 
 pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let rows = sqlx::query!(
@@ -27,7 +27,7 @@ pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
 }
 
 pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob>, DbError> {
-    if ids.len() == 0 {
+    if ids.is_empty() {
         return Ok(Vec::new());
     }
 
@@ -75,7 +75,13 @@ pub async fn get_blob_via_sha256(db: &DbContext, sha256: &str) -> Result<Option<
     }
 }
 
-pub async fn add_blob(db: &DbContext, sha256: &str, filetype: &str, size: i64, disk_path: Option<String>) -> Result<i64, DbError> {
+pub async fn add_blob(
+    db: &DbContext,
+    sha256: &str,
+    filetype: &str,
+    size: i64,
+    disk_path: Option<String>,
+) -> Result<i64, DbError> {
     let now = time_now();
 
     let result = sqlx::query!(
@@ -134,7 +140,7 @@ pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbEr
     Ok(dead_blobs)
 }
 
-pub async fn get_blob_model_usage_count(db : &DbContext, blob_id: i64) -> Result<i64, DbError> {
+pub async fn get_blob_model_usage_count(db: &DbContext, blob_id: i64) -> Result<i64, DbError> {
     let row = sqlx::query!(
         "SELECT COUNT(*) as count FROM models WHERE model_blob_id = ?",
         blob_id

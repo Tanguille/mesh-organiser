@@ -1,8 +1,6 @@
 use super::{Slicer, open_custom_slicer};
-use db::model::Model;
-use crate::service_error::ServiceError;
 use crate::app_state::AppState;
-use crate::export_service::export_to_temp_folder;
+use crate::service_error::ServiceError;
 use crate::slicer_service::open_with_paths;
 use std::fs;
 use std::path::Path;
@@ -15,10 +13,14 @@ impl Slicer {
             return true;
         }
 
-        get_slicer_path(&self).is_some()
+        get_slicer_path(self).is_some()
     }
 
-    pub async fn open(&self, paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
+    pub async fn open(
+        &self,
+        paths: Vec<PathBuf>,
+        app_state: &AppState,
+    ) -> Result<(), ServiceError> {
         if let Slicer::Custom = self {
             return open_custom_slicer(paths, app_state).await;
         }
@@ -29,7 +31,7 @@ impl Slicer {
             )));
         }
 
-        let slicer_pathbuf = get_slicer_path(&self).unwrap();
+        let slicer_pathbuf = get_slicer_path(self).unwrap();
         let slicer_path = slicer_pathbuf.to_str().unwrap();
 
         println!("Opening in slicer: {:?}", paths);
@@ -52,8 +54,8 @@ fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<String> {
     let value: Result<OsString, std::io::Error> = reg_key.get_value(field);
 
     match value {
-        Ok(s) => return Some(s.to_str().unwrap().to_string()),
-        Err(_) => return None,
+        Ok(s) => Some(s.to_str().unwrap().to_string()),
+        Err(_) => None,
     }
 }
 
@@ -80,7 +82,7 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
                 return Some(path);
             }
 
-            return None;
+            None
         }
         Slicer::BambuStudio => {
             if let Some(key) = get_registry_key(
@@ -101,7 +103,7 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
                 return Some(path);
             }
 
-            return None;
+            None
         }
         Slicer::OrcaSlicer => {
             if let Some(key) = get_registry_key(
@@ -122,28 +124,27 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
                 return Some(path);
             }
 
-            return None;
+            None
         }
         Slicer::Cura => {
             let program_files = "C:\\Program Files";
             if let Ok(entries) = fs::read_dir(program_files) {
                 for entry in entries.flatten() {
-                    if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                        if let Some(folder_name) = entry.file_name().to_str() {
-                            if folder_name.starts_with("UltiMaker Cura") {
-                                let exe_path = Path::new(program_files)
-                                    .join(folder_name)
-                                    .join("UltiMaker-Cura.exe");
-                                if exe_path.exists() {
-                                    return Some(exe_path);
-                                }
-                            }
+                    if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                        && let Some(folder_name) = entry.file_name().to_str()
+                        && folder_name.starts_with("UltiMaker Cura")
+                    {
+                        let exe_path = Path::new(program_files)
+                            .join(folder_name)
+                            .join("UltiMaker-Cura.exe");
+                        if exe_path.exists() {
+                            return Some(exe_path);
                         }
                     }
                 }
             }
 
-            return None;
+            None
         }
         _ => None,
     }

@@ -2,30 +2,27 @@ use super::app_state::AppState;
 use crate::ASYNC_MULT;
 use crate::configuration::Configuration;
 use crate::import_state::{ImportState, ImportStatus, ImportedModelsSet};
-use crate::util::{self, read_file_as_text};
+use crate::service_error::ServiceError;
+use crate::util::{self};
 use crate::util::{convert_extension_to_zip, is_zippable_file_extension};
 use async_zip::ZipEntryBuilder;
-use async_zip::tokio::read;
 use async_zip::tokio::read::seek::ZipFileReader;
 use async_zip::tokio::write::ZipFileWriter;
+use db::model::user::User;
 use db::{blob_db, label_db, label_keyword_db, model_db};
-use db::model::{Model, User};
-use db::model_db::ModelFilterOptions;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::fs::{self, read_dir};
+use std::panic;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
-use tokio::task::{JoinSet, spawn_blocking};
-use std::fs::{self, read_dir};
-use std::io::{Read, Write};
-use std::panic;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio_util::{io::ReaderStream, compat::FuturesAsyncReadCompatExt};
-use crate::service_error::ServiceError;
+use tokio::task::JoinSet;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 pub async fn import_path(
     path: &str,
@@ -43,7 +40,8 @@ pub async fn import_path(
     import_state.emit_all();
 
     let configuration = app_state.get_configuration();
-    let model_count = get_model_count(path, &configuration, import_state.recursive, &import_state).await?;
+    let model_count =
+        get_model_count(path, &configuration, import_state.recursive, &import_state).await?;
     import_state.update_total_model_count(model_count);
 
     let import_state = Arc::new(Mutex::new(import_state));
@@ -91,7 +89,7 @@ pub async fn get_model_count(
             )));
         }
         get_model_count_from_zip(path, configuration).await
-    } else if is_supported_extension(&path_buff, &configuration) {
+    } else if is_supported_extension(path_buff.as_ref(), configuration) {
         Ok(1)
     } else {
         Err(ServiceError::InternalError(String::from(
@@ -145,7 +143,8 @@ pub async fn import_path_inner(
                 app_state,
                 &import_state.user,
                 permanent_disk_path,
-            ).await?;
+            )
+            .await?;
             import_state.add_model_id_to_current_set(id);
         }
 
@@ -164,7 +163,11 @@ pub async fn import_path_inner(
     Ok(())
 }
 
-pub async fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_state: &AppState, import_state : &ImportState) {
+pub async fn add_labels_by_keywords(
+    new_models: &[ImportedModelsSet],
+    app_state: &AppState,
+    import_state: &ImportState,
+) {
     let db = &app_state.db;
     let model_ids = new_models
         .iter()
@@ -172,7 +175,7 @@ pub async fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_sta
         .cloned()
         .unique()
         .collect::<Vec<i64>>();
-    
+
     let models = model_db::get_models_via_ids(db, &import_state.user, model_ids).await;
 
     let models = match models {
@@ -186,7 +189,7 @@ pub async fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_sta
         Ok(k) => k,
         Err(_) => return,
     };
-    
+
     let mut all_keywords_map: IndexMap<String, Vec<i64>> = IndexMap::new();
 
     for (label_id, keywords) in all_keywords.iter() {
@@ -222,7 +225,7 @@ pub async fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_sta
                     return all_keywords_map[part].clone();
                 }
 
-                return vec![];
+                vec![]
             })
             .filter(|l| {
                 !model
@@ -234,7 +237,14 @@ pub async fn add_labels_by_keywords(new_models: &Vec<ImportedModelsSet>, app_sta
             .collect();
 
         if !label_ids.is_empty() {
-            let _ = label_db::add_labels_on_models(db, &import_state.user, &label_ids, &[model.id] , None).await;
+            let _ = label_db::add_labels_on_models(
+                db,
+                &import_state.user,
+                &label_ids,
+                &[model.id],
+                None,
+            )
+            .await;
         }
     }
 }
@@ -254,27 +264,29 @@ async fn import_models_from_dir_recursive(
 
     for folder in entries.iter().filter(|f| f.path().is_dir()) {
         let import_state = Arc::clone(&import_state);
-        Box::pin(import_models_from_dir_recursive(&folder.path(), app_state, import_state)).await?;
+        Box::pin(import_models_from_dir_recursive(
+            &folder.path(),
+            app_state,
+            import_state,
+        ))
+        .await?;
     }
 
     if entries
         .iter()
         .filter(|f| f.path().is_file())
-        .any(|f| is_supported_extension(&f.path(), &configuration))
+        .any(|f| is_supported_extension(f.path().as_ref(), &configuration))
     {
         let group_name = util::prettify_file_name(path, true);
 
-        let _ = import_models_from_dir(
-            path.to_str().unwrap(),
-            app_state,
-            import_state,
-            group_name,
-        ).await;
+        let _ = import_models_from_dir(path.to_str().unwrap(), app_state, import_state, group_name)
+            .await;
     }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn import_models_from_dir_inner(
     configuration: &Configuration,
     app_state: &AppState,
@@ -297,12 +309,20 @@ async fn import_models_from_dir_inner(
     let permanent_disk_path = if import_as_path {
         Some(path.clone())
     } else {
-       None
+        None
     };
 
     let id = import_single_model(
-        &mut file, extension, file_size, &file_name, link.clone(), app_state, user, permanent_disk_path
-    ).await?;
+        &mut file,
+        extension,
+        file_size,
+        &file_name,
+        link.clone(),
+        app_state,
+        user,
+        permanent_disk_path,
+    )
+    .await?;
 
     {
         let import_state = &mut import_state_mutex.lock().await;
@@ -336,7 +356,7 @@ async fn import_models_from_dir(
         delete_after_import = import_state.delete_after_import;
         import_as_path = import_state.import_as_path;
     }
-    
+
     let mut entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file())
@@ -357,21 +377,29 @@ async fn import_models_from_dir(
         let import_state_mutex = Arc::clone(&import_state);
         let user = user.clone();
         let origin_url = origin_url.clone();
-        let delete_after_import = delete_after_import;
-        let import_as_path = import_as_path;
         active += 1;
 
         futures.spawn(async move {
-            import_models_from_dir_inner(&configuration, &app_state, entry, import_state_mutex, &user, &origin_url, delete_after_import, import_as_path).await
+            import_models_from_dir_inner(
+                &configuration,
+                &app_state,
+                entry,
+                import_state_mutex,
+                &user,
+                &origin_url,
+                delete_after_import,
+                import_as_path,
+            )
+            .await
         });
 
-        if active >= max {
-            if let Some(res) = futures.join_next().await {
-                match res {
-                    Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
-                    Err(err) => panic!("{err}"),
-                    _ => active -= 1,
-                }
+        if active >= max
+            && let Some(res) = futures.join_next().await
+        {
+            match res {
+                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
+                Err(err) => panic!("{err}"),
+                _ => active -= 1,
             }
         }
     }
@@ -421,7 +449,7 @@ async fn import_models_from_zip(
                 link.replace(temp_str);
             }*/
 
-            if !is_supported_extension(&path, &configuration) {
+            if !is_supported_extension(path.as_ref(), &configuration) {
                 continue;
             }
 
@@ -431,8 +459,16 @@ async fn import_models_from_zip(
             let mut file_compat = file.compat();
 
             let id = import_single_model(
-                    &mut file_compat, extension, file_size, &file_name, link, app_state, &import_state.user, None
-            ).await?;
+                &mut file_compat,
+                extension,
+                file_size,
+                &file_name,
+                link,
+                app_state,
+                &import_state.user,
+                None,
+            )
+            .await?;
 
             import_state.add_model_id_to_current_set(id);
         }
@@ -445,6 +481,7 @@ async fn import_models_from_zip(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn import_single_model<W>(
     reader: &mut W,
     file_type: &str,
@@ -470,9 +507,8 @@ where
     let bytes = hasher.finalize();
     let hash = String::from(&format!("{:x}", bytes)[0..32]);
 
-    let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash)
-            .await?;
-    
+    let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
+
     if let Some(id) = existing_id {
         return Ok(id);
     }
@@ -484,18 +520,29 @@ where
     if let Some(blob) = blob_id_optional {
         blob_id = blob.id;
     } else if let Some(permanent_disk_path) = permanent_disk_path {
-        blob_id = blob_db::add_blob(&app_state.db, &hash, file_type, file_size as i64, Some(permanent_disk_path.to_str().unwrap().to_string())).await?;
+        blob_id = blob_db::add_blob(
+            &app_state.db,
+            &hash,
+            file_type,
+            file_size as i64,
+            Some(permanent_disk_path.to_str().unwrap().to_string()),
+        )
+        .await?;
     } else {
         let new_extension = convert_extension_to_zip(file_type);
 
-        let final_file_name =
-            PathBuf::from(app_state.get_model_dir()).join(format!("{}.{}", hash, &new_extension));
+        let final_file_name = app_state
+            .get_model_dir()
+            .join(format!("{}.{}", hash, &new_extension));
 
         let mut file_handle = File::create(&final_file_name).await?;
 
         if is_zippable_file_extension(file_type) {
             let mut writer = ZipFileWriter::with_tokio(&mut file_handle);
-            let builder = ZipEntryBuilder::new(format!("{}.{}", name, file_type.to_lowercase()).into(), async_zip::Compression::Deflate);
+            let builder = ZipEntryBuilder::new(
+                format!("{}.{}", name, file_type.to_lowercase()).into(),
+                async_zip::Compression::Deflate,
+            );
 
             writer.write_entry_whole(builder, &file_contents).await?;
             writer.close().await?;
@@ -503,23 +550,16 @@ where
             file_handle.write_all(&file_contents).await?;
         }
 
-        blob_id = blob_db::add_blob(&app_state.db, &hash, &new_extension, file_size as i64, None).await?;
+        blob_id =
+            blob_db::add_blob(&app_state.db, &hash, &new_extension, file_size as i64, None).await?;
     }
 
-    let id = model_db::add_model(
-            &app_state.db,
-            user,
-            name,
-            blob_id,
-            link.as_deref(),
-            None
-        )
-        .await?;
+    let id = model_db::add_model(&app_state.db, user, name, blob_id, link.as_deref(), None).await?;
 
-    return Ok(id);
+    Ok(id)
 }
 
-pub fn is_supported_extension(path: &PathBuf, configuration: &Configuration) -> bool {
+pub fn is_supported_extension(path: &std::path::Path, configuration: &Configuration) -> bool {
     match path.extension() {
         Some(ext) => {
             let lowercase = ext.to_str().unwrap().to_lowercase();
@@ -533,12 +573,15 @@ pub fn is_supported_extension(path: &PathBuf, configuration: &Configuration) -> 
     }
 }
 
-pub fn is_any_supported_extension(path: &PathBuf) -> bool {
-    is_supported_extension(path, &Configuration {
-        allow_importing_gcode: true,
-        allow_importing_step: true,
-        ..Default::default()
-    })
+pub fn is_any_supported_extension(path: &std::path::Path) -> bool {
+    is_supported_extension(
+        path,
+        &Configuration {
+            allow_importing_gcode: true,
+            allow_importing_step: true,
+            ..Default::default()
+        },
+    )
 }
 
 fn get_model_count_from_dir_recursive(
@@ -564,7 +607,7 @@ fn get_model_count_from_dir(
 ) -> Result<usize, ServiceError> {
     let size = read_dir(path)?
         .map(|f| f.unwrap().path())
-        .filter(|f| f.is_file() && is_supported_extension(&f, &configuration))
+        .filter(|f| f.is_file() && is_supported_extension(f, configuration))
         .count();
 
     Ok(size)
@@ -582,8 +625,7 @@ async fn get_model_count_from_zip(
     for entry in zip.file().entries() {
         let path = PathBuf::from(entry.filename().as_str()?);
 
-        if is_supported_extension(&path, configuration)
-        {
+        if is_supported_extension(path.as_ref(), configuration) {
             count += 1;
         }
     }
@@ -594,12 +636,16 @@ async fn get_model_count_from_zip(
 #[derive(Serialize)]
 pub struct DirectoryScanModel {
     pub path: PathBuf,
-    pub group_set : Option<u32>,
+    pub group_set: Option<u32>,
     pub group_name: Option<String>,
     pub model_ids: Option<Vec<i64>>,
 }
 
-async fn traverse_directory(path : &PathBuf, recursive : bool, set_id : u32) -> Result<Vec<DirectoryScanModel>, ServiceError> {
+async fn traverse_directory(
+    path: &PathBuf,
+    recursive: bool,
+    set_id: u32,
+) -> Result<Vec<DirectoryScanModel>, ServiceError> {
     let mut models = Vec::new();
 
     let read_dir = match std::fs::read_dir(path) {
@@ -618,7 +664,8 @@ async fn traverse_directory(path : &PathBuf, recursive : bool, set_id : u32) -> 
         let entry_path = entry.path();
 
         if entry_path.is_dir() && recursive {
-            let mut sub_models = Box::pin(traverse_directory(&entry_path, recursive, set_id + 1)).await?;
+            let mut sub_models =
+                Box::pin(traverse_directory(&entry_path, recursive, set_id + 1)).await?;
             models.append(&mut sub_models);
         } else if entry_path.is_file() && is_any_supported_extension(&entry.path()) {
             models.push(DirectoryScanModel {
@@ -633,7 +680,10 @@ async fn traverse_directory(path : &PathBuf, recursive : bool, set_id : u32) -> 
     Ok(models)
 }
 
-pub async fn expand_paths(paths: &[PathBuf], recursive: bool) -> Result<Vec<DirectoryScanModel>, ServiceError> {
+pub async fn expand_paths(
+    paths: &[PathBuf],
+    recursive: bool,
+) -> Result<Vec<DirectoryScanModel>, ServiceError> {
     let mut models = Vec::new();
     let mut set_id = 0;
 

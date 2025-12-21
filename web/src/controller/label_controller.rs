@@ -10,7 +10,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use axum_login::login_required;
-use db::model::LabelMeta;
+use db::model::label::LabelMeta;
 use db::random_hex_32;
 use db::{label_db, label_keyword_db};
 use serde::Deserialize;

@@ -1,62 +1,49 @@
 [package]
 name = "mesh-organiser"
-version = "1.7.0"
+version = "2.0.0"
 description = "Organise your 3d models"
-authors = ["suchmememanyskill"]
+authors = ["suchmememanyskill", "Tanguille"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "mesh_organiser_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[lints]
+workspace = true
+
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { workspace = true }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "devtools"] }
-tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-futures = "0"
-sha2 = "0"
-thiserror = "2"
-chrono = "0"
-zip = { version = "6"}
-tauri-plugin-dialog = "2"
-tauri-plugin-deep-link = "2"
-urlencoding = "2"
-regex = "1"
-strum = { version = "0", features = ["derive"] }
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
-tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0", features = ["io"] }
-bitflags = { version = "2" }
-arboard = "3"
-base64 = "0"
-indexmap = "2"
-itertools = "0"
-tauri-plugin-fs = { version = "2", features= ["watch"] }
-rayon = "1"
-tauri-plugin-os = "2"
-db = { path = "../db" }
-service = { path = "../service" }
-serde_html_form = "0"
-tauri-plugin-http = { version = "2", features = [ "multipart" ] }
-content_disposition = "0.4.0"
-async_zip = { version = "0.0.18", features = ["full"] }
+tauri = { workspace = true, features = ["protocol-asset", "devtools"] }
+tauri-plugin-opener = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+zip = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-deep-link = { workspace = true }
+urlencoding = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+tauri-plugin-updater = { workspace = true }
+tauri-plugin-process = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true, features = ["io"] }
+arboard = { workspace = true }
+itertools = { workspace = true }
+tauri-plugin-fs = { workspace = true, features = ["watch"] }
+tauri-plugin-os = { workspace = true }
+db = { workspace = true }
+service = { workspace = true }
+serde_html_form = { workspace = true }
+tauri-plugin-http = { workspace = true, features = ["multipart"] }
+content_disposition = { workspace = true }
+async_zip = { workspace = true, features = ["full"] }
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0"
+winreg = "0.55.0"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-
-[profile.release]
-strip = true
-lto = true
+tauri-plugin-single-instance = { version = "2.3.6", features = ["deep-link"] }

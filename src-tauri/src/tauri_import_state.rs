@@ -3,13 +3,13 @@ use tauri::{AppHandle, Emitter};
 
 use crate::tauri_app_state::TauriAppState;
 
-const IMPORT_STATUS_EVENT: &'static str = "import-status";
-const IMPORT_MODEL_GROUP_EVENT: &'static str = "import-model-group";
-const IMPORT_MODEL_TOTAL_EVENT: &'static str = "import-model-total";
-const IMPORT_MODEL_COUNT_EVENT: &'static str = "import-model-count";
-const IMPORT_THUMBNAIL_COUNT_EVENT: &'static str = "import-thumbnail-count";
-const IMPORT_FAILURE_REASON_EVENT: &'static str = "import-failure-reason";
-const IMPORT_ALL_DATA_EVENT: &'static str = "import-all-data";
+const IMPORT_STATUS_EVENT: &str = "import-status";
+const IMPORT_MODEL_GROUP_EVENT: &str = "import-model-group";
+const IMPORT_MODEL_TOTAL_EVENT: &str = "import-model-total";
+const IMPORT_MODEL_COUNT_EVENT: &str = "import-model-count";
+const IMPORT_THUMBNAIL_COUNT_EVENT: &str = "import-thumbnail-count";
+const IMPORT_FAILURE_REASON_EVENT: &str = "import-failure-reason";
+const IMPORT_ALL_DATA_EVENT: &str = "import-all-data";
 
 pub struct TauriImportStateEmitter {
     handle: AppHandle,

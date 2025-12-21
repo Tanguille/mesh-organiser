@@ -14,9 +14,9 @@ impl ImportStateEmitter for WebImportStateEmitter {
             ImportStatus::FinishedThumbnails => println!("Import Status: Finished Thumbnails"),
         }
     }
-    
+
     fn model_total_event(&self, status: &ImportState) {
-        if status.model_count <= 0 {
+        if status.model_count == 0 {
             return;
         }
 
@@ -36,21 +36,26 @@ impl ImportStateEmitter for WebImportStateEmitter {
     }
 
     fn thumbnail_count_event(&self, status: &ImportState) {
-        if status.model_count <= 0 && status.finished_thumbnails_count <= 0 {
+        if status.model_count == 0 && status.finished_thumbnails_count == 0 {
             return;
         }
 
-        println!("Processed {}/{} thumbnails", status.finished_thumbnails_count, status.model_count);
+        println!(
+            "Processed {}/{} thumbnails",
+            status.finished_thumbnails_count, status.model_count
+        );
     }
 
     fn model_count_event(&self, status: &ImportState) {
-        if status.model_count <= 0 && status.imported_models_count <= 0 {
+        if status.model_count == 0 && status.imported_models_count == 0 {
             return;
         }
 
-        println!("Imported {}/{} models", status.imported_models_count, status.model_count);
+        println!(
+            "Imported {}/{} models",
+            status.imported_models_count, status.model_count
+        );
     }
 
-    fn all_data_event(&self, _state: &ImportState) {
-    }
+    fn all_data_event(&self, _state: &ImportState) {}
 }

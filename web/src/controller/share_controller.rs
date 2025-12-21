@@ -16,7 +16,6 @@ use db::share_db;
 use serde::Deserialize;
 
 use crate::error::ApplicationError;
-use serde::Serialize;
 
 pub fn router() -> Router<WebAppState> {
     Router::new().nest(
@@ -26,14 +25,17 @@ pub fn router() -> Router<WebAppState> {
             .route("/shares", post(post::create_share))
             .route("/shares/{share_id}", put(put::edit_share))
             .route("/shares/{share_id}", delete(delete::delete_share))
-            .route("/shares/{share_id}/models", put(put::set_model_ids_on_share))
+            .route(
+                "/shares/{share_id}/models",
+                put(put::set_model_ids_on_share),
+            )
             .route_layer(login_required!(Backend))
             .route("/shares/{share_id}", get(get::get_share)),
     )
 }
 
 mod get {
-    use db::{model::ShareDto, user_db};
+    use db::{model::share::ShareDto, user_db};
 
     use super::*;
 
@@ -44,9 +46,10 @@ mod get {
         let user = auth_session.user.unwrap().to_user();
         let shares = share_db::get_shares(&app_state.app_state.db, &user).await?;
 
-        let shares : Vec<ShareDto> = shares.into_iter().map(|s| {
-            s.to_dto(user.username.clone())
-        }).collect();
+        let shares: Vec<ShareDto> = shares
+            .into_iter()
+            .map(|s| s.to_dto(user.username.clone()))
+            .collect();
 
         Ok(Json(shares).into_response())
     }
@@ -56,12 +59,14 @@ mod get {
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
-        
+
         let user = match user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await? {
             Some(u) => u,
-            _ => return Err(ApplicationError::InternalError(
-                "Share owner user not found.".into(),
-            )),
+            _ => {
+                return Err(ApplicationError::InternalError(
+                    "Share owner user not found.".into(),
+                ));
+            }
         };
 
         let share = share.to_dto(user.username);
@@ -71,7 +76,7 @@ mod get {
 }
 
 mod post {
-    use db::{model::ShareDto, time_now};
+    use db::{model::share::ShareDto, time_now};
 
     use super::*;
 
@@ -86,7 +91,8 @@ mod post {
         Json(params): Json<CreateShareParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        let share_id = share_db::create_share(&app_state.app_state.db, &user, &params.share_name).await?;
+        let share_id =
+            share_db::create_share(&app_state.app_state.db, &user, &params.share_name).await?;
 
         Ok(Json(ShareDto {
             id: share_id,
@@ -94,7 +100,8 @@ mod post {
             user_name: user.username,
             model_ids: Vec::new(),
             created_at: time_now(),
-        }).into_response())
+        })
+        .into_response())
     }
 }
 
@@ -113,7 +120,13 @@ mod put {
         Json(params): Json<EditShareParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        share_db::rename_share(&app_state.app_state.db, &user, &share_id, &params.share_name).await?;
+        share_db::rename_share(
+            &app_state.app_state.db,
+            &user,
+            &share_id,
+            &params.share_name,
+        )
+        .await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -130,7 +143,13 @@ mod put {
         Json(params): Json<SetModelIdsOnShareParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        share_db::set_model_ids_on_share(&app_state.app_state.db, &user, &share_id, params.model_ids).await?;
+        share_db::set_model_ids_on_share(
+            &app_state.app_state.db,
+            &user,
+            &share_id,
+            params.model_ids,
+        )
+        .await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }

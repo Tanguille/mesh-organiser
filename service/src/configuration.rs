@@ -49,7 +49,7 @@ pub struct StoredConfiguration {
     pub use_worker_for_model_parsing: Option<bool>,
     pub prefer_gcode_thumbnail: Option<bool>,
     pub last_user_id: Option<i64>,
-    pub custom_css : Option<String>,
+    pub custom_css: Option<String>,
     pub default_enabled_import_as_path: Option<bool>,
     pub thumbnail_rotation: Option<[i16; 3]>,
     pub watch_downloads_folder: Option<bool>,
@@ -98,7 +98,7 @@ pub struct Configuration {
     pub use_worker_for_model_parsing: bool,
     pub prefer_gcode_thumbnail: bool,
     pub last_user_id: i64,
-    pub custom_css : String,
+    pub custom_css: String,
     pub default_enabled_import_as_path: bool,
     pub thumbnail_rotation: [i16; 3],
     pub watch_downloads_folder: bool,
@@ -108,9 +108,7 @@ pub fn stored_to_configuration(configuration: StoredConfiguration) -> Configurat
     let default = Configuration::default();
 
     Configuration {
-        data_path: configuration
-            .data_path
-            .unwrap_or(default.data_path),
+        data_path: configuration.data_path.unwrap_or(default.data_path),
         prusa_deep_link: configuration
             .prusa_deep_link
             .unwrap_or(default.prusa_deep_link),
@@ -221,7 +219,7 @@ pub fn stored_to_configuration(configuration: StoredConfiguration) -> Configurat
             .prefer_gcode_thumbnail
             .unwrap_or(default.prefer_gcode_thumbnail),
         last_user_id: configuration.last_user_id.unwrap_or(default.last_user_id),
-        custom_css : configuration.custom_css.unwrap_or(default.custom_css),
+        custom_css: configuration.custom_css.unwrap_or(default.custom_css),
         default_enabled_import_as_path: configuration
             .default_enabled_import_as_path
             .unwrap_or(default.default_enabled_import_as_path),
@@ -242,7 +240,7 @@ impl Default for Configuration {
             .get()
             / 2;
 
-        if parallelism <= 0 {
+        if parallelism == 0 {
             parallelism = 1;
         }
 
@@ -288,7 +286,7 @@ impl Default for Configuration {
             use_worker_for_model_parsing: true,
             prefer_gcode_thumbnail: true,
             last_user_id: 1,
-            custom_css : String::new(),
+            custom_css: String::new(),
             default_enabled_import_as_path: false,
             thumbnail_rotation: [35, 30, 0],
             watch_downloads_folder: false,

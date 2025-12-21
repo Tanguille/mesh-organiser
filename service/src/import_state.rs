@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use db::{group_db, model::User};
+use db::{group_db, model::user::User};
 use serde::Serialize;
 use strum::Display;
 
@@ -36,7 +36,7 @@ pub struct ImportState {
     pub delete_after_import: bool,
     pub import_as_path: bool,
     pub user: User,
-    
+
     #[serde(skip)]
     pub emitter: Box<dyn ImportStateEmitter + Send + Sync>,
 }
@@ -70,7 +70,13 @@ impl ImportStateEmitter for NoneImportStateEmitter {
 }
 
 impl ImportState {
-    pub fn new(origin_url: Option<String>, recursive: bool, delete_after_import : bool, import_as_path: bool, user: User) -> Self {
+    pub fn new(
+        origin_url: Option<String>,
+        recursive: bool,
+        delete_after_import: bool,
+        import_as_path: bool,
+        user: User,
+    ) -> Self {
         Self {
             imported_models: Vec::new(),
             imported_models_count: 0,
@@ -78,16 +84,23 @@ impl ImportState {
             finished_thumbnails_count: 0,
             status: ImportStatus::Idle,
             failure_reason: None,
-            origin_url: origin_url,
+            origin_url,
             recursive,
             delete_after_import,
             emitter: Box::new(NoneImportStateEmitter {}),
-            user: user,
-            import_as_path: import_as_path,
+            user,
+            import_as_path,
         }
     }
 
-    pub fn new_with_emitter(origin_url: Option<String>, recursive: bool, delete_after_import: bool, import_as_path: bool, user: User, emitter: Box<dyn ImportStateEmitter + Send + Sync>) -> Self {
+    pub fn new_with_emitter(
+        origin_url: Option<String>,
+        recursive: bool,
+        delete_after_import: bool,
+        import_as_path: bool,
+        user: User,
+        emitter: Box<dyn ImportStateEmitter + Send + Sync>,
+    ) -> Self {
         Self {
             imported_models: Vec::new(),
             imported_models_count: 0,
@@ -95,12 +108,12 @@ impl ImportState {
             finished_thumbnails_count: 0,
             status: ImportStatus::Idle,
             failure_reason: None,
-            origin_url: origin_url,
+            origin_url,
             recursive,
             delete_after_import,
-            emitter: emitter,
-            user: user,
-            import_as_path: import_as_path,
+            emitter,
+            user,
+            import_as_path,
         }
     }
 
@@ -125,16 +138,16 @@ impl ImportState {
     }
 
     pub fn add_new_import_set(&mut self, group_name: Option<String>) {
-        if let Some(last) = self.imported_models.last_mut() {
-            if last.model_ids.is_empty() {
-                last.group_name = group_name;
-                return;
-            }
+        if let Some(last) = self.imported_models.last_mut()
+            && last.model_ids.is_empty()
+        {
+            last.group_name = group_name;
+            return;
         }
 
         self.imported_models.push(ImportedModelsSet {
             group_id: None,
-            group_name: group_name,
+            group_name,
             model_ids: Vec::new(),
         });
 
@@ -187,13 +200,13 @@ impl ImportState {
             let group_id = group_db::add_empty_group(&state.db, user, group_name, None).await?;
 
             group_db::set_group_id_on_models(
-                    &state.db,
-                    user,
-                    Some(group_id),
-                    set.model_ids.clone(),
-                    None,
-                )
-                .await?;
+                &state.db,
+                user,
+                Some(group_id),
+                set.model_ids.clone(),
+                None,
+            )
+            .await?;
 
             set.group_id = Some(group_id);
             ids.push(group_id);
