@@ -29,25 +29,27 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      # TODO: Figure out workaround for: https://github.com/tauri-apps/tauri/issues/9662
-      # - name: Install system dependencies
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install -y \
-      #             libglib2.0-dev \
-      #             pkg-config \
-      #             libgtk-3-dev \
-      #             libcairo-gobject2 \
-      #             libatk1.0-dev \
-      #             libgdk-pixbuf-xlib-2.0-dev \
-      #             libpango1.0-dev
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config
 
       - run: cargo fmt --all -- --check
 
       - name: Detect unused dependencies
         uses: bnjbvr/cargo-machete@7959c845782fed02ee69303126d4a12d64f1db18 # v0.9.1
 
-      # - run: cargo build --workspace
+      - run: cargo build --workspace
       - run: cargo clippy --workspace --all-targets --all-features
 
       # TODO: CI for node
