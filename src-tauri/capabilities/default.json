@@ -1,27 +1,36 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "core:default",
-    "opener:default",
-    "dialog:allow-open",
-    "dialog:allow-confirm",
-    "deep-link:default",
-    "core:window:allow-set-focus",
-    "core:window:allow-unminimize",
-    "core:webview:allow-set-webview-zoom",
-    "os:allow-platform",
-    {
-      "identifier": "fs:allow-watch",
-      "allow": ["$DOWNLOAD", "$DOWNLOAD/*.stl", "$DOWNLOAD/*.3mf", "$DOWNLOAD/*.obj", "$DOWNLOAD/*.step", "$DOWNLOAD/*.gcode"]
-    },
-    {
-      "identifier": "http:default",
-      "allow": [{"url": "https://*"}, {"url": "http://*:3000"}]
-    }
-  ]
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "default",
+	"description": "Capability for the main window",
+	"windows": ["main"],
+	"permissions": [
+		"core:default",
+		"opener:default",
+		"dialog:allow-open",
+		"dialog:allow-confirm",
+		"deep-link:default",
+		"core:window:allow-set-focus",
+		"core:window:allow-unminimize",
+		"core:webview:allow-set-webview-zoom",
+		"os:allow-platform",
+		{
+			"identifier": "fs:allow-watch",
+			"allow": [
+				"$DOWNLOAD",
+				"$DOWNLOAD/*.stl",
+				"$DOWNLOAD/*.3mf",
+				"$DOWNLOAD/*.obj",
+				"$DOWNLOAD/*.step",
+				"$DOWNLOAD/*.gcode"
+			]
+		},
+		{
+			"identifier": "http:default",
+			"allow": [
+				{ "url": "https://*" },
+				{ "url": "http://*:3000" },
+				{ "url": "http://*:35385" }
+			]
+		}
+	]
 }
