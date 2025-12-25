@@ -17,7 +17,7 @@
     import { type ClassValue } from "svelte/elements";
     import GroupTinyList from "./group-tiny-list.svelte";
     import GroupTiny from "./group-tiny.svelte";
-    import { debounce } from "$lib/utils";
+    import { debounce, handleGridItemKeyDown } from "$lib/utils";
     import { IsMobile } from "$lib/hooks/is-mobile.svelte";
     import Button, { buttonVariants } from "../ui/button/button.svelte";
     import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -215,6 +215,10 @@
         }, 30);
     }
 
+    function onKeyDown(group: Group, event: KeyboardEvent) {
+        handleGridItemKeyDown(group, event, onClick, true);
+    }
+
     function onSearchInput(e : Event)
     {
         const target = e.target as HTMLInputElement;
@@ -224,7 +228,7 @@
     let splitViewSelectedModels = $state.raw<Model[]>([]);
     let selectedModels = $derived(splitViewSelectedModels.length <= 0 ? selected.map(x => x.models).flat() : splitViewSelectedModels);
 
-    function onDelete() 
+    function onDelete()
     {
         let set = new Set(selectedModels.map(x => x.id));
         let affectedGroups : GroupWithModels[] = [];
@@ -287,7 +291,7 @@
         let groupMetas = models.map(m => m.group).filter((g) => g !== null && g.id >= 0) as GroupMeta[];
         let uniqueGroupMetas = groupMetas.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
         let affectedGroups = loadedGroups.filter(g => uniqueGroupMetas.some(ug => ug.id === g.meta.id));
-        
+
         for (const group of affectedGroups)
         {
             onGroupDelete(group);
@@ -315,7 +319,7 @@
     <div class="flex flex-col gap-1 flex-1" style="min-width: 0;">
         <div class="flex flex-row gap-5 justify-center px-5 py-3">
             <Input oninput={onSearchInput} class="border-primary" placeholder="Search..." />
-    
+
             <Select.Root type="single" name="Sort" onValueChange={x => { props.groupStream.setOrderBy(convertOrderOptionGroupsToEnum(x as OrderOptionGroups)); resetGroupSet();}} bind:value={configuration.order_option_groups}>
                 <Select.Trigger class="border-primary">
                     {readableOrder}
@@ -331,7 +335,7 @@
                     </Select.Group>
                 </Select.Content>
             </Select.Root>
-    
+
             <Select.Root type="single" name="Size" bind:value={configuration.size_option_groups}>
                 <Select.Trigger class="border-primary">
                     {configuration.size_option_groups.replaceAll("_", " ")}
@@ -354,7 +358,7 @@
         {:else if effectiveSplitSetting === "split-left-right"}
             <span class="overflow-hidden grid grid-cols-[1fr_auto_1fr] gap-3 h-full">
                 {@render GroupGrid()}
-                <div class="border-l border-dashed" />
+                <div class="border-l border-dashed"></div>
                 {#if selected.length >= 1}
                     <ModelGridInner bind:value={splitViewSelectedModels} itemSize={configuration.size_option_groups} availableModels={selected.map(x => x.models).flat()} />
                 {:else}
@@ -366,7 +370,7 @@
         {:else if effectiveSplitSetting === "split-top-bottom"}
             <span class="overflow-hidden flex flex-col gap-3 h-full">
                 {@render GroupGrid()}
-                <div class="border-t border-dashed" />
+                <div class="border-t border-dashed"></div>
                 {#if selected.length >= 1}
                     <ModelGridInner bind:value={splitViewSelectedModels} itemSize={configuration.size_option_groups} availableModels={selected.map(x => x.models).flat()} clazz="h-full" />
                 {:else}
@@ -376,7 +380,7 @@
                 {/if}
             </span>
         {/if}
-    </div> 
+    </div>
     {/if}
 
     {#if showRightSide}
@@ -426,9 +430,9 @@
                 {#if configuration.size_option_groups.includes("List")}
                     {#each loadedGroups as group (group.meta.id)}
                         {@const isSelected = selectedSet.has(group.meta.id)}
-                        <div class="w-full grid grid-cols-[auto,1fr] gap-2 items-center">
+                        <div class="w-full grid grid-cols-[auto_1fr] gap-2 items-center">
                             {@render GroupCheckbox(group, "", isSelected)}
-                            <div oncontextmenu={(e) => onRightClick(group, e)} onclick={(e) => onClick(group, e)} onmousedown={(e) => earlyOnClick(group, e, isSelected)} class="min-w-0">
+                            <div role="option" tabindex="0" aria-selected={isSelected} oncontextmenu={(e) => onRightClick(group, e)} onclick={(e) => onClick(group, e)} onkeydown={(e) => onKeyDown(group, e)} onmousedown={(e) => earlyOnClick(group, e, isSelected)} class="min-w-0 cursor-pointer">
                                 <GroupTinyList group={group} class="{size} pointer-events-none select-none {isSelected ? "border-primary" : "" }" />
                             </div>
                         </div>
@@ -437,7 +441,7 @@
                     {#each loadedGroups as group (group.meta.id)}
                         {@const isSelected = selectedSet.has(group.meta.id)}
                         <div class="relative group">
-                            <div oncontextmenu={(e) => onRightClick(group, e)} onclick={(e) => onClick(group, e)} onmousedown={(e) => earlyOnClick(group, e, isSelected)}>
+                            <div role="option" tabindex="0" aria-selected={isSelected} oncontextmenu={(e) => onRightClick(group, e)} onclick={(e) => onClick(group, e)} onkeydown={(e) => onKeyDown(group, e)} onmousedown={(e) => earlyOnClick(group, e, isSelected)} class="cursor-pointer">
                                 <GroupTiny group={group} class="{size} pointer-events-none select-none {isSelected ? "border-primary" : "" }" />
                             </div>
                             {@render GroupCheckbox(group, `absolute top-[-5px] left-[-5px] bg-card rounded-lg ${isSelected ? "" : "group-hover:opacity-100 opacity-0"}`, isSelected)}
@@ -445,7 +449,7 @@
 
                     {/each}
                 {/if}
-            </RightClickModels>       
+            </RightClickModels>
         </DragSelectedModels>
     </div>
 {/snippet}

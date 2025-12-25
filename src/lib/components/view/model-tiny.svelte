@@ -18,7 +18,7 @@
 
 <Card class="{props.class} relative">
     <CardHeader class="p-4">
-        <h2 class="whitespace-nowrap w-100 overflow-hidden font-bold text-ellipsis text-center">{props.model.name}</h2>
+        <h2 class="truncate font-bold text-center">{props.model.name}</h2>
     </CardHeader>
     <CardContent class="p-4">
         <ModelImg model={props.model} class="w-full aspect-square" />

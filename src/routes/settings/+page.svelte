@@ -150,7 +150,7 @@
                             id="color"
                             placeholder="color"
                             type="color"
-                            class="flex-grow"
+                            class="grow"
                             bind:value={configuration.thumbnail_color}
                         />
                         <Button
@@ -220,7 +220,7 @@
                             id="color"
                             placeholder="color"
                             type="color"
-                            class="flex-grow"
+                            class="grow"
                             bind:value={configuration.thumbnail_color}
                         />
                         <Button
@@ -315,7 +315,7 @@
                             id="path"
                             placeholder="path"
                             type="text"
-                            class="flex-grow"
+                            class="grow"
                             bind:value={configuration.data_path}
                         />
                         <Button onclick={openDataDir}>Browse</Button>
@@ -364,7 +364,7 @@
                         id="custom_slicer_path"
                         placeholder="Path to your slicer"
                         type="text"
-                        class="flex-grow"
+                        class="grow"
                         bind:value={configuration.custom_slicer_path}
                     />
                     <Button onclick={openCustomSlicerPicker}>Browse</Button>

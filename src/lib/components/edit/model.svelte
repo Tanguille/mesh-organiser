@@ -326,11 +326,11 @@
         <CardContent class="text-sm pt-4">
             <div class="grid grid-cols-2 gap-4 mb-4">
                 {#if localApi}
-                    <AsyncButton class="flex-grow" onclick={onOpenInFolder}><FolderOpen /> Open in folder</AsyncButton>
+                    <AsyncButton class="grow" onclick={onOpenInFolder}><FolderOpen /> Open in folder</AsyncButton>
                 {:else if downloadApi}
-                    <AsyncButton class="flex-grow" onclick={onDownloadModel}><Download /> Download model</AsyncButton>
+                    <AsyncButton class="grow" onclick={onDownloadModel}><Download /> Download model</AsyncButton>
                 {/if}
-                <OpenInSlicerButton models={model} class="flex-grow" onOpen={onOpenInSlicer} />
+                <OpenInSlicerButton models={model} class="grow" onOpen={onOpenInSlicer} />
             </div>
 
             {#if editMode}

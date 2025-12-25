@@ -43,7 +43,7 @@
 	},
 	"plugins": {
 		"updater": {
-			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg4NEYzMkY0Q0Y3RkRBQkQKUldTOTJuL1A5REpQaUZ0UEU3blVIN2xrZVR1a0toNDBtOHZhRmRkWWpMY2M3WkYwekw3VGZNT1EK",
+			"pubkey": "RWQbdCM01o6Nk+G0sx/c6k6oeh2mLfqYfYa/45aoKEjU38HGDfLcPkVe",
 			"endpoints": [
 				"https://github.com/suchmememanyskill/mesh-organiser/releases/latest/download/latest.json"
 			]

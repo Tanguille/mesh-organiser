@@ -10,7 +10,7 @@
     <Checkbox id={id} bind:checked={value} onCheckedChange={() => onchange()} disabled={disabled} />
     <Label
         for={id}
-        class="text-sm mt-[1px] font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+        class="text-sm mt-px font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
             {label}
     </Label>
 </div>

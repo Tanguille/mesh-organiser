@@ -197,12 +197,12 @@
                         {/snippet}
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content
-                        class="w-[var(--bits-dropdown-menu-anchor-width)]"
+                        class="w-(--bits-dropdown-menu-anchor-width)"
                         align="start"
                     >
                         {#each sidebarState.availableSlicers as slicer (slicer.slicer)}
                             <DropdownMenu.Item
-                                class="data-[highlighted]:bg-secondary data-[highlighted]:text-secondary-foreground"
+                                class="data-highlighted:bg-secondary data-highlighted:text-secondary-foreground"
                                 disabled={!slicer.installed}
                                 onSelect={() =>
                                     (configuration.slicer = slicer.slicer)}

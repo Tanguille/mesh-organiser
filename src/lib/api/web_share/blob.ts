@@ -22,4 +22,9 @@ export class WebShareBlobApi implements IBlobApi {
     async getBlobThumbnailUrl(blob: Blob): Promise<string> {
         return document.location.origin + "/api/v1/blobs/" + blob.sha256 + "/thumb";
     }
+
+    async getBlobsDownloadUrl(blobs: Blob[]): Promise<string> {
+        const blobIds = blobs.map(blob => blob.sha256).join(',');
+        return document.location.origin + `/api/v1/blobs/download?share_id=${this.share.id}&blobs=${blobIds}`;
+    }
 }

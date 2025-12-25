@@ -34,7 +34,7 @@
 </script>
 
 <div class="flex flex-row {props.class}">
-    <Button class="flex-grow rounded-r-none" disabled={busy} onclick={exportAsIndividualModels}>
+    <Button class="grow rounded-r-none" disabled={busy} onclick={exportAsIndividualModels}>
         <FolderOpen /> Open in folder
     </Button>
     <DropdownMenu.Root>

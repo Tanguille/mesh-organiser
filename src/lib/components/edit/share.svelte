@@ -94,7 +94,7 @@
             <Input
                 id="share_name_{props.share.id}"
                 type="text"
-                class="flex-grow"
+                class="grow"
                 oninput={onUpdateShare}
                 bind:value={props.share.shareName}
             />
@@ -104,7 +104,7 @@
             <div class="flex flex-row gap-2">
                 <Input
                     type="text"
-                    class="flex-grow"
+                    class="grow"
                     readonly={true}
                     value={link}
                 />

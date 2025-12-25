@@ -13,10 +13,8 @@
 
     const labelApi = getContainer().optional<ILabelApi>(ILabelApi);
 
-    let { value = $bindable(), availableLabels = [], clazz = undefined, placeholder = "Select some labels", onlyShowLabelCount = false, onchange = () => {}} 
+    let { value = $bindable(), availableLabels = [], clazz = undefined, placeholder = "Select some labels", onlyShowLabelCount = false, onchange = () => {}}
     : { value: LabelMeta[], availableLabels : LabelMeta[], clazz? : ClassValue, placeholder? : string, onlyShowLabelCount?: boolean, onchange?: VoidFunction } = $props();
-
-    console.log(availableLabels);
 
     async function createLabel(name: string, color: string) {
         if (!labelApi) {
