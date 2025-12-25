@@ -11,19 +11,15 @@ impl Slicer {
             return true;
         }
 
-        let package = get_flatpak_slicer_package(&self);
+        let package = get_flatpak_slicer_package(self);
 
         if package.is_empty() {
             return false;
         }
 
         match Command::new("flatpak").arg("info").arg(package).output() {
-            Ok(output) => {
-                return output.status.success();
-            }
-            Err(_) => {
-                return false;
-            }
+            Ok(output) => output.status.success(),
+            Err(_) => false,
         }
     }
 
@@ -44,7 +40,7 @@ impl Slicer {
 
         println!("Opening in slicer: {:?}", paths);
 
-        if paths.len() == 0 {
+        if paths.is_empty() {
             return Err(ServiceError::InternalError(String::from(
                 "No models to open",
             )));
@@ -53,7 +49,7 @@ impl Slicer {
         let _ = Command::new("flatpak")
             .arg("run")
             .arg("--file-forwarding")
-            .arg(get_flatpak_slicer_package(&self))
+            .arg(get_flatpak_slicer_package(self))
             .arg("@@")
             .args(paths)
             .arg("@@")
