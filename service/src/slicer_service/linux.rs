@@ -1,9 +1,7 @@
 use super::Slicer;
 use crate::app_state::AppState;
-use crate::export_service::export_to_temp_folder;
 use crate::service_error::ServiceError;
 use crate::slicer_service::open_custom_slicer;
-use db::model::Model;
 use std::path::PathBuf;
 use std::process::Command;
 
