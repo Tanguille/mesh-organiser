@@ -41,7 +41,7 @@
     <h1 class="font-bold">Mesh Organiser</h1>
     <p class="mb-5">Version {version}</p>
     <img src="/logo.png" class="logo tauri h-40" alt="Mesh Organiser Logo" />
-    <div class="h-10" />
+    <div class="h-10"></div>
     <h1 class="font-bold">Credits</h1>
     <p>
         Developed by <a
@@ -62,7 +62,7 @@
             </a>
         </p>
     {/each}
-    <div class="h-10" />
+    <div class="h-10"></div>
     <h1 class="font-bold">Code/Repositories</h1>
     <p class="mb-2">Contributions are welcome!</p>
     {#each repositoryLinks as link}

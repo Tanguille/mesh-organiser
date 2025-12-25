@@ -136,7 +136,7 @@
                     <GroupPage initialEditMode={true} group={importedGroups[0].meta} onGroupDelete={() => importedGroups[0].meta.id = -1} onAllModelsDelete={resetImportState} />
                 </div>
             {:else if importedModels.length > 0}
-                <div class="overflow-hidden flex-grow w-full">
+                <div class="overflow-hidden grow w-full">
                     <ModelGrid modelStream={new PredefinedModelStreamManager(importedModels)} default_show_multiselect_all={true} initialEditMode={true} onEmpty={resetImportState} />
                 </div>
             {:else}

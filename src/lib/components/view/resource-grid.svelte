@@ -22,7 +22,7 @@
     import OpenInSlicerButton from "./open-in-slicer-button.svelte";
     import { IDownloadApi } from "$lib/api/shared/download_api";
     import { toast } from "svelte-sonner";
-    import { countWriter } from "$lib/utils";
+    import { countWriter, handleGridItemKeyDown } from "$lib/utils";
     import Download from "@lucide/svelte/icons/download";
     import ExportModelsButton from "./export-models-button.svelte";
 
@@ -117,6 +117,10 @@
         groups = await resourceApi.getGroupsForResource(resource);
     }
 
+    async function onKeyDown(resource: ResourceMeta, event: KeyboardEvent) {
+        handleGridItemKeyDown(resource, event, onClick, false);
+    }
+
     async function onNewResource() {
         const newResource = await resourceApi.addResource(newName);
         props.resources.push(newResource);
@@ -136,10 +140,10 @@
 
         if (models.length <= 0) {
             return;
-        } 
+        }
         else if (models.length === 1) {
             promise = downloadApi.downloadModel(models[0]);
-        } 
+        }
         else {
             promise = downloadApi.downloadModelsAsZip(models);
         }
@@ -148,7 +152,7 @@
             promise,
             {
                 loading: `Downloading ${countWriter("model", models)}...`,
-                success: (_) => {
+                success: (_: any) => {
                     return `Downloaded ${countWriter("model", models)}`;
                 },
             }
@@ -158,7 +162,7 @@
     }
 
     async function deleteResource(resource: ResourceMeta) {
-        props.resources.splice(props.resources.indexOf(resource!), 1); 
+        props.resources.splice(props.resources.indexOf(resource!), 1);
         selected = null;
         await updateSidebarState();
     }
@@ -168,7 +172,7 @@
     <div class="flex flex-col gap-1 flex-1" style="min-width: 0;">
         <div class="grid grid-cols-2 gap-5 justify-center px-5 py-3">
             <Input bind:value={currentFilter.search} class="border-primary" placeholder="Search..." />
-    
+
             <Select.Root type="single" name="Sort" bind:value={currentFilter.order}>
                 <Select.Trigger class="border-primary">
                     {readableOrder}
@@ -188,8 +192,9 @@
 
         <div class="overflow-y-scroll h-full flex flex-row gap-2 flex-wrap outline-0 content-start" bind:this={scrollContainer} onscroll={handleScroll}>
             {#each filteredCollection.slice(0, currentFilter.limit) as resource (resource.id)}
-                <div oncontextmenu={(e) => onClick(resource, e)} onclick="{(e) => onClick(resource, e)}" 
-                    class="h-14 [&_.imglist]:w-[165px] flex flex-row gap-3 border rounded-lg p-1 px-3 min-w-0 overflow-hidden w-full select-none {selected?.id === resource.id ? "border-primary" : "" }">
+                {@const isSelected = selected?.id === resource.id}
+                <div role="option" tabindex="0" aria-selected={isSelected} oncontextmenu={(e) => onClick(resource, e)} onclick={(e) => onClick(resource, e)} onkeydown={(e) => onKeyDown(resource, e)}
+                    class="h-14 [&_.imglist]:w-[165px] flex flex-row gap-3 border rounded-lg p-1 px-3 min-w-0 overflow-hidden w-full select-none cursor-pointer {isSelected ? "border-primary" : "" }">
                     {#if resource.flags.completed }
                         <ClipboardCheck class="h-full" />
                     {:else}
@@ -210,7 +215,7 @@
             <Input bind:value={newName} class="border-primary col-span-2" placeholder="New placeholder name..." />
             <Button onclick={onNewResource} disabled={newName.length <= 0}>Create project</Button>
         </div>
-    </div> 
+    </div>
     <div class="w-[400px] min-w-[400px] relative mx-4 my-2 overflow-y-auto flex flex-col gap-4 hide-scrollbar">
         {#if !!selected }
             <EditResource resource={selected} onDelete={_ => deleteResource(selected!) } />
@@ -223,12 +228,12 @@
                     </a>
                     <div class="grid grid-cols-2 gap-4 mb-4 mx-3 mt-2">
                         {#if localApi}
-                            <ExportModelsButton models={group.models} class="flex-grow" />
+                            <ExportModelsButton models={group.models} class="grow" />
                         {:else if downloadApi}
-                            <AsyncButton class="flex-grow" onclick={() => onDownloadModel(group)}><Download /> Download model</AsyncButton>
+                            <AsyncButton class="grow" onclick={() => onDownloadModel(group)}><Download /> Download model</AsyncButton>
                         {/if}
-                        
-                        <OpenInSlicerButton models={group.models} class="flex-grow" />
+
+                        <OpenInSlicerButton models={group.models} class="grow" />
                     </div>
                 </div>
             {/each}

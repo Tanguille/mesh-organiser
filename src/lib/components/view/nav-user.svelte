@@ -118,18 +118,7 @@
                     </Sidebar.MenuButton>
                 {/snippet}
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-                class="w-(--bits-dropdown-menu-anchor-width) min-w-56 rounded-lg"
-                side={sidebar.isMobile ? "bottom" : "right"}
-                align="end"
-                sideOffset={4}
-            >
-                <a
-                    href="https://ko-fi.com/suchmememanyskill"
-                    target="_blank"
-                    class="display-none"
-                    id="donate-link"
-                />
+            <DropdownMenu.Content>
                 <DropdownMenu.Group>
                     <DropdownMenu.Item onclick={() => openDonationInDefaultBrowser()}>
                         <SparklesIcon />

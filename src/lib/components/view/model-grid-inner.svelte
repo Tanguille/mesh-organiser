@@ -10,6 +10,7 @@
     import type { Model } from "$lib/api/shared/model_api";
     import type { SizeOptionModels } from "$lib/api/shared/settings_api";
     import { configuration } from "$lib/configuration.svelte";
+    import { handleGridItemKeyDown } from "$lib/utils";
 
     interface Function {
         (): void;
@@ -21,8 +22,8 @@
         availableModels,
         clazz = undefined,
         endOfListReached = undefined
-    } : { 
-        value: Model[], 
+    } : {
+        value: Model[],
         itemSize: SizeOptionModels,
         availableModels: Model[],
         clazz?: ClassValue,
@@ -47,7 +48,7 @@
     onDestroy(async () => {
         clearInterval(interval);
 
-        //if (destroyStateChangeListener) 
+        //if (destroyStateChangeListener)
         //    destroyStateChangeListener();
     });
 
@@ -123,7 +124,7 @@
             preventOnClick = true;
         }
     }
-    
+
     function onRightClick(model : Model, event : any)
     {
         if (value.some(m => m.id === model.id))
@@ -139,6 +140,10 @@
                 block: 'center',
             });
         }, 30);
+    }
+
+    function onKeyDown(model: Model, event: KeyboardEvent) {
+        handleGridItemKeyDown(model, event, onClick, true);
     }
 
     const sizes = {
@@ -159,9 +164,9 @@
             {#if itemSize.includes("List")}
                 {#each availableModels as model (model.id)}
                     {@const isSelected = selectedSet.has(model.id)}
-                    <div class="w-full grid grid-cols-[auto,1fr] gap-2 items-center">
+                    <div class="w-full grid grid-cols-[auto_1fr] gap-2 items-center">
                         {@render ModelCheckbox(model, "", isSelected)}
-                        <div oncontextmenu={(e) => onRightClick(model, e)} onclick={(e) => onClick(model, e)} onmousedown={(e) => earlyOnClick(model, e, isSelected)} class="min-w-0">
+                        <div role="option" tabindex="0" aria-selected={isSelected} oncontextmenu={(e) => onRightClick(model, e)} onclick={(e) => onClick(model, e)} onkeydown={(e) => onKeyDown(model, e)} onmousedown={(e) => earlyOnClick(model, e, isSelected)} class="min-w-0 cursor-pointer">
                             <ModelTinyList {model} class="{sizeClasses} pointer-events-none select-none {isSelected ? "border-primary" : "" }" />
                         </div>
                     </div>
@@ -170,7 +175,7 @@
                 {#each availableModels as model (model.id)}
                     {@const isSelected = selectedSet.has(model.id)}
                     <div class="relative group">
-                        <div oncontextmenu={(e) => onRightClick(model, e)} onclick={(e) => onClick(model, e)} onmousedown={(e) => earlyOnClick(model, e, isSelected)}>
+                        <div role="option" tabindex="0" aria-selected={isSelected} oncontextmenu={(e) => onRightClick(model, e)} onclick={(e) => onClick(model, e)} onkeydown={(e) => onKeyDown(model, e)} onmousedown={(e) => earlyOnClick(model, e, isSelected)} class="cursor-pointer">
                             <ModelTiny {model} class="{sizeClasses} pointer-events-none select-none {isSelected ? "border-primary" : "" }" />
                         </div>
                         {@render ModelCheckbox(model, `absolute top-[-5px] left-[-5px] bg-card rounded-lg ${isSelected ? "" : "group-hover:opacity-100 opacity-0"}`, isSelected)}

@@ -294,13 +294,13 @@
                 <Label>Open</Label>
                 <div class="grid grid-cols-2 gap-4">
                     {#if localApi}
-                        <ExportModelsButton models={models} class="flex-grow" />
+                        <ExportModelsButton models={models} class="grow" />
                     {:else if downloadApi}
-                        <AsyncButton class="flex-grow" onclick={onDownloadModels}
+                        <AsyncButton class="grow" onclick={onDownloadModels}
                             ><Download /> Download {models.length > 1 ? "models" : "model"}</AsyncButton
                         >
                     {/if}
-                    <OpenInSlicerButton models={models} class="flex-grow" />
+                    <OpenInSlicerButton models={models} class="grow" />
                 </div>
             </div>
             {#if !configurationMeta.applicationReadOnly}
@@ -315,20 +315,20 @@
                 <div class="flex flex-col gap-4">
                     <Label>Set/Unset group</Label>
                     <div class="grid grid-cols-2 gap-4">
-                        <Button onclick={onNewGroup} class="flex-grow"
+                        <Button onclick={onNewGroup} class="grow"
                             ><Group /> New group</Button
                         >
                         <Button
                             onclick={onRemoveGroup}
-                            class="flex-grow"
+                            class="grow"
                             disabled={allModelGroups.length <= 0}><Ungroup /> Remove from group</Button
                         >
                     </div>
                     <DropdownMenu.Root>
-                        <DropdownMenu.Trigger disabled={availableGroups.length <= 0} class="{buttonVariants({ variant: "default" })} flex-grow">
+                        <DropdownMenu.Trigger disabled={availableGroups.length <= 0} class="{buttonVariants({ variant: "default" })} grow">
                             <Component /> Add selected to group
                         </DropdownMenu.Trigger>
-                        <DropdownMenu.Content side="bottom" align="start" class="w-[var(--bits-dropdown-menu-anchor-width)]">
+                        <DropdownMenu.Content side="bottom" align="start" class="w-(--bits-dropdown-menu-anchor-width)">
                             {#each availableGroups as group}
                                 <DropdownMenu.Item onclick={() => onAddModelsToGroup(group)}>
                                     <Boxes class="mr-2" /> {group.name}

@@ -210,7 +210,7 @@
         <div class="flex flex-col space-y-1.5">
             <Label>Project</Label>
             <div class="flex flex-row gap-2">
-                <ResourceSelect clazz="truncate flex-grow" onchange={onUpdateResource} availableResources={availableResources} bind:value={
+                <ResourceSelect clazz="truncate grow" onchange={onUpdateResource} availableResources={availableResources} bind:value={
                     () => availableResources.find(r => r.id === resource?.id) || null,
                     (val) => tracked_group.resource = val
                 } />

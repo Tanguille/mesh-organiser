@@ -148,3 +148,26 @@ export function timeSinceDate(date: Date): string {
         return `${seconds} second${seconds === 1 ? '' : 's'} ago`;
     }
 }
+
+export function handleGridItemKeyDown<T>(
+    item: T,
+    event: KeyboardEvent,
+    onClick: (item: T, event: any) => void | Promise<void>,
+    useSyntheticMouseEvent: boolean = false
+) {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (useSyntheticMouseEvent) {
+            // Create a synthetic click event for grid items that expect mouse events
+            const syntheticEvent = new MouseEvent('click', {
+                ctrlKey: event.ctrlKey || event.metaKey,
+                shiftKey: event.shiftKey,
+                bubbles: true
+            });
+            onClick(item, syntheticEvent);
+        } else {
+            // Pass the keyboard event directly
+            onClick(item, event);
+        }
+    }
+}
