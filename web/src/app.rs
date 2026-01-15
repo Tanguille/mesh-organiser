@@ -18,10 +18,9 @@ use axum_login::{
 };
 use axum_messages::MessagesManagerLayer;
 use db::{
-    db_context::{self, DbContext},
-    group_db, user_db,
+    db_context::{self, DbContext}, group_db, model::User, user_db
 };
-use service::{AppState, Configuration, StoredConfiguration, stored_to_configuration};
+use service::{AppState, Configuration, StoredConfiguration, import_state::ImportState, stored_to_configuration, thumbnail_service};
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
 use tower_http::{
@@ -38,7 +37,7 @@ use crate::{
         user_controller,
     },
     user::{AuthSession, Backend},
-    web_app_state::WebAppState,
+    web_app_state::WebAppState, web_import_state::WebImportStateEmitter,
 };
 
 pub struct App {
@@ -142,6 +141,18 @@ impl App {
         user_db::edit_user_password(&web_app_state.app_state.db, 1, &local_pass).await?;
         user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
         group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
+
+        let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS").unwrap_or("none".into()).to_lowercase();
+
+        let mut import_state = ImportState::new_with_emitter(None, false, true, false, User::default(), Box::new(WebImportStateEmitter {}));
+        
+        if regenerate_thumbnails == "all" {
+            println!("Regenerating all thumbnails...");
+            thumbnail_service::generate_all_thumbnails(&web_app_state.app_state, true, &mut import_state).await?;
+        } else if regenerate_thumbnails == "missing" {
+            println!("Regenerating missing thumbnails...");
+            thumbnail_service::generate_all_thumbnails(&web_app_state.app_state, false, &mut import_state).await?;
+        }
 
         Ok(Self {
             app_state: web_app_state,
