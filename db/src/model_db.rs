@@ -1,17 +1,18 @@
-use crate::model::blob::Blob;
-use crate::model::label::convert_label_meta_list_to_map;
-use crate::util::{random_hex_32, time_now};
+use indexmap::IndexMap;
+use itertools::join;
+use sqlx::{Execute, QueryBuilder, Row};
+use strum::EnumString;
+
 use crate::{
     DbError, PaginatedResponse,
     db_context::DbContext,
     label_db,
-    model::{Model, ModelFlags, model_group::ModelGroupMeta, user::User},
+    model::{
+        Model, ModelFlags, blob::Blob, label::convert_label_meta_list_to_map,
+        model_group::ModelGroupMeta, user::User,
+    },
+    util::{random_hex_32, time_now},
 };
-use indexmap::IndexMap;
-use itertools::join;
-use sqlx::Row;
-use sqlx::{Execute, QueryBuilder};
-use strum::EnumString;
 
 #[derive(Debug, PartialEq, EnumString)]
 pub enum ModelOrderBy {
