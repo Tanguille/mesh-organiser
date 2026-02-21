@@ -50,6 +50,11 @@
       "endpoints": [
         "https://github.com/suchmememanyskill/mesh-organiser/releases/latest/download/latest.json"
       ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["bambustudio", "cura", "prusaslicer", "orcaslicer", "elegooslicer", "meshorganiser"]
+      }
     }
   }
 }
