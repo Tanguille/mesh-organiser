@@ -2,10 +2,10 @@ use crate::user::{Credentials, PasswordCredentials, TokenCredentials};
 use crate::{user::AuthSession, web_app_state::WebAppState};
 use axum::Json;
 use axum::{
+    Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Router,
 };
 
 pub fn router() -> Router<WebAppState> {

@@ -75,7 +75,10 @@ impl FileType {
     pub fn is_zipped(&self) -> bool {
         matches!(
             self,
-            FileType::ZippedStl | FileType::ZippedObj | FileType::ZippedGcode | FileType::ZippedStep
+            FileType::ZippedStl
+                | FileType::ZippedObj
+                | FileType::ZippedGcode
+                | FileType::ZippedStep
         )
     }
 
@@ -104,7 +107,10 @@ impl FileType {
     }
 
     pub fn is_zippable(&self) -> bool {
-        matches!(self, FileType::Stl | FileType::Obj | FileType::Step | FileType::Gcode)
+        matches!(
+            self,
+            FileType::Stl | FileType::Obj | FileType::Step | FileType::Gcode
+        )
     }
 
     pub fn to_zip(&self) -> FileType {

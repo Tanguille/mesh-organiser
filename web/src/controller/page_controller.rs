@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Path, State},
     response::Html,
     routing::get,
-    Router,
 };
 use db::{share_db, user_db};
 use tokio::fs;
