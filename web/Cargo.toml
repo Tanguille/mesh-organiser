@@ -23,7 +23,8 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 axum-messages = { workspace = true }
 time = { workspace = true }
 tower-http = { workspace = true, features = ["fs", "compression-gzip"] }
-tower-sessions = { workspace = true, features = ["signed"] }
+# Use 0.14 to match axum-login so SessionManagerLayer has with_signed; 0.15 would be type-incompatible.
+tower-sessions = { version = "0.14", features = ["signed"] }
 tower-sessions-sqlx-store = { workspace = true, features = ["sqlite"] }
 async_zip = { workspace = true, features = [
     "deflate",

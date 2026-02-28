@@ -124,8 +124,8 @@
 <div class="flex flex-row h-full">
     {#if showLeftSide}
     <div class="flex flex-col gap-1 flex-1" style="min-width: 0;">
-        <div class="flex flex-row gap-5 justify-center px-5 py-3">
-            <Input oninput={onSearchInput} class="border-primary" placeholder="Search..." />
+        <div class="flex flex-row gap-3 justify-center px-5 py-3">
+            <Input oninput={onSearchInput} class="border-primary grow" placeholder="Search" />
     
             <Select.Root type="single" name="Sort" onValueChange={x => {props.modelStream.setOrderBy(convertOrderOptionModelsToEnum(x as OrderOptionModels)); resetModelSet();}} bind:value={configuration.order_option_models}>
                 <Select.Trigger class="border-primary">

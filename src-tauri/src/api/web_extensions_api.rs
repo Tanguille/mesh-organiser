@@ -1,14 +1,13 @@
 use std::{panic, path::PathBuf, sync::Arc};
 
 use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
-use futures::StreamExt;
 use serde::Serialize;
 use service::{
     export_service::{ensure_unique_file_full_filename, get_temp_dir},
-    import_service::{self, DirectoryScanModel, is_any_supported_extension},
+    import_service::{self, DirectoryScanModel, is_supported_extension},
     import_state::{ImportState, ImportStatus},
 };
-use tauri::{AppHandle, State, http::header::CONTENT_DISPOSITION, ipc::Response};
+use tauri::{AppHandle, State, http::header::{CONTENT_DISPOSITION, CONTENT_TYPE}, ipc::Response};
 use tauri_plugin_http::reqwest::{self, cookie::Jar};
 use tokio::{fs::File, io::AsyncWriteExt, task::JoinSet};
 use tokio_util::compat::TokioAsyncReadCompatExt;
@@ -59,12 +58,8 @@ async fn download_file(url: &str, dir: &PathBuf) -> Result<PathBuf, ApplicationE
     let full_path = ensure_unique_file_full_filename(dir, &filename);
 
     let mut file = File::create(&full_path).await?;
-    let mut stream = response.bytes_stream();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        file.write_all(&chunk).await?;
-    }
+    let bytes = response.bytes().await?;
+    file.write_all(&bytes).await?;
 
     Ok(full_path)
 }
@@ -154,11 +149,11 @@ async fn login(token: &str, base_url: &str) -> Result<Arc<Jar>, ApplicationError
 
     let url = format!("{base_url}/api/v1/login/token");
 
+    let body = serde_json::to_vec(&serde_json::json!({ "token": token }))?;
     let response = client
         .post(&url)
-        .json(&serde_json::json!({
-            "token": token
-        }))
+        .header(CONTENT_TYPE, "application/json")
+        .body(body)
         .send()
         .await?;
 
@@ -192,7 +187,8 @@ const MAX_CONCURRENT_UPLOADS: usize = 4;
 
 async fn get_ids(response: reqwest::Response) -> Result<Vec<i64>, ApplicationError> {
     if response.status().is_success() {
-        let model_ids: Vec<i64> = response.json().await?;
+        let body = response.text().await?;
+        let model_ids: Vec<i64> = serde_json::from_str(&body)?;
 
         if model_ids.is_empty() {
             println!("Upload returned no model IDs");
@@ -251,7 +247,16 @@ async fn process_uploads(
             );
         }
 
-        form = form.file("file", &path.path).await?;
+        let file_bytes = tokio::fs::read(&path.path).await?;
+        let filename = path
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file");
+        let part = reqwest::multipart::Part::bytes(file_bytes)
+            .file_name(filename.to_string())
+            .mime_str("application/octet-stream")?;
+        form = form.part("file", part);
 
         {
             let path = PathBuf::from(&path.path);
@@ -378,7 +383,7 @@ pub async fn expand_paths(
 pub async fn get_file_bytes(path: String) -> Result<Response, ApplicationError> {
     let path = PathBuf::from(path);
 
-    if !(is_any_supported_extension(&path)
+    if !(is_supported_extension(&path)
         || path
             .extension()
             .is_some_and(|e| e.to_string_lossy().to_lowercase().ends_with("zip")))

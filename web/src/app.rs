@@ -7,27 +7,32 @@ use std::{
 };
 
 use axum::{
-    Router,
     extract::{DefaultBodyLimit, Request},
     middleware::{self, Next},
     response::Response,
+    Router,
 };
 use axum_login::{
+    tower_sessions::{cookie::Key, ExpiredDeletion, Expiry, SessionManagerLayer},
     AuthManagerLayerBuilder,
-    tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer},
 };
 use axum_messages::MessagesManagerLayer;
 use db::{
-    db_context::{self, DbContext}, group_db, model::User, user_db
+    db_context::{self, DbContext},
+    group_db,
+    model::user::User,
+    user_db,
 };
-use service::{AppState, Configuration, StoredConfiguration, import_state::ImportState, stored_to_configuration, thumbnail_service};
+use service::{
+    import_state::ImportState, stored_to_configuration, thumbnail_service, AppState, Configuration,
+    StoredConfiguration,
+};
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
 use tower_http::{
     compression::CompressionLayer,
     services::{ServeDir, ServeFile},
 };
-use tower_sessions::cookie::Key;
 use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::{
@@ -37,7 +42,8 @@ use crate::{
         user_controller,
     },
     user::{AuthSession, Backend},
-    web_app_state::WebAppState, web_import_state::WebImportStateEmitter,
+    web_app_state::WebAppState,
+    web_import_state::WebImportStateEmitter,
 };
 
 pub struct App {
@@ -142,16 +148,35 @@ impl App {
         user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
         group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
 
-        let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS").unwrap_or("none".into()).to_lowercase();
+        let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
+            .unwrap_or("none".into())
+            .to_lowercase();
 
-        let mut import_state = ImportState::new_with_emitter(None, false, true, false, User::default(), Box::new(WebImportStateEmitter {}));
-        
+        let mut import_state = ImportState::new_with_emitter(
+            None,
+            false,
+            true,
+            false,
+            User::default(),
+            Box::new(WebImportStateEmitter {}),
+        );
+
         if regenerate_thumbnails == "all" {
             println!("Regenerating all thumbnails...");
-            thumbnail_service::generate_all_thumbnails(&web_app_state.app_state, true, &mut import_state).await?;
+            thumbnail_service::generate_all_thumbnails(
+                &web_app_state.app_state,
+                true,
+                &mut import_state,
+            )
+            .await?;
         } else if regenerate_thumbnails == "missing" {
             println!("Regenerating missing thumbnails...");
-            thumbnail_service::generate_all_thumbnails(&web_app_state.app_state, false, &mut import_state).await?;
+            thumbnail_service::generate_all_thumbnails(
+                &web_app_state.app_state,
+                false,
+                &mut import_state,
+            )
+            .await?;
         }
 
         Ok(Self {
@@ -172,8 +197,6 @@ impl App {
                 .clone()
                 .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
         );
-
-        // Generate a cryptographic key to sign the session cookie.
 
         let signing_key_path = self.app_state.get_signing_key_path();
         let key = match signing_key_path.exists() {

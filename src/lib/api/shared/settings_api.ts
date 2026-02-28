@@ -19,7 +19,6 @@ export interface Configuration {
     slicer: string|null;
     focus_after_link_import: boolean;
     thumbnail_color : string;
-    allow_importing_step : boolean;
     size_option_models : SizeOptionModels;
     size_option_groups : SizeOptionModels;
     show_grouped_count_on_labels: boolean;
@@ -36,7 +35,7 @@ export interface Configuration {
     max_size_model_3mf_preview: number; // in MB
     max_size_model_stl_preview: number; // in MB
     max_size_model_obj_preview: number; // in MB
-    allow_importing_gcode: boolean;
+    max_size_model_step_preview: number; // in MB
     only_show_single_image_in_groups: boolean;
     custom_slicer_path : string;
     group_split_view: "no_split" | "split-left-right" | "split-top-bottom";
@@ -111,7 +110,6 @@ export function configurationDefault() : Configuration
         slicer: null,
         focus_after_link_import: true,
         thumbnail_color: "#EEEEEE",
-        allow_importing_step : true,
         size_option_groups : "Grid_Medium",
         size_option_models : "Grid_Medium",
         show_grouped_count_on_labels: true,
@@ -128,7 +126,7 @@ export function configurationDefault() : Configuration
         max_size_model_3mf_preview: 15,
         max_size_model_stl_preview: 30,
         max_size_model_obj_preview: 30,
-        allow_importing_gcode: true,
+        max_size_model_step_preview: 30,
         only_show_single_image_in_groups: true,
         custom_slicer_path: "",
         group_split_view: "split-left-right",
