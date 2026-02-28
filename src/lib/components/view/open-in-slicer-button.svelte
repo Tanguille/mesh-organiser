@@ -14,8 +14,7 @@
         (): void;
     }
 
-    const props: { models : Model|Model[], class?: ClassValue, onOpen?: Function } = $props();
-    const rootProps = props;
+    const componentProps: { models : Model|Model[], class?: ClassValue, onOpen?: Function } = $props();
     const slicerApi = getContainer().require<ISlicerApi>(ISlicerApi);
     const sidebarApi = getContainer().optional<ISidebarStateApi>(ISidebarStateApi);
     let slicers = $state<SlicerEntry[]>([]);
@@ -33,16 +32,16 @@
 
     async function onOpenInSlicer()
     {
-        let models = props.models;
+        let models = componentProps.models;
         if (!Array.isArray(models))
         {
             models = [models];
         }
         
         await slicerApi.openInSlicer(models);
-        if (props.onOpen)
+        if (componentProps.onOpen)
         {
-            props.onOpen();
+            componentProps.onOpen();
         }
     }
 
@@ -56,12 +55,12 @@
 </script>
 
 {#if sidebarApi}
-    <AsyncButton class={props.class?.toString() ?? ""} onclick={onOpenInSlicer}><Slice /> Open in slicer</AsyncButton>
+    <AsyncButton class={componentProps.class?.toString() ?? ""} onclick={onOpenInSlicer}><Slice /> Open in slicer</AsyncButton>
 {:else}
     <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-            {#snippet child({ props })}
-                <Button {...props} class={rootProps.class}><Slice /> Open in slicer</Button>
+            {#snippet child({ props: triggerProps })}
+                <Button {...triggerProps} class={componentProps.class}><Slice /> Open in slicer</Button>
             {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start">

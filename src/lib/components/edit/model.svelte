@@ -62,7 +62,11 @@
 
     let model : Model = $derived(props.model);
     let load3dPreview = $derived(loadModelAutomatically($state.snapshot(configuration), model));
-    let editMode = $state(props.initialEditMode ?? false);
+    const initialEditMode = $derived(props.initialEditMode ?? false);
+    let editMode = $state(false);
+    $effect(() => {
+        editMode = initialEditMode;
+    });
     let group = $derived(model.group);
     let availableLabels = $derived(sidebarState.labels.map(l => l.meta));
     let doNotAutoRotateModel = $state(false);
