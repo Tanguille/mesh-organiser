@@ -61,9 +61,8 @@
     let deleted = $derived({ deleted: !props.model });
 
     let model : Model = $derived(props.model);
-    let load3dPreview = $state(false);
-    const initialEditMode = props.initialEditMode ?? false;
-    let editMode = $state(initialEditMode);
+    let load3dPreview = $derived(loadModelAutomatically($state.snapshot(configuration), model));
+    let editMode = $state(props.initialEditMode ?? false);
     let group = $derived(model.group);
     let availableLabels = $derived(sidebarState.labels.map(l => l.meta));
     let doNotAutoRotateModel = $state(false);
