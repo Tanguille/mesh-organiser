@@ -15,7 +15,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs::{self, read_dir};
 use std::panic;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -551,7 +551,7 @@ where
     Ok(id)
 }
 
-pub fn is_supported_extension(path: &PathBuf) -> bool {
+pub fn is_supported_extension(path: &Path) -> bool {
     let file_type = FileType::from_pathbuf(path);
     file_type.is_importable()
 }
