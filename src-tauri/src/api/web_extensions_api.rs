@@ -7,7 +7,11 @@ use service::{
     import_service::{self, DirectoryScanModel, is_supported_extension},
     import_state::{ImportState, ImportStatus},
 };
-use tauri::{AppHandle, State, http::header::{CONTENT_DISPOSITION, CONTENT_TYPE}, ipc::Response};
+use tauri::{
+    AppHandle, State,
+    http::header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+    ipc::Response,
+};
 use tauri_plugin_http::reqwest::{self, cookie::Jar};
 use tokio::{fs::File, io::AsyncWriteExt, task::JoinSet};
 use tokio_util::compat::TokioAsyncReadCompatExt;

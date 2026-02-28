@@ -7,14 +7,14 @@ use std::{
 };
 
 use axum::{
+    Router,
     extract::{DefaultBodyLimit, Request},
     middleware::{self, Next},
     response::Response,
-    Router,
 };
 use axum_login::{
-    tower_sessions::{cookie::Key, ExpiredDeletion, Expiry, SessionManagerLayer},
     AuthManagerLayerBuilder,
+    tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key},
 };
 use axum_messages::MessagesManagerLayer;
 use db::{
@@ -24,8 +24,8 @@ use db::{
     user_db,
 };
 use service::{
-    import_state::ImportState, stored_to_configuration, thumbnail_service, AppState, Configuration,
-    StoredConfiguration,
+    AppState, Configuration, StoredConfiguration, import_state::ImportState,
+    stored_to_configuration, thumbnail_service,
 };
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
