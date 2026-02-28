@@ -4,9 +4,9 @@
 	"version": "1.0.0",
 	"identifier": "com.mesh-organiser.app",
 	"build": {
-		"beforeDevCommand": "npm run dev",
+		"beforeDevCommand": "pnpm run dev",
 		"devUrl": "http://localhost:9435",
-		"beforeBuildCommand": "npm run build",
+		"beforeBuildCommand": "pnpm run build",
 		"frontendDist": "../build"
 	},
 	"app": {
@@ -43,7 +43,7 @@
 	},
 	"plugins": {
 		"updater": {
-			"pubkey": "RWQbdCM01o6Nk+G0sx/c6k6oeh2mLfqYfYa/45aoKEjU38HGDfLcPkVe",
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBCMEUwQTkwNzE1ODk3NTIKUldSU2wxaHhrQW9PQy93QzdqdnkwQlQ3eXdtOStzUFVoRVh2V280K0VpK2FjZmh6bU16VFZMeHoK",
 			"endpoints": [
 				"https://github.com/Tanguille/mesh-organiser/releases/latest/download/latest.json"
 			]
