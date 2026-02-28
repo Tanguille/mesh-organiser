@@ -40,11 +40,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061  # v4
+        with:
+          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: lts/*
+          node-version: current
           cache: pnpm
 
       - name: Install Rust stable
@@ -56,11 +63,6 @@ jobs:
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2
         with:
           shared-key: release
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061  # v4
-        with:
-          version: 10
 
       - name: Install dependencies (Ubuntu)
         if: matrix.name == 'linux-amd64'
