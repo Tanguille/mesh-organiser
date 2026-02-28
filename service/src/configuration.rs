@@ -231,9 +231,7 @@ pub fn stored_to_configuration(configuration: StoredConfiguration) -> Configurat
         watch_downloads_folder: configuration
             .watch_downloads_folder
             .unwrap_or(default.watch_downloads_folder),
-        startup_page: configuration
-            .startup_page
-            .unwrap_or(default.startup_page),
+        startup_page: configuration.startup_page.unwrap_or(default.startup_page),
     }
 }
 
