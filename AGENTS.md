@@ -1,6 +1,36 @@
 # Agent Guidelines for Mesh Organiser
 
-This document provides guidelines for AI coding agents working on the Mesh Organiser codebase.
+This document provides guidelines for AI coding agents working in this repository.
+
+## Workflow Principles
+
+### Always Understand Before Coding
+1. Explore the codebase first to understand structure and patterns
+2. Read existing similar implementations before starting new work
+3. Identify the exact files/locations that need changes
+4. Plan the approach before writing code
+
+### Break Large Tasks Into Smaller Steps
+- Split complex tasks into discrete, verifiable steps
+- Complete and verify each step before moving to the next
+- Use a todo list for tracking progress on multi-step tasks
+
+### Verify After Each Change
+- Run type checks after making changes
+- Test the feature works as expected
+- Check for any introduced errors before committing
+
+### Use Specialist Agents When Appropriate
+- **@explorer**: Find files, locate code patterns, discover what exists
+- **@librarian**: Look up official documentation for libraries/APIs
+- **@oracle**: Complex architectural decisions, persistent bugs, high-stakes choices
+- **@designer**: UI/UX polish, user-facing visual components
+- **@fixer**: Execute well-defined tasks in parallel (3+ independent tasks)
+
+### Parallelize When It Saves Time
+- Multiple independent file changes → spawn multiple @fixers
+- Research + implementation can run in parallel
+- Sequential work must be done serially
 
 ## Project Overview
 
@@ -9,167 +39,32 @@ Mesh Organiser is a SvelteKit + Tauri desktop application for organizing 3D prin
 - **Backend**: Tauri (Rust) with SQLite database
 - **Platforms**: Desktop (Windows/macOS/Linux) via Tauri
 
-## Build & Development Commands
+## Quick Reference
 
-### Frontend (Node.js)
-```bash
-npm install          # Install dependencies
-npm run dev         # Start development server
-npm run build       # Build for production
-npm run preview     # Preview production build
-npm run check       # Type check (run before committing)
-npm run check:watch # Type check with watch mode
-```
+### Commands
+See [docs/commands.md](docs/commands.md) for all build, dev, and test commands.
 
-### Tauri (Desktop App)
-```bash
-npm run tauri dev      # Start Tauri dev mode
-npm run tauri:build    # Build production desktop app
-```
+### Code Style
+- **Frontend**: See [docs/frontend-style.md](docs/frontend-style.md)
+- **Rust**: See [docs/rust-style.md](docs/rust-style.md)
 
-### Testing
-**No test framework is currently configured.** If adding tests:
-- Use Vitest for unit tests (Svelte/TypeScript)
-- Use Playwright for E2E tests
-
-```bash
-vitest              # Run all tests
-vitest run file     # Run single test file
-vitest              # Run tests in watch mode
-```
-
-## Pre-Push Checks
-
-Before committing/pushing, run these checks locally:
-
-### Frontend
-```bash
-npm run check       # TypeScript type checking (svelte-check)
-```
-
-### Rust Backend (src-tauri/)
-```bash
-cd src-tauri
-cargo fmt --all -- --check    # Check formatting
-cargo clippy --workspace --all-targets --all-features  # Lint (builds implicitly)
-```
-
-## Git Workflow Best Practices
-
-### Use a Fresh Worktree for Each Task
-
-To avoid accidentally committing unrelated changes, create a new git worktree for each task:
-
-```bash
-# Create a new worktree from main for your task
-git worktree add ../mesh-organiser-task -b feature/your-task-name
-
-# Work on your task in the new directory
-cd ../mesh-organiser-task
-
-# When done, delete the worktree and branch
-cd ..
-git worktree remove mesh-organiser-task
-git branch -D feature/your-task-name
-```
-
-This ensures:
-- Each task starts from a clean main branch state
-- No uncommitted or unrelated changes leak into your commits
-- Multiple tasks can be worked on in parallel without interference
-
-**Do NOT** commit changes to package.json, package-lock.json, Cargo.lock, mise.toml, or other dependency files unless the task explicitly involves updating dependencies.
-
-## Code Style Guidelines
-
-### TypeScript
-- **Strict mode enabled**: All TypeScript must pass strict type checking
-- Use explicit type annotations for function parameters/returns when not inferrable
-- Prefer interfaces over types for object shapes; use `type` for unions/intersections
-
-```typescript
-// Good - explicit types
-function loadModelAutomatically(configuration: Configuration, model: Model): boolean { }
-
-// Good - interface for objects
-interface Model { id: number; name: string; blob: Blob; group?: ModelGroup; }
-
-// Good - type for unions
-type FileType = 'stl' | 'obj' | '3mf' | 'step' | 'gcode';
-```
-
-### Svelte 5
-- Use runes (`$state`, `$derived`, `$effect`) for reactive state
-- Prefer `.svelte` files for components, `.ts` files for logic
-
-```svelte
-<script lang="ts">
-    let count = $state(0);
-    let doubled = $derived(count * 2);
-</script>
-<button onclick={() => count++}>{doubled}</button>
-```
-
-### Imports & Path Aliases
-Defined in `svelte.config.js`:
-```typescript
-import { cn } from '$lib/utils';           // $lib -> ./src/lib
-import { Model } from '$lib/api/shared/model_api';
-```
-
-### Naming Conventions
-- **Files**: kebab-case (`model-api.ts`, `three-d-scene.svelte`)
-- **Components**: PascalCase (`ModelGrid.svelte`, `Button.svelte`)
-- **Types/Interfaces**: PascalCase (`Model`, `Configuration`)
-- **Functions**: camelCase (`loadModelAutomatically`)
-- **Constants**: SCREAMING_SNAKE_CASE for config, camelCase for others
-- **CSS Classes**: kebab-case (Tailwind standard)
-
-### Error Handling
-**TypeScript/JavaScript**: Use try/catch for async, throw descriptive errors
-```typescript
-try {
-    const response = await fetch('/api/models');
-    if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
-    return await response.json();
-} catch (error) {
-    console.error('Failed to fetch models:', error);
-    throw error;
-}
-```
-
-**Rust (Tauri)**: Use `ApplicationError` enum, `?` operator for propagation
-```rust
-#[tauri::command]
-async fn get_models(state: State<'_, TauriAppState>) -> Result<Vec<Model>, ApplicationError> {
-    let models = model_db::get_all_models(&state.app_state.db).await?;
-    Ok(models)
-}
-```
-
-### TailwindCSS
-Use utility classes; use `cn()` from `$lib/utils` for conditional classes
-```typescript
-import { cn } from '$lib/utils';
-<div class={cn("base-class", isActive && "active-class")}>
-```
-
-### Rust Backend (src-tauri/)
-- Follow standard Rust conventions (rustfmt auto-formats)
-- Use `#[tauri::command]` for Tauri command handlers
-- Use sqlx for database queries; enable clippy lints (checked in CI)
+### Git Workflow
+See [docs/git-workflow.md](docs/git-workflow.md) for worktree and commit best practices.
 
 ## Project Structure
+
 ```
-src/                    # Frontend source
+src/                    # Frontend source (SvelteKit)
 ├── lib/               # Shared libraries (api/, components/, utils.ts)
 ├── routes/            # SvelteKit routes
-└── themes/           # CSS themes
+└── themes/            # CSS themes
 
-src-tauri/             # Rust backend
-├── src/api/           # Tauri command handlers
-├── src/service/       # Business logic
-└── src/lib.rs         # Main Tauri app
+src-tauri/             # Tauri desktop app (Rust)
+service/               # Standalone service (Rust)
+db/                    # Database schema/migrations (Rust)
+web/                   # Web server (Rust, optional)
+
+Cargo.toml             # Root workspace (all Rust projects)
 ```
 
 ## Common Development Tasks
