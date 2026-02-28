@@ -7,6 +7,6 @@
 </script>
 
 <ModelGrid modelStream={new ModelStreamManager(modelApi, null, null, null, {
-    favorite: true,
-    printed: false,
+    favorite: false,
+    printed: true,
 })} />
