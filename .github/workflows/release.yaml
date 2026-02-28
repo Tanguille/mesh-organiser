@@ -1,9 +1,17 @@
-name: 'publish'
+name: publish
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 env:
   MESH_THUMBNAIL_REPO: suchmememanyskill/mesh-thumbnail
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish-tauri:
@@ -16,45 +24,51 @@ jobs:
           - name: win-amd64
             target: x86_64-pc-windows-gnu
             os: windows-latest
-            args: ''
+            args: ""
           - name: linux-amd64
             target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
-            args: ''
+            args: ""
           - name: macos-amd64
             target: x86_64-apple-darwin
             os: macos-latest
-            args: '--target x86_64-apple-darwin'
+            args: "--target x86_64-apple-darwin"
           - name: macos-arm64
             target: aarch64-apple-darwin
             os: macos-latest
-            args: '--target aarch64-apple-darwin'
+            args: "--target aarch64-apple-darwin"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - name: setup node
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: lts/*
+          cache: pnpm
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
         with:
           targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2
+        with:
+          shared-key: release
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061  # v4
         with:
           version: 10
-          
-      - name: install dependencies (ubuntu only)
+
+      - name: Install dependencies (Ubuntu)
         if: matrix.name == 'linux-amd64'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: install dependencies (macos only)
+      - name: Install dependencies (macOS)
         if: matrix.name == 'macos-amd64' || matrix.name == 'macos-arm64'
         run: |
           brew uninstall cmake
@@ -63,18 +77,19 @@ jobs:
           brew extract --version=3.31.1 cmake $USER/local-cmake
           brew install $USER/local-cmake/cmake@3.31.1
 
-      - name: install frontend dependencies
-        run: pnpm install
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build and publish Tauri app
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa  # action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
-          releaseName: 'Mesh Organiser v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
+          tagName: v__VERSION__
+          releaseName: "Mesh Organiser v__VERSION__"
+          releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
