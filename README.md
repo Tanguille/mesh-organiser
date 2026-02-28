@@ -77,6 +77,7 @@ The app knows 4 layers of organisation:
 ## Credits
 
 Developed by [Sims](https://github.com/suchmememanyskill)
+Forked by [Tanguille](https://github.com/tanguille)
 
 - With development help from [dorkeline](https://github.com/dorkeline) and Ajadaz
 - With testing help from atomique13, ioan18 and einso
