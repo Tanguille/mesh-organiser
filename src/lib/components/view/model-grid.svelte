@@ -75,7 +75,10 @@
     };
 
     const readableOrder = $derived(readableOrders[configuration.order_option_models]);
-    props.modelStream.setOrderBy(convertOrderOptionModelsToEnum(configuration.order_option_models));
+
+    $effect(() => {
+        props.modelStream.setOrderBy(convertOrderOptionModelsToEnum(configuration.order_option_models));
+    });
 
     function onSearchInput(e : Event)
     {

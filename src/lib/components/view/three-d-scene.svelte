@@ -40,7 +40,7 @@
 
 {#if props.geometry}
     <T.PerspectiveCamera
-        makeDefault
+        makeDefault={true as unknown as undefined}
         position={[position_x, position_y, position_z]}
         oncreate={(ref) => {
             ref.lookAt(0, 0, 0)
