@@ -39,8 +39,9 @@
 </script>
 
 {#if props.geometry}
+    {@const makeDefaultCamera = true as unknown as undefined}
     <T.PerspectiveCamera
-        makeDefault
+        makeDefault={makeDefaultCamera}
         position={[position_x, position_y, position_z]}
         oncreate={(ref) => {
             ref.lookAt(0, 0, 0)
