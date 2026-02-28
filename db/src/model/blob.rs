@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Serialize, Clone, PartialEq, Eq)]
 pub enum FileType {
@@ -32,7 +32,7 @@ impl Blob {
 }
 
 impl FileType {
-    pub fn from_pathbuf(path: &PathBuf) -> FileType {
+    pub fn from_pathbuf(path: &Path) -> FileType {
         match path.extension() {
             Some(ext) => FileType::from_extension(&ext.to_string_lossy()),
             None => FileType::Unknown,
@@ -73,69 +73,38 @@ impl FileType {
     }
 
     pub fn is_zipped(&self) -> bool {
-        match self {
-            FileType::ZippedStl => true,
-            FileType::ZippedObj => true,
-            FileType::ZippedGcode => true,
-            FileType::ZippedStep => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FileType::ZippedStl | FileType::ZippedObj | FileType::ZippedGcode | FileType::ZippedStep
+        )
     }
 
     pub fn is_stl(&self) -> bool {
-        match self {
-            FileType::Stl => true,
-            FileType::ZippedStl => true,
-            _ => false,
-        }
+        matches!(self, FileType::Stl | FileType::ZippedStl)
     }
 
     pub fn is_obj(&self) -> bool {
-        match self {
-            FileType::Obj => true,
-            FileType::ZippedObj => true,
-            _ => false,
-        }
+        matches!(self, FileType::Obj | FileType::ZippedObj)
     }
 
     pub fn is_3mf(&self) -> bool {
-        match self {
-            FileType::Threemf => true,
-            _ => false,
-        }
+        matches!(self, FileType::Threemf)
     }
 
     pub fn is_step(&self) -> bool {
-        match self {
-            FileType::Step => true,
-            FileType::ZippedStep => true,
-            _ => false,
-        }
+        matches!(self, FileType::Step | FileType::ZippedStep)
     }
 
     pub fn is_gcode(&self) -> bool {
-        match self {
-            FileType::Gcode => true,
-            FileType::ZippedGcode => true,
-            _ => false,
-        }
+        matches!(self, FileType::Gcode | FileType::ZippedGcode)
     }
 
     pub fn is_unsupported(&self) -> bool {
-        match self {
-            FileType::Unknown => true,
-            _ => false,
-        }
+        matches!(self, FileType::Unknown)
     }
 
     pub fn is_zippable(&self) -> bool {
-        match self {
-            FileType::Stl => true,
-            FileType::Obj => true,
-            FileType::Step => true,
-            FileType::Gcode => true,
-            _ => false,
-        }
+        matches!(self, FileType::Stl | FileType::Obj | FileType::Step | FileType::Gcode)
     }
 
     pub fn to_zip(&self) -> FileType {
@@ -159,28 +128,24 @@ impl FileType {
     }
 
     pub fn is_supported_by_thumbnail_gen(&self) -> bool {
-        match self {
-            FileType::Stl => true,
-            FileType::ZippedStl => true,
-            FileType::Obj => true,
-            FileType::ZippedObj => true,
-            FileType::Gcode => true,
-            FileType::ZippedGcode => true,
-            FileType::Step => true,
-            FileType::ZippedStep => true,
-            FileType::Threemf => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FileType::Stl
+                | FileType::ZippedStl
+                | FileType::Obj
+                | FileType::ZippedObj
+                | FileType::Gcode
+                | FileType::ZippedGcode
+                | FileType::Step
+                | FileType::ZippedStep
+                | FileType::Threemf
+        )
     }
 
     pub fn is_importable(&self) -> bool {
-        match self {
-            FileType::Stl => true,
-            FileType::Obj => true,
-            FileType::Gcode => true,
-            FileType::Step => true,
-            FileType::Threemf => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FileType::Stl | FileType::Obj | FileType::Gcode | FileType::Step | FileType::Threemf
+        )
     }
 }
