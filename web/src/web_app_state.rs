@@ -1,16 +1,13 @@
 use std::path::PathBuf;
 
-use service::{AppState, Configuration};
+use service::AppState;
+
 pub struct WebAppState {
     pub app_state: AppState,
     pub port: u16,
 }
 
 impl WebAppState {
-    pub fn get_configuration(&self) -> Configuration {
-        self.app_state.get_configuration()
-    }
-
     pub fn get_image_dir(&self) -> PathBuf {
         self.app_state.get_image_dir()
     }

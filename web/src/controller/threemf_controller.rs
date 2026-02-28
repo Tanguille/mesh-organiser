@@ -4,13 +4,13 @@ use crate::{
 };
 use axum::extract::Path;
 use axum::extract::State;
-use axum::{Json, response::Response};
 use axum::{
-    Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+    Router,
 };
+use axum::{response::Response, Json};
 use axum_login::login_required;
 use db::model_db;
 

@@ -3,11 +3,11 @@ use crate::user::Backend;
 use crate::{user::AuthSession, web_app_state::WebAppState};
 use axum::extract::Path;
 use axum::{
-    Json, Router,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
+    Json, Router,
 };
 use axum_login::login_required;
 use db::model::user::UserPermissions;

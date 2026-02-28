@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 
 pub fn random_hex_32() -> String {
     let mut bytes = [0u8; 16];
