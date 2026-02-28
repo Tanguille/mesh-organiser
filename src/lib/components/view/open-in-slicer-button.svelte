@@ -15,6 +15,7 @@
     }
 
     const props: { models : Model|Model[], class?: ClassValue, onOpen?: Function } = $props();
+    const rootProps = props;
     const slicerApi = getContainer().require<ISlicerApi>(ISlicerApi);
     const sidebarApi = getContainer().optional<ISidebarStateApi>(ISidebarStateApi);
     let slicers = $state<SlicerEntry[]>([]);
@@ -59,8 +60,8 @@
 {:else}
     <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-            {#snippet child({ props: buttonProps })}
-                <Button {...buttonProps} class={props.class}><Slice /> Open in slicer</Button>
+            {#snippet child({ props })}
+                <Button {...props} class={rootProps.class}><Slice /> Open in slicer</Button>
             {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start">

@@ -36,8 +36,7 @@
     const props: { group: Group; class?: ClassValue; settingsVertical?: boolean, onDelete?: Function } = $props();
     const tracked_group = $derived(props.group);
     let deleted = $state(false);
-    const initialSettingsVertical = props.settingsVertical ?? false;
-    let editMode = $derived(!initialSettingsVertical);
+    let editMode = $state(!props.settingsVertical);
     
     const links = $derived.by(() => {
         if (!tracked_group) 

@@ -119,10 +119,7 @@
     };
 
     const readableOrder = $derived(readableOrders[configuration.order_option_groups]);
-
-    $effect(() => {
-        props.groupStream.setOrderBy(convertOrderOptionGroupsToEnum(configuration.order_option_groups));
-    });
+    props.groupStream.setOrderBy(convertOrderOptionGroupsToEnum(configuration.order_option_groups));
 
     const interval = setInterval(handleScroll, 1000);
 
