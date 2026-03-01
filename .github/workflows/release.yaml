@@ -2,6 +2,16 @@ name: publish
 
 on:
   workflow_dispatch:
+    inputs:
+      releaseType:
+        description: 'Release type'
+        required: true
+        default: 'publish'
+        type: choice
+        options:
+          - publish
+          - draft
+          - build-only
   push:
     tags:
       - "v*"
@@ -83,15 +93,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build and publish Tauri app
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa  # action-v0.6.1
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: "Mesh Organiser v__VERSION__"
+          tagName: ${{ github.event.inputs.releaseType == 'build-only' && '' || 'v__VERSION__' }}
+          releaseName: ${{ github.event.inputs.releaseType == 'build-only' && '' || 'Mesh Organiser v__VERSION__' }}
           releaseBody: "See the assets to download this version and install."
-          releaseDraft: true
+          releaseDraft: ${{ github.event.inputs.releaseType == 'draft' }}
           prerelease: false
+          uploadWorkflowArtifacts: ${{ github.event.inputs.releaseType == 'build-only' }}
           args: ${{ matrix.args }}

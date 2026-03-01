@@ -1,6 +1,6 @@
 # Publishing a release
 
-This repo uses GitHub Actions to build the Tauri desktop app and attach artifacts to a **draft** GitHub release. You then publish the draft when ready.
+This repo uses GitHub Actions to build the Tauri desktop app. You can create a public release, a draft release, or just build artifacts without creating a release.
 
 ## What you need to do
 
@@ -24,23 +24,35 @@ Without these, builds and releases still work; only the updater signature is ski
 
 ### 3. Run the release workflow
 
-Tag-triggered
+#### Option A: Manual dispatch (recommended)
+
+1. Go to **Actions** → **publish** workflow → **Run workflow**
+2. Choose **Release type**:
+   - **publish** – Creates a public release immediately
+   - **draft** – Creates a draft release for review before publishing
+   - **build-only** – Builds artifacts only, no release created (artifacts available in Actions run)
+3. Click **Run workflow**
+
+#### Option B: Tag-triggered
 
 - Set the version in `src-tauri/tauri.conf.json` (e.g. `1.0.0`).
 - Commit, push, then create and push a tag that matches:
   `git tag v1.0.0 && git push origin v1.0.0`
-- The **publish** workflow runs and creates/updates a draft release for that tag. Publish the draft when ready.
+- This creates a **public** release automatically.
 
 ### 4. After the run
 
+For draft releases:
 - Find the draft release under **Releases**.
 - Confirm all expected platform assets (Windows, Linux, macOS) are attached.
 - Click **Publish release** to make it public.
 
+For build-only:
+- Download artifacts from the **Actions** run page (under "Artifacts").
+
 ## Workflows
 
-- **publish** (`release.yaml`) – Builds the app and creates/updates a **draft** release with artifacts. Trigger: manual or push of tag `v*`.
-- **force-build** (`force-build.yml`) – Builds only and uploads artifacts as workflow artifacts (no release). Use for testing the build pipeline.
+- **publish** (`release.yaml`) – Builds the app and creates a release or artifacts. Trigger: manual (workflow_dispatch) or push of tag `v*`.
 
 ## Notes
 
