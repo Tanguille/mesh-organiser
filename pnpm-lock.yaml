@@ -67,8 +67,8 @@ importers:
         version: https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/cd9967b4e50e0ee07d511d481f525a97d98a0876
     devDependencies:
       '@lucide/svelte':
-        specifier: ^0.575.0
-        version: 0.575.0(svelte@5.53.6)
+        specifier: ^0.577.0
+        version: 0.577.0(svelte@5.53.6)
       '@sveltejs/adapter-static':
         specifier: ^3.0.10
         version: 3.0.10(@sveltejs/kit@2.53.4(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.53.6)(vite@8.0.0-beta.16(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.53.6)(typescript@5.9.3)(vite@8.0.0-beta.16(esbuild@0.27.3)(jiti@2.6.1)))
@@ -329,8 +329,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lucide/svelte@0.575.0':
-    resolution: {integrity: sha512-FEFp/0McZwsjBqh1Dn8H+UBm1yHFQYk+utuVMFDw57155+wz2XMoc1pw027ylCPzs+bi14UEXYKbekFhuJKtnw==}
+  '@lucide/svelte@0.577.0':
+    resolution: {integrity: sha512-0P6mkySd2MapIEgq08tADPmcN4DHndC/02PWwaLkOerXlx5Sv9aT4BxyXLIY+eccr0g/nEyCYiJesqS61YdBZQ==}
     peerDependencies:
       svelte: ^5
 
@@ -1431,7 +1431,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lucide/svelte@0.575.0(svelte@5.53.6)':
+  '@lucide/svelte@0.577.0(svelte@5.53.6)':
     dependencies:
       svelte: 5.53.6
 
