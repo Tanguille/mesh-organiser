@@ -1,6 +1,7 @@
 use std::{panic, path::PathBuf, sync::Arc};
 
 use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
+use futures::future::try_join_all;
 use serde::Serialize;
 use tauri::{
     AppHandle, State,
@@ -8,7 +9,11 @@ use tauri::{
     ipc::Response,
 };
 use tauri_plugin_http::reqwest::{self, cookie::Jar};
-use tokio::{fs::File, io::AsyncWriteExt, task::JoinSet};
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufReader},
+    task::JoinSet,
+};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use service::{
@@ -76,15 +81,19 @@ async fn download_files_to_temp_dir(
     user_hash: &str,
 ) -> Result<(PathBuf, Vec<PathBuf>), ApplicationError> {
     let temp_dir = get_temp_dir("download");
-    let mut paths = Vec::new();
-
-    for sha256 in sha256s {
-        let url = format!(
-            "{base_url}/api/v1/blobs/{sha256}/download?user_id={user_id}&user_hash={user_hash}"
-        );
-        paths.push(download_file(&url, &temp_dir).await?);
-    }
-
+    let urls: Vec<String> = sha256s
+        .iter()
+        .map(|sha256| {
+            format!(
+                "{base_url}/api/v1/blobs/{sha256}/download?user_id={user_id}&user_hash={user_hash}"
+            )
+        })
+        .collect();
+    let download_futures: Vec<_> = urls
+        .iter()
+        .map(|url| download_file(url, &temp_dir))
+        .collect();
+    let paths = try_join_all(download_futures).await?;
     Ok((temp_dir, paths))
 }
 
@@ -99,8 +108,8 @@ pub async fn download_files_and_open_in_folder(
     let (temp_dir, model_paths) =
         download_files_to_temp_dir(sha256s, base_url, user_id, user_hash).await?;
 
-    // TODO: This is really really inefficient and slow
     if as_zip {
+        const COPY_BUF_SIZE: usize = 256 * 1024; // 256 KiB for fewer syscalls
         let zip_path = temp_dir.join("export.zip");
         let mut file = File::create(&zip_path).await?;
         let mut writer = ZipFileWriter::with_tokio(&mut file);
@@ -114,10 +123,11 @@ pub async fn download_files_and_open_in_folder(
             let builder = ZipEntryBuilder::new(file_name.into(), Compression::Deflate);
             let mut stream_writer = writer.write_entry_stream(builder).await?;
 
-            let mut model_file = File::open(&model_path).await?.compat();
-            futures::io::copy(&mut model_file, &mut stream_writer).await?;
+            let model_file = File::open(&model_path).await?;
+            let mut reader = BufReader::with_capacity(COPY_BUF_SIZE, model_file).compat();
+            futures::io::copy(&mut reader, &mut stream_writer).await?;
             stream_writer.close().await?;
-            drop(model_file);
+            drop(reader);
             let _ = std::fs::remove_file(&model_path);
         }
 

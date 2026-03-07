@@ -1,4 +1,4 @@
-use std::cmp::Reverse;
+use std::{cmp::Reverse, collections::HashSet};
 
 use indexmap::IndexMap;
 use itertools::{Itertools, join};
@@ -40,9 +40,13 @@ pub struct GroupFilterOptions {
     pub page_size: u32,
     pub include_ungrouped_models: bool,
     pub allow_incomplete_groups: bool,
+    /// When true and filters are applied, keep groups that only contain matching models
+    /// (don't re-fetch full groups). When false, re-fetch so each group shows all its models.
+    pub split_incomplete_groups: bool,
 }
 
-// TODO: This is insanely inefficient
+/// Builds group list from a flat model list. Main cost is typically the upstream fetch of all
+/// models; label dedup is O(1) per model via HashSet.
 fn convert_model_list_to_groups(
     models: Vec<Model>,
     include_ungrouped_models: bool,
@@ -78,14 +82,14 @@ fn convert_model_list_to_groups(
 
             meta
         });
-        // TODO: Figure out a better way to do this
-        group.flags |= unsafe { ModelFlags::from_bits(model.flags.bits()).unwrap_unchecked() };
 
+        group.flags |= ModelFlags::from_bits_truncate(model.flags.bits());
+
+        let mut existing_label_ids: HashSet<i64> = group.labels.iter().map(|l| l.id).collect();
         for label in &model.labels {
-            if group.labels.iter().any(|f| f.id == label.id) {
+            if !existing_label_ids.insert(label.id) {
                 continue;
             }
-
             group.labels.push(label.clone());
         }
 
@@ -95,7 +99,8 @@ fn convert_model_list_to_groups(
     index_map.into_values().collect()
 }
 
-// TODO: This should probably not return the entire model group, but just the meta and counts
+/// Returns full group list (meta, models, labels, resource). Callers that only need meta + counts
+/// could be served by a future summary endpoint to reduce payload and DB load.
 pub async fn get_groups(
     db: &DbContext,
     user: &User,
@@ -128,10 +133,13 @@ pub async fn get_groups(
         &group_resource_map,
     );
 
-    // It's possible we don't have the entire group here. Re-fetching groups
-    if (filtered_on_labels || filtered_on_text || filtered_on_models)
+    // When filters were applied, we may have only a subset of each group's models. Re-fetch full
+    // groups unless the caller allows incomplete groups or wants to keep filtered groups as-is.
+    let re_fetch_full_groups = (filtered_on_labels || filtered_on_text || filtered_on_models)
         && !options.allow_incomplete_groups
-    {
+        && !options.split_incomplete_groups;
+
+    if re_fetch_full_groups {
         let group_ids: Vec<i64> = groups
             .iter()
             .filter(|f| f.meta.id >= 0)
@@ -150,8 +158,6 @@ pub async fn get_groups(
             },
         )
         .await?;
-
-        // TODO: Make option to split off non-complete groups into their own groups
 
         groups = convert_model_list_to_groups(models.items, false, &group_resource_map);
         groups.extend(fake_models);
@@ -219,10 +225,9 @@ pub async fn set_group_id_on_models(
     model_ids: Vec<i64>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    // TODO: Remove clone
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
-    let models = model_db::get_models_via_ids(db, user, model_ids.clone()).await?;
+    let models = model_db::get_models_via_ids(db, user, model_ids).await?;
     let mut old_group_ids: Vec<i64> = models
         .iter()
         .filter_map(|m| m.group.as_ref().map(|g| g.id))
@@ -240,7 +245,7 @@ pub async fn set_group_id_on_models(
         old_group_ids.push(gid);
     }
 
-    let ids_placeholder = join(model_ids.iter(), ",");
+    let ids_placeholder = join(models.iter().map(|m| m.id), ",");
 
     let formatted_query = format!(
         "UPDATE models
