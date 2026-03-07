@@ -1,5 +1,5 @@
 [workspace]
-members = ["db", "service", "web", "src-tauri"]
+members = ["db", "service", "web", "src-tauri", "patch/libmeshthumbnail"]
 resolver = "2"
 
 [workspace.lints.rust]

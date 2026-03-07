@@ -1,8 +1,8 @@
 use axum::{
-    Router,
     extract::{Path, State},
     response::Html,
     routing::get,
+    Router,
 };
 use tokio::fs;
 use tower_http::services::ServeFile;

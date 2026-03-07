@@ -45,9 +45,9 @@ fn parse_stl_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
         }
     }
 
-    return Err(MeshThumbnailError::InternalError(String::from(
+    Err(MeshThumbnailError::InternalError(String::from(
         "Failed to find .stl model in zip",
-    )));
+    )))
 }
 
 // https://github.com/asny/three-d-asset/blob/main/src/io/stl.rs#L9
@@ -64,8 +64,5 @@ fn parse_stl_inner(stl: &IndexedMesh) -> Result<Mesh, MeshThumbnailError> {
         .flat_map(|face| face.vertices.map(|idx| idx as u32))
         .collect();
 
-    Ok(Mesh {
-        vertices: vertices,
-        indices: indices,
-    })
+    Ok(Mesh { vertices, indices })
 }

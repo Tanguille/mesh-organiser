@@ -19,10 +19,8 @@ fn parse_3mf(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
 
     let mut all_meshes: Vec<&threemf::Mesh> = mfmodel
         .iter()
-        .map(|f| f.resources.object.iter())
-        .flat_map(|f| f)
-        .filter(|predicate| predicate.mesh.is_some())
-        .map(|f| f.mesh.as_ref().unwrap())
+        .flat_map(|f| f.resources.object.iter())
+        .filter_map(|f| f.mesh.as_ref())
         .collect();
 
     all_meshes.sort_by(|a, b| {
@@ -33,7 +31,7 @@ fn parse_3mf(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
             .reverse()
     });
 
-    if all_meshes.len() <= 0 {
+    if all_meshes.is_empty() {
         return Err(MeshThumbnailError::InternalError(String::from(
             "No meshes found in 3mf model",
         )));
@@ -61,6 +59,6 @@ fn parse_3mf(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
 
     Ok(Mesh {
         vertices: positions,
-        indices: indices,
+        indices,
     })
 }

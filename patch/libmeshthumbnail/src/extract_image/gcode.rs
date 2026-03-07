@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use base64::{Engine, prelude::BASE64_STANDARD};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use image::{DynamicImage, ImageReader};
 use zip::ZipArchive;
 
@@ -70,7 +70,7 @@ where
 
     for line in buffered_reader.lines().map_while(Result::ok) {
         if line.starts_with("; thumbnail begin") {
-            let pixel_format = match line.split(" ").skip(3).next() {
+            let pixel_format = match line.split(" ").nth(3) {
                 Some(s) => s,
                 None => continue,
             };
@@ -80,8 +80,8 @@ where
                 .map(|f| f.parse().unwrap_or_default())
                 .collect();
 
-            gcode_img_width = pixel_format_unpacked.get(0).unwrap_or(&0).clone();
-            gcode_img_height = pixel_format_unpacked.get(1).unwrap_or(&0).clone();
+            gcode_img_width = *pixel_format_unpacked.first().unwrap_or(&0);
+            gcode_img_height = *pixel_format_unpacked.get(1).unwrap_or(&0);
             image = String::from("");
 
             in_gcode_section = gcode_img_width > 0 && gcode_img_height > 0;
@@ -107,7 +107,7 @@ where
         }
     }
 
-    gcode_images.sort_by(|a, b| b.area().cmp(&a.area()));
+    gcode_images.sort_by_key(|b| std::cmp::Reverse(b.area()));
     println!("Found {} thumbnails in gcode file", gcode_images.len());
 
     let largest_image = match gcode_images.first() {
@@ -128,5 +128,5 @@ where
         .with_guessed_format()?
         .decode()?;
 
-    return Ok(step1);
+    Ok(step1)
 }
