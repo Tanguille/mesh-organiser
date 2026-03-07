@@ -23,8 +23,7 @@ use super::app_state::AppState;
 
 pub fn get_temp_dir(action: &str) -> PathBuf {
     let temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_{}_action_{}",
-        action,
+        "meshorganiser_{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
     std::fs::create_dir(&temp_dir).unwrap();
@@ -153,7 +152,7 @@ pub async fn export_zip_to_temp_folder(
         let cleansed_name = cleanse_evil_from_name(&model.name);
         let extension = convert_zip_to_extension(&model.blob.filetype);
         let builder = ZipEntryBuilder::new(
-            format!("{}.{}", cleansed_name, extension).into(),
+            format!("{cleansed_name}.{extension}").into(),
             Compression::Deflate,
         );
         let mut stream_writer = writer.write_entry_stream(builder).await?;
@@ -227,10 +226,10 @@ pub fn ensure_unique_file(
     extension: &str,
 ) -> PathBuf {
     let mut counter = 1;
-    let mut new_file_name = base_path.join(format!("{}.{}", file_name, extension));
+    let mut new_file_name = base_path.join(format!("{file_name}.{extension}"));
 
     while new_file_name.exists() {
-        new_file_name = base_path.join(format!("{}_{}.{}", file_name, counter, extension));
+        new_file_name = base_path.join(format!("{file_name}_{counter}.{extension}"));
         counter += 1;
     }
 

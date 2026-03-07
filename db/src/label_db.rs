@@ -189,8 +189,7 @@ pub async fn get_unique_ids_from_label_ids(
     let ids_placeholder = join(label_ids.iter(), ",");
 
     let query = format!(
-        "SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ({}) AND label_user_id = ?",
-        ids_placeholder
+        "SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ({ids_placeholder}) AND label_user_id = ?"
     );
 
     let rows = sqlx::query(&query).bind(user.id).fetch_all(db).await?;
@@ -256,8 +255,7 @@ pub async fn remove_labels_from_models(
     let joined_models = join(model_ids.iter(), ",");
 
     let formatted_query = format!(
-        "DELETE FROM models_labels WHERE label_id IN ({}) AND model_id IN ({})",
-        joined_labels, joined_models
+        "DELETE FROM models_labels WHERE label_id IN ({joined_labels}) AND model_id IN ({joined_models})"
     );
 
     sqlx::query(&formatted_query).execute(db).await?;
@@ -282,10 +280,7 @@ pub async fn remove_all_labels_from_models(
 
     let joined_models = join(models.iter().map(|f| f.id), ",");
 
-    let formatted_query = format!(
-        "DELETE FROM models_labels WHERE model_id IN ({})",
-        joined_models
-    );
+    let formatted_query = format!("DELETE FROM models_labels WHERE model_id IN ({joined_models})");
 
     sqlx::query(&formatted_query).execute(db).await?;
 
@@ -502,8 +497,7 @@ pub async fn set_last_updated_on_labels(
     let ids_placeholder = join(label_ids.iter(), ",");
 
     let query = format!(
-        "UPDATE labels SET label_last_modified = ? WHERE label_id IN ({}) AND label_user_id = ?",
-        ids_placeholder
+        "UPDATE labels SET label_last_modified = ? WHERE label_id IN ({ids_placeholder}) AND label_user_id = ?"
     );
 
     sqlx::query(&query)

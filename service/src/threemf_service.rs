@@ -229,7 +229,7 @@ fn extract_models_inner(
                 .unwrap_or_else(|| format!("object_{}", obj.id)),
         };
 
-        let stl_path = temp_dir.join(format!("{}.stl", obj_name));
+        let stl_path = temp_dir.join(format!("{obj_name}.stl"));
 
         let mut triangles = Vec::new();
 

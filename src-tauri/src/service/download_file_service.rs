@@ -1,4 +1,8 @@
-use std::{env, fs::{self, File}, io::Write};
+use std::{
+    env,
+    fs::{self, File},
+    io::Write,
+};
 
 use chrono::Utc;
 use regex::Regex;
@@ -19,8 +23,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ApplicationError
 
     if !response.status().is_success() {
         return Err(ApplicationError::InternalError(format!(
-            "Failed to download file from url: {}. Status code {}.",
-            url,
+            "Failed to download file from url: {url}. Status code {}.",
             response.status()
         )));
     }
@@ -50,7 +53,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ApplicationError
         source_uri = Some(String::from("https://www.thingiverse.com/"));
     } else if url.starts_with("https://files.printables.com/media/prints/") {
         let id = String::from(url[42..].split("/").next().unwrap());
-        source_uri = Some(format!("https://www.printables.com/model/{}", id));
+        source_uri = Some(format!("https://www.printables.com/model/{id}"));
     } else if url.contains("nexprint") {
         let re = Regex::new(r#"filename="([^"]+)""#).unwrap();
         let decoded_url = decode(url).unwrap().into_owned();

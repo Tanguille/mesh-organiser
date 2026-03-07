@@ -27,7 +27,7 @@ fn main() {
             path_str
         };
 
-        let db_url = format!("sqlite:///{}", normalized_path);
+        let db_url = format!("sqlite:///{normalized_path}");
         println!("cargo:rustc-env=DATABASE_URL={db_url}");
         println!("cargo:rerun-if-changed=model.sqlite");
     } else {

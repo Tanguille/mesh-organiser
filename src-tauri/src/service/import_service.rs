@@ -369,7 +369,7 @@ where
     let new_extension = convert_extension_to_zip(file_type);
 
     let final_file_name =
-        PathBuf::from(app_state.get_model_dir()).join(format!("{}.{}", hash, &new_extension));
+        PathBuf::from(app_state.get_model_dir()).join(format!("{hash}.{new_extension}"));
 
     let mut file_handle = File::create(&final_file_name)?;
 
@@ -377,7 +377,7 @@ where
         let mut zip = zip::ZipWriter::new(file_handle);
         let options =
             SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        zip.start_file(format!("{}.{}", name, file_type.to_lowercase()), options)?;
+        zip.start_file(format!("{name}.{}", file_type.to_lowercase()), options)?;
         zip.write_all(&file_contents)?;
         zip.finish()?;
     } else {

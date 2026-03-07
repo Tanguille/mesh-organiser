@@ -27,14 +27,12 @@ fn render(
         Ok(Some(mesh)) => mesh,
         Ok(None) => {
             return Err(ServiceError::InternalError(format!(
-                "Could not generate thumbnail for model at path {:?}: unsupported format",
-                model_path
+                "Could not generate thumbnail for model at path {model_path:?}: unsupported format"
             )));
         }
-        Err(err) => {
+        Err(e) => {
             return Err(ServiceError::InternalError(format!(
-                "Error parsing model at path {:?} for thumbnail generation: {}",
-                model_path, err
+                "Error parsing model at path {model_path:?} for thumbnail generation: {e}"
             )));
         }
     };
@@ -67,8 +65,7 @@ fn process(
         f if f.ends_with(".gcode.zip") => "gcode.zip",
         _ => {
             return Err(ServiceError::InternalError(format!(
-                "Unsupported file extension for thumbnail generation: {:?}",
-                model_path
+                "Unsupported file extension for thumbnail generation: {model_path:?}"
             )));
         }
     };
@@ -97,8 +94,7 @@ fn process(
     }
 
     Err(ServiceError::InternalError(format!(
-        "Failed to generate thumbnail for model at path {:?}",
-        model_path
+        "Failed to generate thumbnail for model at path {model_path:?}"
     )))
 }
 

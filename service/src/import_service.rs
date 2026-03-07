@@ -529,14 +529,14 @@ where
 
         let final_file_name = app_state
             .get_model_dir()
-            .join(format!("{}.{}", hash, &new_extension));
+            .join(format!("{hash}.{new_extension}"));
 
         let mut file_handle = File::create(&final_file_name).await?;
 
         if is_zippable_file_extension(file_type) {
             let mut writer = ZipFileWriter::with_tokio(&mut file_handle);
             let builder = ZipEntryBuilder::new(
-                format!("{}.{}", name, file_type.to_lowercase()).into(),
+                format!("{name}.{}", file_type.to_lowercase()).into(),
                 async_zip::Compression::Deflate,
             );
 

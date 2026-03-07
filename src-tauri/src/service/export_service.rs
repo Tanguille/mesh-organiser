@@ -20,8 +20,7 @@ pub fn export_to_temp_folder(
     action: &str,
 ) -> Result<(PathBuf, Vec<PathBuf>), ApplicationError> {
     let temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_{}_action_{}",
-        action,
+        "meshorganiser_{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
     std::fs::create_dir(&temp_dir)?;
@@ -62,10 +61,10 @@ pub fn get_bytes_from_model(
 
 fn ensure_unique_file(base_path: &Path, file_name: &str, extension: &str) -> PathBuf {
     let mut counter = 1;
-    let mut new_file_name = base_path.join(format!("{}.{}", file_name, extension));
+    let mut new_file_name = base_path.join(format!("{file_name}.{extension}"));
 
     while new_file_name.exists() {
-        new_file_name = base_path.join(format!("{}_{}.{}", file_name, counter, extension));
+        new_file_name = base_path.join(format!("{file_name}_{counter}.{extension}"));
         counter += 1;
     }
 
