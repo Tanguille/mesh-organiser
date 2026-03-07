@@ -1,8 +1,10 @@
-use sqlx;
-use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::{Pool, Sqlite, migrate::MigrateDatabase, sqlite::SqlitePoolOptions};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{fs, path::PathBuf, time::Duration};
+
+use sqlx::{
+    self, Pool, Sqlite,
+    migrate::MigrateDatabase,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 pub type DbContext = Pool<Sqlite>;
 
@@ -65,13 +67,13 @@ fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
     }
 
     if !sqlite_backup_dir.exists() {
-        std::fs::create_dir_all(sqlite_backup_dir).expect("Failed to create backup directory");
+        fs::create_dir_all(sqlite_backup_dir).expect("Failed to create backup directory");
     }
 
     let backup_file_path = sqlite_backup_dir.join(format!("{}.sqlite", timestamp));
-    std::fs::copy(sqlite_path, &backup_file_path).expect("Failed to create backup");
+    fs::copy(sqlite_path, &backup_file_path).expect("Failed to create backup");
 
-    let mut backups: Vec<_> = std::fs::read_dir(sqlite_backup_dir)
+    let mut backups: Vec<_> = fs::read_dir(sqlite_backup_dir)
         .expect("Failed to read backup directory")
         .filter_map(|entry| {
             entry.ok().filter(|e| {
@@ -86,6 +88,6 @@ fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
     backups.sort_by_key(|entry| entry.metadata().and_then(|m| m.modified()).unwrap());
     while backups.len() > 5 {
         let oldest = backups.remove(0);
-        std::fs::remove_file(oldest.path()).expect("Failed to remove old backup");
+        fs::remove_file(oldest.path()).expect("Failed to remove old backup");
     }
 }

@@ -1,36 +1,32 @@
-use crate::{
-    user::{AuthSession, Backend},
-    web_app_state::WebAppState,
-};
 use async_zip::tokio::read::seek::ZipFileReader;
 use axum::{
-    Router,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post},
-};
-use axum::{
+    Json, Router,
     body::Body,
     extract::{Path, State},
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::{get, post},
 };
-use axum_login::login_required;
-
-use crate::error::ApplicationError;
-use axum::Json;
 use axum_extra::extract::Query;
+use axum_login::login_required;
+use serde::Deserialize;
+use tokio::{fs::File, io::BufReader};
+use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
+
 use db::{
     model::{blob::Blob, user::User},
     model_db, user_db,
 };
-use serde::Deserialize;
-use service::export_service;
 use service::{
-    cleanse_evil_from_name, convert_zip_to_extension, export_service::get_model_path_for_blob,
-    is_zipped_file_extension,
+    cleanse_evil_from_name, convert_zip_to_extension, export_service,
+    export_service::get_model_path_for_blob, is_zipped_file_extension,
 };
-use tokio::{fs::File, io::BufReader};
-use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
+
+use crate::{
+    error::ApplicationError,
+    user::{AuthSession, Backend},
+    web_app_state::WebAppState,
+};
 
 pub fn router() -> Router<WebAppState> {
     Router::new().nest(

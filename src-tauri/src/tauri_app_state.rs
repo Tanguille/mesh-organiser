@@ -3,11 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use db::model::user::User;
 use serde::{Deserialize, Serialize};
-use service::{AppState, Configuration};
 use tauri::AppHandle;
 use tauri_plugin_deep_link::DeepLinkExt;
+
+use db::model::user::User;
+use service::{AppState, Configuration};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AccountLinkEmit {

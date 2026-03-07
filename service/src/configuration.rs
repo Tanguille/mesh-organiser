@@ -1,5 +1,4 @@
-use std::num::NonZeroUsize;
-use std::thread;
+use std::{num::NonZeroUsize, thread};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;

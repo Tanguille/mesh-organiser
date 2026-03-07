@@ -1,11 +1,13 @@
-use super::{Slicer, open_custom_slicer};
-use crate::app_state::AppState;
-use crate::service_error::ServiceError;
-use crate::slicer_service::open_with_paths;
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use winreg::*;
+
+use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_with_paths};
+
+use super::{Slicer, open_custom_slicer};
 
 impl Slicer {
     pub fn is_installed(&self) -> bool {

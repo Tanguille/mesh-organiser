@@ -1,17 +1,16 @@
 use std::path::PathBuf;
 
 use tauri::AppHandle;
+use tauri_plugin_shell::{ShellExt, process::Command};
 use tokio::sync::mpsc::error::TryRecvError;
 
 use crate::{
+    db::model::{self, Model},
     error::ApplicationError,
     service::import_state::{ImportState, ImportStatus},
 };
 
 use super::app_state::AppState;
-use crate::db::model::{self, Model};
-
-use tauri_plugin_shell::{ShellExt, process::Command};
 
 pub async fn generate_all_thumbnails(
     app_state: &AppState,

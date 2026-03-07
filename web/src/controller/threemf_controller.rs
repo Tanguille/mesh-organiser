@@ -1,21 +1,20 @@
-use crate::{
-    user::{AuthSession, Backend},
-    web_app_state::WebAppState,
-};
-use axum::extract::Path;
-use axum::extract::State;
-use axum::{Json, response::Response};
 use axum::{
-    Router,
+    Json, Router,
+    extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use axum_login::login_required;
-use db::model_db;
 
-use crate::error::ApplicationError;
+use db::model_db;
 use service::threemf_service;
+
+use crate::{
+    error::ApplicationError,
+    user::{AuthSession, Backend},
+    web_app_state::WebAppState,
+};
 
 pub fn router() -> Router<WebAppState> {
     Router::new().nest(

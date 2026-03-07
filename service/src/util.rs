@@ -1,10 +1,11 @@
-use regex::Regex;
 use std::{
     ffi::OsStr,
     io::Read,
     path::{Path, PathBuf},
     process::Command,
 };
+
+use regex::Regex;
 
 use crate::service_error::ServiceError;
 

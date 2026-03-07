@@ -1,10 +1,11 @@
 use std::{panic, path::PathBuf};
 
-use db::{blob_db, model::blob::Blob};
 use image::imageops::FilterType::Triangle;
 use libmeshthumbnail::{extract_image, parse_model, render};
 use tokio::task::JoinSet;
 use vek::{Vec2, Vec3};
+
+use db::{blob_db, model::blob::Blob};
 
 use crate::{
     AppState, ServiceError,

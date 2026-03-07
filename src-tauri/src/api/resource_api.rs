@@ -1,3 +1,5 @@
+use tauri::State;
+
 use db::{
     model::{
         model_group::ModelGroup,
@@ -6,7 +8,6 @@ use db::{
     random_hex_32, resource_db, time_now,
 };
 use service::resource_service;
-use tauri::State;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 

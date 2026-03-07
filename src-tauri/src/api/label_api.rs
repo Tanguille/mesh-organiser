@@ -1,3 +1,5 @@
+use tauri::State;
+
 use db::{
     label_db, label_keyword_db,
     model::{
@@ -6,7 +8,6 @@ use db::{
     },
     random_hex_32, time_now,
 };
-use tauri::State;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 

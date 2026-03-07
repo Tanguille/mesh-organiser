@@ -1,13 +1,11 @@
+use std::{env, fs::{self, File}, io::Write};
+
 use chrono::Utc;
 use regex::Regex;
 use serde::Serialize;
-use std::env;
-use std::fs::{self, File};
-use std::io::Write;
 use urlencoding::decode;
 
-use crate::error::ApplicationError;
-use crate::util::cleanse_evil_from_name;
+use crate::{error::ApplicationError, util::cleanse_evil_from_name};
 
 #[derive(Serialize)]
 pub struct DownloadResult {

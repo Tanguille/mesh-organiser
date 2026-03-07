@@ -1,9 +1,14 @@
-use crate::util::{cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension};
-use crate::{db::model::Model, error::ApplicationError};
-use chrono::Utc;
 use std::{
     fs::File,
     path::{Path, PathBuf},
+};
+
+use chrono::Utc;
+
+use crate::{
+    db::model::Model,
+    error::ApplicationError,
+    util::{cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension},
 };
 
 use super::app_state::AppState;
