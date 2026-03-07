@@ -150,7 +150,7 @@ mod get {
 
         response.headers_mut().insert(
             axum::http::header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", filename)
+            format!("attachment; filename=\"{filename}\"")
                 .parse()
                 .unwrap(),
         );
@@ -210,7 +210,7 @@ mod get {
         State(app_state): State<WebAppState>,
     ) -> Response {
         let base_dir = app_state.get_image_dir();
-        let src_file_path = base_dir.join(format!("{}.png", sha256));
+        let src_file_path = base_dir.join(format!("{sha256}.png"));
 
         let file = match File::open(src_file_path).await {
             Ok(f) => f,
@@ -294,7 +294,7 @@ mod get {
 
         response.headers_mut().insert(
             axum::http::header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", filename)
+            format!("attachment; filename=\"{filename}\"")
                 .parse()
                 .unwrap(),
         );
@@ -311,29 +311,26 @@ mod post {
         State(app_state): State<WebAppState>,
         Json(blob_sha256s): Json<Vec<String>>,
     ) -> Result<Response, ApplicationError> {
-        let mut model_ids = Vec::with_capacity(blob_sha256s.len());
         let user = auth_session.user.unwrap().to_user();
 
-        // TODO: This is slow, optimise later
-        for sha256 in blob_sha256s {
-            let id =
-                match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &sha256)
-                    .await
-                {
-                    Ok(Some(m)) => m,
-                    _ => return Ok(StatusCode::NOT_FOUND.into_response()),
-                };
+        let model_ids = match model_db::get_model_ids_via_sha256s(
+            &app_state.app_state.db,
+            &user,
+            &blob_sha256s,
+        )
+        .await
+        {
+            Ok(ids) => ids,
+            Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+        };
 
-            model_ids.push(id);
-        }
-        let model_ids_len = model_ids.len();
         let models =
             match model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await {
                 Ok(m) => m,
                 Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
             };
 
-        if models.len() != model_ids_len {
+        if models.len() != blob_sha256s.len() {
             return Ok(StatusCode::NOT_FOUND.into_response());
         }
 

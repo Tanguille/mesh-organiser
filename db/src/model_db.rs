@@ -65,8 +65,8 @@ pub async fn get_models(
 				blob_id, blob_sha256, blob_filetype, blob_size, blob_path,
                 GROUP_CONCAT(labels.label_id) AS label_ids,
                 models_group.group_id, group_name, group_created, group_resource_id, group_unique_global_id, group_last_modified
-         FROM models 
-         LEFT JOIN models_labels ON models.model_id = models_labels.model_id 
+         FROM models
+         LEFT JOIN models_labels ON models.model_id = models_labels.model_id
          LEFT JOIN labels ON models_labels.label_id = labels.label_id
          LEFT JOIN models_group ON models.model_group_id = models_group.group_id
 		 INNER JOIN blobs ON models.model_blob_id = blobs.blob_id
@@ -97,7 +97,7 @@ pub async fn get_models(
     }
 
     if let Some(text_search) = options.text_search {
-        let str = format!("%{}%", text_search);
+        let str = format!("%{text_search}%");
         seperated.push("(model_name LIKE ");
         seperated.push_bind_unseparated(str.clone());
         seperated.push_unseparated(" OR model_desc LIKE ");
@@ -113,7 +113,7 @@ pub async fn get_models(
         query_builder.push(format!("ORDER BY {} ", order_by.to_sql()));
     }
 
-    query_builder.push(format!("LIMIT {} OFFSET {}", options.page_size, offset));
+    query_builder.push(format!("LIMIT {} OFFSET {offset}", options.page_size));
 
     let query = query_builder.build();
 
@@ -296,10 +296,8 @@ pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(
 
     let ids_placeholder = join(ids.iter(), ",");
 
-    let query = format!(
-        "DELETE FROM models WHERE model_user_id = ? AND model_id IN ({})",
-        ids_placeholder
-    );
+    let query =
+        format!("DELETE FROM models WHERE model_user_id = ? AND model_id IN ({ids_placeholder})");
 
     sqlx::query(&query).bind(user.id).execute(db).await?;
 
@@ -324,8 +322,7 @@ pub async fn get_unique_ids_from_model_ids(
     let ids_placeholder = join(model_ids.iter(), ",");
 
     let query = format!(
-        "SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ({})",
-        ids_placeholder
+        "SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ({ids_placeholder})"
     );
 
     let rows = sqlx::query(&query).fetch_all(db).await?;
@@ -359,6 +356,48 @@ pub async fn get_model_id_via_sha256(
         Some(r) => Ok(Some(r.model_id.unwrap())),
         None => Ok(None),
     }
+}
+
+/// Resolve model IDs for a list of blob SHA256 hashes in one query. Returns IDs in the same order
+/// as `sha256s`. Fails with `DbError` if the number of found models does not match (e.g. unknown or inaccessible sha256).
+pub async fn get_model_ids_via_sha256s(
+    db: &DbContext,
+    user: &User,
+    sha256s: &[String],
+) -> Result<Vec<i64>, DbError> {
+    if sha256s.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = sha256s.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query_str = format!(
+        "SELECT model_id, blob_sha256 FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id \
+         WHERE blob_sha256 IN ({placeholders}) AND model_user_id = ?"
+    );
+
+    let mut q = sqlx::query(&query_str);
+    for sha in sha256s {
+        q = q.bind(sha);
+    }
+    let rows = q.bind(user.id).fetch_all(db).await?;
+
+    let sha_to_id: std::collections::HashMap<String, i64> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.get::<String, _>("blob_sha256"),
+                r.get::<i64, _>("model_id"),
+            )
+        })
+        .collect();
+
+    let model_ids: Vec<i64> = sha256s
+        .iter()
+        .map(|s| sha_to_id.get(s).copied())
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| DbError::RowNotFound)?;
+
+    Ok(model_ids)
 }
 
 pub async fn get_model_count(
