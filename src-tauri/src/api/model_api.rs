@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
-use crate::ImportState;
-use crate::TauriAppState;
 use crate::error::ApplicationError;
 use crate::tauri_import_state::import_state_new_tauri;
-use db::model::{ModelFlags, blob::Blob};
+use crate::ImportState;
+use crate::TauriAppState;
+use db::model::{blob::Blob, ModelFlags};
 use db::model_db;
 use db::model_db::{ModelFilterOptions, ModelOrderBy};
 use itertools::Itertools;
