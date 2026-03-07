@@ -14,6 +14,9 @@ use crate::{
     util::{random_hex_32, time_now},
 };
 
+/// Maximum page size to prevent memory exhaustion and unbounded queries
+const MAX_PAGE_SIZE: u32 = 1000;
+
 #[derive(Debug, PartialEq, EnumString)]
 pub enum ModelOrderBy {
     AddedAsc,
@@ -58,7 +61,9 @@ pub async fn get_models(
     user: &User,
     options: ModelFilterOptions,
 ) -> Result<PaginatedResponse<Model>, DbError> {
-    let offset = (options.page as i64 - 1) * options.page_size as i64;
+    // Enforce pagination limits to prevent unbounded queries
+    let page_size = options.page_size.min(MAX_PAGE_SIZE);
+    let offset = (options.page as i64 - 1) * page_size as i64;
 
     let mut query_builder = QueryBuilder::new(
         format!("SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
@@ -113,7 +118,7 @@ pub async fn get_models(
         query_builder.push(format!("ORDER BY {} ", order_by.to_sql()));
     }
 
-    query_builder.push(format!("LIMIT {} OFFSET {offset}", options.page_size));
+    query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));
 
     let query = query_builder.build();
 
@@ -173,7 +178,7 @@ pub async fn get_models(
 
     Ok(PaginatedResponse {
         page: options.page,
-        page_size: options.page_size,
+        page_size,
         items: models,
     })
 }
@@ -183,10 +188,12 @@ pub async fn get_models_via_ids(
     user: &User,
     ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
+    // Use MAX_PAGE_SIZE instead of u32::MAX to ensure bounded queries
+    // If more items are needed, multiple calls should be made
     let options = ModelFilterOptions {
         model_ids: Some(ids),
         page: 1,
-        page_size: u32::MAX,
+        page_size: MAX_PAGE_SIZE,
         ..Default::default()
     };
 

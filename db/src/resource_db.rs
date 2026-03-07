@@ -12,6 +12,9 @@ use crate::{
     random_hex_32, time_now,
 };
 
+/// Maximum page size to prevent memory exhaustion and unbounded queries
+const MAX_PAGE_SIZE: u32 = 1000;
+
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
     let rows = sqlx::query!(
         "SELECT resources.resource_id, resources.resource_name, resources.resource_flags, resources.resource_created, resources.resource_unique_global_id, resources.resource_last_modified
@@ -60,7 +63,7 @@ pub async fn get_groups_for_resource(
             group_ids: Some(rows.iter().map(|r| r.group_id.unwrap()).collect()),
             order_by: Some(GroupOrderBy::NameAsc),
             page: 1,
-            page_size: u32::MAX,
+            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )

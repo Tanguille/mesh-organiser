@@ -19,6 +19,9 @@ use crate::{
     util::time_now,
 };
 
+/// Maximum page size to prevent memory exhaustion and unbounded queries
+const MAX_PAGE_SIZE: u32 = 1000;
+
 #[derive(Debug, PartialEq, EnumString)]
 pub enum GroupOrderBy {
     CreatedAsc,
@@ -112,6 +115,8 @@ pub async fn get_groups(
 
     let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
 
+    // Enforce pagination limits to prevent unbounded queries
+    // Use MAX_PAGE_SIZE for fetching data, actual pagination happens in-memory
     let models = model_db::get_models(
         db,
         user,
@@ -121,7 +126,7 @@ pub async fn get_groups(
             label_ids: options.label_ids,
             text_search: options.text_search,
             page: 1,
-            page_size: u32::MAX,
+            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )
@@ -153,7 +158,7 @@ pub async fn get_groups(
             ModelFilterOptions {
                 group_ids: Some(group_ids),
                 page: 1,
-                page_size: u32::MAX,
+                page_size: MAX_PAGE_SIZE,
                 ..Default::default()
             },
         )
@@ -174,16 +179,18 @@ pub async fn get_groups(
         }
     }
 
-    let offset = ((options.page - 1) * options.page_size) as usize;
+    // Enforce pagination limits to prevent memory exhaustion
+    let page_size = options.page_size.min(MAX_PAGE_SIZE);
+    let offset = ((options.page - 1) * page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups
             .into_iter()
             .skip(offset)
-            .take(options.page_size as usize)
+            .take(page_size as usize)
             .collect(),
         page: options.page,
-        page_size: options.page_size,
+        page_size,
     })
 }
 
@@ -413,7 +420,7 @@ pub async fn get_group_via_id(
         ModelFilterOptions {
             group_ids: Some(vec![group_id]),
             page: 1,
-            page_size: u32::MAX,
+            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )
