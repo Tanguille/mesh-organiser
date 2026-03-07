@@ -6,6 +6,7 @@
 - Use `#[tauri::command]` for Tauri command handlers
 - Use sqlx for database queries
 - Enable clippy lints (checked in CI)
+- In `format!` / `format_args!`, prefer **inline names in braces** (`{var}`) when the value is already in a variable, so the string is self-explanatory. Example: `format!("IN ({placeholders})")` rather than `format!("IN ({})", placeholders)`. Do not introduce a variable only to use it in braces; keep the argument form when the value is an expression (e.g. `format!("IN ({})", join(ids, ","))`).
 
 ## Imports
 

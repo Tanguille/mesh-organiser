@@ -70,7 +70,7 @@ fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
         fs::create_dir_all(sqlite_backup_dir).expect("Failed to create backup directory");
     }
 
-    let backup_file_path = sqlite_backup_dir.join(format!("{}.sqlite", timestamp));
+    let backup_file_path = sqlite_backup_dir.join(format!("{timestamp}.sqlite"));
     fs::copy(sqlite_path, &backup_file_path).expect("Failed to create backup");
 
     let mut backups: Vec<_> = fs::read_dir(sqlite_backup_dir)

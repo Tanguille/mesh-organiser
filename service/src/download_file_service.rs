@@ -38,8 +38,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     if !response.status().is_success() {
         return Err(ServiceError::InternalError(format!(
-            "Failed to download file from url: {}. Status code {}.",
-            url,
+            "Failed to download file from url: {url}. Status code {}.",
             response.status()
         )));
     }
@@ -69,7 +68,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         source_uri = Some(String::from("https://www.thingiverse.com/"));
     } else if let Some(stripped) = url.strip_prefix("https://files.printables.com/media/prints/") {
         let id = String::from(stripped.split("/").next().unwrap());
-        source_uri = Some(format!("https://www.printables.com/model/{}", id));
+        source_uri = Some(format!("https://www.printables.com/model/{id}"));
     } else if url.contains("nexprint") {
         let re = Regex::new(r#"filename="([^"]+)""#).unwrap();
         let decoded_url = decode(url).unwrap().into_owned();

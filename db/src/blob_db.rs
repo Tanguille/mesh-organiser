@@ -109,9 +109,9 @@ pub async fn delete_blob(db: &DbContext, blob_id: i64) -> Result<(), DbError> {
 pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let dead_blob_rows = sqlx::query!(
         "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs
-            WHERE blob_id NOT IN 
-                (SELECT DISTINCT model_blob_id 
-                    FROM models 
+            WHERE blob_id NOT IN
+                (SELECT DISTINCT model_blob_id
+                    FROM models
                     WHERE model_blob_id IS NOT NULL)"
     )
     .fetch_all(db)

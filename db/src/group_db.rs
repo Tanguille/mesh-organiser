@@ -200,8 +200,7 @@ async fn get_unqiue_ids_from_group_ids(
     let ids = join(group_ids.iter(), ",");
 
     let query = format!(
-        "SELECT group_id, group_unique_global_id FROM models_group WHERE group_id IN ({})",
-        ids
+        "SELECT group_id, group_unique_global_id FROM models_group WHERE group_id IN ({ids})"
     );
 
     let rows = sqlx::query(&query).fetch_all(db).await?;
@@ -246,8 +245,7 @@ pub async fn set_group_id_on_models(
     let formatted_query = format!(
         "UPDATE models
          SET model_group_id = ?
-         WHERE model_id IN ({})",
-        ids_placeholder
+         WHERE model_id IN ({ids_placeholder})"
     );
 
     sqlx::query(&formatted_query)
