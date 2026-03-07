@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use image::{DynamicImage, ImageReader};
 use zip::ZipArchive;
 

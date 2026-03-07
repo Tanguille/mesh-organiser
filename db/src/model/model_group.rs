@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::{label::LabelMeta, resource::ResourceMeta, Model, ModelFlags};
+use super::{Model, ModelFlags, label::LabelMeta, resource::ResourceMeta};
 
 #[derive(Serialize, Clone)]
 pub struct ModelGroupMeta {
