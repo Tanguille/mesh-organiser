@@ -47,13 +47,13 @@ impl ImportStateEmitter for WebImportStateEmitter {
     }
 
     fn model_count_event(&self, status: &ImportState) {
-        if status.model_count == 0 && status.imported_models_count == 0 {
+        if status.model_count == 0 && status.imported_model_count == 0 {
             return;
         }
 
         println!(
             "Imported {}/{} models",
-            status.imported_models_count, status.model_count
+            status.imported_model_count, status.model_count
         );
     }
 
