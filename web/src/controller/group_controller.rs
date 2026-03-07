@@ -1,20 +1,27 @@
-use crate::error::ApplicationError;
-use crate::user::Backend;
-use crate::{user::AuthSession, web_app_state::WebAppState};
-use axum::extract::Path;
+use std::str::FromStr;
+
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
 use axum_login::login_required;
-use db::group_db::{GroupFilterOptions, GroupOrderBy};
-use db::model::model_group::ModelGroupMeta;
-use db::{group_db, random_hex_32, time_now};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+
+use db::{
+    group_db,
+    group_db::{GroupFilterOptions, GroupOrderBy},
+    model::model_group::ModelGroupMeta,
+    random_hex_32, time_now,
+};
+
+use crate::{
+    error::ApplicationError,
+    user::{AuthSession, Backend},
+    web_app_state::WebAppState,
+};
 
 pub fn router() -> Router<WebAppState> {
     Router::new().nest(

@@ -1,9 +1,9 @@
-pub mod mesh;
 pub mod error;
-pub mod parse_model;
 pub mod extract_image;
-pub mod scene;
+pub mod mesh;
+pub mod parse_model;
 pub mod render;
+pub mod scene;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

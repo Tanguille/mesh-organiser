@@ -1,21 +1,24 @@
-use crate::error::ApplicationError;
-use crate::user::Backend;
-use crate::{user::AuthSession, web_app_state::WebAppState};
-use axum::extract::Path;
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
 use axum_login::login_required;
+use serde::Deserialize;
+
 use db::{
     model::resource::{ResourceFlags, ResourceMeta},
     random_hex_32, resource_db, time_now,
 };
-use serde::Deserialize;
 use service::resource_service;
+
+use crate::{
+    error::ApplicationError,
+    user::{AuthSession, Backend},
+    web_app_state::WebAppState,
+};
 
 pub fn router() -> Router<WebAppState> {
     Router::new().nest(

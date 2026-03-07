@@ -1,39 +1,36 @@
-use crate::tauri_app_state::AccountLinkEmit;
-use crate::tauri_app_state::InitialState;
-use crate::tauri_app_state::TauriAppState;
-use crate::tauri_import_state::import_state_new_tauri;
-use arboard::Clipboard;
-use db::group_db;
-use db::model::blob::Blob;
-use db::model::user::User;
-use db::{model::model_group::ModelGroupMeta, model_db, user_db};
-use db::{random_hex_32, time_now};
-use error::ApplicationError;
-use serde::Serialize;
-use service::AppState;
-use service::Configuration;
-use service::StoredConfiguration;
-use service::ThreemfMetadata;
-use service::export_service;
-use service::import_state::ImportState;
-use service::stored_to_configuration;
-use service::{download_file_service, slicer_service::Slicer};
-use service::{threemf_service, thumbnail_service};
-use std::fs::File;
-use std::io::prelude::*;
 use std::{
+    fs::File,
+    io::prelude::*,
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
 };
+
+use arboard::Clipboard;
+use serde::Serialize;
 use strum::IntoEnumIterator;
-use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::{
-    WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
 use urlencoding::decode;
+
+use db::{
+    group_db, model::blob::Blob, model::model_group::ModelGroupMeta, model::user::User, model_db,
+    random_hex_32, time_now, user_db,
+};
+use service::{
+    AppState, Configuration, StoredConfiguration, ThreemfMetadata, download_file_service,
+    export_service, import_state::ImportState, slicer_service::Slicer, stored_to_configuration,
+    threemf_service, thumbnail_service,
+};
+
+use crate::{
+    error::ApplicationError,
+    tauri_app_state::{AccountLinkEmit, InitialState, TauriAppState},
+    tauri_import_state::import_state_new_tauri,
+};
 
 mod api;
 mod error;

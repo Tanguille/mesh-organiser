@@ -1,21 +1,18 @@
-mod base;
-use std::path::PathBuf;
-
-pub use base::*;
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 use crate::service_error::ServiceError;
 
 use super::app_state::AppState;
 
+mod base;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(target_os = "windows")]
 mod win;
 
-#[cfg(target_os = "linux")]
-mod linux;
-
-#[cfg(target_os = "macos")]
-mod macos;
+pub use base::*;
 
 pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
     if paths.is_empty() {

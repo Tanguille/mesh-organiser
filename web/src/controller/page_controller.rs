@@ -4,9 +4,10 @@ use axum::{
     response::Html,
     routing::get,
 };
-use db::{share_db, user_db};
 use tokio::fs;
 use tower_http::services::ServeFile;
+
+use db::{share_db, user_db};
 
 use crate::{error::ApplicationError, web_app_state::WebAppState};
 

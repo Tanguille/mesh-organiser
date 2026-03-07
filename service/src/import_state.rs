@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 
-use db::{group_db, model::user::User};
 use serde::Serialize;
 use strum::Display;
+
+use db::{group_db, model::user::User};
 
 use crate::{app_state::AppState, service_error::ServiceError};
 

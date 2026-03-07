@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use axum_login::{AuthUser as AxumAuthUser, AuthnBackend, UserId};
-use db::{db_context::DbContext, model::user::User, user_db};
 use password_auth::verify_password;
 use serde::{Deserialize, Serialize};
 use tokio::task;
+
+use db::{db_context::DbContext, model::user::User, user_db};
 
 use crate::error::ApplicationError;
 

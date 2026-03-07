@@ -1,7 +1,6 @@
+use std::{ffi::OsStr, io::Read, path::PathBuf, process::Command};
+
 use regex::Regex;
-use std::ffi::OsStr;
-use std::process::Command;
-use std::{io::Read, path::PathBuf};
 
 use crate::error::ApplicationError;
 

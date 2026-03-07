@@ -1,4 +1,9 @@
-use std::{env, fs::File, io::{self, Cursor, Write}, path::PathBuf};
+use std::{
+    env,
+    fs::File,
+    io::{self, Cursor, Write},
+    path::PathBuf,
+};
 
 use opencascade::{mesh::Mesher, primitives::Shape};
 use stl_io::{Triangle, Vector, Vertex};
@@ -6,10 +11,9 @@ use zip::ZipArchive;
 
 use crate::{error::MeshThumbnailError, mesh::Mesh};
 
-const TOLERANCE_DEFAULT : f64 = 0.01;
+const TOLERANCE_DEFAULT: f64 = 0.01;
 
-pub fn handle_step(path : &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError>
-{
+pub fn handle_step(path: &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError> {
     let path_str = path.to_string_lossy().to_lowercase();
 
     if path_str.ends_with(".step.zip") || path_str.ends_with(".stp.zip") {
@@ -21,9 +25,10 @@ pub fn handle_step(path : &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError>
     }
 }
 
-fn parse_step(path : &PathBuf) -> Result<Mesh, MeshThumbnailError>
-{
-    let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE").map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT)).unwrap_or(TOLERANCE_DEFAULT);
+fn parse_step(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+    let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
+        .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
+        .unwrap_or(TOLERANCE_DEFAULT);
     let shape = Shape::read_step(path)?;
     let mesher = Mesher::try_new(&shape, tolerance)?;
     let mesh = mesher.mesh()?;
@@ -34,16 +39,11 @@ fn parse_step(path : &PathBuf) -> Result<Mesh, MeshThumbnailError>
             .into_iter()
             .map(|v| vek::Vec3::new(v.x as f32, v.y as f32, v.z as f32))
             .collect(),
-        indices: mesh
-            .indices
-            .into_iter()
-            .map(|i| i as u32)
-            .collect(),
+        indices: mesh.indices.into_iter().map(|i| i as u32).collect(),
     })
 }
 
-fn parse_step_zip(path : &PathBuf) -> Result<Mesh, MeshThumbnailError>
-{
+fn parse_step_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let mut temp_path = temp_dir.path().to_path_buf();
     temp_path.push("a.step");
@@ -66,9 +66,11 @@ fn parse_step_zip(path : &PathBuf) -> Result<Mesh, MeshThumbnailError>
     drop(temp_file);
 
     if !write_ok {
-        return Err(MeshThumbnailError::InternalError(String::from("Failed to find .step model in zip")));
+        return Err(MeshThumbnailError::InternalError(String::from(
+            "Failed to find .step model in zip",
+        )));
     }
-    
+
     parse_step(&temp_path)
 }
 
@@ -85,8 +87,10 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     convert_step_path_to_stl(&temp_path)
 }
 
-pub fn convert_step_path_to_stl(step_path : &PathBuf) -> Result<Vec<u8>, MeshThumbnailError> {
-    let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE").map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT)).unwrap_or(TOLERANCE_DEFAULT);
+pub fn convert_step_path_to_stl(step_path: &PathBuf) -> Result<Vec<u8>, MeshThumbnailError> {
+    let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
+        .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
+        .unwrap_or(TOLERANCE_DEFAULT);
     let shape = Shape::read_step(&step_path)?;
     let mesher = Mesher::try_new(&shape, tolerance)?;
     let mesh = mesher.mesh()?;

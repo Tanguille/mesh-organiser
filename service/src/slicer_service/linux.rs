@@ -1,9 +1,8 @@
+use std::{path::PathBuf, process::Command};
+
+use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_custom_slicer};
+
 use super::Slicer;
-use crate::app_state::AppState;
-use crate::service_error::ServiceError;
-use crate::slicer_service::open_custom_slicer;
-use std::path::PathBuf;
-use std::process::Command;
 
 impl Slicer {
     pub fn is_installed(&self) -> bool {

@@ -1,21 +1,26 @@
-use super::app_state::AppState;
-use crate::configuration::Configuration;
-use crate::db::{label, label_keywords};
-use crate::service::import_state::{ImportState, ImportStatus, ImportedModelsSet};
-use crate::util::{self, read_file_as_text};
-use crate::util::{convert_extension_to_zip, is_zippable_file_extension};
-use crate::{db::model, error::ApplicationError};
+use std::{
+    fs::{self, File, read_dir},
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
+
 use indexmap::IndexMap;
 use itertools::Itertools;
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, read_dir};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use tauri::AppHandle;
-use zip;
-use zip::write::SimpleFileOptions;
+use zip::{self, write::SimpleFileOptions};
+
+use crate::{
+    configuration::Configuration,
+    db::{label, label_keywords, model},
+    error::ApplicationError,
+    service::import_state::{ImportState, ImportStatus, ImportedModelsSet},
+    util::{self, convert_extension_to_zip, is_zippable_file_extension, read_file_as_text},
+};
+
+use super::app_state::AppState;
 
 pub fn import_path(
     path: &str,

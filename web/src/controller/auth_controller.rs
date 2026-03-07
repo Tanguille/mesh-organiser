@@ -1,11 +1,13 @@
-use crate::user::{Credentials, PasswordCredentials, TokenCredentials};
-use crate::{user::AuthSession, web_app_state::WebAppState};
-use axum::Json;
 use axum::{
-    Router,
+    Json, Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+};
+
+use crate::{
+    user::{AuthSession, Credentials, PasswordCredentials, TokenCredentials},
+    web_app_state::WebAppState,
 };
 
 pub fn router() -> Router<WebAppState> {

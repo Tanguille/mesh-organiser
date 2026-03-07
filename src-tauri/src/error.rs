@@ -1,5 +1,5 @@
 use async_zip::error::ZipError;
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use thiserror::Error;
 
 #[derive(Error, Debug)]

@@ -1,15 +1,16 @@
+use std::{
+    env,
+    fs::{self, File},
+    io::Write,
+};
+
 use chrono::Utc;
 use regex::Regex;
-use reqwest::Response;
-use reqwest::header::CONTENT_DISPOSITION;
+use reqwest::{Response, header::CONTENT_DISPOSITION};
 use serde::Serialize;
-use std::env;
-use std::fs::{self, File};
-use std::io::Write;
 use urlencoding::decode;
 
-use crate::service_error::ServiceError;
-use crate::util::cleanse_evil_from_name;
+use crate::{service_error::ServiceError, util::cleanse_evil_from_name};
 
 #[derive(Serialize)]
 pub struct DownloadResult {

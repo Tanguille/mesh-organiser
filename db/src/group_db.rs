@@ -1,3 +1,10 @@
+use std::cmp::Reverse;
+
+use indexmap::IndexMap;
+use itertools::{Itertools, join};
+use sqlx::Row;
+use strum::EnumString;
+
 use crate::{
     DbError, PaginatedResponse,
     db_context::DbContext,
@@ -11,11 +18,6 @@ use crate::{
     random_hex_32, resource_db,
     util::time_now,
 };
-use indexmap::IndexMap;
-use itertools::{Itertools, join};
-use sqlx::Row;
-use std::cmp::Reverse;
-use strum::EnumString;
 
 #[derive(Debug, PartialEq, EnumString)]
 pub enum GroupOrderBy {

@@ -1,10 +1,12 @@
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+
 use db::db_context::DbContext;
 
-use crate::configuration;
-use configuration::Configuration;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
+use crate::configuration::Configuration;
 
 pub struct AppState {
     pub db: Arc<DbContext>,
@@ -19,7 +21,7 @@ impl AppState {
         path_buff.push("models");
 
         if !path_buff.exists() {
-            std::fs::create_dir_all(path_buff.clone()).expect("Failed to create model directory");
+            fs::create_dir_all(path_buff.clone()).expect("Failed to create model directory");
         }
 
         path_buff
@@ -30,7 +32,7 @@ impl AppState {
         path_buff.push("images");
 
         if !path_buff.exists() {
-            std::fs::create_dir_all(path_buff.clone()).expect("Failed to create image directory");
+            fs::create_dir_all(path_buff.clone()).expect("Failed to create image directory");
         }
 
         path_buff
@@ -41,8 +43,7 @@ impl AppState {
         path_buff.push("resources");
 
         if !path_buff.exists() {
-            std::fs::create_dir_all(path_buff.clone())
-                .expect("Failed to create resources directory");
+            fs::create_dir_all(path_buff.clone()).expect("Failed to create resources directory");
         }
 
         path_buff
