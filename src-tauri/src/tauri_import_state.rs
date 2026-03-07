@@ -51,7 +51,7 @@ impl ImportStateEmitter for TauriImportStateEmitter {
     fn model_count_event(&self, status: &ImportState) {
         let _ = self
             .handle
-            .emit(IMPORT_MODEL_COUNT_EVENT, status.imported_models_count);
+            .emit(IMPORT_MODEL_COUNT_EVENT, status.imported_model_count);
     }
 
     fn all_data_event(&self, state: &ImportState) {

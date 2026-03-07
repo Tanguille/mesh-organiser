@@ -27,7 +27,7 @@ pub enum ImportStatus {
 #[derive(Serialize, Debug)]
 pub struct ImportState {
     pub imported_models: Vec<ImportedModelsSet>,
-    pub imported_models_count: usize, // TODO: should it be model or models?
+    pub imported_model_count: usize,
     pub model_count: usize,
     pub finished_thumbnails_count: usize,
     pub status: ImportStatus,
@@ -80,7 +80,7 @@ impl ImportState {
     ) -> Self {
         Self {
             imported_models: Vec::new(),
-            imported_models_count: 0,
+            imported_model_count: 0,
             model_count: 0,
             finished_thumbnails_count: 0,
             status: ImportStatus::Idle,
@@ -104,7 +104,7 @@ impl ImportState {
     ) -> Self {
         Self {
             imported_models: Vec::new(),
-            imported_models_count: 0,
+            imported_model_count: 0,
             model_count: 0,
             finished_thumbnails_count: 0,
             status: ImportStatus::Idle,
@@ -170,7 +170,7 @@ impl ImportState {
             .unwrap()
             .model_ids
             .push(model_id);
-        self.imported_models_count = self
+        self.imported_model_count = self
             .imported_models
             .iter()
             .map(|set| set.model_ids.len())
