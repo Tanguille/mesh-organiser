@@ -48,9 +48,9 @@ fn parse_gcode_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
         }
     }
 
-    return Err(MeshThumbnailError::InternalError(String::from(
+    Err(MeshThumbnailError::InternalError(String::from(
         "Failed to find .stl model in zip",
-    )));
+    )))
 }
 fn parse_gcode_inner<W>(reader: &mut W) -> Result<Mesh, MeshThumbnailError>
 where
@@ -103,7 +103,7 @@ where
         )));
     }
 
-    let angle_subdivisions = if entries.len() < 1000000 { 3 } else { 3 };
+    let angle_subdivisions = 3;
 
     let estimated_entries = entries.iter().filter(|x| x.use_line).count();
     let mut vertices =
@@ -133,7 +133,7 @@ where
         indices.extend(cylinder.indices.iter().map(|i| *i + vertex_offset));
     }
 
-    return Ok(Mesh { vertices, indices });
+    Ok(Mesh { vertices, indices })
 }
 
 fn transform_mesh(mesh: &mut Mesh, transform: Mat4<f32>) {
@@ -192,10 +192,10 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
         for j in 0..angle_subdivisions {
             let next_j = (j + 1) % angle_subdivisions;
 
-            let v0 = (i * angle_subdivisions + j) as u32;
-            let v1 = ((i + 1) * angle_subdivisions + j) as u32;
-            let v2 = (i * angle_subdivisions + next_j) as u32;
-            let v3 = ((i + 1) * angle_subdivisions + next_j) as u32;
+            let v0 = i * angle_subdivisions + j;
+            let v1 = (i + 1) * angle_subdivisions + j;
+            let v2 = i * angle_subdivisions + next_j;
+            let v3 = (i + 1) * angle_subdivisions + next_j;
 
             // Two triangles per quad
             indices.push(v0);

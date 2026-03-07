@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+    Json, Router,
 };
 
 use crate::{

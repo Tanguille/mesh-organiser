@@ -7,7 +7,7 @@ use winreg::*;
 
 use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_with_paths};
 
-use super::{Slicer, open_custom_slicer};
+use super::{open_custom_slicer, Slicer};
 
 impl Slicer {
     pub fn is_installed(&self) -> bool {
