@@ -1,9 +1,9 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use axum_login::login_required;
 use serde::{Deserialize, Serialize};
