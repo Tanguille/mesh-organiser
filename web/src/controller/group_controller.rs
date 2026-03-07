@@ -103,6 +103,7 @@ mod get {
                 page_size: params.page_size,
                 include_ungrouped_models: params.include_ungrouped_models.unwrap_or(false),
                 allow_incomplete_groups: false,
+                split_incomplete_groups: false,
             },
         )
         .await?;
@@ -144,6 +145,7 @@ mod get {
                 page_size: params.page_size,
                 include_ungrouped_models: params.include_ungrouped_models.unwrap_or(true),
                 allow_incomplete_groups: true,
+                split_incomplete_groups: false,
             },
         )
         .await?;

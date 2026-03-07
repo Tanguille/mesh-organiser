@@ -42,6 +42,7 @@ pub async fn get_groups(
             page_size,
             include_ungrouped_models: include_ungrouped_models.unwrap_or(false),
             allow_incomplete_groups: false,
+            split_incomplete_groups: false,
         },
     )
     .await?;
