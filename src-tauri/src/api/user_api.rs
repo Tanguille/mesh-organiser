@@ -1,5 +1,5 @@
 use db::{
-    model::user::{hash_password, User},
+    model::user::{User, hash_password},
     user_db,
 };
 use service::export_service;
