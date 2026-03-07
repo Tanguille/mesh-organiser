@@ -1,5 +1,5 @@
 use async_zip::error::ZipError;
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -27,48 +27,48 @@ impl Serialize for ApplicationError {
     where
         S: Serializer,
     {
-        if let ApplicationError::ServiceError(inner) = self {
+        if let Self::ServiceError(inner) = self {
             return inner.serialize(serializer);
         }
 
         let mut state = serializer.serialize_struct("ApplicationError", 3)?;
         match self {
-            ApplicationError::FileSystemFault(inner) => {
+            Self::FileSystemFault(inner) => {
                 state.serialize_field("error_type", "FileSystemFault")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
             }
-            ApplicationError::InternalError(s) => {
+            Self::InternalError(s) => {
                 state.serialize_field("error_type", "InternalError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", s)?;
             }
-            ApplicationError::JsonError(inner) => {
+            Self::JsonError(inner) => {
                 state.serialize_field("error_type", "JsonError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
             }
-            ApplicationError::FrameworkError(inner) => {
+            Self::FrameworkError(inner) => {
                 state.serialize_field("error_type", "FrameworkError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
             }
-            ApplicationError::DatabaseError(inner) => {
+            Self::DatabaseError(inner) => {
                 state.serialize_field("error_type", "DatabaseError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
             }
-            ApplicationError::WebRequestError(inner) => {
+            Self::WebRequestError(inner) => {
                 state.serialize_field("error_type", "WebRequestError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
             }
-            ApplicationError::AsyncZipOperationError(inner) => {
+            Self::AsyncZipOperationError(inner) => {
                 state.serialize_field("error_type", "AsyncZipOperationError")?;
                 state.serialize_field("error_message", &self.to_string())?;
                 state.serialize_field("error_inner_message", &inner.to_string())?;
             }
-            ApplicationError::ServiceError(_) => {}
+            Self::ServiceError(_) => {}
         }
         state.end()
     }

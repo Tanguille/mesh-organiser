@@ -25,8 +25,8 @@ pub struct InitialState {
 }
 
 impl InitialState {
-    pub fn new(config: &Configuration) -> InitialState {
-        InitialState {
+    pub fn new(config: &Configuration) -> Self {
+        Self {
             deep_link_url: None,
             max_parallelism: std::thread::available_parallelism()
                 .unwrap_or(std::num::NonZeroUsize::new(6).unwrap())
@@ -69,14 +69,15 @@ impl TauriAppState {
             ));
         }
 
-        let mut current_user = self.current_user.lock().unwrap();
-        *current_user = user.unwrap();
+        *self.current_user.lock().unwrap() = user.unwrap();
 
-        let mut configuration = self.app_state.configuration.lock().unwrap();
-        configuration.last_user_id = user_id;
-
-        let json = serde_json::to_string(&configuration.clone()).unwrap();
-        std::fs::write(path, json).expect("Failed to write configuration");
+        {
+            let mut configuration = self.app_state.configuration.lock().unwrap();
+            configuration.last_user_id = user_id;
+            let json = serde_json::to_string(&*configuration).unwrap();
+            drop(configuration);
+            std::fs::write(path, json).expect("Failed to write configuration");
+        }
 
         Ok(())
     }

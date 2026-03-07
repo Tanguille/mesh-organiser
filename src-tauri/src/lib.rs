@@ -516,7 +516,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 ///
 /// Panics if the Tauri application fails to build or initialize.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub fn run() {
     thread::spawn(move || {
         let _ = remove_temp_paths();
@@ -569,7 +569,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event
+            if matches!(event, tauri::WindowEvent::Destroyed)
                 && window.label() == "main" {
                     for window in window.app_handle().webview_windows() {
                         let _ = window.1.close();
@@ -596,14 +596,17 @@ pub fn run() {
                 std::panic::set_hook(Box::new(move |info| {
                     let loc = PathBuf::from(&app_data_path_clone).join("crash.log");
 
-                    let error_message = match info.payload().downcast_ref::<&'static str>()
-                    {
-                        Some(s) => *s,
-                        None => match info.payload().downcast_ref::<String>() {
-                            Some(s) => &s[..],
-                            None => "Box<Any>",
-                        },
-                    };
+                    let error_message = info
+                        .payload()
+                        .downcast_ref::<&'static str>()
+                        .map_or_else(
+                            || {
+                                info.payload()
+                                    .downcast_ref::<String>()
+                                    .map_or("Box<Any>", |s| &s[..])
+                            },
+                            |s| *s,
+                        );
 
                     if let Ok(mut file) = File::create(loc)
                     {
@@ -640,7 +643,11 @@ pub fn run() {
                     }
                 }
 
-                let user = user_db::get_user_by_id(&db, config.last_user_id).await.ok().flatten().unwrap_or(User::default());
+                let user = user_db::get_user_by_id(&db, config.last_user_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(User::default);
 
                 let state = TauriAppState {
                     app_state: AppState {
