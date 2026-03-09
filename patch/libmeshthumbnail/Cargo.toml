@@ -9,7 +9,7 @@ vek = "0"
 image = { version = "0", features = ["png", "jpeg"] }
 stl_io = "0"
 thiserror = "2"
-zip = "6"
+zip = "8"
 wavefront_obj = { version = "11" }
 threemf = { git = "https://github.com/suchmememanyskill/3mf-rs", rev = "d78e731b2fcf127692380332ad2708aec65dee68" }
 regex = "1"
