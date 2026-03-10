@@ -31,7 +31,7 @@ db = { path = "db" }
 futures = "0.3.32"
 hex = "0.4.3"
 htmlescape = "0.3.1"
-image = "0.25.9"
+image = "0.25.10"
 indexmap = "2.13.0"
 itertools = "0.14.0"
 libmeshthumbnail = { git = "https://github.com/suchmememanyskill/mesh-thumbnail", branch = "software" }
