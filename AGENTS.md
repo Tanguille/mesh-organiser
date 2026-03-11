@@ -19,6 +19,7 @@ This document provides guidelines for AI coding agents working in this repositor
 - Run type checks after making changes
 - Test the feature works as expected
 - Check for any introduced errors before committing
+- **Run `cargo fmt --all` before every push** (enforced in CI)
 
 ### Use Specialist Agents When Appropriate
 - **@explorer**: Find files, locate code patterns, discover what exists
