@@ -1,20 +1,22 @@
-use std::{fs::File, path::PathBuf};
+use std::path::Path;
 
 use vek::Vec3;
 
 use crate::{error::MeshThumbnailError, mesh::Mesh};
 
-pub fn handle_threemf(path: &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError> {
-    let path_str = path.to_string_lossy().to_lowercase();
-    if path_str.ends_with(".3mf") {
+pub fn handle_threemf(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("3mf"))
+    {
         Ok(Some(parse_3mf(path)?))
     } else {
         Ok(None)
     }
 }
 
-fn parse_3mf(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
-    let handle = File::open(path)?;
+fn parse_3mf(path: &Path) -> Result<Mesh, MeshThumbnailError> {
+    let handle = std::fs::File::open(path)?;
     let mfmodel = threemf::read(handle)?;
 
     let mut all_meshes: Vec<&threemf::Mesh> = mfmodel
@@ -39,6 +41,8 @@ fn parse_3mf(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
 
     let mesh = all_meshes[0];
 
+    // 3MF vertex coordinates are mesh-scale; f64→f32 truncation is acceptable for thumbnail rendering.
+    #[allow(clippy::cast_possible_truncation)]
     let positions = mesh
         .vertices
         .vertex
@@ -54,7 +58,14 @@ fn parse_3mf(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
         .triangles
         .triangle
         .iter()
-        .flat_map(|a| [a.v1 as u32, a.v2 as u32, a.v3 as u32].into_iter())
+        .flat_map(|a| {
+            [
+                u32::try_from(a.v1).unwrap_or(0),
+                u32::try_from(a.v2).unwrap_or(0),
+                u32::try_from(a.v3).unwrap_or(0),
+            ]
+            .into_iter()
+        })
         .collect();
 
     Ok(Mesh {

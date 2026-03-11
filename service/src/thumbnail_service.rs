@@ -1,6 +1,6 @@
 use std::{panic, path::PathBuf};
 
-use image::imageops::FilterType::Triangle;
+use image::{DynamicImage, imageops::FilterType::Triangle};
 use libmeshthumbnail::{extract_image, parse_model, render};
 use tokio::task::JoinSet;
 use vek::{Vec2, Vec3};
@@ -23,7 +23,7 @@ fn render(
     color: Vec3<u8>,
     rotation: Vec3<f32>,
 ) -> Result<(), ServiceError> {
-    let mesh = match parse_model::handle_parse(model_path) {
+    let mesh = match parse_model::handle_parse(model_path.as_path()) {
         Ok(Some(mesh)) => mesh,
         Ok(None) => {
             return Err(ServiceError::InternalError(format!(
@@ -39,7 +39,7 @@ fn render(
 
     let thumbnail = render::render(&mesh, IMAGE_SIZE, rotation, color, 1.0);
 
-    thumbnail.save(image_path)?;
+    DynamicImage::ImageRgba8(thumbnail).save(image_path)?;
 
     Ok(())
 }
@@ -72,7 +72,7 @@ fn process(
 
     if ((prefer_3mf_thumbnail && extension == "3mf")
         || (prefer_gcode_thumbnail && (extension == "gcode" || extension == "gcode.zip")))
-        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
+        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path.as_path())
     {
         image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
         image.save(image_path)?;
@@ -86,7 +86,7 @@ fn process(
     if fallback_3mf_thumbnail
         && !prefer_3mf_thumbnail
         && extension == "3mf"
-        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
+        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path.as_path())
     {
         image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
         image.save(image_path)?;

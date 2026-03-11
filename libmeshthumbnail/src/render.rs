@@ -4,6 +4,7 @@ use vek::{Mat4, Rgba, Vec2, Vec3};
 
 use crate::{mesh::Mesh, scene::Scene};
 
+#[must_use]
 pub fn render(
     mesh: &Mesh,
     image_size: Vec2<usize>,
@@ -37,6 +38,8 @@ pub fn render(
         Vec3::new(0.0, 1.0, 0.0),
     );
 
+    // Thumbnail dimensions are small (e.g. 256–512); usize fits in f32 without meaningful precision loss for perspective.
+    #[allow(clippy::cast_precision_loss)]
     let projection =
         Mat4::perspective_fov_lh_zo(1.0, image_size.x as f32, image_size.y as f32, 0.1, 100.0);
 
@@ -47,9 +50,9 @@ pub fn render(
         model,
         camera_position,
         Rgba::new(
-            color.x as f32 / 255.0,
-            color.y as f32 / 255.0,
-            color.z as f32 / 255.0,
+            f32::from(color.x) / 255.0,
+            f32::from(color.y) / 255.0,
+            f32::from(color.z) / 255.0,
             1.0,
         ),
     );
@@ -63,8 +66,12 @@ pub fn render(
         &mut depth_buffer,
     );
 
-    image::RgbaImage::from_fn(image_size.x as u32, image_size.y as u32, |x, y| {
-        let pixel = color_buffer.raw()[y as usize * image_size.x + x as usize];
-        image::Rgba(pixel)
-    })
+    image::RgbaImage::from_fn(
+        u32::try_from(image_size.x).unwrap_or(0),
+        u32::try_from(image_size.y).unwrap_or(0),
+        |x, y| {
+            let pixel = color_buffer.raw()[y as usize * image_size.x + x as usize];
+            image::Rgba(pixel)
+        },
+    )
 }
