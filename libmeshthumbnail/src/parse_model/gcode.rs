@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, Cursor, Read},
-    path::PathBuf,
+    path::Path,
 };
 
 use regex::Regex;
@@ -10,12 +10,21 @@ use zip::ZipArchive;
 
 use crate::{error::MeshThumbnailError, mesh::Mesh};
 
-pub fn handle_gcode(path: &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError> {
-    let path_str = path.to_string_lossy().to_lowercase();
+pub fn handle_gcode(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
+    let is_gcode = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"));
+    let is_gcode_zip = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+        && path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.to_lowercase().ends_with(".gcode"));
 
-    if path_str.ends_with(".gcode") {
+    if is_gcode {
         Ok(Some(parse_gcode(path)?))
-    } else if path_str.ends_with(".gcode.zip") {
+    } else if is_gcode_zip {
         Ok(Some(parse_gcode_zip(path)?))
     } else {
         Ok(None)
@@ -27,20 +36,23 @@ struct Point {
     use_line: bool,
 }
 
-fn parse_gcode(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+fn parse_gcode(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let mut handle = File::open(path)?;
 
     parse_gcode_inner(&mut handle)
 }
 
-fn parse_gcode_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+fn parse_gcode_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let handle = File::open(path)?;
     let mut zip = ZipArchive::new(handle)?;
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        if file.name().ends_with(".gcode") {
-            let mut buffer = Vec::with_capacity(file.size() as usize);
+        if std::path::Path::new(file.name())
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
+        {
+            let mut buffer = Vec::with_capacity(usize::try_from(file.size()).unwrap_or(0));
             file.read_to_end(&mut buffer)?;
             let mut cursor = Cursor::new(buffer);
 
@@ -49,7 +61,7 @@ fn parse_gcode_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
     }
 
     Err(MeshThumbnailError::InternalError(String::from(
-        "Failed to find .stl model in zip",
+        "Failed to find .gcode file in zip",
     )))
 }
 fn parse_gcode_inner<W>(reader: &mut W) -> Result<Mesh, MeshThumbnailError>
@@ -127,7 +139,7 @@ where
         let mut cylinder = cylinder(angle_subdivisions);
         transform_mesh(&mut cylinder, edge_transform(p1, p2));
 
-        let vertex_offset = vertices.len() as u32;
+        let vertex_offset = u32::try_from(vertices.len()).unwrap_or(0);
 
         vertices.extend(cylinder.vertices);
         indices.extend(cylinder.indices.iter().map(|i| *i + vertex_offset));
@@ -178,7 +190,8 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
 
     let radius = 0.3;
 
-    // Create vertices around the cylinder
+    // Subdivision indices are small (length_subdivisions=1, angle_subdivisions=3); u32 fits in f32 mantissa with no loss.
+    #[allow(clippy::cast_precision_loss)]
     for i in 0..=length_subdivisions {
         let x = i as f32 / length_subdivisions as f32;
         for j in 0..angle_subdivisions {
