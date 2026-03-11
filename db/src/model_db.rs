@@ -4,7 +4,7 @@ use sqlx::{Execute, QueryBuilder, Row};
 use strum::EnumString;
 
 use crate::{
-    DbError, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     label_db,
     model::{
@@ -13,9 +13,6 @@ use crate::{
     },
     util::{random_hex_32, time_now},
 };
-
-/// Maximum page size to prevent memory exhaustion and unbounded queries
-const MAX_PAGE_SIZE: u32 = 1000;
 
 #[derive(Debug, PartialEq, EnumString)]
 pub enum ModelOrderBy {
@@ -115,7 +112,8 @@ pub async fn get_models(
     query_builder.push(" GROUP BY models.model_id ");
 
     if let Some(order_by) = options.order_by {
-        query_builder.push(format!("ORDER BY {} ", order_by.to_sql()));
+        let order_by_sql = order_by.to_sql();
+        query_builder.push(format!("ORDER BY {order_by_sql} "));
     }
 
     query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));

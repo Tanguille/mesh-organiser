@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError,
+    DbError, MAX_PAGE_SIZE,
     db_context::DbContext,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
@@ -11,9 +11,6 @@ use crate::{
     },
     random_hex_32, time_now,
 };
-
-/// Maximum page size to prevent memory exhaustion and unbounded queries
-const MAX_PAGE_SIZE: u32 = 1000;
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
     let rows = sqlx::query!(

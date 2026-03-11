@@ -6,7 +6,7 @@ use sqlx::Row;
 use strum::EnumString;
 
 use crate::{
-    DbError, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     model::{
         Model, ModelFlags,
@@ -18,9 +18,6 @@ use crate::{
     random_hex_32, resource_db,
     util::time_now,
 };
-
-/// Maximum page size to prevent memory exhaustion and unbounded queries
-const MAX_PAGE_SIZE: u32 = 1000;
 
 #[derive(Debug, PartialEq, EnumString)]
 pub enum GroupOrderBy {

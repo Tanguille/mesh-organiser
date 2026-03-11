@@ -13,6 +13,32 @@ use crate::{
     util::time_now,
 };
 
+/// Builds a batch INSERT query string for N-column values.
+/// Used to efficiently insert multiple rows in a single query.
+fn build_batch_insert_query(
+    table: &str,
+    columns: &[&str],
+    values: &[impl std::fmt::Display],
+) -> String {
+    let columns_joined = columns.join(", ");
+    let values_clause = values
+        .iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("INSERT INTO {table} ({columns_joined}) VALUES {values_clause}")
+}
+
+/// Formats a tuple of values for SQL VALUES clause.
+fn sql_tuple(values: &[impl std::fmt::Display]) -> String {
+    let inner = values
+        .iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({inner})")
+}
+
 pub async fn get_labels_min(db: &DbContext) -> Result<Vec<LabelMeta>, DbError> {
     let rows = sqlx::query!("SELECT label_id, label_name, label_color, label_unique_global_id, label_last_modified FROM labels")
         .fetch_all(db)
@@ -93,7 +119,6 @@ pub async fn get_labels(
           WHERE parent_labels.label_user_id = ?
           ORDER BY parent_labels.label_name ASC"
     )
-    .bind(user.id)
     .bind(user.id)
     .fetch_all(db)
     .await
@@ -243,17 +268,8 @@ pub async fn add_labels_on_models(
 
     // Batch insert using a single query with multiple VALUES
     if !values.is_empty() {
-        let values_clause = values
-            .iter()
-            .map(|(l, m)| format!("({}, {})", l, m))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let query = format!(
-            "INSERT INTO models_labels (label_id, model_id) VALUES {}",
-            values_clause
-        );
-
+        let tuples: Vec<String> = values.iter().map(|(l, m)| sql_tuple(&[*l, *m])).collect();
+        let query = build_batch_insert_query("models_labels", &["label_id", "model_id"], &tuples);
         sqlx::query(&query).execute(db).await?;
     }
 
@@ -437,17 +453,15 @@ pub async fn add_childs_to_label(
 
     // Batch insert using a single query with multiple VALUES
     if !child_label_ids.is_empty() {
-        let values_clause = child_label_ids
+        let tuples: Vec<String> = child_label_ids
             .iter()
-            .map(|child_id| format!("({}, {})", parent_label_id, child_id))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let query = format!(
-            "INSERT INTO labels_labels (parent_label_id, child_label_id) VALUES {}",
-            values_clause
+            .map(|child_id| sql_tuple(&[parent_label_id, *child_id]))
+            .collect();
+        let query = build_batch_insert_query(
+            "labels_labels",
+            &["parent_label_id", "child_label_id"],
+            &tuples,
         );
-
         sqlx::query(&query).execute(db).await?;
     }
 
@@ -476,8 +490,7 @@ pub async fn remove_childs_from_label(
     if !child_label_ids.is_empty() {
         let child_ids_placeholder = join(child_label_ids.iter(), ",");
         let query = format!(
-            "DELETE FROM labels_labels WHERE parent_label_id = ? AND child_label_id IN ({})",
-            child_ids_placeholder
+            "DELETE FROM labels_labels WHERE parent_label_id = ? AND child_label_id IN ({child_ids_placeholder})"
         );
 
         sqlx::query(&query)
