@@ -1,5 +1,6 @@
 use axum::{Json, extract::multipart::MultipartError, response::IntoResponse};
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Serialize, Serializer};
+use service::service_error;
 use thiserror::Error;
 use tokio::task;
 
@@ -30,41 +31,45 @@ impl Serialize for ApplicationError {
             return inner.serialize(serializer);
         }
 
-        let mut state = serializer.serialize_struct("ApplicationError", 3)?;
         match self {
-            ApplicationError::FileSystemFault(inner) => {
-                state.serialize_field("error_type", "FileSystemFault")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            ApplicationError::InternalError(s) => {
-                state.serialize_field("error_type", "InternalError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", s)?;
-            }
-            ApplicationError::JsonError(inner) => {
-                state.serialize_field("error_type", "JsonError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            ApplicationError::DatabaseError(inner) => {
-                state.serialize_field("error_type", "DatabaseError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            ApplicationError::TaskJoinError(inner) => {
-                state.serialize_field("error_type", "TaskJoinError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            ApplicationError::MultipartError(inner) => {
-                state.serialize_field("error_type", "MultipartError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            _ => {}
+            ApplicationError::FileSystemFault(inner) => service_error::serialize_error_struct(
+                serializer,
+                "FileSystemFault",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            ApplicationError::InternalError(s) => service_error::serialize_error_struct(
+                serializer,
+                "InternalError",
+                &self.to_string(),
+                s,
+            ),
+            ApplicationError::JsonError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "JsonError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            ApplicationError::DatabaseError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "DatabaseError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            ApplicationError::TaskJoinError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "TaskJoinError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            ApplicationError::MultipartError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "MultipartError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            ApplicationError::ServiceError(_) => unreachable!(),
         }
-        state.end()
     }
 }
 

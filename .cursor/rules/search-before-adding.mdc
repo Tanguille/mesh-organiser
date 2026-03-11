@@ -1,0 +1,10 @@
+---
+description: Search for existing code and patterns before adding new methods, classes, or modules; avoid duplication.
+alwaysApply: true
+---
+
+# Search Before Adding
+
+- Before adding a new function, class, module, or utility: search the codebase for existing implementations or similar patterns (e.g. same domain, same API shape).
+- Reuse or extend existing code rather than duplicating. If you are unsure, spend extra time searching (e.g. `grep`, codebase search) before writing new code.
+- This applies to both Rust and frontend (TypeScript/Svelte) code.

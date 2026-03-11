@@ -1,0 +1,10 @@
+---
+description: Run verification (check, tests, fmt, clippy) before claiming work complete; evidence before assertions.
+alwaysApply: true
+---
+
+# Verification Before Completion
+
+- Do **not** state that tests pass, type-check passes, or that work is complete without having run the relevant commands.
+- Before claiming work done or ready for review, run the appropriate verification from [docs/commands.md](docs/commands.md) (e.g. `npm run check`, `cargo fmt --all`, `cargo clippy --workspace --all-targets`, `cargo test -p service`, `npm run test`).
+- Prefer running the commands and reporting actual output over asserting success.

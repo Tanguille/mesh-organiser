@@ -122,3 +122,191 @@ pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
     file.read_to_string(&mut contents)?;
     Ok(contents)
 }
+
+// -----------------------------------------------------------------------------
+// Regression tests for service::util pure helpers.
+// We test these after consolidating util so that src-tauri uses service::util;
+// the goal is to lock in behaviour and catch regressions from deduplication.
+// Only pure functions are unit-tested here; IO (read_file_as_text,
+// get_folder_size, open_folder_in_explorer) is left out unless tested via temp dir.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{
+        cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
+        is_zippable_file_extension, is_zipped_file_extension, prettify_file_name,
+    };
+
+    // ---- cleanse_evil_from_name ----
+
+    #[test]
+    fn test_cleanse_evil_empty() {
+        assert_eq!(cleanse_evil_from_name(""), "");
+    }
+
+    #[test]
+    fn test_cleanse_evil_normal_unchanged() {
+        assert_eq!(cleanse_evil_from_name("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_backslash() {
+        assert_eq!(cleanse_evil_from_name("a\\b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_slash() {
+        assert_eq!(cleanse_evil_from_name("a/b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_colon() {
+        assert_eq!(cleanse_evil_from_name("a:b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_asterisk() {
+        assert_eq!(cleanse_evil_from_name("a*b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_question_mark() {
+        assert_eq!(cleanse_evil_from_name("a?b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_double_quote() {
+        assert_eq!(cleanse_evil_from_name("a\"b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_less_than() {
+        assert_eq!(cleanse_evil_from_name("a<b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_greater_than() {
+        assert_eq!(cleanse_evil_from_name("a>b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_pipe() {
+        assert_eq!(cleanse_evil_from_name("a|b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_trim_outer_whitespace() {
+        assert_eq!(cleanse_evil_from_name("  x  "), "x");
+    }
+
+    // ---- prettify_file_name ----
+
+    #[test]
+    fn test_prettify_file_name_path_with_extension_is_file() {
+        let path = PathBuf::from("some_dir/My_Cool-Model.stl");
+        assert_eq!(prettify_file_name(&path, false), "My Cool Model");
+    }
+
+    #[test]
+    fn test_prettify_file_name_path_with_extension_is_dir() {
+        let path = PathBuf::from("some_dir/My_Folder.stl");
+        assert_eq!(prettify_file_name(&path, true), "My Folder.stl");
+    }
+
+    #[test]
+    fn test_prettify_file_name_no_extension() {
+        let path = PathBuf::from("myfile");
+        assert_eq!(prettify_file_name(&path, false), "myfile");
+    }
+
+    #[test]
+    fn test_prettify_file_name_replaces_underscore_and_collapses_spaces() {
+        let path = PathBuf::from("a__b___c.stl");
+        assert_eq!(prettify_file_name(&path, false), "a b c");
+    }
+
+    // ---- is_zippable_file_extension ----
+
+    #[test]
+    fn test_is_zippable_stl() {
+        assert!(is_zippable_file_extension("stl"));
+    }
+
+    #[test]
+    fn test_is_zippable_stl_uppercase() {
+        assert!(is_zippable_file_extension("STL"));
+    }
+
+    #[test]
+    fn test_is_zippable_obj() {
+        assert!(is_zippable_file_extension("obj"));
+    }
+
+    #[test]
+    fn test_is_zippable_step() {
+        assert!(is_zippable_file_extension("step"));
+    }
+
+    #[test]
+    fn test_is_zippable_gcode() {
+        assert!(is_zippable_file_extension("gcode"));
+    }
+
+    #[test]
+    fn test_is_zippable_txt_returns_false() {
+        assert!(!is_zippable_file_extension("txt"));
+    }
+
+    // ---- is_zipped_file_extension ----
+
+    #[test]
+    fn test_is_zipped_stl_zip() {
+        assert!(is_zipped_file_extension("stl.zip"));
+    }
+
+    #[test]
+    fn test_is_zipped_other_returns_false() {
+        assert!(!is_zipped_file_extension("stl"));
+        assert!(!is_zipped_file_extension("zip"));
+        assert!(!is_zipped_file_extension("obj"));
+    }
+
+    // ---- convert_extension_to_zip ----
+
+    #[test]
+    fn test_convert_extension_to_zip_stl() {
+        assert_eq!(convert_extension_to_zip("stl"), "stl.zip");
+    }
+
+    #[test]
+    fn test_convert_extension_to_zip_obj_step_gcode() {
+        assert_eq!(convert_extension_to_zip("obj"), "obj.zip");
+        assert_eq!(convert_extension_to_zip("step"), "step.zip");
+        assert_eq!(convert_extension_to_zip("gcode"), "gcode.zip");
+    }
+
+    #[test]
+    fn test_convert_extension_to_zip_unknown_returns_lowercase() {
+        assert_eq!(convert_extension_to_zip("TXT"), "txt");
+        assert_eq!(convert_extension_to_zip("unknown"), "unknown");
+    }
+
+    // ---- convert_zip_to_extension ----
+
+    #[test]
+    fn test_convert_zip_to_extension_known() {
+        assert_eq!(convert_zip_to_extension("stl.zip"), "stl");
+        assert_eq!(convert_zip_to_extension("obj.zip"), "obj");
+        assert_eq!(convert_zip_to_extension("step.zip"), "step");
+        assert_eq!(convert_zip_to_extension("gcode.zip"), "gcode");
+    }
+
+    #[test]
+    fn test_convert_zip_to_extension_unknown_returns_lowercase() {
+        assert_eq!(convert_zip_to_extension("other.zip"), "other.zip");
+        assert_eq!(convert_zip_to_extension("STL.ZIP"), "stl");
+    }
+}

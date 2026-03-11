@@ -26,27 +26,34 @@ cargo clippy --workspace --all-targets --all-features
 ```
 
 ## Testing
-**No test framework is currently configured.** If adding tests:
-- Use Vitest for unit tests (Svelte/TypeScript)
-- Use Playwright for E2E tests
+
+- **Rust**: `cargo test --workspace` or per-crate (e.g. `cargo test -p service`). Use `crate/tests/` for integration tests.
+- **Frontend**: Vitest for unit tests (`src/**/*.test.ts`). Run `npm run test` (or `vitest` / `vitest run file`).
 
 ```bash
-vitest              # Run all tests
-vitest run file     # Run single test file
-vitest              # Run tests in watch mode
+# Rust
+cargo test -p service    # Single crate
+cargo test --workspace   # All crates
+
+# Frontend (when configured)
+npm run test
+vitest run               # Single run
+vitest run path/to/file  # Single file
 ```
 
-## Pre-Push Checks
+## Pre-Push / Verification Checklist
 
-Run these before committing/pushing:
+Run these before committing, pushing, or claiming work complete. See [AGENTS.md](../AGENTS.md) Pre-Completion Checklist.
 
 ### Frontend
 ```bash
 npm run check
+npm run test   # when tests exist
 ```
 
 ### Rust (entire workspace)
 ```bash
-cargo fmt --all -- --check
+cargo fmt --all
 cargo clippy --workspace --all-targets --all-features
+cargo test --workspace   # or -p <crate> for specific crate
 ```

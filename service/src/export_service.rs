@@ -1,4 +1,8 @@
-use std::{collections::HashSet, panic, path::PathBuf};
+use std::{
+    collections::HashSet,
+    panic,
+    path::{Path, PathBuf},
+};
 
 use async_zip::{
     Compression, ZipEntryBuilder, tokio::read::seek::ZipFileReader, tokio::write::ZipFileWriter,
@@ -213,11 +217,11 @@ pub async fn get_bytes_from_blob(
     Ok(buffer)
 }
 
-pub fn ensure_unique_file_full_filename(base_path: &PathBuf, file_name: &str) -> PathBuf {
+pub fn ensure_unique_file_full_filename(base_path: &Path, file_name: &str) -> PathBuf {
     let extension = file_name.split(".").last().unwrap();
     let base_file_name = &file_name[..file_name.len() - extension.len() - 1];
 
-    ensure_unique_file(base_path.as_ref(), base_file_name, extension)
+    ensure_unique_file(base_path, base_file_name, extension)
 }
 
 pub fn ensure_unique_file(
