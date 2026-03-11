@@ -8,6 +8,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    #[must_use]
     pub fn aabb(&self) -> MeshAxisAlignedBoundingBox {
         let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
         let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
@@ -32,10 +33,12 @@ pub struct MeshAxisAlignedBoundingBox {
 }
 
 impl MeshAxisAlignedBoundingBox {
+    #[must_use]
     pub fn center(&self) -> Vec3<f32> {
         (self.min + self.max) * 0.5
     }
 
+    #[must_use]
     pub fn size(&self) -> Vec3<f32> {
         self.max - self.min
     }

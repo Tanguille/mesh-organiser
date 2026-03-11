@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 mod gcode;
 mod obj;
@@ -11,8 +11,12 @@ pub use step::convert_step_path_to_stl;
 #[cfg(feature = "step")]
 pub use step::convert_step_to_stl;
 
+/// Parses a mesh from the given path (STL, OBJ, 3MF, G-code, etc.).
+///
+/// # Errors
+/// Returns an error when the format is supported but reading or parsing fails.
 pub fn handle_parse(
-    path: &PathBuf,
+    path: &Path,
 ) -> Result<Option<crate::mesh::Mesh>, crate::error::MeshThumbnailError> {
     if let Some(mesh) = stl::handle_stl(path)? {
         return Ok(Some(mesh));
