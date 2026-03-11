@@ -3468,7 +3468,6 @@ version = "2.0.0"
 dependencies = [
  "arboard",
  "async_zip",
- "content_disposition",
  "db",
  "futures",
  "itertools",
@@ -5757,11 +5756,9 @@ name = "service"
 version = "0.1.0"
 dependencies = [
  "async_zip",
- "base64 0.22.1",
  "chrono",
  "content_disposition",
  "db",
- "euc",
  "futures",
  "image",
  "indexmap 2.13.0",
@@ -5774,16 +5771,13 @@ dependencies = [
  "sha2",
  "stl_io",
  "strum",
- "tempfile",
  "thiserror 2.0.18",
  "threemf",
  "tokio",
  "tokio-util",
  "urlencoding",
  "vek",
- "wavefront_obj",
  "winreg",
- "zip 8.2.0",
 ]
 
 [[package]]
