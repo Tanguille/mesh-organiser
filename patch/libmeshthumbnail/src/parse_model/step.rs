@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::File,
-    io::{self, Cursor, Write},
+    io::{self, Write},
     path::PathBuf,
 };
 
