@@ -18,7 +18,7 @@ impl euc::math::WeightedSum for VertexData {
 
         // Normal should be the same for all vertices in a triangle (flat shading)
         // Just take the first one
-        VertexData {
+        Self {
             world_pos,
             normal: values[0].normal,
         }
@@ -34,13 +34,14 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         model_view_projection: Mat4<f32>,
         model: Mat4<f32>,
         camera_position: Vec3<f32>,
         surface_color: Rgba<f32>,
     ) -> Self {
-        Scene {
+        Self {
             model_view_projection,
             model,
             camera_position,
@@ -49,7 +50,7 @@ impl Scene {
     }
 }
 
-impl<'r> Pipeline<'r> for Scene {
+impl Pipeline<'_> for Scene {
     type Vertex = Vec3<f32>; // Just position
     type VertexData = VertexData;
     type Primitives = TriangleList;
@@ -141,7 +142,7 @@ impl<'r> Pipeline<'r> for Scene {
 
         // Soft rim light effect
         // rim = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0)
-        let rim = (1.0 - view_dir.dot(normal).abs()).powf(3.0);
+        let rim = (1.0 - view_dir.dot(normal).abs()).powi(3);
 
         // Merge colors
         let base_color = Vec3::new(
@@ -160,7 +161,10 @@ impl<'r> Pipeline<'r> for Scene {
     }
 
     fn blend(&self, _old: Self::Pixel, new: Self::Fragment) -> Self::Pixel {
-        let rgba = new.map(|c| (c.clamp(0.0, 1.0) * 255.0) as u8);
+        // Fragment components are in [0, 1]; * 255 and round() yield [0, 255]. Cast to u32 then try_from to u8 is safe.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let rgba =
+            new.map(|c| u8::try_from((c.clamp(0.0, 1.0) * 255.0).round() as u32).unwrap_or(255));
         [rgba.r, rgba.g, rgba.b, rgba.a]
     }
 }
