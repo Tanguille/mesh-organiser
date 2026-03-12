@@ -2,7 +2,7 @@ use std::{
     env,
     fs::File,
     io::{self, Write},
-    path::PathBuf,
+    path::Path,
 };
 
 use opencascade::{mesh::Mesher, primitives::Shape};
@@ -13,7 +13,7 @@ use crate::{error::MeshThumbnailError, mesh::Mesh};
 
 const TOLERANCE_DEFAULT: f64 = 0.01;
 
-pub fn handle_step(path: &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError> {
+pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     let path_str = path.to_string_lossy().to_lowercase();
 
     if path_str.ends_with(".step.zip") || path_str.ends_with(".stp.zip") {
@@ -25,7 +25,7 @@ pub fn handle_step(path: &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError> {
     }
 }
 
-fn parse_step(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
         .unwrap_or(TOLERANCE_DEFAULT);
@@ -43,7 +43,7 @@ fn parse_step(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
     })
 }
 
-fn parse_step_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let mut temp_path = temp_dir.path().to_path_buf();
     temp_path.push("a.step");
@@ -87,7 +87,7 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     convert_step_path_to_stl(&temp_path)
 }
 
-pub fn convert_step_path_to_stl(step_path: &PathBuf) -> Result<Vec<u8>, MeshThumbnailError> {
+pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
         .unwrap_or(TOLERANCE_DEFAULT);
