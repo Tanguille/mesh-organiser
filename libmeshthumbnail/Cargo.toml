@@ -22,7 +22,7 @@ wavefront_obj = { version = "11.0.0" }
 threemf = { git = "https://github.com/suchmememanyskill/3mf-rs", rev = "d78e731b2fcf127692380332ad2708aec65dee68" }
 regex = "1.12.3"
 base64 = "0.22.1"
-opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "14fca36e77b52aac4c4c5e75314f79e84b086053", optional = true }
+opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b2614613a88e21267be656992212c87df96805", optional = true }
 tempfile = "3.27.0"
 
 [features]
