@@ -218,7 +218,7 @@ pub async fn get_bytes_from_blob(
 }
 
 pub fn ensure_unique_file_full_filename(base_path: &Path, file_name: &str) -> PathBuf {
-    let extension = file_name.split('.').last().unwrap();
+    let extension = file_name.split('.').next_back().unwrap();
     let base_file_name = &file_name[..file_name.len() - extension.len() - 1];
 
     ensure_unique_file(base_path, base_file_name, extension)
