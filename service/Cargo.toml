@@ -27,16 +27,12 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util = { workspace = true, features = ["io"] }
 urlencoding = { workspace = true }
 vek = { workspace = true }
-async_zip = { workspace = true, features = [
-    "deflate",
-    "deflate64",
-    "tokio-fs",
-] }
+async_zip = { workspace = true, features = ["deflate", "deflate64", "tokio-fs"] }
 chrono = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6.5"
 
 [target.'cfg(windows)'.dependencies]
