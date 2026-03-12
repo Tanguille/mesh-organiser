@@ -9,8 +9,7 @@ use std::path::PathBuf;
 
 use service::download_file_service::download_file_to;
 use tempfile::tempdir;
-use wiremock::matchers::any;
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 
 #[tokio::test]
 async fn download_file_to_writes_file_with_content_disposition() {
