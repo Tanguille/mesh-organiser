@@ -10,7 +10,6 @@ step = ["libmeshthumbnail/step"]
 db = { workspace = true }
 
 libmeshthumbnail = { path = "../libmeshthumbnail" }
-content_disposition = { workspace = true }
 futures = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 indexmap = { workspace = true }

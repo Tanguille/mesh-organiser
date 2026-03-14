@@ -33,7 +33,6 @@ axum-login = "0.18.0"
 axum-messages = "0.8.0"
 bitflags = "2.11.0"
 chrono = "0.4.44"
-content_disposition = "0.4.0"
 db = { path = "db" }
 futures = "0.3.32"
 hex = "0.4.3"
