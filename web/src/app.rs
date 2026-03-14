@@ -19,11 +19,11 @@ use axum_login::{
 use axum_messages::MessagesManagerLayer;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
     services::{ServeDir, ServeFile},
 };
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_sessions_sqlx_store::SqliteStore;
 
 use db::{

@@ -37,6 +37,7 @@ Before claiming work complete or ready for review, run verification and only the
 - Frontend: `npm run check`; run relevant tests (`npm run test` if applicable)
 - Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, and tests (e.g. `cargo test -p service`)
 - Do not state that tests or checks pass without having run them
+- **STEP/OCCT**: Full build compiles OCCT from source. To avoid freezing, limit parallelism (e.g. `CARGO_BUILD_JOBS=2`, Windows: `CL=/MP2`); see [docs/commands.md](docs/commands.md).
 
 ### Guardrails
 

@@ -20,7 +20,11 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     if lower_file_name.ends_with(".step.zip") || lower_file_name.ends_with(".stp.zip") {
         Ok(Some(parse_step_zip(path)?))
     } else {
-        let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+        let extension = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if extension == "step" || extension == "stp" {
             Ok(Some(parse_step(path)?))
         } else {
@@ -44,7 +48,11 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
             .into_iter()
             .map(|v| vek::Vec3::new(v.x as f32, v.y as f32, v.z as f32))
             .collect(),
-        indices: mesh.indices.into_iter().map(|i| u32::try_from(i).expect("index too large for u32")).collect(),
+        indices: mesh
+            .indices
+            .into_iter()
+            .map(|i| u32::try_from(i).expect("index too large for u32"))
+            .collect(),
     })
 }
 
@@ -80,15 +88,15 @@ fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     parse_step(&temp_path)
 }
 
+/// # Panics
+///
+/// Panics if unable to create a temporary directory.
+///
+/// # Errors
+///
+/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
 pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     // Todo: This is kinda hacky
-    # Panics
-    #
-    # Panics if unable to create a temporary directory.
-    #
-    # Errors
-    #
-    # Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let mut temp_path = temp_dir.path().to_path_buf();
     temp_path.push("a.step");
@@ -100,14 +108,14 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     convert_step_path_to_stl(&temp_path)
 }
 
+/// # Panics
+///
+/// Panics if unable to create a temporary directory.
+///
+/// # Errors
+///
+/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
 pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
-    # Panics
-    #
-    # Panics if unable to create a temporary directory.
-    #
-    # Errors
-    #
-    # Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
         .unwrap_or(TOLERANCE_DEFAULT);

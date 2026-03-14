@@ -3566,6 +3566,7 @@ version = "2.0.0"
 dependencies = [
  "arboard",
  "async_zip",
+ "content_disposition",
  "db",
  "futures",
  "itertools",

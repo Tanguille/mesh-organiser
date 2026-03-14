@@ -7,9 +7,10 @@ edition = "2024"
 step = ["libmeshthumbnail/step"]
 
 [dependencies]
+db = { workspace = true }
+
 libmeshthumbnail = { path = "../libmeshthumbnail" }
 content_disposition = { workspace = true }
-db = { workspace = true }
 futures = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 indexmap = { workspace = true }
@@ -32,11 +33,6 @@ async_zip = { workspace = true, features = [
     "deflate64",
     "tokio-fs",
 ] }
-chrono = { workspace = true }
-reqwest = { workspace = true }
-regex = { workspace = true }
-indexmap = { workspace = true }
-itertools = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
