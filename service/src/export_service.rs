@@ -25,6 +25,12 @@ use crate::{
 
 use super::app_state::AppState;
 
+/// Returns a new temp directory for the given action; panics on I/O or clock failure.
+///
+/// # Panics
+///
+/// Panics if the system temp dir is unavailable or the system clock cannot provide nanosecond timestamps.
+#[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
     let temp_dir = std::env::temp_dir().join(format!(
         "meshorganiser_{action}_action_{}",
@@ -35,12 +41,13 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
 }
 
 pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
-    if let Some(disk_path) = &blob.disk_path {
-        PathBuf::from(disk_path)
-    } else {
-        let base_dir = app_state.get_model_dir();
-        base_dir.join(format!("{}.{}", blob.sha256, blob.filetype))
-    }
+    blob.disk_path.as_ref().map_or_else(
+        || {
+            let base_dir = app_state.get_model_dir();
+            base_dir.join(format!("{}.{}", blob.sha256, blob.filetype))
+        },
+        PathBuf::from,
+    )
 }
 
 pub fn get_image_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
@@ -48,6 +55,15 @@ pub fn get_image_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
     base_dir.join(format!("{}.png", blob.sha256))
 }
 
+/// Exports models to a temp folder; returns the folder path and list of exported file paths.
+///
+/// # Errors
+///
+/// Returns an error if file I/O or zip/JSON serialisation fails.
+///
+/// # Panics
+///
+/// Panics if a spawned export task panics (e.g. during `get_path_from_model`).
 pub async fn export_to_temp_folder(
     mut models: Vec<Model>,
     app_state: &AppState,
@@ -70,10 +86,7 @@ pub async fn export_to_temp_folder(
     let mut active = 0;
 
     while !models.is_empty() {
-        let model = match models.pop() {
-            Some(x) => x,
-            None => continue,
-        };
+        let Some(model) = models.pop() else { continue };
         let temp_dir = temp_dir.clone();
         let app_state = app_state.clone();
         active += 1;
@@ -107,7 +120,7 @@ pub async fn export_to_temp_folder(
 fn name_collection_of_models(models: &[Model]) -> String {
     let set: Vec<i64> = models
         .iter()
-        .map(|m| m.group.as_ref().map(|g| g.id).unwrap_or(-1))
+        .map(|m| m.group.as_ref().map_or(-1, |g| g.id))
         .unique()
         .collect();
 
@@ -121,7 +134,7 @@ fn name_collection_of_models(models: &[Model]) -> String {
         if models.len() > 5 {
             format!("+{} more...", models.len() - 5)
         } else {
-            "".to_string()
+            String::new()
         }
     ))
 }
@@ -131,6 +144,11 @@ pub struct ExportZipResult {
     pub zip_path: PathBuf,
 }
 
+/// Exports models to a zip in a temp folder.
+///
+/// # Errors
+///
+/// Returns an error if file I/O or zip/JSON serialisation fails.
 pub async fn export_zip_to_temp_folder(
     models: Vec<Model>,
     app_state: &AppState,
@@ -188,6 +206,11 @@ pub async fn export_zip_to_temp_folder(
     })
 }
 
+/// Reads the full blob bytes for a model.
+///
+/// # Errors
+///
+/// Returns an error if the blob file cannot be read.
 pub async fn get_bytes_from_model(
     model: &Model,
     app_state: &AppState,
@@ -195,6 +218,11 @@ pub async fn get_bytes_from_model(
     get_bytes_from_blob(&model.blob, app_state).await
 }
 
+/// Reads the full blob bytes.
+///
+/// # Errors
+///
+/// Returns an error if the blob file cannot be read.
 pub async fn get_bytes_from_blob(
     blob: &Blob,
     app_state: &AppState,
@@ -217,6 +245,12 @@ pub async fn get_bytes_from_blob(
     Ok(buffer)
 }
 
+/// Ensures a unique path for the given filename in the base path (adds _1, _2, … if needed).
+///
+/// # Panics
+///
+/// Panics if `file_name` has no extension (no '.').
+#[must_use]
 pub fn ensure_unique_file_full_filename(base_path: &Path, file_name: &str) -> PathBuf {
     let extension = file_name.split('.').next_back().unwrap();
     let base_file_name = &file_name[..file_name.len() - extension.len() - 1];
@@ -224,11 +258,8 @@ pub fn ensure_unique_file_full_filename(base_path: &Path, file_name: &str) -> Pa
     ensure_unique_file(base_path, base_file_name, extension)
 }
 
-pub fn ensure_unique_file(
-    base_path: &std::path::Path,
-    file_name: &str,
-    extension: &str,
-) -> PathBuf {
+#[must_use]
+pub fn ensure_unique_file(base_path: &Path, file_name: &str, extension: &str) -> PathBuf {
     let mut counter = 1;
     let mut new_file_name = base_path.join(format!("{file_name}.{extension}"));
 
@@ -240,8 +271,13 @@ pub fn ensure_unique_file(
     new_file_name
 }
 
+/// Resolves the path for a model in the temp dir (copy or reference depending on `lazy`).
+///
+/// # Errors
+///
+/// Returns an error if the source file cannot be read or copied.
 pub async fn get_path_from_model(
-    temp_dir: &std::path::Path,
+    temp_dir: &Path,
     model: &Model,
     app_state: &AppState,
     lazy: bool,
@@ -270,6 +306,11 @@ pub async fn get_path_from_model(
     }
 }
 
+/// Sums on-disk size of blobs by hash in the model dir.
+///
+/// # Errors
+///
+/// Returns an error if the model directory cannot be read.
 pub fn get_size_of_blobs(
     blobs: &[String], // Sha256's
     app_state: &AppState,
@@ -279,25 +320,20 @@ pub fn get_size_of_blobs(
     let hashset = blobs.iter().cloned().collect::<HashSet<String>>();
 
     for path in base_dir.read_dir()? {
-        let path = match path {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
+        let Ok(path) = path else { continue };
 
         let f = path.file_name();
         let lossy = f.to_string_lossy();
-        let filename = match lossy.split('.').next() {
-            Some(name) => name,
-            None => continue,
+        let Some(filename) = lossy.split('.').next() else {
+            continue;
         };
 
         if !hashset.contains(filename) {
             continue;
         }
 
-        let metadata = match path.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
+        let Ok(metadata) = path.metadata() else {
+            continue;
         };
 
         if !metadata.is_file() {
@@ -310,6 +346,11 @@ pub fn get_size_of_blobs(
     Ok(total_size)
 }
 
+/// Removes on-disk files for blobs that are no longer referenced.
+///
+/// # Errors
+///
+/// Returns an error if the database call to fetch dead blobs fails.
 pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError> {
     let blobs = blob_db::get_and_delete_dead_blobs(&app_state.db).await?;
 
@@ -321,13 +362,13 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
             && model_path.exists()
             && let Err(e) = std::fs::remove_file(model_path)
         {
-            eprintln!("Failed to remove dead blob model file: {}", e);
+            eprintln!("Failed to remove dead blob model file: {e}");
         }
 
         if image_path.exists()
             && let Err(e) = std::fs::remove_file(image_path)
         {
-            eprintln!("Failed to remove dead blob image file: {}", e);
+            eprintln!("Failed to remove dead blob image file: {e}");
         }
     }
     Ok(())

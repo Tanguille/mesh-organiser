@@ -45,7 +45,11 @@ mod get {
     use axum_extra::extract::Query;
     use db::{model::user::User, share_db};
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, FromStr, IntoResponse, Json,
+        ModelFilterOptions, ModelFlags, ModelOrderBy, Path, Response, Serialize, State,
+        WebAppState, export_service, model_db,
+    };
 
     #[derive(Deserialize)]
     pub struct GetModelParams {
@@ -120,13 +124,14 @@ mod get {
     ) -> Result<Response, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
 
-        params.model_ids = match params.model_ids.is_empty() {
-            true => vec![],
-            false => share
+        params.model_ids = if params.model_ids.is_empty() {
+            vec![]
+        } else {
+            share
                 .model_ids
                 .into_iter()
                 .filter(|x| params.model_ids.contains(x))
-                .collect(),
+                .collect()
         };
 
         params.group_ids = vec![];
@@ -189,7 +194,7 @@ mod get {
         let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state.app_state)?;
 
         Ok(Json(GetModelDiskSpaceUsageResponse {
-            size_uncompressed: data.total_size as u64,
+            size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
             size_compressed: local,
         })
         .into_response())
@@ -197,9 +202,13 @@ mod get {
 }
 
 mod put {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ModelFlags, Path, Response,
+        State, StatusCode, WebAppState, model_db,
+    };
 
     #[derive(Deserialize)]
+    #[allow(clippy::struct_field_names)] // field names match API
     pub struct PutModelParams {
         pub model_name: String,
         pub model_url: Option<String>,
@@ -246,7 +255,10 @@ mod delete {
     use db::model::user::User;
     use service::export_service::delete_dead_blobs;
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, model_db,
+    };
 
     pub async fn delete_model(
         auth_session: AuthSession,
@@ -308,7 +320,11 @@ mod post {
 
     use crate::web_import_state::WebImportStateEmitter;
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, ImportState, IntoResponse, Json, Multipart, OffsetDateTime,
+        Response, State, StatusCode, WebAppState, cleanse_evil_from_name, fs, import_service,
+        model_db,
+    };
 
     pub async fn add_model(
         auth_session: AuthSession,
@@ -329,10 +345,10 @@ mod post {
         let mut link = None;
 
         while let Some(mut field) = multipart.next_field().await? {
-            if let Some("source_url") = field.name() {
+            if field.name() == Some("source_url") {
                 link = Some(field.text().await?);
                 continue;
-            };
+            }
 
             let file_name = match field.file_name() {
                 Some(name) => name.to_string(),
@@ -357,11 +373,7 @@ mod post {
 
             while let Some(chunk) = field.chunk().await? {
                 #[cfg(debug_assertions)]
-                println!(
-                    "Writing chunk of size {} for file {}",
-                    chunk.len(),
-                    file_name
-                );
+                println!("Writing chunk of size {} for file {file_name}", chunk.len());
                 file.write_all(&chunk).await?;
             }
 

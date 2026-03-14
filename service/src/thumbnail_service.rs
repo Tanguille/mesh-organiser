@@ -1,4 +1,4 @@
-use std::{panic, path::PathBuf};
+use std::{panic, path::Path, path::PathBuf};
 
 use image::{DynamicImage, imageops::FilterType::Triangle};
 use libmeshthumbnail::{extract_image, parse_model, render};
@@ -18,21 +18,23 @@ const IMAGE_HEIGHT: usize = 400;
 const IMAGE_SIZE: Vec2<usize> = Vec2::new(IMAGE_WIDTH, IMAGE_HEIGHT);
 
 fn render(
-    model_path: &PathBuf,
-    image_path: &PathBuf,
+    model_path: &Path,
+    image_path: &Path,
     color: Vec3<u8>,
     rotation: Vec3<f32>,
 ) -> Result<(), ServiceError> {
-    let mesh = match parse_model::handle_parse(model_path.as_path()) {
+    let mesh = match parse_model::handle_parse(model_path) {
         Ok(Some(mesh)) => mesh,
         Ok(None) => {
             return Err(ServiceError::InternalError(format!(
-                "Could not generate thumbnail for model at path {model_path:?}: unsupported format"
+                "Could not generate thumbnail for model at path {}: unsupported format",
+                model_path.display()
             )));
         }
         Err(e) => {
             return Err(ServiceError::InternalError(format!(
-                "Error parsing model at path {model_path:?} for thumbnail generation: {e}"
+                "Error parsing model at path {} for thumbnail generation: {e}",
+                model_path.display()
             )));
         }
     };
@@ -45,8 +47,8 @@ fn render(
 }
 
 fn process(
-    model_path: &PathBuf,
-    image_path: &PathBuf,
+    model_path: &Path,
+    image_path: &Path,
     color: Vec3<u8>,
     rotation: Vec3<f32>,
     fallback_3mf_thumbnail: bool,
@@ -55,26 +57,52 @@ fn process(
 ) -> Result<(), ServiceError> {
     let filename = model_path.to_string_lossy().to_lowercase();
 
-    let extension = match filename {
-        f if f.ends_with(".stl") => "stl",
-        f if f.ends_with(".obj") => "obj",
-        f if f.ends_with(".gcode") => "gcode",
-        f if f.ends_with(".3mf") => "3mf",
-        f if f.ends_with(".stl.zip") => "stl.zip",
-        f if f.ends_with(".obj.zip") => "obj.zip",
-        f if f.ends_with(".gcode.zip") => "gcode.zip",
-        _ => {
+    let path = Path::new(&filename);
+    let extension = match () {
+        () if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("stl")) =>
+        {
+            "stl"
+        }
+        () if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("obj")) =>
+        {
+            "obj"
+        }
+        () if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode")) =>
+        {
+            "gcode"
+        }
+        () if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("3mf")) =>
+        {
+            "3mf"
+        }
+        () if filename.ends_with(".stl.zip") => "stl.zip",
+        () if filename.ends_with(".obj.zip") => "obj.zip",
+        () if filename.ends_with(".gcode.zip") => "gcode.zip",
+        () => {
             return Err(ServiceError::InternalError(format!(
-                "Unsupported file extension for thumbnail generation: {model_path:?}"
+                "Unsupported file extension for thumbnail generation: {}",
+                model_path.display()
             )));
         }
     };
 
     if ((prefer_3mf_thumbnail && extension == "3mf")
         || (prefer_gcode_thumbnail && (extension == "gcode" || extension == "gcode.zip")))
-        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path.as_path())
+        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
     {
-        image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
+        image = image.resize_to_fill(
+            u32::try_from(IMAGE_WIDTH).unwrap_or(400),
+            u32::try_from(IMAGE_HEIGHT).unwrap_or(400),
+            Triangle,
+        );
         image.save(image_path)?;
         return Ok(());
     }
@@ -86,18 +114,28 @@ fn process(
     if fallback_3mf_thumbnail
         && !prefer_3mf_thumbnail
         && extension == "3mf"
-        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path.as_path())
+        && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
     {
-        image = image.resize_to_fill(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32, Triangle);
+        image = image.resize_to_fill(
+            u32::try_from(IMAGE_WIDTH).unwrap_or(400),
+            u32::try_from(IMAGE_HEIGHT).unwrap_or(400),
+            Triangle,
+        );
         image.save(image_path)?;
         return Ok(());
     }
 
     Err(ServiceError::InternalError(format!(
-        "Failed to generate thumbnail for model at path {model_path:?}"
+        "Failed to generate thumbnail for model at path {}",
+        model_path.display()
     )))
 }
 
+/// Generates thumbnails for all blobs in the database.
+///
+/// # Errors
+///
+/// Returns an error if blob listing or thumbnail generation fails.
 pub async fn generate_all_thumbnails(
     app_state: &AppState,
     overwrite: bool,
@@ -109,6 +147,15 @@ pub async fn generate_all_thumbnails(
     generate_thumbnails(&blob_refs, app_state, overwrite, import_state).await
 }
 
+/// Generates thumbnails for the given blobs.
+///
+/// # Errors
+///
+/// Returns an error if thumbnail generation fails.
+///
+/// # Panics
+///
+/// Panics if a spawned thumbnail task panics.
 pub async fn generate_thumbnails(
     models: &[&Blob],
     app_state: &AppState,
@@ -122,18 +169,18 @@ pub async fn generate_thumbnails(
     let max_concurrent = app_state.get_configuration().core_parallelism;
     let rotation_setting = app_state.get_configuration().thumbnail_rotation;
     let rotation = Vec3::new(
-        rotation_setting[0] as f32,
-        rotation_setting[1] as f32,
-        rotation_setting[2] as f32,
+        f32::from(rotation_setting[0]),
+        f32::from(rotation_setting[1]),
+        f32::from(rotation_setting[2]),
     );
 
     let color = app_state
         .get_configuration()
         .thumbnail_color
-        .replace("#", "")
+        .replace('#', "")
         .to_uppercase();
 
-    let color = u32::from_str_radix(&color, 16).unwrap_or(0xEEEEEE);
+    let color = u32::from_str_radix(&color, 16).unwrap_or(0xEE_EE_EE);
 
     let color = Vec3::new(
         ((color >> 16) & 0xFF) as u8,
@@ -178,7 +225,7 @@ pub async fn generate_thumbnails(
             match res {
                 Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
                 Err(err) => panic!("{err}"),
-                Ok(_) => {
+                Ok(()) => {
                     active -= 1;
                     import_state.update_finished_thumbnails_count(1);
                 }

@@ -47,6 +47,7 @@ Before claiming work complete or ready for review, run verification and only the
 ### Always Test When Changing Something (Separate Subagent)
 
 - When making behavioural or structural changes (refactors, deduplication, new features), **add or update tests** to guard against regressions.
+- **Dangerous edits — test first:** Before doing edits that can change behaviour (control flow, error handling, types, or semantics), **write tests that capture the current intended behaviour**. Run them to establish a baseline, then apply the edit and re-run to confirm behaviour is unchanged. Only then proceed. Examples: replacing `match` with `let`-else, changing `Option`/`Result` handling, refactoring conditionals or casts.
 - **Use a separate subagent** dedicated to writing/adding tests rather than having the implementation agent add tests in the same pass. This keeps scope clear and improves test quality.
 - The test subagent should: (1) **Explain** what is being tested and why (regression after refactor, new behaviour, etc.), (2) **Plan** concrete test cases (happy path, boundaries, errors), (3) **Execute** (write tests, run test commands, report pass/fail). See [Testing](#testing) below for framework and prompt details.
 

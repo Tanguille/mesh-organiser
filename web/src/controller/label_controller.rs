@@ -51,7 +51,10 @@ pub fn router() -> Router<WebAppState> {
 mod get {
     use axum_extra::extract::Query;
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        WebAppState, label_db, label_keyword_db,
+    };
 
     #[derive(Deserialize)]
     pub struct GetLabelsParams {
@@ -92,7 +95,10 @@ mod get {
 mod post {
     use db::time_now;
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, LabelMeta, Path, Response,
+        State, StatusCode, WebAppState, label_db, random_hex_32,
+    };
 
     #[derive(Deserialize)]
     pub struct PostLabelParams {
@@ -185,9 +191,13 @@ mod post {
 }
 
 mod put {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, label_db, label_keyword_db,
+    };
 
     #[derive(Deserialize)]
+    #[allow(clippy::struct_field_names)] // field names match API
     pub struct PutLabelParams {
         pub label_name: String,
         pub label_color: i64,
@@ -314,7 +324,10 @@ mod put {
 }
 
 mod delete {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, label_db,
+    };
 
     pub async fn delete_label(
         auth_session: AuthSession,

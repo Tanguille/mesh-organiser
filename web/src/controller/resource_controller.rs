@@ -41,7 +41,10 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, WebAppState,
+        resource_db,
+    };
 
     pub async fn get_resources(
         auth_session: AuthSession,
@@ -68,7 +71,10 @@ mod get {
 }
 
 mod post {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ResourceFlags,
+        ResourceMeta, Response, State, WebAppState, random_hex_32, resource_db, time_now,
+    };
 
     #[derive(Deserialize)]
     pub struct PostResourceParams {
@@ -100,9 +106,13 @@ mod post {
 
 mod put {
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, ResourceFlags,
+        Response, State, StatusCode, WebAppState, resource_db,
+    };
 
     #[derive(Deserialize)]
+    #[allow(clippy::struct_field_names)] // field names match API
     pub struct PutResourceParams {
         pub resource_name: String,
         pub resource_flags: ResourceFlags,
@@ -166,7 +176,10 @@ mod put {
 }
 
 mod delete {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Path, Response, State, StatusCode,
+        WebAppState, resource_db, resource_service,
+    };
 
     pub async fn delete_resource(
         auth_session: AuthSession,
@@ -186,7 +199,7 @@ mod delete {
 
         let resource = resource.unwrap();
 
-        resource_service::delete_resource_folder(&resource, &user, &app_state.app_state).await?;
+        resource_service::delete_resource_folder(&resource, &user, &app_state.app_state)?;
         resource_db::delete_resource(&app_state.app_state.db, &user, resource.id).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())

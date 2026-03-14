@@ -18,10 +18,10 @@ version = "1.0.0"
 edition = "2024"
 
 [workspace.dependencies]
-arboard = "3.6.1"
+arboard = { version = "3.6.1", default-features = false }
 async_zip = "0.0.18"
 base64 = "0.22.1"
-euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d" }
+euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d", default-features = false }
 opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b2614613a88e21267be656992212c87df96805" }
 tempfile = "3.27.0"
 vek = "0.17.2"
@@ -40,10 +40,11 @@ htmlescape = "0.3.1"
 image = { version = "0.25.10", default-features = false }
 indexmap = "2.13.0"
 itertools = "0.14.0"
+libmeshthumbnail = { path = "libmeshthumbnail" }
 password-auth = "1.0.0"
 rand = "0.10.0"
 regex = "1.12.3"
-reqwest = "0.13.2"
+reqwest = { version = "0.13.2", default-features = false }
 serde = "1.0.228"
 serde_html_form = "0.4.0"
 serde_json = "1.0.149"
@@ -69,7 +70,6 @@ tokio = "1.50.0"
 tokio-util = "0.7.18"
 tower_governor = "0.8.0"
 tower-http = "0.6.8"
-tower-sessions = { version = "0.15.0", default-features = false }
 tower-sessions-sqlx-store = "0.15.0"
 tracing-subscriber = "0.3.23"
 urlencoding = "2.1.3"

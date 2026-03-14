@@ -19,13 +19,15 @@ pub struct AuthUser {
 }
 
 // Here we've implemented `Debug` manually to avoid accidentally logging the
-// password hash.
+// password hash and validity token.
 impl std::fmt::Debug for AuthUser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("User")
             .field("id", &self.id)
             .field("username", &self.username)
+            .field("email", &self.email)
             .field("permissions", &self.permissions)
+            .field("validity_token", &"[redacted]")
             .finish()
     }
 }
@@ -37,7 +39,7 @@ impl AuthUser {
             username: self.username.clone(),
             email: self.email.clone(),
             permissions: db::model::user::UserPermissions::from_bits_truncate(
-                self.permissions as u32,
+                self.permissions.try_into().unwrap_or(u32::MAX),
             ),
             password_hash: String::new(),
             last_sync: None,
@@ -83,7 +85,7 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn new(db: Arc<DbContext>) -> Self {
+    pub const fn new(db: Arc<DbContext>) -> Self {
         Self { db }
     }
 
@@ -93,10 +95,7 @@ impl Backend {
             username: user.username,
             email: user.email,
             permissions: user.permissions.bits() as usize,
-            validity_token: match user.sync_url {
-                Some(token) => token.into_bytes(),
-                None => vec![],
-            },
+            validity_token: user.sync_url.map_or_else(Vec::new, String::into_bytes),
         }
     }
 }
@@ -122,19 +121,13 @@ impl AuthnBackend for Backend {
                 })
                 .await?;
 
-                match user {
-                    Some(user) => Ok(Some(Self::convert_user(user))),
-                    None => Ok(None),
-                }
+                Ok(user.map(Self::convert_user))
             }
             Credentials::Token(token_credentials) => {
                 let user =
                     user_db::get_user_by_sync_token(&self.db, &token_credentials.token).await?;
 
-                match user {
-                    Some(user) => Ok(Some(Self::convert_user(user))),
-                    None => Ok(None),
-                }
+                Ok(user.map(Self::convert_user))
             }
         }
     }

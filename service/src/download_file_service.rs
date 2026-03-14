@@ -3,6 +3,7 @@ use std::{
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use chrono::Utc;
@@ -16,24 +17,63 @@ use crate::{
     util::cleanse_evil_from_name,
 };
 
+static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
+static FILENAME_UNQUOTED: OnceLock<Regex> = OnceLock::new();
+
 #[derive(Serialize)]
 pub struct DownloadResult {
     pub path: String,
     pub source_uri: Option<String>,
 }
 
-pub fn get_content_disposition_filename(response: &Response) -> Option<String> {
-    let content_disposition = response.headers().get(CONTENT_DISPOSITION);
-
-    match content_disposition {
-        None => response.url().path().split("/").last().map(String::from),
-        Some(header_value) => match header_value.to_str() {
-            Ok(header_value) => {
-                content_disposition::parse_content_disposition(header_value).filename_full()
-            }
-            Err(_) => None,
-        },
+/// Parses a Content-Disposition header value and returns the filename if present.
+/// Supports `filename*=UTF-8''<percent-encoded>` (RFC 5987) and `filename="..."` / `filename=value`.
+fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
+    // Prefer filename*=UTF-8''<encoded> (RFC 5987)
+    if let Some(rest) = header_value.split("filename*=").nth(1) {
+        let token = rest.split(';').next().unwrap_or(rest).trim();
+        if let Some(encoded) = token
+            .strip_prefix("UTF-8''")
+            .or_else(|| token.strip_prefix("utf-8''"))
+            && let Ok(decoded) = decode(encoded)
+        {
+            return Some(decoded.into_owned());
+        }
     }
+    // Fallback: filename="..." or filename=value
+    let re = FILENAME_QUOTED.get_or_init(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).unwrap());
+    if let Some(cap) = re.captures(header_value)
+        && let Some(m) = cap.get(1)
+    {
+        return Some(m.as_str().to_string());
+    }
+    let re2 = FILENAME_UNQUOTED.get_or_init(|| Regex::new(r"filename\s*=\s*([^;\s]+)").unwrap());
+    if let Some(cap) = re2.captures(header_value)
+        && let Some(m) = cap.get(1)
+    {
+        return Some(m.as_str().trim().to_string());
+    }
+
+    None
+}
+
+pub fn get_content_disposition_filename(response: &Response) -> Option<String> {
+    response.headers().get(CONTENT_DISPOSITION).map_or_else(
+        || {
+            response
+                .url()
+                .path()
+                .split('/')
+                .next_back()
+                .map(String::from)
+        },
+        |header_value| {
+            header_value
+                .to_str()
+                .ok()
+                .and_then(parse_content_disposition_filename)
+        },
+    )
 }
 
 fn filename_from_response_or_url(response: &Response) -> String {
@@ -74,8 +114,12 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
     Ok((file_path, response_url))
 }
 
-/// Simple download into a caller-provided directory. No site-specific filename/source_uri logic.
+/// Simple download into a caller-provided directory. No site-specific `filename`/`source_uri` logic.
 /// Returns `DownloadResult` with `path` set and `source_uri: None`.
+///
+/// # Errors
+///
+/// Returns an error if the request fails, the response is not successful, or file I/O fails.
 pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, ServiceError> {
     let (path, _) = download_file_to_dir(url, dir).await?;
     let path_str = path
@@ -87,6 +131,15 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
     })
 }
 
+/// Downloads to a temp dir and derives filename/source from URL; may rename file for site-specific logic.
+///
+/// # Errors
+///
+/// Returns an error if the request fails, the response is not successful, or file I/O fails.
+///
+/// # Panics
+///
+/// Panics if the system clock cannot provide nanosecond timestamps for the temp dir name.
 pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     let temp_dir = env::temp_dir().join(format!(
         "meshorganiser_download_action_{}",
@@ -96,10 +149,10 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     let (mut file_path, response_url) = download_file_to_dir(url, &temp_dir).await?;
 
-    let redirect_url_filename = match response_url.split('/').next_back() {
-        Some(seg) => decode(seg).unwrap_or_default().into_owned(),
-        None => "model.stl".to_string(),
-    };
+    let redirect_url_filename = response_url.split('/').next_back().map_or_else(
+        || "model.stl".to_string(),
+        |seg| decode(seg).unwrap_or_default().into_owned(),
+    );
 
     let mut source_uri: Option<String> = None;
     let desired_filename: String = if url.contains("makerworld") {
@@ -122,14 +175,16 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         let decoded_url = decode(url).unwrap().into_owned();
         re.captures(&decoded_url)
             .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| {
-                file_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("model.stl")
-                    .to_string()
-            })
+            .map_or_else(
+                || {
+                    file_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("model.stl")
+                        .to_string()
+                },
+                |m| m.as_str().to_string(),
+            )
     } else {
         file_path
             .file_name()
@@ -152,4 +207,76 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         .to_string();
 
     Ok(DownloadResult { path, source_uri })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_content_disposition_filename;
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_utf8_percent_encoded() {
+        // RFC 5987: filename*=UTF-8''<percent-encoded>
+        assert_eq!(
+            parse_content_disposition_filename(r"attachment; filename*=UTF-8''my%20file.stl"),
+            Some("my file.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''%E4%B8%AD%E6%96%87.stl"),
+            Some("中文.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_charset_case_insensitive() {
+        // Charset is case-insensitive (utf-8'' vs UTF-8'')
+        assert_eq!(
+            parse_content_disposition_filename(r"attachment; filename*=utf-8''file.stl"),
+            Some("file.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_quoted() {
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="something.stl""#),
+            Some("something.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(r#"inline; filename="with spaces.stl""#),
+            Some("with spaces.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_unquoted() {
+        assert_eq!(
+            parse_content_disposition_filename("attachment; filename=unquoted.stl"),
+            Some("unquoted.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename("filename=token"),
+            Some("token".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_empty_quoted() {
+        // Empty quoted filename="" — unquoted branch matches first and captures the quote(s)
+        assert_eq!(
+            parse_content_disposition_filename(r#"filename=""#),
+            Some("\"".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_missing_or_malformed_returns_none() {
+        assert_eq!(parse_content_disposition_filename("attachment"), None);
+        assert_eq!(parse_content_disposition_filename(""), None);
+        assert_eq!(parse_content_disposition_filename("filename="), None);
+        // filename*= with wrong charset / not UTF-8''
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=ISO-8859-1''%20"),
+            None
+        );
+    }
 }

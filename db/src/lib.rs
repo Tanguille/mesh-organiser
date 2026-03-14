@@ -1,3 +1,5 @@
+#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+
 pub mod blob_db;
 pub mod db_context;
 pub mod group_db;

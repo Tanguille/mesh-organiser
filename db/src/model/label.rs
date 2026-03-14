@@ -10,20 +10,12 @@ pub struct LabelMeta {
     pub last_modified: String,
 }
 
+#[must_use]
 pub fn convert_label_meta_list_to_map(labels: Vec<LabelMeta>) -> IndexMap<i64, LabelMeta> {
     let mut label_map: IndexMap<i64, LabelMeta> = IndexMap::with_capacity(labels.len());
 
     for label in labels {
-        label_map.insert(
-            label.id,
-            LabelMeta {
-                id: label.id,
-                name: label.name,
-                color: label.color,
-                unique_global_id: label.unique_global_id,
-                last_modified: label.last_modified,
-            },
-        );
+        label_map.insert(label.id, label);
     }
 
     label_map

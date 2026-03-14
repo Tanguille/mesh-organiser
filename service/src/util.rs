@@ -9,11 +9,17 @@ use regex::Regex;
 
 use crate::service_error::ServiceError;
 
+/// Returns a human-friendly file name (no path); strips extension if not a directory.
+///
+/// # Panics
+///
+/// Panics if the file name is not valid UTF-8.
+#[must_use]
 pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     let extension = file.extension();
     let mut file_name: String = String::from(
         file.file_name()
-            .unwrap_or(OsStr::new("unknown_filename"))
+            .unwrap_or_else(|| OsStr::new("unknown_filename"))
             .to_str()
             .unwrap(),
     );
@@ -24,10 +30,7 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
 
     let remove_whitespace = Regex::new(r" {2,}").unwrap();
 
-    file_name = file_name
-        .replace("_", " ")
-        .replace("-", " ")
-        .replace("+", " ");
+    file_name = file_name.replace(['_', '-', '+'], " ");
 
     file_name = String::from(remove_whitespace.replace_all(&file_name, " "));
 
@@ -36,21 +39,19 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     file_name
 }
 
+#[must_use]
 pub fn cleanse_evil_from_name(name: &str) -> String {
     String::from(
-        name.replace("\\", " ")
-            .replace("/", " ")
-            .replace(":", " ")
-            .replace("*", " ")
-            .replace("?", " ")
-            .replace("\"", " ")
-            .replace("<", " ")
-            .replace(">", " ")
-            .replace("|", " ")
+        name.replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], " ")
             .trim(),
     )
 }
 
+/// Opens the given path in the system file explorer.
+///
+/// # Panics
+///
+/// Panics if the path is not valid UTF-8.
 pub fn open_folder_in_explorer(path: &Path) {
     let path = path.to_str().unwrap();
     #[cfg(target_os = "windows")]
@@ -69,6 +70,12 @@ pub fn open_folder_in_explorer(path: &Path) {
     }
 }
 
+/// Returns the total size of all files in the directory (non-recursive).
+///
+/// # Panics
+///
+/// Panics if the directory cannot be read or a metadata call fails.
+#[must_use]
 pub fn get_folder_size(path: &PathBuf) -> u64 {
     std::fs::read_dir(path)
         .unwrap()
@@ -76,6 +83,7 @@ pub fn get_folder_size(path: &PathBuf) -> u64 {
         .sum()
 }
 
+#[must_use]
 pub fn is_zippable_file_extension(extension: &str) -> bool {
     let lowercase = extension.to_lowercase();
 
@@ -84,6 +92,7 @@ pub fn is_zippable_file_extension(extension: &str) -> bool {
         .any(|f| lowercase.as_str().eq(*f))
 }
 
+#[must_use]
 pub fn is_zipped_file_extension(extension: &str) -> bool {
     let lowercase = extension.to_lowercase();
 
@@ -92,6 +101,7 @@ pub fn is_zipped_file_extension(extension: &str) -> bool {
         .any(|f| lowercase.as_str().eq(*f))
 }
 
+#[must_use]
 pub fn convert_extension_to_zip(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
@@ -104,6 +114,7 @@ pub fn convert_extension_to_zip(extension: &str) -> String {
     })
 }
 
+#[must_use]
 pub fn convert_zip_to_extension(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
@@ -116,6 +127,11 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
     })
 }
 
+/// Reads the entire file as a UTF-8 string.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or read.
 pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
     let mut file = std::fs::File::open(path)?;
     let mut contents = String::new();

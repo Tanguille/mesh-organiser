@@ -6,7 +6,7 @@ use super::model_group::ModelGroup;
 bitflags! {
     #[derive(Clone, Copy)]
     pub struct ResourceFlags: u32 {
-        const Completed  = 0b00000001;
+        const Completed  = 0b0000_0001;
     }
 }
 
@@ -16,7 +16,7 @@ impl Serialize for ResourceFlags {
         S: serde::Serializer,
     {
         let mut flags = Vec::new();
-        if self.contains(ResourceFlags::Completed) {
+        if self.contains(Self::Completed) {
             flags.push("Completed");
         }
         flags.serialize(serializer)
@@ -29,10 +29,10 @@ impl<'de> Deserialize<'de> for ResourceFlags {
         D: serde::Deserializer<'de>,
     {
         let flags: Vec<String> = Vec::deserialize(deserializer)?;
-        let mut result = ResourceFlags::empty();
+        let mut result = Self::empty();
         for flag in flags {
             if flag.as_str() == "Completed" {
-                result.insert(ResourceFlags::Completed)
+                result.insert(Self::Completed);
             }
         }
         Ok(result)

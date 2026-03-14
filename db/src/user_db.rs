@@ -7,6 +7,7 @@ use crate::{
     random_hex_32, time_now,
 };
 
+#[allow(clippy::struct_field_names)]
 struct UserDbQuery {
     user_id: i64,
     user_name: String,
@@ -29,7 +30,9 @@ impl UserDbQuery {
             last_sync: self.user_last_sync.clone(),
             sync_token: self.user_sync_token.clone(),
             sync_url: self.user_sync_url.clone(),
-            permissions: UserPermissions::from_bits_truncate(self.user_permissions as u32),
+            permissions: UserPermissions::from_bits_truncate(
+                u32::try_from(self.user_permissions).unwrap_or(0),
+            ),
             password_hash: self.user_password_hash.clone(),
         }
     }
@@ -81,7 +84,7 @@ pub async fn add_user(
     password: &str,
 ) -> Result<i64, DbError> {
     let now = time_now();
-    let id = rand::rng().random::<u32>() as i64;
+    let id = i64::from(rand::rng().random::<u32>());
     let password = hash_password(password);
 
     let result = sqlx::query!(
@@ -165,9 +168,9 @@ pub async fn set_user_sync_token(
     sync_url: &str,
     online: bool,
 ) -> Result<(), DbError> {
-    let clear_bits = (UserPermissions::OnlineAccount.bits() ^ u32::MAX) as i64;
+    let clear_bits = i64::from(UserPermissions::OnlineAccount.bits() ^ u32::MAX);
     let set_bits = if online {
-        UserPermissions::OnlineAccount.bits() as i64
+        i64::from(UserPermissions::OnlineAccount.bits())
     } else {
         0
     };
@@ -187,7 +190,7 @@ pub async fn set_user_sync_token(
 }
 
 pub async fn clear_user_sync(db: &DbContext, user_id: i64) -> Result<(), DbError> {
-    let bits = (UserPermissions::OnlineAccount.bits() ^ u32::MAX) as i64;
+    let bits = i64::from(UserPermissions::OnlineAccount.bits() ^ u32::MAX);
 
     sqlx::query!(
         "UPDATE users SET user_sync_token = NULL, user_sync_url = NULL, user_permissions = user_permissions & ? WHERE user_id = ?",
@@ -250,7 +253,7 @@ pub async fn set_user_permissions(
     user_id: i64,
     permissions: UserPermissions,
 ) -> Result<(), DbError> {
-    let bits = permissions.bits() as i64;
+    let bits = i64::from(permissions.bits());
     sqlx::query!(
         "UPDATE users SET user_permissions = ? WHERE user_id = ?",
         bits,

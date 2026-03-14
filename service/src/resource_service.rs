@@ -4,7 +4,12 @@ use crate::{service_error::ServiceError, util::open_folder_in_explorer};
 
 use super::app_state::AppState;
 
-pub async fn open_resource_folder(
+/// Opens the resource folder in the system file explorer.
+///
+/// # Errors
+///
+/// Returns an error if the path cannot be created or opened.
+pub fn open_resource_folder(
     resource: &ResourceMeta,
     user: &User,
     app_state: &AppState,
@@ -26,7 +31,12 @@ pub async fn open_resource_folder(
     Ok(())
 }
 
-pub async fn delete_resource_folder(
+/// Deletes the resource folder for the user.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be removed.
+pub fn delete_resource_folder(
     resource: &ResourceMeta,
     user: &User,
     app_state: &AppState,

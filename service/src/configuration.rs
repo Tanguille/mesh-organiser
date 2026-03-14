@@ -54,6 +54,8 @@ pub struct StoredConfiguration {
     pub startup_page: Option<String>,
 }
 
+/// Application configuration. Many boolean flags for UI/slicer behaviour.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Configuration {
     pub data_path: String,
@@ -103,6 +105,8 @@ pub struct Configuration {
     pub startup_page: String,
 }
 
+#[must_use]
+#[allow(clippy::too_many_lines)] // Mechanical mapping from optional fields to required; splitting would not help readability.
 pub fn stored_to_configuration(configuration: StoredConfiguration) -> Configuration {
     let default = Configuration::default();
 
@@ -231,7 +235,7 @@ pub fn stored_to_configuration(configuration: StoredConfiguration) -> Configurat
 
 impl Default for Configuration {
     fn default() -> Self {
-        let installed_slicer = Slicer::iter().find(|f| f.is_installed());
+        let installed_slicer = Slicer::iter().find(Slicer::is_installed);
         let mut parallelism = thread::available_parallelism()
             .unwrap_or(NonZeroUsize::new(3).unwrap())
             .get()
@@ -241,8 +245,8 @@ impl Default for Configuration {
             parallelism = 1;
         }
 
-        Configuration {
-            data_path: String::from(""),
+        Self {
+            data_path: String::new(),
             prusa_deep_link: false,
             cura_deep_link: false,
             bambu_deep_link: false,
@@ -277,7 +281,7 @@ impl Default for Configuration {
             theme: String::from("default"),
             order_option_models: String::from("modified-desc"),
             order_option_groups: String::from("modified-desc"),
-            ignore_update: String::from(""),
+            ignore_update: String::new(),
             show_multiselect_checkboxes: true,
             use_worker_for_model_parsing: true,
             prefer_gcode_thumbnail: true,
@@ -286,7 +290,7 @@ impl Default for Configuration {
             default_enabled_import_as_path: false,
             thumbnail_rotation: [35, 30, 0],
             watch_downloads_folder: false,
-            startup_page: String::from(""),
+            startup_page: String::new(),
         }
     }
 }

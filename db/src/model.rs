@@ -12,8 +12,8 @@ pub mod user;
 bitflags! {
     #[derive(Debug, Default)]
     pub struct ModelFlags: u32 {
-        const Printed  = 0b00000001;
-        const Favorite = 0b00000010;
+        const Printed  = 0b0000_0001;
+        const Favorite = 0b0000_0010;
     }
 }
 
@@ -23,10 +23,10 @@ impl Serialize for ModelFlags {
         S: serde::Serializer,
     {
         let mut flags = Vec::new();
-        if self.contains(ModelFlags::Printed) {
+        if self.contains(Self::Printed) {
             flags.push("Printed");
         }
-        if self.contains(ModelFlags::Favorite) {
+        if self.contains(Self::Favorite) {
             flags.push("Favorite");
         }
         flags.serialize(serializer)
@@ -39,11 +39,11 @@ impl<'de> Deserialize<'de> for ModelFlags {
         D: serde::Deserializer<'de>,
     {
         let flags: Vec<String> = Vec::deserialize(deserializer)?;
-        let mut result = ModelFlags::empty();
+        let mut result = Self::empty();
         for flag in flags {
             match flag.as_str() {
-                "Printed" => result.insert(ModelFlags::Printed),
-                "Favorite" => result.insert(ModelFlags::Favorite),
+                "Printed" => result.insert(Self::Printed),
+                "Favorite" => result.insert(Self::Favorite),
                 _ => {}
             }
         }

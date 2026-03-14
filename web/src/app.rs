@@ -1,7 +1,8 @@
 use std::{
     env,
+    fmt::Write,
     fs::File,
-    io::Write,
+    io,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -22,6 +23,7 @@ use tokio::{fs, signal, task::AbortHandle};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
+    cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
 };
 use tower_sessions_sqlx_store::SqliteStore;
@@ -54,7 +56,7 @@ pub struct App {
 }
 
 fn expected_env_error_msg(var_name: &str) -> String {
-    format!("Expected environment variable {} to be set", var_name)
+    format!("Expected environment variable {var_name} to be set")
 }
 
 async fn update_session_middleware(
@@ -80,7 +82,7 @@ async fn update_session_middleware(
 impl App {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let port = env::var("SERVER_PORT")
-            .unwrap_or("3000".into())
+            .unwrap_or_else(|_| "3000".into())
             .parse::<u16>()
             .expect("SERVER_PORT must be a valid u16");
 
@@ -89,7 +91,9 @@ impl App {
         let config_path = PathBuf::from(config_path);
 
         if !config_path.exists() {
-            File::create(&config_path)?.write_all(
+            let mut config_file = File::create(&config_path)?;
+            io::Write::write_all(
+                &mut config_file,
                 serde_json::to_string_pretty(&Configuration::default())
                     .unwrap()
                     .as_bytes(),
@@ -128,25 +132,22 @@ impl App {
         let session_store = SqliteStore::new(db_clone);
         session_store.migrate().await?;
 
-        let local_pass = match env::var("LOCAL_ACCOUNT_PASSWORD") {
-            Ok(password) => password,
-            Err(_) => {
-                let key = Key::generate();
-                let key_bytes = key.master();
-                key_bytes
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<String>>()
-                    .join("")
+        let local_pass = env::var("LOCAL_ACCOUNT_PASSWORD").unwrap_or_else(|_| {
+            let key = Key::generate();
+            let key_bytes = key.master();
+            let mut s = String::new();
+            for b in key_bytes {
+                write!(s, "{b:02X}").expect("write to String is infallible");
             }
-        };
+            s
+        });
 
         user_db::edit_user_password(&web_app_state.app_state.db, 1, &local_pass).await?;
         user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
         group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
 
         let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
-            .unwrap_or("none".into())
+            .unwrap_or_else(|_| "none".into())
             .to_lowercase();
 
         let mut import_state = ImportState::new_with_emitter(
@@ -196,16 +197,13 @@ impl App {
         );
 
         let signing_key_path = self.app_state.get_signing_key_path();
-        let key = match signing_key_path.exists() {
-            true => {
-                let key_bytes = fs::read(&signing_key_path).await?;
-                Key::from(&key_bytes)
-            }
-            false => {
-                let key = Key::generate();
-                fs::write(&signing_key_path, key.master()).await?;
-                key
-            }
+        let key = if signing_key_path.exists() {
+            let key_bytes = fs::read(&signing_key_path).await?;
+            Key::from(&key_bytes)
+        } else {
+            let key = Key::generate();
+            fs::write(&signing_key_path, key.master()).await?;
+            key
         };
 
         let session_layer = SessionManagerLayer::new(session_store)
@@ -265,11 +263,11 @@ impl App {
             .layer(CompressionLayer::new())
             .fallback_service(serve_dir);
 
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
             .await
             .unwrap();
 
-        println!("Server running on port {}", port);
+        println!("Server running on port {port}");
 
         // Ensure we use a shutdown signal to abort the deletion task.
         axum::serve(listener, app.into_make_service())
@@ -301,8 +299,8 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => { deletion_task_abort_handle.abort() },
-        _ = terminate => { deletion_task_abort_handle.abort() },
+        () = ctrl_c => { deletion_task_abort_handle.abort() },
+        () = terminate => { deletion_task_abort_handle.abort() },
     }
 
     db.close().await;

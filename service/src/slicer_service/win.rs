@@ -1,29 +1,42 @@
 use std::{
+    ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
 
-use winreg::*;
+use winreg::HKEY;
+use winreg::RegKey;
+use winreg::enums;
 
 use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_with_paths};
 
 use super::{Slicer, open_custom_slicer};
 
 impl Slicer {
+    #[must_use]
     pub fn is_installed(&self) -> bool {
-        if let Slicer::Custom = self {
+        if matches!(self, Self::Custom) {
             return true;
         }
 
         get_slicer_path(self).is_some()
     }
 
+    /// Opens the slicer with the given model paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slicer is not installed or spawning the process fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the slicer path cannot be converted to UTF-8.
     pub async fn open(
         &self,
         paths: Vec<PathBuf>,
         app_state: &AppState,
     ) -> Result<(), ServiceError> {
-        if let Slicer::Custom = self {
+        if matches!(self, Self::Custom) {
             return open_custom_slicer(paths, app_state).await;
         }
 
@@ -36,16 +49,14 @@ impl Slicer {
         let slicer_pathbuf = get_slicer_path(self).unwrap();
         let slicer_path = slicer_pathbuf.to_str().unwrap();
 
-        println!("Opening in slicer: {:?}", paths);
+        println!("Opening in slicer: {paths:?}");
 
         open_with_paths(slicer_path, paths)
     }
 }
 
 fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<String> {
-    use std::ffi::OsString;
-
-    let reg_key_result = winreg::RegKey::predef(root).open_subkey(subkey);
+    let reg_key_result = RegKey::predef(root).open_subkey(subkey);
 
     if reg_key_result.is_err() {
         return None;
@@ -55,17 +66,14 @@ fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<String> {
 
     let value: Result<OsString, std::io::Error> = reg_key.get_value(field);
 
-    match value {
-        Ok(s) => Some(s.to_str().unwrap().to_string()),
-        Err(_) => None,
-    }
+    value.map_or(None, |s| Some(s.to_str().unwrap().to_string()))
 }
 
 fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
     match slicer {
         Slicer::PrusaSlicer => {
             let key = get_registry_key(
-                winreg::enums::HKEY_LOCAL_MACHINE,
+                enums::HKEY_LOCAL_MACHINE,
                 "SOFTWARE\\Prusa3D\\PrusaSlicer\\Settings",
                 "InstallPath",
             );
@@ -88,7 +96,7 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
         }
         Slicer::BambuStudio => {
             if let Some(key) = get_registry_key(
-                winreg::enums::HKEY_LOCAL_MACHINE,
+                enums::HKEY_LOCAL_MACHINE,
                 "SOFTWARE\\Bambulab\\Bambu Studio",
                 "InstallPath",
             ) {
@@ -109,7 +117,7 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
         }
         Slicer::OrcaSlicer => {
             if let Some(key) = get_registry_key(
-                winreg::enums::HKEY_LOCAL_MACHINE,
+                enums::HKEY_LOCAL_MACHINE,
                 "SOFTWARE\\WOW6432Node\\SoftFever\\OrcaSlicer",
                 "",
             ) {
@@ -148,6 +156,6 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
 
             None
         }
-        _ => None,
+        Slicer::Custom => None,
     }
 }

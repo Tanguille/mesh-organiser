@@ -2,6 +2,10 @@ use serde::{Serialize, Serializer, ser::SerializeStruct};
 use thiserror::Error;
 
 /// Serialises the common 3-field error shape so that service, tauri and web can share one implementation.
+///
+/// # Errors
+///
+/// Returns `S::Error` if serialisation fails.
 pub fn serialize_error_struct<S>(
     serializer: S,
     error_type: &str,
@@ -46,52 +50,52 @@ impl Serialize for ServiceError {
         S: Serializer,
     {
         match self {
-            ServiceError::FileSystemFault(inner) => serialize_error_struct(
+            Self::FileSystemFault(inner) => serialize_error_struct(
                 serializer,
                 "FileSystemFault",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::ZipError(inner) => serialize_error_struct(
+            Self::ZipError(inner) => serialize_error_struct(
                 serializer,
                 "ZipError",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::InternalError(s) => {
+            Self::InternalError(s) => {
                 serialize_error_struct(serializer, "InternalError", &self.to_string(), s)
             }
-            ServiceError::DownloadError(inner) => serialize_error_struct(
+            Self::DownloadError(inner) => serialize_error_struct(
                 serializer,
                 "DownloadError",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::JsonError(inner) => serialize_error_struct(
+            Self::JsonError(inner) => serialize_error_struct(
                 serializer,
                 "JsonError",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::DatabaseError(inner) => serialize_error_struct(
+            Self::DatabaseError(inner) => serialize_error_struct(
                 serializer,
                 "DatabaseError",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::TaskExecutionFailedError(inner) => serialize_error_struct(
+            Self::TaskExecutionFailedError(inner) => serialize_error_struct(
                 serializer,
                 "TaskExecutionFailedError",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::ThreemfError(inner) => serialize_error_struct(
+            Self::ThreemfError(inner) => serialize_error_struct(
                 serializer,
                 "ThreemfError",
                 &self.to_string(),
                 &inner.to_string(),
             ),
-            ServiceError::ThumbnailError(inner) => serialize_error_struct(
+            Self::ThumbnailError(inner) => serialize_error_struct(
                 serializer,
                 "ThumbnailError",
                 &self.to_string(),
@@ -110,9 +114,10 @@ impl Serialize for ServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Serialize;
+    use serde::{Serialize, Serializer};
 
-    /// Wrapper that serialises via serialize_error_struct so we can test the helper directly.
+    /// Wrapper that serialises via `serialize_error_struct` so we can test the helper directly.
+    #[allow(clippy::struct_field_names)] // Names must match serialised JSON keys.
     #[derive(Debug)]
     struct TestErrorShape<'a> {
         error_type: &'a str,
@@ -123,7 +128,7 @@ mod tests {
     impl Serialize for TestErrorShape<'_> {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
-            S: serde::Serializer,
+            S: Serializer,
         {
             serialize_error_struct(
                 serializer,
@@ -189,8 +194,7 @@ mod tests {
         // Display message is included in error_message
         assert!(
             error_message.contains("Internal error"),
-            "error_message should contain Display text, got: {}",
-            error_message
+            "error_message should contain Display text, got: {error_message}"
         );
     }
 
@@ -214,8 +218,7 @@ mod tests {
         let error_message = obj.get("error_message").and_then(|v| v.as_str()).unwrap();
         assert!(
             error_message.contains("JSON") || error_message.contains("json"),
-            "error_message should reflect JSON failure, got: {}",
-            error_message
+            "error_message should reflect JSON failure, got: {error_message}"
         );
         assert!(
             obj.get("error_inner_message")

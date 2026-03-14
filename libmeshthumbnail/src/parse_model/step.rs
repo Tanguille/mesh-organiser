@@ -67,7 +67,7 @@ fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let file_name = file.name().to_string_lossy().to_lowercase();
+        let file_name = file.name().to_lowercase();
         if file_name.ends_with(".step") || file_name.ends_with(".stp") {
             io::copy(&mut file, &mut temp_file)?;
             temp_file.flush()?;

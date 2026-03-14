@@ -24,12 +24,12 @@ pub fn router() -> Router<WebAppState> {
         .route_service("/login", index.clone())
         .route_service("/model", index.clone())
         .route_service("/printed", index.clone())
-        .route_service("/resource", index.clone())
+        .route_service("/resource", index)
         .route_service("/group/", sub_index.clone())
         .route_service("/label/", sub_index.clone())
         .route_service("/share/", sub_index.clone())
         .route_service("/group/{group_id}", sub_index.clone())
-        .route_service("/label/{label_id}", sub_index.clone())
+        .route_service("/label/{label_id}", sub_index)
         .route("/share/{share_id}", get(serve_share_page))
 }
 
@@ -39,18 +39,13 @@ async fn serve_share_page(
 ) -> Result<Html<String>, ApplicationError> {
     let mut html = fs::read_to_string("www/group/1.html").await?;
 
-    let share = match share_db::get_share_via_id(&app_state.app_state.db, &share_id).await {
-        Ok(s) => s,
-        Err(_) => {
-            return Ok(Html(html));
-        }
+    let Ok(share) = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await else {
+        return Ok(Html(html));
     };
 
-    let user = match user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await {
-        Ok(Some(u)) => u,
-        _ => {
-            return Ok(Html(html));
-        }
+    let Ok(Some(user)) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await
+    else {
+        return Ok(Html(html));
     };
 
     html = html

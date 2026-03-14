@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{env, fs, time::Duration};
 
 use tokio::time;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -13,9 +13,9 @@ mod web_app_state;
 mod web_import_state;
 
 fn remove_temp_paths() -> Result<(), ApplicationError> {
-    let threshold = std::time::Duration::from_secs(5 * 60);
+    let threshold = Duration::from_secs(5 * 60);
     let now = std::time::SystemTime::now();
-    for entry in std::fs::read_dir(std::env::temp_dir())? {
+    for entry in fs::read_dir(env::temp_dir())? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir()
@@ -25,15 +25,12 @@ fn remove_temp_paths() -> Result<(), ApplicationError> {
                 .to_str()
                 .unwrap()
                 .starts_with("meshorganiser_")
-            && let Ok(metadata) = std::fs::metadata(&path)
+            && let Ok(metadata) = fs::metadata(&path)
             && let Ok(modified) = metadata.modified()
-            && now
-                .duration_since(modified)
-                .unwrap_or(std::time::Duration::ZERO)
-                >= threshold
+            && now.duration_since(modified).unwrap_or(Duration::ZERO) >= threshold
         {
-            println!("Removing temporary path {:?}", path);
-            std::fs::remove_dir_all(&path)?;
+            println!("Removing temporary path {}", path.display());
+            fs::remove_dir_all(&path)?;
         }
     }
 
@@ -47,11 +44,12 @@ async fn loop_remove_temp_paths() {
     }
 }
 
+#[allow(clippy::future_not_send)] // App and its state are not Send; run on main thread via block_on
 async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
-        .with(EnvFilter::new(std::env::var("RUST_LOG").unwrap_or_else(
-            |_| "axum_login=debug,tower_sessions=debug,sqlx=warn,tower_http=debug".into(),
-        )))
+        .with(EnvFilter::new(env::var("RUST_LOG").unwrap_or_else(|_| {
+            "axum_login=debug,tower_sessions=debug,sqlx=warn,tower_http=debug".into()
+        })))
         .with(tracing_subscriber::fmt::layer())
         .try_init()?;
 
@@ -68,5 +66,5 @@ fn main() {
         .unwrap()
         .block_on(async {
             let _ = async_main().await;
-        })
+        });
 }

@@ -46,7 +46,10 @@ mod get {
     use axum_extra::extract::Query;
     use db::{share_db, user_db};
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, FromStr, GroupFilterOptions, GroupOrderBy,
+        IntoResponse, Json, Path, Response, Serialize, State, WebAppState, group_db,
+    };
 
     #[derive(Deserialize)]
     pub struct GetGroupParams {
@@ -117,13 +120,11 @@ mod get {
         Query(params): Query<GetGroupParams>,
     ) -> Result<Response, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
-        let user = match user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await? {
-            Some(u) => u,
-            _ => {
-                return Err(ApplicationError::InternalError(
-                    "Share owner user not found.".into(),
-                ));
-            }
+        let Some(user) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await?
+        else {
+            return Err(ApplicationError::InternalError(
+                "Share owner user not found.".into(),
+            ));
         };
 
         let groups = group_db::get_groups(
@@ -181,9 +182,13 @@ mod get {
 }
 
 mod put {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, group_db,
+    };
 
     #[derive(Deserialize)]
+    #[allow(clippy::struct_field_names)] // field names match API
     pub struct PutGroupParams {
         pub group_name: String,
         pub group_timestamp: Option<String>,
@@ -222,7 +227,10 @@ mod put {
 }
 
 mod delete {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, group_db,
+    };
 
     pub async fn delete_group(
         auth_session: AuthSession,
@@ -260,7 +268,10 @@ mod delete {
 }
 
 mod post {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ModelGroupMeta, Path,
+        Response, State, StatusCode, WebAppState, group_db, random_hex_32, time_now,
+    };
 
     #[derive(Deserialize)]
     pub struct PostGroupParams {

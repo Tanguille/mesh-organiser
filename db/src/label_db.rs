@@ -46,11 +46,11 @@ fn get_effective_labels(
 
     let label_child_ids = label.children.iter().map(|l| l.id).collect::<Vec<i64>>();
 
-    label_child_ids.iter().for_each(|f| {
+    for f in &label_child_ids {
         if !effective_labels.iter().any(|l| l.id == *f) {
             get_effective_labels(*f, effective_labels, label_map);
         }
-    });
+    }
 }
 
 pub async fn get_labels(
@@ -132,7 +132,7 @@ pub async fn get_labels(
                 name: child_label_name.unwrap(),
                 color: child_label_color.unwrap(),
                 unique_global_id: child_label_unique_global_id.unwrap(),
-                last_modified: "".into(),
+                last_modified: String::new(),
             });
 
             has_parents.push(child_id);
@@ -145,7 +145,8 @@ pub async fn get_labels(
         }
     }
 
-    for label_id in label_map.values().map(|l| l.meta.id).collect::<Vec<i64>>() {
+    #[allow(clippy::needless_collect)]
+    for label_id in label_map.values().map(|l| l.meta.id).collect::<Vec<_>>() {
         let mut effective_labels = Vec::new();
         get_effective_labels(label_id, &mut effective_labels, &mut label_map);
         let group_count = effective_labels

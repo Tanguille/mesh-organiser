@@ -39,7 +39,10 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Json, Response, State, UserPermissions,
+        WebAppState, user_db,
+    };
 
     pub async fn get_users(
         auth_session: AuthSession,
@@ -60,9 +63,13 @@ mod get {
 }
 
 mod post {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Response, Serialize, State,
+        UserPermissions, WebAppState, user_db,
+    };
 
     #[derive(Deserialize)]
+    #[allow(clippy::struct_field_names)] // field names match API
     pub struct PostUserParams {
         pub user_name: String,
         pub user_email: String,
@@ -102,7 +109,10 @@ mod post {
 }
 
 mod put {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, UserPermissions, WebAppState, user_db,
+    };
 
     #[derive(Deserialize)]
     pub struct PutUserParams {
@@ -187,7 +197,10 @@ mod put {
 }
 
 mod delete {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Path, Response, State, StatusCode,
+        UserPermissions, WebAppState, export_service, user_db,
+    };
 
     pub async fn delete_user(
         auth_session: AuthSession,

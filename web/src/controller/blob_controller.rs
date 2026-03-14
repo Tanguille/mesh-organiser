@@ -46,7 +46,13 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Blob, Body, BufReader, Deserialize, File,
+        FuturesAsyncReadCompatExt, IntoResponse, Path, Query, ReaderStream, Response, State,
+        StatusCode, User, WebAppState, ZipFileReader, cleanse_evil_from_name,
+        convert_zip_to_extension, get_model_path_for_blob, is_zipped_file_extension, model_db,
+        user_db,
+    };
 
     #[derive(Deserialize)]
     pub struct DownloadModelParams {
@@ -60,9 +66,8 @@ mod get {
         user_id: i64,
         user_hash: &str,
     ) -> Option<User> {
-        let user = match user_db::get_user_by_id(&app_state.app_state.db, user_id).await {
-            Ok(Some(u)) => u,
-            _ => return None,
+        let Ok(Some(user)) = user_db::get_user_by_id(&app_state.app_state.db, user_id).await else {
+            return None;
         };
 
         if user.sync_url.is_none() || user.sync_url.clone().unwrap() != *user_hash {
@@ -73,14 +78,14 @@ mod get {
     }
 
     async fn extract_user_via_share_id(app_state: &WebAppState, share_id: &str) -> Option<User> {
-        let share = match db::share_db::get_share_via_id(&app_state.app_state.db, share_id).await {
-            Ok(s) => s,
-            _ => return None,
+        let Ok(share) = db::share_db::get_share_via_id(&app_state.app_state.db, share_id).await
+        else {
+            return None;
         };
 
-        let user = match user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await {
-            Ok(Some(u)) => u,
-            _ => return None,
+        let Ok(Some(user)) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await
+        else {
+            return None;
         };
 
         Some(user)
@@ -111,23 +116,16 @@ mod get {
             _ => return StatusCode::NOT_FOUND.into_response(),
         };
 
-        let model_id =
-            match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &blob_sha256)
-                .await
-            {
-                Ok(Some(m)) => m,
-                _ => return StatusCode::NOT_FOUND.into_response(),
-            };
+        let Ok(Some(model_id)) =
+            model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &blob_sha256).await
+        else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
 
-        let model = match model_db::get_models_via_ids(
-            &app_state.app_state.db,
-            &user,
-            vec![model_id],
-        )
-        .await
-        {
-            Ok(m) => m,
-            Err(_) => return StatusCode::NOT_FOUND.into_response(),
+        let Ok(model) =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await
+        else {
+            return StatusCode::NOT_FOUND.into_response();
         };
 
         if model.is_empty() {
@@ -165,13 +163,11 @@ mod get {
     ) -> Response {
         let user = auth_session.user.unwrap().to_user();
 
-        let model =
-            match db::model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id])
-                .await
-            {
-                Ok(m) => m,
-                Err(_) => return StatusCode::NOT_FOUND.into_response(),
-            };
+        let Ok(model) =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await
+        else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
 
         if model.is_empty() {
             return StatusCode::NOT_FOUND.into_response();
@@ -190,14 +186,16 @@ mod get {
         let user = auth_session.user.unwrap().to_user();
 
         // Verify that the user has access to a model with this blob
-        match model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &sha256).await {
-            Ok(Some(m)) => m,
-            _ => return StatusCode::NOT_FOUND.into_response(),
+        let Ok(Some(_model_id)) =
+            model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &sha256).await
+        else {
+            return StatusCode::NOT_FOUND.into_response();
         };
 
-        let blob = match db::blob_db::get_blob_via_sha256(&app_state.app_state.db, &sha256).await {
-            Ok(Some(b)) => b,
-            _ => return StatusCode::NOT_FOUND.into_response(),
+        let Ok(Some(blob)) =
+            db::blob_db::get_blob_via_sha256(&app_state.app_state.db, &sha256).await
+        else {
+            return StatusCode::NOT_FOUND.into_response();
         };
 
         get_blob_bytes_inner(&blob, &app_state)
@@ -212,9 +210,8 @@ mod get {
         let base_dir = app_state.get_image_dir();
         let src_file_path = base_dir.join(format!("{sha256}.png"));
 
-        let file = match File::open(src_file_path).await {
-            Ok(f) => f,
-            Err(_) => return StatusCode::NOT_FOUND.into_response(),
+        let Ok(file) = File::open(src_file_path).await else {
+            return StatusCode::NOT_FOUND.into_response();
         };
 
         let buffered_reader = BufReader::new(file);
@@ -226,21 +223,18 @@ mod get {
     async fn get_blob_bytes_inner(blob: &Blob, app_state: &WebAppState) -> Response {
         let src_file_path = get_model_path_for_blob(blob, &app_state.app_state);
 
-        let file = match File::open(src_file_path).await {
-            Ok(f) => f,
-            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        let Ok(file) = File::open(src_file_path).await else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         };
 
         let buffered_reader = BufReader::new(file);
 
         if is_zipped_file_extension(&blob.filetype) {
-            let archive = match ZipFileReader::with_tokio(buffered_reader).await {
-                Ok(a) => a,
-                Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            let Ok(archive) = ZipFileReader::with_tokio(buffered_reader).await else {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             };
-            let file = match archive.into_entry(0).await {
-                Ok(f) => f,
-                Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            let Ok(file) = archive.into_entry(0).await else {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             };
 
             let stream = ReaderStream::new(file.compat());
@@ -269,9 +263,8 @@ mod get {
         let mut list_dir = tokio::fs::read_dir(&path).await?;
         let next = list_dir.next_entry().await?;
 
-        let zip_file = match next {
-            Some(f) => f,
-            None => return Ok(StatusCode::NOT_FOUND.into_response()),
+        let Some(zip_file) = next else {
+            return Ok(StatusCode::NOT_FOUND.into_response());
         };
 
         let t = zip_file.file_name();
@@ -304,7 +297,10 @@ mod get {
 }
 
 mod post {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Json, Response, State, StatusCode,
+        WebAppState, export_service, model_db,
+    };
 
     pub async fn create_blobs_zip_download(
         auth_session: AuthSession,
@@ -313,22 +309,18 @@ mod post {
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
 
-        let model_ids = match model_db::get_model_ids_via_sha256s(
-            &app_state.app_state.db,
-            &user,
-            &blob_sha256s,
-        )
-        .await
-        {
-            Ok(ids) => ids,
-            Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+        let Ok(model_ids) =
+            model_db::get_model_ids_via_sha256s(&app_state.app_state.db, &user, &blob_sha256s)
+                .await
+        else {
+            return Ok(StatusCode::NOT_FOUND.into_response());
         };
 
-        let models =
-            match model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await {
-                Ok(m) => m,
-                Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
-            };
+        let Ok(models) =
+            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await
+        else {
+            return Ok(StatusCode::NOT_FOUND.into_response());
+        };
 
         if models.len() != blob_sha256s.len() {
             return Ok(StatusCode::NOT_FOUND.into_response());

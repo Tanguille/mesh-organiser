@@ -3,19 +3,22 @@ name = "service"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [features]
 step = ["libmeshthumbnail/step"]
 
 [dependencies]
 db = { workspace = true }
+libmeshthumbnail = { workspace = true }
 
-libmeshthumbnail = { path = "../libmeshthumbnail" }
 futures = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["rustls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -35,6 +38,7 @@ async_zip = { workspace = true, features = [
 chrono = { workspace = true }
 
 [dev-dependencies]
+reqwest = { workspace = true, features = ["rustls"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6.5"
