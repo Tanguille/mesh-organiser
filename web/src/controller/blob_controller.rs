@@ -207,6 +207,16 @@ mod get {
         Path(sha256): Path<String>,
         State(app_state): State<WebAppState>,
     ) -> Response {
+        // Validate that the sha256 parameter is a well-formed SHA-256 hex string.
+        // This prevents path traversal by ensuring it is a single, safe path component.
+        if sha256.len() != 64
+            || !sha256
+                .chars()
+                .all(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'))
+        {
+            return StatusCode::BAD_REQUEST.into_response();
+        }
+
         let base_dir = app_state.get_image_dir();
         let src_file_path = base_dir.join(format!("{sha256}.png"));
 
