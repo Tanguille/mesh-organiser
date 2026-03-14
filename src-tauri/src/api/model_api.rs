@@ -5,14 +5,14 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use db::{
-    model::{blob::Blob, ModelFlags},
+    model::{ModelFlags, blob::Blob},
     model_db,
     model_db::{ModelFilterOptions, ModelOrderBy},
 };
 use service::{export_service, import_service, import_state::ImportStatus, thumbnail_service};
 
 use crate::{
-    error::ApplicationError, tauri_import_state::import_state_new_tauri, ImportState, TauriAppState,
+    ImportState, TauriAppState, error::ApplicationError, tauri_import_state::import_state_new_tauri,
 };
 
 #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]

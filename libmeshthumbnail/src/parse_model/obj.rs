@@ -34,10 +34,10 @@ fn parse(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let mut buffer = Vec::new();
     handle.read_to_end(&mut buffer)?;
 
-    let utf8_str = std::str::from_utf8(&buffer).map_err(|e| {
+    let utf8 = std::str::from_utf8(&buffer).map_err(|e| {
         MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
     })?;
-    let obj = obj::parse(utf8_str)?;
+    let obj = obj::parse(utf8)?;
     parse_inner(&obj)
 }
 
@@ -54,10 +54,10 @@ fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
             let mut buffer = Vec::with_capacity(usize::try_from(file.size()).unwrap_or(0));
             file.read_to_end(&mut buffer)?;
 
-            let utf8_str = std::str::from_utf8(&buffer).map_err(|e| {
+            let utf8 = std::str::from_utf8(&buffer).map_err(|e| {
                 MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
             })?;
-            return parse_inner(&obj::parse(utf8_str)?);
+            return parse_inner(&obj::parse(utf8)?);
         }
     }
 

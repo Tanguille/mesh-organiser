@@ -372,12 +372,12 @@ pub async fn get_model_ids_via_sha256s(
     }
 
     let placeholders = sha256s.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query_str = format!(
+    let query = format!(
         "SELECT model_id, blob_sha256 FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id \
          WHERE blob_sha256 IN ({placeholders}) AND model_user_id = ?"
     );
 
-    let mut q = sqlx::query(&query_str);
+    let mut q = sqlx::query(&query);
     for sha in sha256s {
         q = q.bind(sha);
     }

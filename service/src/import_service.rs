@@ -462,12 +462,12 @@ async fn import_models_from_zip(
             }
 
             let path = PathBuf::from(file.entry().filename().as_str()?);
-            /* -- Revist this at some point
+            /* -- TODO: Revist this at some point
             if path.file_name().take().unwrap() == ".link" {
                 let mut file_contents: Vec<u8> = Vec::new();
                 file_compat.read_to_end(&mut file_contents).await?;
-                let temp_str = String::from_utf8(file_contents).unwrap();
-                link.replace(temp_str);
+                let temp = String::from_utf8(file_contents).unwrap();
+                link.replace(temp);
             }*/
 
             if !is_supported_extension(&path) {

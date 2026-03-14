@@ -209,11 +209,7 @@ mod get {
     ) -> Response {
         // Validate that the sha256 parameter is a well-formed SHA-256 hex string.
         // This prevents path traversal by ensuring it is a single, safe path component.
-        if sha256.len() != 64
-            || !sha256
-                .chars()
-                .all(|c: char| c.is_ascii_hexdigit())
-        {
+        if sha256.len() != 64 || !sha256.chars().all(|c: char| c.is_ascii_hexdigit()) {
             return StatusCode::BAD_REQUEST.into_response();
         }
 

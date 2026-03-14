@@ -122,11 +122,11 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
 /// Returns an error if the request fails, the response is not successful, or file I/O fails.
 pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, ServiceError> {
     let (path, _) = download_file_to_dir(url, dir).await?;
-    let path_str = path
+    let path = path
         .to_str()
         .ok_or_else(|| ServiceError::InternalError("Path is not valid UTF-8".into()))?;
     Ok(DownloadResult {
-        path: path_str.to_string(),
+        path: path.to_string(),
         source_uri: None,
     })
 }

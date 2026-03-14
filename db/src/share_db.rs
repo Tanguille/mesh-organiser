@@ -22,9 +22,8 @@ pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbErr
     Ok(shares
         .into_iter()
         .map(|share| {
-            let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids_str| {
-                ids_str
-                    .split(',')
+            let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids| {
+                ids.split(',')
                     .filter_map(|s| s.parse::<i64>().ok())
                     .collect()
             });
@@ -51,9 +50,8 @@ pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, D
         .fetch_one(db)
         .await?;
 
-    let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids_str| {
-        ids_str
-            .split(',')
+    let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids| {
+        ids.split(',')
             .filter_map(|s| s.parse::<i64>().ok())
             .collect()
     });

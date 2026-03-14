@@ -4,10 +4,10 @@ use std::{
     sync::Arc,
 };
 
-use async_zip::{tokio::write::ZipFileWriter, Compression, ZipEntryBuilder};
+use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
 use futures::future::try_join_all;
 use serde::Serialize;
-use tauri::{http::header::CONTENT_TYPE, ipc::Response, AppHandle, State};
+use tauri::{AppHandle, State, http::header::CONTENT_TYPE, ipc::Response};
 use tauri_plugin_http::reqwest::{self, cookie::Jar};
 use tokio::{fs::File, io::BufReader, task::JoinSet};
 use tokio_util::compat::TokioAsyncReadCompatExt;
@@ -17,7 +17,7 @@ use crate::{error::ApplicationError, tauri_app_state::TauriAppState, tauri_impor
 use service::{
     download_file_service,
     export_service::get_temp_dir,
-    import_service::{self, is_supported_extension, DirectoryScanModel},
+    import_service::{self, DirectoryScanModel, is_supported_extension},
     import_state::{ImportState, ImportStatus},
 };
 
