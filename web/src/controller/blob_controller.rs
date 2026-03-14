@@ -212,7 +212,7 @@ mod get {
         if sha256.len() != 64
             || !sha256
                 .chars()
-                .all(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'))
+                .all(|c: char| c.is_ascii_hexdigit())
         {
             return StatusCode::BAD_REQUEST.into_response();
         }
