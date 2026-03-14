@@ -73,7 +73,7 @@ mod get {
         Query(params): Query<GetGroupParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        let model_ids_from_str = params.model_ids_str.map(|s| {
+        let model_ids = params.model_ids_str.map(|s| {
             s.split(',')
                 .filter_map(|x| x.parse::<i64>().ok())
                 .collect::<Vec<i64>>()
@@ -84,7 +84,7 @@ mod get {
             &user,
             GroupFilterOptions {
                 model_ids: if params.model_ids.is_empty() {
-                    model_ids_from_str
+                    model_ids
                 } else {
                     Some(params.model_ids)
                 },
