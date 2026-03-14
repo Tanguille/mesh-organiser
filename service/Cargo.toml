@@ -42,6 +42,7 @@ reqwest = { workspace = true, features = ["rustls"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6.5"
+zip = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }

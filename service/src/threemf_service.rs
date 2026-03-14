@@ -131,6 +131,40 @@ pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
     names_map
 }
 
+/// Reads a zip entry whose filename ends with `filename_suffix` and returns its contents as UTF-8.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened, no matching entry exists, or reading fails.
+async fn read_zip_entry_by_suffix(
+    path: PathBuf,
+    filename_suffix: &str,
+) -> Result<String, ServiceError> {
+    let zip_file = File::open(path).await?;
+    let mut buffered_reader = BufReader::new(zip_file);
+    let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
+
+    let entries: Vec<_> = zip.file().entries().to_vec();
+
+    for (i, entry) in entries.iter().enumerate() {
+        if entry
+            .filename()
+            .as_str()
+            .ok()
+            .is_some_and(|s| s.ends_with(filename_suffix))
+        {
+            let mut file = zip.reader_with_entry(i).await?;
+            let mut contents = String::new();
+            file.read_to_string_checked(&mut contents).await?;
+            return Ok(contents);
+        }
+    }
+
+    Err(ServiceError::InternalError(
+        "No zip entry matching suffix".to_string(),
+    ))
+}
+
 /// Reads `model_settings.config` from a 3MF zip.
 ///
 /// # Errors
@@ -139,28 +173,8 @@ pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
 pub async fn fetch_model_settings_config_from_3mf(
     threemf_path: PathBuf,
 ) -> Result<IndexMap<u32, String>, ServiceError> {
-    let zip_file = File::open(threemf_path).await?;
-    let mut buffered_reader = BufReader::new(zip_file);
-    let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
-
-    let entries: Vec<_> = zip.file().entries().to_vec();
-
-    for (i, entry) in entries.iter().enumerate() {
-        let Ok(entry_filename) = entry.filename().as_str() else {
-            continue;
-        };
-
-        if entry_filename.ends_with("model_settings.config") {
-            let mut file = zip.reader_with_entry(i).await?;
-            let mut contents = String::new();
-            file.read_to_string_checked(&mut contents).await?;
-            return Ok(parse_model_settings_config(&contents));
-        }
-    }
-
-    Err(ServiceError::InternalError(
-        "Failed to extract model settings".to_string(),
-    ))
+    let contents = read_zip_entry_by_suffix(threemf_path, "model_settings.config").await?;
+    Ok(parse_model_settings_config(&contents))
 }
 
 /// Extracts metadata from a 3MF model (project/slicer config).
@@ -172,7 +186,7 @@ pub async fn extract_metadata(
     model: &Model,
     app_state: &AppState,
 ) -> Result<ThreemfMetadata, ServiceError> {
-    if !model.blob.filetype.contains("3mf") {
+    if !model.blob.to_file_type().is_3mf() {
         return Err(ServiceError::InternalError(
             "Model is not a 3MF file".to_string(),
         ));
@@ -186,30 +200,14 @@ pub async fn extract_metadata(
     let theemf_path =
         export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
 
-    let zip_file = File::open(theemf_path).await?;
-    let mut buffered_reader = BufReader::new(zip_file);
-    let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
+    let c1 = read_zip_entry_by_suffix(theemf_path.clone(), "project_settings.config").await;
+    if let Ok(contents) = c1 {
+        return parse_project_settings_config(&contents);
+    }
 
-    let entries: Vec<_> = zip.file().entries().to_vec();
-
-    for (i, entry) in entries.iter().enumerate() {
-        let Ok(entry_filename) = entry.filename().as_str() else {
-            continue;
-        };
-
-        if entry_filename.ends_with("project_settings.config") {
-            let mut file = zip.reader_with_entry(i).await?;
-            let mut contents = String::new();
-            file.read_to_string_checked(&mut contents).await?;
-            return parse_project_settings_config(&contents);
-        }
-
-        if entry_filename.ends_with("Slic3r_PE.config") {
-            let mut file = zip.reader_with_entry(i).await?;
-            let mut contents = String::new();
-            file.read_to_string_checked(&mut contents).await?;
-            return Ok(parse_slicer_pe_config(&contents));
-        }
+    let c2 = read_zip_entry_by_suffix(theemf_path, "Slic3r_PE.config").await;
+    if let Ok(contents) = c2 {
+        return Ok(parse_slicer_pe_config(&contents));
     }
 
     Err(ServiceError::InternalError(
@@ -234,8 +232,8 @@ fn extract_models_inner(
     for obj in objects {
         let mesh = obj.mesh.as_ref().unwrap();
 
-        let obj_id_u32 = u32::try_from(obj.id).unwrap_or(0);
-        let obj_name = names_map.get(&obj_id_u32).cloned().unwrap_or_else(|| {
+        let obj_id = u32::try_from(obj.id).unwrap_or(0);
+        let obj_name = names_map.get(&obj_id).cloned().unwrap_or_else(|| {
             obj.name.as_ref().map_or_else(
                 || format!("object_{}", obj.id),
                 |s| cleanse_evil_from_name(s),
@@ -251,6 +249,8 @@ fn extract_models_inner(
             let v2 = &mesh.vertices.vertex[triangle.v2];
             let v3 = &mesh.vertices.vertex[triangle.v3];
 
+            // 3MF vertices are f64; stl_io expects f32. Mesh coordinates are bounded (print volume)
+            // and f32 precision is sufficient; truncation is intentional.
             #[allow(clippy::cast_possible_truncation)]
             let vertex1 = [v1.x as f32, v1.y as f32, v1.z as f32];
             #[allow(clippy::cast_possible_truncation)]
@@ -301,7 +301,7 @@ pub async fn extract_models(
     user: &User,
     app_state: &AppState,
 ) -> Result<ImportState, ServiceError> {
-    if !model.blob.filetype.contains("3mf") {
+    if !model.blob.to_file_type().is_3mf() {
         return Err(ServiceError::InternalError(
             "Model is not a 3MF file".to_string(),
         ));
@@ -338,4 +338,96 @@ pub async fn extract_models(
         import_service::import_path(temp_dir.to_str().unwrap(), app_state, import_state).await?;
 
     Ok(result)
+}
+
+// -----------------------------------------------------------------------------
+// Regression tests: lock in parse_model_settings_config (regex, part id/name,
+// unwrap_or(u32::MAX)) after clippy refactors.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use indexmap::IndexMap;
+    use zip::ZipWriter;
+    use zip::write::FileOptions;
+
+    use super::{fetch_model_settings_config_from_3mf, parse_model_settings_config};
+
+    #[test]
+    fn parse_model_settings_config_empty_returns_empty_map() {
+        let out = parse_model_settings_config("");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn parse_model_settings_config_extracts_part_id_and_name() {
+        let xml = r#"
+        <part id="1" something="other">
+        <metadata key="name" value="Part One" />
+        </part>
+        <part id="2">
+        <metadata key="name" value="Part Two" />
+        </part>
+        "#;
+        let out = parse_model_settings_config(xml);
+        let expected: IndexMap<u32, String> =
+            [(1, "Part One".to_string()), (2, "Part Two".to_string())]
+                .into_iter()
+                .collect();
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn parse_model_settings_config_part_id_overflow_uses_max() {
+        // Regex captures id as \d+; parse::<u32>() fails for overflow, unwrap_or(u32::MAX)
+        let xml = r#"<part id="99999999999"><metadata key="name" value="X" /></part>"#;
+        let out = parse_model_settings_config(xml);
+        assert_eq!(out.get(&u32::MAX), Some(&"X".to_string()));
+    }
+
+    // -------------------------------------------------------------------------
+    // Zip-reading behaviour for fetch_model_settings_config_from_3mf (DRY
+    // refactor guard: read_zip_entry_by_suffix + callers).
+    // -------------------------------------------------------------------------
+
+    fn write_zip_with_entries(
+        path: &std::path::Path,
+        entries: &[(&str, &[u8])],
+    ) -> std::io::Result<()> {
+        let file = std::fs::File::create(path)?;
+        let mut zip = ZipWriter::new(file);
+        let options: FileOptions<()> = FileOptions::default();
+        for (name, data) in entries {
+            zip.start_file(*name, options)?;
+            zip.write_all(data)?;
+        }
+        zip.finish()?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fetch_model_settings_config_from_3mf_returns_parsed_map_when_entry_present() {
+        let xml = r#"<part id="42"><metadata key="name" value="My Part" /></part>"#;
+        let _tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = _tmp.path().to_path_buf();
+        write_zip_with_entries(&path, &[("Metadata/model_settings.config", xml.as_bytes())])
+            .expect("write zip");
+
+        let result = fetch_model_settings_config_from_3mf(path).await;
+        let map = result.expect("fetch should succeed");
+        let expected: IndexMap<u32, String> = [(42, "My Part".to_string())].into_iter().collect();
+        assert_eq!(map, expected);
+    }
+
+    #[tokio::test]
+    async fn fetch_model_settings_config_from_3mf_returns_err_when_no_matching_entry() {
+        let _tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = _tmp.path().to_path_buf();
+        write_zip_with_entries(&path, &[("other.txt", b"data")]).expect("write zip");
+
+        let result = fetch_model_settings_config_from_3mf(path).await;
+        assert!(result.is_err());
+    }
 }

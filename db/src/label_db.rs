@@ -46,10 +46,32 @@ fn get_effective_labels(
 
     let label_child_ids = label.children.iter().map(|l| l.id).collect::<Vec<i64>>();
 
-    for f in &label_child_ids {
-        if !effective_labels.iter().any(|l| l.id == *f) {
-            get_effective_labels(*f, effective_labels, label_map);
+    for id in &label_child_ids {
+        if !effective_labels.iter().any(|l| &l.id == id) {
+            get_effective_labels(*id, effective_labels, label_map);
         }
+    }
+}
+
+/// Fills `effective_labels`, `group_count`, and `model_count` for each label using a key snapshot
+/// so that `label_map` can be mutated in the loop (borrow checker).
+fn fill_effective_labels_and_counts(label_map: &mut IndexMap<i64, Label>) {
+    let label_ids: Vec<i64> = label_map.keys().copied().collect();
+    for label_id in label_ids {
+        let mut effective_labels = Vec::new();
+        get_effective_labels(label_id, &mut effective_labels, label_map);
+        let group_count = effective_labels
+            .iter()
+            .map(|l| label_map.get(&l.id).unwrap().self_group_count)
+            .sum();
+        let model_count = effective_labels
+            .iter()
+            .map(|l| label_map.get(&l.id).unwrap().self_model_count)
+            .sum();
+        let label = label_map.get_mut(&label_id).unwrap();
+        label.effective_labels = effective_labels;
+        label.group_count = group_count;
+        label.model_count = model_count;
     }
 }
 
@@ -80,8 +102,7 @@ pub async fn get_labels(
     )
     .bind(user.id)
     .fetch_all(db)
-    .await
-    .expect("Failed to get labels");
+    .await?;
 
     let mut label_map: IndexMap<i64, Label> = IndexMap::new();
     let mut has_parents = vec![];
@@ -145,23 +166,7 @@ pub async fn get_labels(
         }
     }
 
-    #[allow(clippy::needless_collect)]
-    for label_id in label_map.values().map(|l| l.meta.id).collect::<Vec<_>>() {
-        let mut effective_labels = Vec::new();
-        get_effective_labels(label_id, &mut effective_labels, &mut label_map);
-        let group_count = effective_labels
-            .iter()
-            .map(|l| label_map.get(&l.id).unwrap().self_group_count)
-            .sum();
-        let model_count = effective_labels
-            .iter()
-            .map(|l| label_map.get(&l.id).unwrap().self_model_count)
-            .sum();
-        let label = label_map.get_mut(&label_id).unwrap();
-        label.effective_labels = effective_labels;
-        label.group_count = group_count;
-        label.model_count = model_count;
-    }
+    fill_effective_labels_and_counts(&mut label_map);
 
     Ok(label_map.into_values().collect())
 }
@@ -508,4 +513,129 @@ pub async fn set_last_updated_on_labels(
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for `get_labels` / effective-labels logic: key-snapshot loop and `fill_effective_labels_and_counts`.
+    //! Verifies (a) label with no children has `effective_labels` = [self] and counts = self_*,
+    //! (b) label with children has `effective_labels` = self + descendants, (c) `group_count`/`model_count`
+    //! are sums of self_* over effective labels.
+
+    use indexmap::IndexMap;
+
+    use crate::model::label::{Label, LabelMeta};
+
+    use super::fill_effective_labels_and_counts;
+
+    fn meta(id: i64, name: &str) -> LabelMeta {
+        LabelMeta {
+            id,
+            name: name.to_string(),
+            color: 0,
+            unique_global_id: format!("{id:032x}"),
+            last_modified: String::new(),
+        }
+    }
+
+    fn label_with_children(
+        meta: LabelMeta,
+        children: Vec<LabelMeta>,
+        self_group_count: i64,
+        self_model_count: i64,
+    ) -> Label {
+        Label {
+            meta,
+            children,
+            effective_labels: Vec::new(),
+            has_parent: false,
+            model_count: self_model_count,
+            group_count: self_group_count,
+            self_model_count,
+            self_group_count,
+        }
+    }
+
+    #[test]
+    fn effective_labels_leaf_label_contains_only_self_and_counts_equal_self() {
+        let mut label_map: IndexMap<i64, Label> = IndexMap::new();
+        let m = meta(1, "Leaf");
+        label_map.insert(1, label_with_children(m, vec![], 10, 20));
+
+        fill_effective_labels_and_counts(&mut label_map);
+
+        let label = label_map.get(&1).unwrap();
+        assert_eq!(label.effective_labels.len(), 1);
+        assert_eq!(label.effective_labels[0].id, 1);
+        assert_eq!(label.group_count, 10);
+        assert_eq!(label.model_count, 20);
+    }
+
+    #[test]
+    fn effective_labels_parent_includes_self_and_descendants() {
+        let mut label_map: IndexMap<i64, Label> = IndexMap::new();
+        let parent_meta = meta(1, "Parent");
+        let child_meta = meta(2, "Child");
+        label_map.insert(
+            1,
+            label_with_children(parent_meta, vec![child_meta.clone()], 1, 2),
+        );
+        label_map.insert(2, label_with_children(child_meta, vec![], 3, 5));
+
+        fill_effective_labels_and_counts(&mut label_map);
+
+        let parent = label_map.get(&1).unwrap();
+        assert_eq!(parent.effective_labels.len(), 2);
+        assert_eq!(parent.effective_labels[0].id, 1);
+        assert_eq!(parent.effective_labels[1].id, 2);
+        assert_eq!(parent.group_count, 1 + 3);
+        assert_eq!(parent.model_count, 2 + 5);
+
+        let child = label_map.get(&2).unwrap();
+        assert_eq!(child.effective_labels.len(), 1);
+        assert_eq!(child.effective_labels[0].id, 2);
+        assert_eq!(child.group_count, 3);
+        assert_eq!(child.model_count, 5);
+    }
+
+    #[test]
+    fn effective_labels_three_level_hierarchy_counts_sum_over_effective() {
+        let mut label_map: IndexMap<i64, Label> = IndexMap::new();
+        let root_meta = meta(1, "Root");
+        let mid_meta = meta(2, "Mid");
+        let leaf_meta = meta(3, "Leaf");
+        label_map.insert(
+            1,
+            label_with_children(root_meta, vec![mid_meta.clone()], 1, 10),
+        );
+        label_map.insert(
+            2,
+            label_with_children(mid_meta, vec![leaf_meta.clone()], 2, 20),
+        );
+        label_map.insert(3, label_with_children(leaf_meta, vec![], 4, 40));
+
+        fill_effective_labels_and_counts(&mut label_map);
+
+        let root = label_map.get(&1).unwrap();
+        assert_eq!(root.effective_labels.len(), 3);
+        assert_eq!(
+            root.effective_labels
+                .iter()
+                .map(|l| l.id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(root.group_count, 1 + 2 + 4);
+        assert_eq!(root.model_count, 10 + 20 + 40);
+
+        let mid = label_map.get(&2).unwrap();
+        assert_eq!(mid.effective_labels.len(), 2);
+        assert_eq!(mid.group_count, 2 + 4);
+        assert_eq!(mid.model_count, 20 + 40);
+
+        let leaf = label_map.get(&3).unwrap();
+        assert_eq!(leaf.effective_labels.len(), 1);
+        assert_eq!(leaf.group_count, 4);
+        assert_eq!(leaf.model_count, 40);
+    }
 }

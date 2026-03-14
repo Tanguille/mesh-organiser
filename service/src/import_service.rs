@@ -137,13 +137,13 @@ pub async fn import_path_inner(
     let name = util::prettify_file_name(&path_buff, path_buff.is_dir());
     let later_import_state = Arc::clone(&import_state);
 
-    let recurisve = {
+    let recursive = {
         let import_state = import_state.lock().await;
         import_state.recursive
     };
 
     if path_buff.is_dir() {
-        if recurisve {
+        if recursive {
             import_models_from_dir_recursive(&path_buff, app_state, import_state).await?;
         } else {
             import_models_from_dir(path, app_state, import_state, name.clone()).await?;
@@ -171,7 +171,7 @@ pub async fn import_path_inner(
                 extension,
                 size,
                 &name,
-                import_state.origin_url.clone(),
+                import_state.origin_url.as_deref(),
                 app_state,
                 &import_state.user,
                 permanent_disk_path,
@@ -319,7 +319,7 @@ async fn import_models_from_dir_inner(
     path: PathBuf,
     import_state_mutex: Arc<Mutex<ImportState>>,
     user: &User,
-    link: Option<&String>,
+    link: Option<&str>,
     delete_after_import: bool,
     import_as_path: bool,
 ) -> Result<(), ServiceError> {
@@ -344,7 +344,7 @@ async fn import_models_from_dir_inner(
         extension,
         file_size,
         &file_name,
-        link.cloned(),
+        link,
         app_state,
         user,
         permanent_disk_path,
@@ -408,7 +408,7 @@ async fn import_models_from_dir(
                 entry,
                 import_state_mutex,
                 &user,
-                origin_url.as_ref(),
+                origin_url.as_deref(),
                 delete_after_import,
                 import_as_path,
             )
@@ -484,7 +484,7 @@ async fn import_models_from_zip(
                 extension,
                 file_size,
                 &file_name,
-                link,
+                link.as_deref(),
                 app_state,
                 &import_state.user,
                 None,
@@ -509,7 +509,7 @@ async fn import_single_model<W>(
     file_type: &str,
     file_size: usize,
     name: &str,
-    link: Option<String>,
+    link: Option<&str>,
     app_state: &AppState,
     user: &User,
     permanent_disk_path: Option<PathBuf>,
@@ -582,7 +582,7 @@ where
         .await?;
     }
 
-    let id = model_db::add_model(&app_state.db, user, name, blob_id, link.as_deref(), None).await?;
+    let id = model_db::add_model(&app_state.db, user, name, blob_id, link, None).await?;
 
     Ok(id)
 }
@@ -703,4 +703,51 @@ pub async fn expand_paths(
     }
 
     Ok(models)
+}
+
+// -----------------------------------------------------------------------------
+// Regression tests: lock in get_model_count error paths (zip as path,
+// unsupported file type) after clippy refactors.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use db::model::user::User;
+
+    use crate::import_state::ImportState;
+    use crate::service_error::ServiceError;
+
+    use super::get_model_count;
+
+    #[tokio::test]
+    async fn get_model_count_unsupported_extension_returns_err() {
+        let state = ImportState::new(None, false, false, false, User::default());
+        let result = get_model_count("somefile.xyz", false, &state).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let ServiceError::InternalError(msg) = &err {
+            assert!(
+                msg.contains("Unsupported file type"),
+                "expected 'Unsupported file type' in message, got: {msg}"
+            );
+        } else {
+            panic!("expected InternalError, got: {err:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn get_model_count_zip_with_import_as_path_returns_err() {
+        let state = ImportState::new(None, false, false, true, User::default());
+        let result = get_model_count("archive.zip", false, &state).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let ServiceError::InternalError(msg) = &err {
+            assert!(
+                msg.contains("zip as path"),
+                "expected 'zip as path' in message, got: {msg}"
+            );
+        } else {
+            panic!("expected InternalError, got: {err:?}");
+        }
+    }
 }

@@ -294,3 +294,139 @@ impl Default for Configuration {
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+// Regression tests: lock in Configuration::default() and stored_to_configuration
+// after clippy-driven refactors so defaults and Option/Result behaviour don't regress.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configuration_default_has_expected_values() {
+        let c = Configuration::default();
+        assert_eq!(c.data_path, "");
+        assert_eq!(c.thumbnail_rotation, [35, 30, 0]);
+        assert!(
+            c.core_parallelism >= 1,
+            "core_parallelism must be at least 1"
+        );
+        assert_eq!(c.theme, "default");
+        assert_eq!(c.last_user_id, 1);
+        assert!(!c.export_metadata);
+        assert!(c.fallback_3mf_thumbnail);
+        assert!(c.prefer_3mf_thumbnail);
+    }
+
+    #[test]
+    fn stored_to_configuration_empty_uses_defaults() {
+        let stored = StoredConfiguration {
+            data_path: None,
+            prusa_deep_link: None,
+            cura_deep_link: None,
+            bambu_deep_link: None,
+            orca_deep_link: None,
+            open_slicer_on_remote_model_import: None,
+            show_ungrouped_models_in_groups: None,
+            slicer: None,
+            focus_after_link_import: None,
+            thumbnail_color: None,
+            size_option_models: None,
+            size_option_groups: None,
+            show_grouped_count_on_labels: None,
+            fallback_3mf_thumbnail: None,
+            prefer_3mf_thumbnail: None,
+            core_parallelism: None,
+            collapse_sidebar: None,
+            zoom_level: None,
+            export_metadata: None,
+            show_date_on_list_view: None,
+            default_enabled_recursive_import: None,
+            default_enabled_delete_after_import: None,
+            open_links_in_external_browser: None,
+            max_size_model_3mf_preview: None,
+            max_size_model_stl_preview: None,
+            max_size_model_obj_preview: None,
+            max_size_model_step_preview: None,
+            only_show_single_image_in_groups: None,
+            custom_slicer_path: None,
+            elegoo_deep_link: None,
+            group_split_view: None,
+            label_exported_model_as_printed: None,
+            theme: None,
+            order_option_models: None,
+            order_option_groups: None,
+            ignore_update: None,
+            show_multiselect_checkboxes: None,
+            use_worker_for_model_parsing: None,
+            prefer_gcode_thumbnail: None,
+            last_user_id: None,
+            custom_css: None,
+            default_enabled_import_as_path: None,
+            thumbnail_rotation: None,
+            watch_downloads_folder: None,
+            startup_page: None,
+        };
+        let config = stored_to_configuration(stored);
+        assert_eq!(config.data_path, Configuration::default().data_path);
+        assert_eq!(config.theme, "default");
+        assert_eq!(config.thumbnail_rotation, [35, 30, 0]);
+    }
+
+    #[test]
+    fn stored_to_configuration_overrides_single_field() {
+        let default = Configuration::default();
+        let stored = StoredConfiguration {
+            data_path: Some("/custom/data".to_string()),
+            prusa_deep_link: None,
+            cura_deep_link: None,
+            bambu_deep_link: None,
+            orca_deep_link: None,
+            open_slicer_on_remote_model_import: None,
+            show_ungrouped_models_in_groups: None,
+            slicer: None,
+            focus_after_link_import: None,
+            thumbnail_color: None,
+            size_option_models: None,
+            size_option_groups: None,
+            show_grouped_count_on_labels: None,
+            fallback_3mf_thumbnail: None,
+            prefer_3mf_thumbnail: None,
+            core_parallelism: None,
+            collapse_sidebar: None,
+            zoom_level: None,
+            export_metadata: None,
+            show_date_on_list_view: None,
+            default_enabled_recursive_import: None,
+            default_enabled_delete_after_import: None,
+            open_links_in_external_browser: None,
+            max_size_model_3mf_preview: None,
+            max_size_model_stl_preview: None,
+            max_size_model_obj_preview: None,
+            max_size_model_step_preview: None,
+            only_show_single_image_in_groups: None,
+            custom_slicer_path: None,
+            elegoo_deep_link: None,
+            group_split_view: None,
+            label_exported_model_as_printed: None,
+            theme: None,
+            order_option_models: None,
+            order_option_groups: None,
+            ignore_update: None,
+            show_multiselect_checkboxes: None,
+            use_worker_for_model_parsing: None,
+            prefer_gcode_thumbnail: None,
+            last_user_id: None,
+            custom_css: None,
+            default_enabled_import_as_path: None,
+            thumbnail_rotation: None,
+            watch_downloads_folder: None,
+            startup_page: None,
+        };
+        let config = stored_to_configuration(stored);
+        assert_eq!(config.data_path, "/custom/data");
+        assert_eq!(config.theme, default.theme);
+    }
+}

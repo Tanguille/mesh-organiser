@@ -7,6 +7,8 @@ use std::{
 
 use regex::Regex;
 
+use db::model::blob::FileType;
+
 use crate::service_error::ServiceError;
 
 /// Returns a human-friendly file name (no path); strips extension if not a directory.
@@ -85,20 +87,12 @@ pub fn get_folder_size(path: &PathBuf) -> u64 {
 
 #[must_use]
 pub fn is_zippable_file_extension(extension: &str) -> bool {
-    let lowercase = extension.to_lowercase();
-
-    ["stl", "obj", "step", "gcode"]
-        .iter()
-        .any(|f| lowercase.as_str().eq(*f))
+    FileType::from_extension(extension).is_zippable()
 }
 
 #[must_use]
 pub fn is_zipped_file_extension(extension: &str) -> bool {
-    let lowercase = extension.to_lowercase();
-
-    ["stl.zip", "obj.zip", "step.zip", "gcode.zip"]
-        .iter()
-        .any(|f| lowercase.as_str().eq(*f))
+    FileType::from_extension(extension).is_zipped()
 }
 
 #[must_use]
@@ -276,11 +270,33 @@ mod tests {
         assert!(!is_zippable_file_extension("txt"));
     }
 
+    /// db maps "stp" to `Step`; `FileType` delegation covers this.
+    #[test]
+    fn test_is_zippable_stp() {
+        assert!(is_zippable_file_extension("stp"));
+    }
+
+    #[test]
+    fn test_is_zippable_step_uppercase() {
+        assert!(is_zippable_file_extension("STEP"));
+    }
+
     // ---- is_zipped_file_extension ----
 
     #[test]
     fn test_is_zipped_stl_zip() {
         assert!(is_zipped_file_extension("stl.zip"));
+    }
+
+    #[test]
+    fn test_is_zipped_step_zip() {
+        assert!(is_zipped_file_extension("step.zip"));
+    }
+
+    #[test]
+    fn test_is_zipped_obj_zip_gcode_zip() {
+        assert!(is_zipped_file_extension("obj.zip"));
+        assert!(is_zipped_file_extension("gcode.zip"));
     }
 
     #[test]

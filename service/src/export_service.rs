@@ -9,7 +9,11 @@ use async_zip::{
 };
 use chrono::Utc;
 use itertools::Itertools;
-use tokio::{fs::File, io::BufReader, task::JoinSet};
+use tokio::{
+    fs::File,
+    io::{AsyncRead, BufReader},
+    task::JoinSet,
+};
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use db::{
@@ -53,6 +57,29 @@ pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
 pub fn get_image_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
     let base_dir = app_state.get_image_dir();
     base_dir.join(format!("{}.png", blob.sha256))
+}
+
+/// Opens a blob's content as an async reader (plain file or first entry of a zip).
+///
+/// # Errors
+///
+/// Returns an error if the blob file cannot be opened or (for zips) the zip cannot be read.
+pub async fn open_blob_content_reader(
+    blob: &Blob,
+    app_state: &AppState,
+) -> Result<Box<dyn AsyncRead + Unpin + Send>, ServiceError> {
+    let path = get_model_path_for_blob(blob, app_state);
+    let file = File::open(path).await?;
+    if is_zipped_file_extension(&blob.filetype) {
+        let mut br = BufReader::new(file);
+        let mut zip = ZipFileReader::with_tokio(&mut br).await?;
+        let entry_reader = zip.reader_with_entry(0).await?;
+        let mut buf = Vec::new();
+        tokio::io::copy(&mut entry_reader.compat(), &mut buf).await?;
+        Ok(Box::new(futures::io::Cursor::new(buf).compat()) as Box<dyn AsyncRead + Unpin + Send>)
+    } else {
+        Ok(Box::new(file) as Box<dyn AsyncRead + Unpin + Send>)
+    }
 }
 
 /// Exports models to a temp folder; returns the folder path and list of exported file paths.
@@ -179,20 +206,8 @@ pub async fn export_zip_to_temp_folder(
         );
         let mut stream_writer = writer.write_entry_stream(builder).await?;
 
-        // TODO: Find a way to reuse this
-        let src_file_path = get_model_path_for_blob(&model.blob, app_state);
-        let model_file = File::open(src_file_path).await?;
-
-        if is_zipped_file_extension(&model.blob.filetype) {
-            let mut buffered_reader = BufReader::new(model_file);
-            let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
-            let mut file = zip.reader_with_entry(0).await?;
-
-            futures::io::copy(&mut file, &mut stream_writer).await?;
-        } else {
-            let mut model_file = model_file.compat();
-            futures::io::copy(&mut model_file, &mut stream_writer).await?;
-        }
+        let reader = open_blob_content_reader(&model.blob, app_state).await?;
+        futures::io::copy(&mut reader.compat(), &mut stream_writer).await?;
 
         stream_writer.close().await?;
         println!("Added model {} to zip", model.name);
@@ -227,21 +242,9 @@ pub async fn get_bytes_from_blob(
     blob: &Blob,
     app_state: &AppState,
 ) -> Result<Vec<u8>, ServiceError> {
-    let src_file_path = get_model_path_for_blob(blob, app_state);
-    let mut file = File::open(src_file_path).await?;
+    let mut reader = open_blob_content_reader(blob, app_state).await?;
     let mut buffer = Vec::new();
-
-    if is_zipped_file_extension(&blob.filetype) {
-        let mut buffered_reader = BufReader::new(file);
-        let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
-        let file = zip.reader_with_entry(0).await?;
-        let mut file_compat = file.compat();
-
-        tokio::io::copy(&mut file_compat, &mut buffer).await?;
-    } else {
-        tokio::io::copy(&mut file, &mut buffer).await?;
-    }
-
+    tokio::io::copy(&mut reader, &mut buffer).await?;
     Ok(buffer)
 }
 
@@ -288,15 +291,9 @@ pub async fn get_path_from_model(
     let dst_file_path = ensure_unique_file(temp_dir, &cleansed_name, &extension);
 
     if is_zipped_file_extension(&model.blob.filetype) {
-        let zip_file = File::open(src_file_path).await?;
-        let mut buffered_reader = BufReader::new(zip_file);
-        let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
-        let file = zip.reader_with_entry(0).await?;
-        let mut file_compat = file.compat();
-
+        let mut reader = open_blob_content_reader(&model.blob, app_state).await?;
         let mut dst_file = File::create(&dst_file_path).await?;
-
-        tokio::io::copy(&mut file_compat, &mut dst_file).await?;
+        tokio::io::copy(&mut reader, &mut dst_file).await?;
         Ok(dst_file_path)
     } else if !lazy {
         tokio::fs::copy(&src_file_path, &dst_file_path).await?;
@@ -372,4 +369,192 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
         }
     }
     Ok(())
+}
+
+// -----------------------------------------------------------------------------
+// Regression tests: lock in ensure_unique_file / ensure_unique_file_full_filename
+// after clippy refactors (control flow, Option/Result).
+// -----------------------------------------------------------------------------
+//
+// Blob content reading tests: lock in get_bytes_from_blob (and get_path_from_model
+// for non-zip, lazy=false) before DRY refactor introducing open_blob_content_reader.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
+    use db::{
+        db_context,
+        model::{Model, ModelFlags, blob::Blob},
+    };
+    use tempfile::tempdir;
+    use tokio::fs::File;
+
+    use crate::{app_state::AppState, configuration::Configuration};
+
+    use super::{
+        ensure_unique_file, ensure_unique_file_full_filename, get_bytes_from_blob,
+        get_path_from_model,
+    };
+
+    #[test]
+    fn ensure_unique_file_returns_path_when_no_existing_file() {
+        let dir = tempdir().unwrap();
+        let path = ensure_unique_file(dir.path(), "model", "stl");
+        assert_eq!(path.file_name().unwrap(), "model.stl");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn ensure_unique_file_adds_suffix_when_file_exists() {
+        let dir = tempdir().unwrap();
+        let first = ensure_unique_file(dir.path(), "model", "stl");
+        std::fs::File::create(&first).unwrap();
+        let second = ensure_unique_file(dir.path(), "model", "stl");
+        assert_eq!(second.file_name().unwrap(), "model_1.stl");
+        assert!(!second.exists());
+    }
+
+    #[test]
+    fn ensure_unique_file_full_filename_uses_extension_and_base_name() {
+        let dir = tempdir().unwrap();
+        let path = ensure_unique_file_full_filename(dir.path(), "foo.bar");
+        assert_eq!(path.file_name().unwrap(), "foo.bar");
+    }
+
+    #[test]
+    fn ensure_unique_file_full_filename_adds_suffix_when_exists() {
+        let dir = tempdir().unwrap();
+        let first = ensure_unique_file_full_filename(dir.path(), "a.stl");
+        std::fs::File::create(&first).unwrap();
+        let second = ensure_unique_file_full_filename(dir.path(), "a.stl");
+        assert_eq!(second.file_name().unwrap(), "a_1.stl");
+    }
+
+    /// Builds an `AppState` with a temp data dir and real DB; model dir is `data_path/models`.
+    async fn app_state_with_temp_model_dir() -> (tempfile::TempDir, AppState) {
+        let dir = tempdir().unwrap();
+        let data_path = dir.path().join("data");
+        std::fs::create_dir_all(&data_path).unwrap();
+        let db_path = data_path.join("db.sqlite");
+        let backup_dir = data_path.join("backup");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+
+        let db = db_context::setup_db(&db_path, &backup_dir).await;
+        let config = Configuration {
+            data_path: data_path.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+
+        let app_state = AppState {
+            db: Arc::new(db),
+            configuration: Mutex::new(config),
+            import_mutex: Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path.to_string_lossy().to_string(),
+        };
+
+        (dir, app_state)
+    }
+
+    #[tokio::test]
+    async fn get_bytes_from_blob_returns_plain_file_content() {
+        let (_dir, app_state) = app_state_with_temp_model_dir().await;
+        let model_dir = app_state.get_model_dir();
+
+        let sha256 = "abc123plain";
+        let filetype = "stl";
+        let content = b"hello stl content";
+        let path = model_dir.join(format!("{sha256}.{filetype}"));
+        std::fs::write(&path, content).unwrap();
+
+        let blob = Blob {
+            id: 0,
+            sha256: sha256.to_string(),
+            filetype: filetype.to_string(),
+            size: content.len() as i64,
+            added: String::new(),
+            disk_path: None,
+        };
+
+        let bytes = get_bytes_from_blob(&blob, &app_state).await.unwrap();
+        assert_eq!(bytes.as_slice(), content);
+    }
+
+    #[tokio::test]
+    async fn get_bytes_from_blob_returns_first_entry_content_from_zip() {
+        let (_dir, app_state) = app_state_with_temp_model_dir().await;
+        let model_dir = app_state.get_model_dir();
+
+        let sha256 = "def456zipped";
+        let filetype = "stl.zip";
+        let entry_content = b"zipped stl content";
+        let zip_path = model_dir.join(format!("{sha256}.{filetype}"));
+
+        let mut file = File::create(&zip_path).await.unwrap();
+        let mut writer = ZipFileWriter::with_tokio(&mut file);
+        let builder = ZipEntryBuilder::new("model.stl".into(), Compression::Deflate);
+        writer
+            .write_entry_whole(builder, entry_content)
+            .await
+            .unwrap();
+        writer.close().await.unwrap();
+
+        let blob = Blob {
+            id: 0,
+            sha256: sha256.to_string(),
+            filetype: filetype.to_string(),
+            size: 0,
+            added: String::new(),
+            disk_path: None,
+        };
+
+        let bytes = get_bytes_from_blob(&blob, &app_state).await.unwrap();
+        assert_eq!(bytes.as_slice(), entry_content);
+    }
+
+    #[tokio::test]
+    async fn get_path_from_model_non_zip_lazy_false_copies_file_with_same_content() {
+        let (_dir, app_state) = app_state_with_temp_model_dir().await;
+        let model_dir = app_state.get_model_dir();
+
+        let sha256 = "xyz789export";
+        let filetype = "stl";
+        let content = b"exported stl bytes";
+        let path = model_dir.join(format!("{sha256}.{filetype}"));
+        std::fs::write(&path, content).unwrap();
+
+        let blob = Blob {
+            id: 1,
+            sha256: sha256.to_string(),
+            filetype: filetype.to_string(),
+            size: content.len() as i64,
+            added: String::new(),
+            disk_path: None,
+        };
+
+        let model = Model {
+            id: 1,
+            name: "TestModel".to_string(),
+            blob,
+            link: None,
+            description: None,
+            added: String::new(),
+            last_modified: String::new(),
+            group: None,
+            labels: Vec::new(),
+            flags: ModelFlags::empty(),
+            unique_global_id: String::new(),
+        };
+
+        let temp_dir = tempdir().unwrap();
+        let dst = get_path_from_model(temp_dir.path(), &model, &app_state, false)
+            .await
+            .unwrap();
+
+        assert!(dst.exists());
+        let read = std::fs::read(&dst).unwrap();
+        assert_eq!(read.as_slice(), content);
+    }
 }

@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::path::Path;
 
-#[derive(Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub enum FileType {
     Stl,
     ZippedStl,
@@ -35,6 +35,28 @@ impl Blob {
 impl FileType {
     #[must_use]
     pub fn from_pathbuf(path: &Path) -> Self {
+        let name_lower = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        // Compound extensions first so "file.stl.zip" is recognized as ZippedStl
+        if name_lower.ends_with(".stl.zip") {
+            return Self::from_extension("stl.zip");
+        }
+        if name_lower.ends_with(".obj.zip") {
+            return Self::from_extension("obj.zip");
+        }
+        if name_lower.ends_with(".gcode.zip") {
+            return Self::from_extension("gcode.zip");
+        }
+        if name_lower.ends_with(".step.zip") || name_lower.ends_with(".stp.zip") {
+            return Self::from_extension(if name_lower.ends_with(".stp.zip") {
+                "stp.zip"
+            } else {
+                "step.zip"
+            });
+        }
         path.extension().map_or(Self::Unknown, |ext| {
             Self::from_extension(&ext.to_string_lossy())
         })

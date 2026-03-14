@@ -157,6 +157,7 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
         |flag_index| {
             let executable = args[..flag_index].join(" ");
             let args = args[flag_index..].to_vec();
+
             (executable, args)
         },
     )

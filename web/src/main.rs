@@ -59,12 +59,14 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn main() {
-    tokio::runtime::Builder::new_multi_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(32 * 1024 * 1024)
         .build()
-        .unwrap()
-        .block_on(async {
-            let _ = async_main().await;
-        });
+        .expect("failed to build tokio runtime");
+
+    if let Err(e) = rt.block_on(async_main()) {
+        eprintln!("Fatal: {e}");
+        std::process::exit(1);
+    }
 }

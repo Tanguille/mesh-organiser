@@ -33,6 +33,8 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     }
 }
 
+/// f64→f32 truncation: OpenCascade gives f64; we need f32 for STL/thumbnails. Precision is
+/// sufficient for display and export; explicit rounding would add cost with no practical benefit.
 #[allow(clippy::cast_possible_truncation)]
 fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
@@ -67,8 +69,11 @@ fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let file_name = file.name().to_lowercase();
-        if file_name.ends_with(".step") || file_name.ends_with(".stp") {
+        let file_name = file.name();
+        let ext_matches = Path::new(file_name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("step") || ext.eq_ignore_ascii_case("stp"));
+        if ext_matches {
             io::copy(&mut file, &mut temp_file)?;
             temp_file.flush()?;
             write_ok = true;
@@ -115,6 +120,9 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
 /// # Errors
 ///
 /// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
+///
+/// f64→f32: same rationale as `parse_step` (STL/display use f32; truncation is intentional).
+#[allow(clippy::cast_possible_truncation)]
 pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
@@ -127,9 +135,9 @@ pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbna
 
     for i in (0..mesh.indices.len()).step_by(3) {
         if i + 2 < mesh.indices.len() {
-            let idx0 = mesh.indices[i] as usize;
-            let idx1 = mesh.indices[i + 1] as usize;
-            let idx2 = mesh.indices[i + 2] as usize;
+            let idx0 = mesh.indices[i];
+            let idx1 = mesh.indices[i + 1];
+            let idx2 = mesh.indices[i + 2];
 
             let v0 = &mesh.vertices[idx0];
             let v1 = &mesh.vertices[idx1];

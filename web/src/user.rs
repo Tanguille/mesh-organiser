@@ -48,6 +48,23 @@ impl AuthUser {
             created_at: String::new(),
         }
     }
+
+    #[cfg(test)]
+    pub const fn for_test(
+        id: i64,
+        username: String,
+        email: String,
+        permissions: usize,
+        validity_token: Vec<u8>,
+    ) -> Self {
+        Self {
+            id,
+            username,
+            email,
+            permissions,
+            validity_token,
+        }
+    }
 }
 
 impl AxumAuthUser for AuthUser {
@@ -143,3 +160,68 @@ impl AuthnBackend for Backend {
 //
 // Note that we've supplied our concrete backend here.
 pub type AuthSession = axum_login::AuthSession<Backend>;
+
+#[cfg(test)]
+mod tests {
+    use super::AuthUser;
+    use db::model::user::UserPermissions;
+
+    #[test]
+    fn to_user_round_trip_id_username_email() {
+        let auth = AuthUser::for_test(
+            42,
+            "alice".to_string(),
+            "alice@example.com".to_string(),
+            0,
+            vec![],
+        );
+        let user = auth.to_user();
+        assert_eq!(user.id, 42);
+        assert_eq!(user.username, "alice");
+        assert_eq!(user.email, "alice@example.com");
+        assert!(user.permissions.is_empty());
+        assert!(user.password_hash.is_empty());
+        assert!(user.sync_url.is_none());
+    }
+
+    #[test]
+    fn to_user_permissions_bits() {
+        let auth = AuthUser::for_test(
+            1,
+            "u".to_string(),
+            "e@e.com".to_string(),
+            UserPermissions::Admin.bits() as usize,
+            vec![],
+        );
+        let user = auth.to_user();
+        assert!(user.permissions.contains(UserPermissions::Admin));
+
+        let auth_sync = AuthUser::for_test(
+            2,
+            "u".to_string(),
+            "e@e.com".to_string(),
+            UserPermissions::Sync.bits() as usize,
+            vec![],
+        );
+        let user_sync = auth_sync.to_user();
+        assert!(user_sync.permissions.contains(UserPermissions::Sync));
+    }
+
+    #[test]
+    fn to_user_permissions_truncate_large_usize() {
+        let auth = AuthUser::for_test(
+            1,
+            "u".to_string(),
+            "e@e.com".to_string(),
+            usize::MAX,
+            vec![],
+        );
+        let user = auth.to_user();
+        assert_eq!(
+            user.permissions.bits(),
+            UserPermissions::Admin.bits()
+                | UserPermissions::Sync.bits()
+                | UserPermissions::OnlineAccount.bits()
+        );
+    }
+}

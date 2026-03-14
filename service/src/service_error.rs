@@ -113,8 +113,9 @@ impl Serialize for ServiceError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde::{Serialize, Serializer};
+
+    use super::*;
 
     /// Wrapper that serialises via `serialize_error_struct` so we can test the helper directly.
     #[allow(clippy::struct_field_names)] // Names must match serialised JSON keys.

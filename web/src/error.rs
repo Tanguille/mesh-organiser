@@ -82,3 +82,44 @@ impl IntoResponse for ApplicationError {
         (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(self)).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApplicationError;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn internal_error_display() {
+        let err = ApplicationError::InternalError("something went wrong".to_string());
+        assert_eq!(err.to_string(), "Internal error");
+    }
+
+    #[test]
+    fn internal_error_serializes_three_field_shape() {
+        let err = ApplicationError::InternalError("detail".to_string());
+        let value = serde_json::to_value(&err).expect("serialization should succeed");
+        let obj = value.as_object().expect("should be object");
+        assert_eq!(
+            obj.get("error_type").and_then(|v| v.as_str()),
+            Some("InternalError")
+        );
+        assert_eq!(
+            obj.get("error_message").and_then(|v| v.as_str()),
+            Some("Internal error")
+        );
+        assert_eq!(
+            obj.get("error_inner_message").and_then(|v| v.as_str()),
+            Some("detail")
+        );
+    }
+
+    #[test]
+    fn into_response_returns_500() {
+        let err = ApplicationError::InternalError("test".to_string());
+        let response = err.into_response();
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}

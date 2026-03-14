@@ -1,11 +1,14 @@
-use std::{panic, path::Path, path::PathBuf};
+use std::{
+    panic,
+    path::{Path, PathBuf},
+};
 
 use image::{DynamicImage, imageops::FilterType::Triangle};
 use libmeshthumbnail::{extract_image, parse_model, render};
 use tokio::task::JoinSet;
 use vek::{Vec2, Vec3};
 
-use db::{blob_db, model::blob::Blob};
+use db::{blob_db, model::blob::Blob, model::blob::FileType};
 
 use crate::{
     AppState, ServiceError,
@@ -16,6 +19,19 @@ use crate::{
 const IMAGE_WIDTH: usize = 400;
 const IMAGE_HEIGHT: usize = 400;
 const IMAGE_SIZE: Vec2<usize> = Vec2::new(IMAGE_WIDTH, IMAGE_HEIGHT);
+
+fn resize_and_save_thumbnail(
+    image: &mut DynamicImage,
+    image_path: &Path,
+) -> Result<(), ServiceError> {
+    *image = image.resize_to_fill(
+        u32::try_from(IMAGE_WIDTH).unwrap_or(400),
+        u32::try_from(IMAGE_HEIGHT).unwrap_or(400),
+        Triangle,
+    );
+    image.save(image_path)?;
+    Ok(())
+}
 
 fn render(
     model_path: &Path,
@@ -46,6 +62,26 @@ fn render(
     Ok(())
 }
 
+/// Returns the file type for the path if thumbnail generation is supported, or an error if unsupported.
+/// Used by `process` and by tests (via `.to_extension()`) to lock in extension behaviour.
+fn thumbnail_extension_for_path(path: &Path) -> Result<FileType, ServiceError> {
+    let file_type = FileType::from_pathbuf(path);
+    if file_type.is_unsupported() {
+        return Err(ServiceError::InternalError(format!(
+            "Unsupported file extension for thumbnail generation: {}",
+            path.display()
+        )));
+    }
+    // Reject Step (thumbnail render does not support it); allow Stl, Obj, Gcode, Threemf and their zips
+    if file_type.is_step() {
+        return Err(ServiceError::InternalError(format!(
+            "Unsupported file extension for thumbnail generation: {}",
+            path.display()
+        )));
+    }
+    Ok(file_type)
+}
+
 fn process(
     model_path: &Path,
     image_path: &Path,
@@ -55,55 +91,13 @@ fn process(
     prefer_3mf_thumbnail: bool,
     prefer_gcode_thumbnail: bool,
 ) -> Result<(), ServiceError> {
-    let filename = model_path.to_string_lossy().to_lowercase();
+    let file_type = thumbnail_extension_for_path(model_path)?;
 
-    let path = Path::new(&filename);
-    let extension = match () {
-        () if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("stl")) =>
-        {
-            "stl"
-        }
-        () if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("obj")) =>
-        {
-            "obj"
-        }
-        () if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode")) =>
-        {
-            "gcode"
-        }
-        () if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("3mf")) =>
-        {
-            "3mf"
-        }
-        () if filename.ends_with(".stl.zip") => "stl.zip",
-        () if filename.ends_with(".obj.zip") => "obj.zip",
-        () if filename.ends_with(".gcode.zip") => "gcode.zip",
-        () => {
-            return Err(ServiceError::InternalError(format!(
-                "Unsupported file extension for thumbnail generation: {}",
-                model_path.display()
-            )));
-        }
-    };
-
-    if ((prefer_3mf_thumbnail && extension == "3mf")
-        || (prefer_gcode_thumbnail && (extension == "gcode" || extension == "gcode.zip")))
+    if ((prefer_3mf_thumbnail && file_type.is_3mf())
+        || (prefer_gcode_thumbnail && file_type.is_gcode()))
         && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
     {
-        image = image.resize_to_fill(
-            u32::try_from(IMAGE_WIDTH).unwrap_or(400),
-            u32::try_from(IMAGE_HEIGHT).unwrap_or(400),
-            Triangle,
-        );
-        image.save(image_path)?;
+        resize_and_save_thumbnail(&mut image, image_path)?;
         return Ok(());
     }
 
@@ -113,15 +107,10 @@ fn process(
 
     if fallback_3mf_thumbnail
         && !prefer_3mf_thumbnail
-        && extension == "3mf"
+        && file_type.is_3mf()
         && let Ok(Some(mut image)) = extract_image::handle_extract_image(model_path)
     {
-        image = image.resize_to_fill(
-            u32::try_from(IMAGE_WIDTH).unwrap_or(400),
-            u32::try_from(IMAGE_HEIGHT).unwrap_or(400),
-            Triangle,
-        );
-        image.save(image_path)?;
+        resize_and_save_thumbnail(&mut image, image_path)?;
         return Ok(());
     }
 
@@ -239,4 +228,119 @@ pub async fn generate_thumbnails(
     );
     import_state.update_status(ImportStatus::FinishedThumbnails);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::ServiceError;
+
+    use super::thumbnail_extension_for_path;
+
+    #[test]
+    fn thumbnail_extension_stl() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("x.stl"))
+                .unwrap()
+                .to_extension(),
+            "stl"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_stl_uppercase() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("x.STL"))
+                .unwrap()
+                .to_extension(),
+            "stl"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_obj() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("model.obj"))
+                .unwrap()
+                .to_extension(),
+            "obj"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_gcode() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("print.gcode"))
+                .unwrap()
+                .to_extension(),
+            "gcode"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_3mf() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("x.3mf"))
+                .unwrap()
+                .to_extension(),
+            "3mf"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_stl_zip() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("x.stl.zip"))
+                .unwrap()
+                .to_extension(),
+            "stl.zip"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_obj_zip() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("a/b.obj.zip"))
+                .unwrap()
+                .to_extension(),
+            "obj.zip"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_gcode_zip() {
+        assert_eq!(
+            thumbnail_extension_for_path(&PathBuf::from("out.gcode.zip"))
+                .unwrap()
+                .to_extension(),
+            "gcode.zip"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_unknown_returns_err() {
+        let err = thumbnail_extension_for_path(&PathBuf::from("x.unknown")).unwrap_err();
+        let msg = match &err {
+            ServiceError::InternalError(s) => s.as_str(),
+            _ => panic!("expected InternalError, got {err:?}"),
+        };
+        assert!(
+            msg.contains("Unsupported file extension for thumbnail generation"),
+            "expected error message to mention unsupported extension, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn thumbnail_extension_no_extension_returns_err() {
+        let err = thumbnail_extension_for_path(&PathBuf::from("noext")).unwrap_err();
+        let msg = match &err {
+            ServiceError::InternalError(s) => s.as_str(),
+            _ => panic!("expected InternalError, got {err:?}"),
+        };
+        assert!(
+            msg.contains("Unsupported file extension for thumbnail generation"),
+            "expected error for path with no extension, got: {msg}"
+        );
+    }
 }

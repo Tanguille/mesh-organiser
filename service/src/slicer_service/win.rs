@@ -4,9 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use winreg::HKEY;
-use winreg::RegKey;
-use winreg::enums;
+use winreg::{HKEY, RegKey, enums};
 
 use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_with_paths};
 
