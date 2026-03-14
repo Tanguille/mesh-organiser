@@ -23,6 +23,7 @@ use tower_http::{
     compression::CompressionLayer,
     services::{ServeDir, ServeFile},
 };
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_sessions_sqlx_store::SqliteStore;
 
 use db::{
@@ -208,7 +209,7 @@ impl App {
         };
 
         let session_layer = SessionManagerLayer::new(session_store)
-            .with_secure(false)
+            .with_secure(true)
             .with_expiry(Expiry::OnInactivity(Duration::days(7)))
             .with_signed(key);
 
@@ -223,8 +224,29 @@ impl App {
         let db = self.app_state.app_state.db.clone();
         let port = self.app_state.port;
 
+        // Configure CORS with restricted origins
+        let cors_layer = CorsLayer::new()
+            .allow_origin([
+                "http://localhost:3000".parse().unwrap(),
+                "http://localhost:5173".parse().unwrap(),
+            ])
+            .allow_methods(Any)
+            .allow_headers(Any)
+            .allow_credentials(true);
+
+        // Configure rate limiting for auth endpoints
+        let governor_config = Arc::new(
+            GovernorConfigBuilder::default()
+                .per_second(5)
+                .burst_size(10)
+                .finish()
+                .expect("Failed to create governor config"),
+        );
+
+        let auth_router = auth_controller::router().layer(GovernorLayer::new(governor_config));
+
         let app = Router::new()
-            .merge(auth_controller::router())
+            .merge(auth_router)
             .merge(blob_controller::router())
             .merge(model_controller::router())
             .merge(group_controller::router())
@@ -235,6 +257,7 @@ impl App {
             .merge(page_controller::router())
             .merge(share_controller::router())
             .with_state(self.app_state)
+            .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(MessagesManagerLayer)
             .layer(auth_layer)

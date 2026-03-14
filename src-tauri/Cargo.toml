@@ -16,7 +16,7 @@ workspace = true
 tauri-build = { workspace = true }
 
 [dependencies]
-tauri = { workspace = true, features = ["protocol-asset", "devtools"] }
+tauri = { workspace = true, features = ["devtools", "protocol-asset"] }
 tauri-plugin-opener = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -38,6 +38,7 @@ db = { workspace = true }
 service = { workspace = true }
 serde_html_form = { workspace = true }
 tauri-plugin-http = { workspace = true, features = ["multipart"] }
+content_disposition = { workspace = true }
 async_zip = { workspace = true, features = [
     "deflate",
     "deflate64",

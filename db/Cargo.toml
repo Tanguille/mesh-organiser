@@ -10,7 +10,7 @@ serde = { workspace = true, features = ["derive"] }
 rand = { workspace = true }
 hex = { workspace = true }
 chrono = { workspace = true }
-sqlx = { workspace = true, features = ["sqlite", "runtime-tokio", "chrono"] }
+sqlx = { workspace = true, features = ["chrono", "runtime-tokio", "sqlite"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
