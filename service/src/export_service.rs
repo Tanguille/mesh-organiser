@@ -210,7 +210,6 @@ pub async fn export_zip_to_temp_folder(
         futures::io::copy(&mut reader.compat(), &mut stream_writer).await?;
 
         stream_writer.close().await?;
-        println!("Added model {} to zip", model.name);
     }
 
     writer.close().await?;
@@ -249,16 +248,20 @@ pub async fn get_bytes_from_blob(
 }
 
 /// Ensures a unique path for the given filename in the base path (adds _1, _2, … if needed).
-///
-/// # Panics
-///
-/// Panics if `file_name` has no extension (no '.').
+/// If `file_name` has no `.`, the whole string is treated as the base name with no extension.
 #[must_use]
 pub fn ensure_unique_file_full_filename(base_path: &Path, file_name: &str) -> PathBuf {
-    let extension = file_name.split('.').next_back().unwrap();
-    let base_file_name = &file_name[..file_name.len() - extension.len() - 1];
-
-    ensure_unique_file(base_path, base_file_name, extension)
+    if let Some((base_file_name, extension)) = file_name.rsplit_once('.') {
+        ensure_unique_file(base_path, base_file_name, extension)
+    } else {
+        let mut counter = 1;
+        let mut new_file_name = base_path.join(file_name);
+        while new_file_name.exists() {
+            new_file_name = base_path.join(format!("{file_name}_{counter}"));
+            counter += 1;
+        }
+        new_file_name
+    }
 }
 
 #[must_use]
@@ -319,13 +322,13 @@ pub fn get_size_of_blobs(
     for path in base_dir.read_dir()? {
         let Ok(path) = path else { continue };
 
-        let f = path.file_name();
-        let lossy = f.to_string_lossy();
-        let Some(filename) = lossy.split('.').next() else {
+        let file_name = path.file_name();
+        let lossy = file_name.to_string_lossy();
+        let Some(stem) = lossy.split('.').next() else {
             continue;
         };
 
-        if !hashset.contains(filename) {
+        if !hashset.contains(stem) {
             continue;
         }
 
@@ -389,6 +392,9 @@ mod tests {
         db_context,
         model::{Model, ModelFlags, blob::Blob},
     };
+    use fake::rand::SeedableRng;
+    use fake::rand::rngs::StdRng;
+    use fake::{Fake, Faker};
     use tempfile::tempdir;
     use tokio::fs::File;
 
@@ -398,6 +404,17 @@ mod tests {
         ensure_unique_file, ensure_unique_file_full_filename, get_bytes_from_blob,
         get_path_from_model,
     };
+
+    /// Returns a deterministic 32-character hex string (sha256-like) for tests.
+    fn fake_sha256_hex() -> String {
+        const SEED: [u8; 32] = [1; 32];
+        let mut rng = StdRng::from_seed(SEED);
+        (0..16).fold(String::with_capacity(32), |mut s, _| {
+            use std::fmt::Write;
+            let _ = write!(s, "{:02x}", Faker.fake_with_rng::<u8, _>(&mut rng));
+            s
+        })
+    }
 
     #[test]
     fn ensure_unique_file_returns_path_when_no_existing_file() {
@@ -463,7 +480,7 @@ mod tests {
         let (_dir, app_state) = app_state_with_temp_model_dir().await;
         let model_dir = app_state.get_model_dir();
 
-        let sha256 = "abc123plain";
+        let sha256 = fake_sha256_hex();
         let filetype = "stl";
         let content = b"hello stl content";
         let path = model_dir.join(format!("{sha256}.{filetype}"));
@@ -471,9 +488,9 @@ mod tests {
 
         let blob = Blob {
             id: 0,
-            sha256: sha256.to_string(),
+            sha256: sha256.clone(),
             filetype: filetype.to_string(),
-            size: content.len() as i64,
+            size: i64::try_from(content.len()).expect("len fits in i64"),
             added: String::new(),
             disk_path: None,
         };
@@ -487,7 +504,7 @@ mod tests {
         let (_dir, app_state) = app_state_with_temp_model_dir().await;
         let model_dir = app_state.get_model_dir();
 
-        let sha256 = "def456zipped";
+        let sha256 = fake_sha256_hex();
         let filetype = "stl.zip";
         let entry_content = b"zipped stl content";
         let zip_path = model_dir.join(format!("{sha256}.{filetype}"));
@@ -503,7 +520,7 @@ mod tests {
 
         let blob = Blob {
             id: 0,
-            sha256: sha256.to_string(),
+            sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: 0,
             added: String::new(),
@@ -519,7 +536,7 @@ mod tests {
         let (_dir, app_state) = app_state_with_temp_model_dir().await;
         let model_dir = app_state.get_model_dir();
 
-        let sha256 = "xyz789export";
+        let sha256 = fake_sha256_hex();
         let filetype = "stl";
         let content = b"exported stl bytes";
         let path = model_dir.join(format!("{sha256}.{filetype}"));
@@ -527,9 +544,9 @@ mod tests {
 
         let blob = Blob {
             id: 1,
-            sha256: sha256.to_string(),
+            sha256: sha256.clone(),
             filetype: filetype.to_string(),
-            size: content.len() as i64,
+            size: i64::try_from(content.len()).expect("len fits in i64"),
             added: String::new(),
             disk_path: None,
         };

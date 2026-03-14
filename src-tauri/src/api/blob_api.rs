@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{State, ipc::Response};
+use tauri::{ipc::Response, State};
 
 use db::{blob_db, model_db};
 use service::export_service;
@@ -28,15 +28,14 @@ pub async fn get_model_bytes(
 
     let model = &model[0];
 
-    get_blob_bytes(model.blob.sha256.clone(), state).await
+    get_blob_bytes_impl(&model.blob.sha256, state).await
 }
 
-#[tauri::command]
-pub async fn get_blob_bytes(
-    sha256: String,
+async fn get_blob_bytes_impl(
+    sha256: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
-    let Some(blob) = blob_db::get_blob_via_sha256(&state.app_state.db, &sha256).await? else {
+    let Some(blob) = blob_db::get_blob_via_sha256(&state.app_state.db, sha256).await? else {
         return Err(ApplicationError::InternalError(String::from(
             "Failed to find blob",
         )));
@@ -48,10 +47,18 @@ pub async fn get_blob_bytes(
     Ok(Response::new(bytes))
 }
 
+#[tauri::command]
+pub async fn get_blob_bytes(
+    sha256: &str,
+    state: State<'_, TauriAppState>,
+) -> Result<Response, ApplicationError> {
+    get_blob_bytes_impl(sha256, state).await
+}
+
 #[derive(Serialize)]
 pub struct BlobPath {
-    blob_id: i64,
-    blob_path: PathBuf,
+    pub blob_id: i64,
+    pub blob_path: PathBuf,
 }
 
 #[tauri::command]

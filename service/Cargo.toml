@@ -38,6 +38,8 @@ async_zip = { workspace = true, features = [
 chrono = { workspace = true }
 
 [dev-dependencies]
+fake = { workspace = true }
+proptest = { workspace = true }
 reqwest = { workspace = true, features = ["rustls"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

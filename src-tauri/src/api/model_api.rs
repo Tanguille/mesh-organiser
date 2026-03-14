@@ -5,14 +5,14 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use db::{
-    model::{ModelFlags, blob::Blob},
+    model::{blob::Blob, ModelFlags},
     model_db,
     model_db::{ModelFilterOptions, ModelOrderBy},
 };
 use service::{export_service, import_service, import_state::ImportStatus, thumbnail_service};
 
 use crate::{
-    ImportState, TauriAppState, error::ApplicationError, tauri_import_state::import_state_new_tauri,
+    error::ApplicationError, tauri_import_state::import_state_new_tauri, ImportState, TauriAppState,
 };
 
 #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -43,7 +43,7 @@ pub async fn add_model(
     let model_ids: Vec<i64> = import_state
         .imported_models
         .iter()
-        .flat_map(|f| f.model_ids.clone())
+        .flat_map(|f| f.model_ids.iter().copied())
         .collect();
 
     let models =
@@ -65,7 +65,6 @@ pub async fn add_model(
         slicer.open(paths, &state.app_state).await?;
     }
 
-    println!("Import finished: {import_state:?}");
     import_state.status = ImportStatus::Finished;
     Ok(import_state)
 }

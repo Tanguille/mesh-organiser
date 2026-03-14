@@ -714,8 +714,7 @@ pub async fn expand_paths(
 mod tests {
     use db::model::user::User;
 
-    use crate::import_state::ImportState;
-    use crate::service_error::ServiceError;
+    use crate::{import_state::ImportState, service_error::ServiceError};
 
     use super::get_model_count;
 

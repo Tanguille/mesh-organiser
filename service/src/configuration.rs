@@ -306,18 +306,18 @@ mod tests {
 
     #[test]
     fn configuration_default_has_expected_values() {
-        let c = Configuration::default();
-        assert_eq!(c.data_path, "");
-        assert_eq!(c.thumbnail_rotation, [35, 30, 0]);
+        let config = Configuration::default();
+        assert_eq!(config.data_path, "");
+        assert_eq!(config.thumbnail_rotation, [35, 30, 0]);
         assert!(
-            c.core_parallelism >= 1,
+            config.core_parallelism >= 1,
             "core_parallelism must be at least 1"
         );
-        assert_eq!(c.theme, "default");
-        assert_eq!(c.last_user_id, 1);
-        assert!(!c.export_metadata);
-        assert!(c.fallback_3mf_thumbnail);
-        assert!(c.prefer_3mf_thumbnail);
+        assert_eq!(config.theme, "default");
+        assert_eq!(config.last_user_id, 1);
+        assert!(!config.export_metadata);
+        assert!(config.fallback_3mf_thumbnail);
+        assert!(config.prefer_3mf_thumbnail);
     }
 
     #[test]

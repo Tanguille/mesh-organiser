@@ -2,23 +2,31 @@
 //!
 //! Locks in sync behaviour after refactor: folders are created/removed as before.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    fs,
+    sync::{Arc, Mutex},
+};
 
-use db::db_context;
-use db::model::resource::{ResourceFlags, ResourceMeta};
-use db::model::user::User;
-use service::resource_service::{delete_resource_folder, open_resource_folder};
-use service::{AppState, Configuration};
 use tempfile::tempdir;
+
+use db::{
+    db_context,
+    model::resource::{ResourceFlags, ResourceMeta},
+    model::user::User,
+};
+use service::{
+    AppState, Configuration,
+    resource_service::{delete_resource_folder, open_resource_folder},
+};
 
 #[tokio::test]
 async fn open_resource_folder_creates_folder_when_missing() {
     let dir = tempdir().unwrap();
     let data_path = dir.path().join("data");
-    std::fs::create_dir_all(&data_path).unwrap();
+    fs::create_dir_all(&data_path).unwrap();
     let db_path = data_path.join("db.sqlite");
     let backup_dir = data_path.join("backup");
-    std::fs::create_dir_all(&backup_dir).unwrap();
+    fs::create_dir_all(&backup_dir).unwrap();
 
     let db = db_context::setup_db(&db_path, &backup_dir).await;
     let config = Configuration {
@@ -58,10 +66,10 @@ async fn open_resource_folder_creates_folder_when_missing() {
 async fn delete_resource_folder_removes_folder() {
     let dir = tempdir().unwrap();
     let data_path = dir.path().join("data");
-    std::fs::create_dir_all(&data_path).unwrap();
+    fs::create_dir_all(&data_path).unwrap();
     let db_path = data_path.join("db.sqlite");
     let backup_dir = data_path.join("backup");
-    std::fs::create_dir_all(&backup_dir).unwrap();
+    fs::create_dir_all(&backup_dir).unwrap();
 
     let db = db_context::setup_db(&db_path, &backup_dir).await;
     let config = Configuration {
@@ -78,7 +86,7 @@ async fn delete_resource_folder_removes_folder() {
 
     let resources_dir = app_state.get_resources_dir();
     let resource_folder = resources_dir.join("7_1");
-    std::fs::create_dir_all(&resource_folder).unwrap();
+    fs::create_dir_all(&resource_folder).unwrap();
     assert!(resource_folder.exists());
 
     let resource = ResourceMeta {

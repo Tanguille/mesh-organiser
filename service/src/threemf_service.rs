@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs::{self, File as StdFile},
+    path::{Path, PathBuf},
+};
 
 use async_zip::tokio::read::seek::ZipFileReader;
 use chrono::Utc;
@@ -194,18 +197,18 @@ pub async fn extract_metadata(
 
     let temp_dir = std::env::temp_dir().join("meshorganiser_metadata_action");
     if !temp_dir.exists() {
-        std::fs::create_dir(&temp_dir)?;
+        fs::create_dir(&temp_dir)?;
     }
 
-    let theemf_path =
+    let threemf_path =
         export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
 
-    let c1 = read_zip_entry_by_suffix(theemf_path.clone(), "project_settings.config").await;
+    let c1 = read_zip_entry_by_suffix(threemf_path.clone(), "project_settings.config").await;
     if let Ok(contents) = c1 {
         return parse_project_settings_config(&contents);
     }
 
-    let c2 = read_zip_entry_by_suffix(theemf_path, "Slic3r_PE.config").await;
+    let c2 = read_zip_entry_by_suffix(threemf_path, "Slic3r_PE.config").await;
     if let Ok(contents) = c2 {
         return Ok(parse_slicer_pe_config(&contents));
     }
@@ -216,11 +219,11 @@ pub async fn extract_metadata(
 }
 
 fn extract_models_inner(
-    theemf_path: &Path,
+    threemf_path: &Path,
     temp_dir: &Path,
     names_map: &IndexMap<u32, String>,
 ) -> Result<(), ServiceError> {
-    let handle = std::fs::File::open(theemf_path)?;
+    let handle = fs::File::open(threemf_path)?;
     let threemf_model = threemf::read(handle)?;
 
     let objects: Vec<_> = threemf_model
@@ -280,7 +283,7 @@ fn extract_models_inner(
             });
         }
 
-        let mut file = std::fs::File::create(stl_path)?;
+        let mut file = StdFile::create(stl_path)?;
         stl_io::write_stl(&mut file, triangles.iter())?;
     }
 
@@ -311,24 +314,24 @@ pub async fn extract_models(
         "meshorganiser_extract_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
-    std::fs::create_dir(&temp_dir)?;
+    fs::create_dir(&temp_dir)?;
 
-    let theemf_path =
+    let threemf_path =
         export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
 
     let safe_model_name = cleanse_evil_from_name(&model.name);
     temp_dir.push(safe_model_name);
 
-    std::fs::create_dir(&temp_dir)?;
+    fs::create_dir(&temp_dir)?;
 
     {
         let temp_dir = temp_dir.clone();
-        let names_map = fetch_model_settings_config_from_3mf(theemf_path.clone())
+        let names_map = fetch_model_settings_config_from_3mf(threemf_path.clone())
             .await
             .unwrap_or_default();
 
         tokio::task::spawn_blocking(move || {
-            extract_models_inner(&theemf_path, &temp_dir, &names_map)
+            extract_models_inner(&threemf_path, &temp_dir, &names_map)
         })
         .await??;
     }
@@ -347,11 +350,10 @@ pub async fn extract_models(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{io::Write, path::Path};
 
     use indexmap::IndexMap;
-    use zip::ZipWriter;
-    use zip::write::FileOptions;
+    use zip::{ZipWriter, write::FileOptions};
 
     use super::{fetch_model_settings_config_from_3mf, parse_model_settings_config};
 
@@ -392,10 +394,7 @@ mod tests {
     // refactor guard: read_zip_entry_by_suffix + callers).
     // -------------------------------------------------------------------------
 
-    fn write_zip_with_entries(
-        path: &std::path::Path,
-        entries: &[(&str, &[u8])],
-    ) -> std::io::Result<()> {
+    fn write_zip_with_entries(path: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
         let file = std::fs::File::create(path)?;
         let mut zip = ZipWriter::new(file);
         let options: FileOptions<()> = FileOptions::default();
@@ -410,21 +409,22 @@ mod tests {
     #[tokio::test]
     async fn fetch_model_settings_config_from_3mf_returns_parsed_map_when_entry_present() {
         let xml = r#"<part id="42"><metadata key="name" value="My Part" /></part>"#;
-        let _tmp = tempfile::NamedTempFile::new().expect("temp file");
-        let path = _tmp.path().to_path_buf();
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = tmp.path().to_path_buf();
         write_zip_with_entries(&path, &[("Metadata/model_settings.config", xml.as_bytes())])
             .expect("write zip");
 
         let result = fetch_model_settings_config_from_3mf(path).await;
         let map = result.expect("fetch should succeed");
-        let expected: IndexMap<u32, String> = [(42, "My Part".to_string())].into_iter().collect();
+        let expected: IndexMap<u32, String> =
+            std::iter::once((42, "My Part".to_string())).collect();
         assert_eq!(map, expected);
     }
 
     #[tokio::test]
     async fn fetch_model_settings_config_from_3mf_returns_err_when_no_matching_entry() {
-        let _tmp = tempfile::NamedTempFile::new().expect("temp file");
-        let path = _tmp.path().to_path_buf();
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = tmp.path().to_path_buf();
         write_zip_with_entries(&path, &[("other.txt", b"data")]).expect("write zip");
 
         let result = fetch_model_settings_config_from_3mf(path).await;

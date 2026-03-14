@@ -33,7 +33,7 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     }
 }
 
-/// f64→f32 truncation: OpenCascade gives f64; we need f32 for STL/thumbnails. Precision is
+/// f64→f32 truncation: `OpenCascade` gives `f64`; we need `f32` for STL/thumbnails. Precision is
 /// sufficient for display and export; explicit rounding would add cost with no practical benefit.
 #[allow(clippy::cast_possible_truncation)]
 fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {

@@ -145,6 +145,8 @@ pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
 mod tests {
     use std::path::PathBuf;
 
+    use proptest::prelude::*;
+
     use super::{
         cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
         is_zippable_file_extension, is_zipped_file_extension, prettify_file_name,
@@ -340,5 +342,43 @@ mod tests {
     fn test_convert_zip_to_extension_unknown_returns_lowercase() {
         assert_eq!(convert_zip_to_extension("other.zip"), "other.zip");
         assert_eq!(convert_zip_to_extension("STL.ZIP"), "stl");
+    }
+
+    // ---- proptest: round-trip and invariants ----
+
+    const EVIL_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+
+    proptest! {
+        /// Round-trip: for known zippable extensions, convert_zip_to_extension(convert_extension_to_zip(ext)) equals canonical form.
+        #[test]
+        fn prop_convert_extension_round_trip_known(ext in prop_oneof![
+            Just("stl"),
+            Just("obj"),
+            Just("gcode"),
+            Just("step"),
+            Just("stp"),
+        ]) {
+            let z = convert_extension_to_zip(ext);
+            let back = convert_zip_to_extension(&z);
+            prop_assert_eq!(back.as_str(), ext);
+        }
+
+        /// For any string, cleanse_evil output must not contain filesystem-unsafe characters.
+        #[test]
+        fn prop_cleanse_evil_removes_evil(s in "[ -~]{0,80}") {
+            let out = cleanse_evil_from_name(&s);
+            for c in EVIL_CHARS {
+                prop_assert!(!out.contains(*c), "output must not contain {:?}", c);
+            }
+        }
+
+        /// Idempotent: cleansing an already-clean string only trims.
+        #[test]
+        fn prop_cleanse_evil_idempotent_clean(s in "[a-zA-Z0-9 _-]{0,50}") {
+            let trimmed = s.trim();
+            let once = cleanse_evil_from_name(trimmed);
+            let twice = cleanse_evil_from_name(&once);
+            prop_assert_eq!(once, twice);
+        }
     }
 }

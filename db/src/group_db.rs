@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, collections::HashSet};
+use std::collections::HashSet;
 
 use indexmap::IndexMap;
 use itertools::{Itertools, join};
@@ -163,13 +163,17 @@ pub async fn get_groups(
     }
 
     match options.order_by.unwrap_or(GroupOrderBy::CreatedDesc) {
-        GroupOrderBy::CreatedAsc => groups.sort_by_cached_key(|f| f.meta.created.clone()),
-        GroupOrderBy::CreatedDesc => groups.sort_by_cached_key(|f| Reverse(f.meta.created.clone())),
-        GroupOrderBy::NameAsc => groups.sort_by_cached_key(|f| f.meta.name.clone()),
-        GroupOrderBy::NameDesc => groups.sort_by_cached_key(|f| Reverse(f.meta.name.clone())),
-        GroupOrderBy::ModifiedAsc => groups.sort_by_cached_key(|f| f.meta.last_modified.clone()),
+        GroupOrderBy::CreatedAsc => groups.sort_by(|a, b| a.meta.created.cmp(&b.meta.created)),
+        GroupOrderBy::CreatedDesc => {
+            groups.sort_by(|a, b| b.meta.created.cmp(&a.meta.created));
+        }
+        GroupOrderBy::NameAsc => groups.sort_by(|a, b| a.meta.name.cmp(&b.meta.name)),
+        GroupOrderBy::NameDesc => groups.sort_by(|a, b| b.meta.name.cmp(&a.meta.name)),
+        GroupOrderBy::ModifiedAsc => {
+            groups.sort_by(|a, b| a.meta.last_modified.cmp(&b.meta.last_modified));
+        }
         GroupOrderBy::ModifiedDesc => {
-            groups.sort_by_cached_key(|f| Reverse(f.meta.last_modified.clone()));
+            groups.sort_by(|a, b| b.meta.last_modified.cmp(&a.meta.last_modified));
         }
     }
 
@@ -197,7 +201,7 @@ async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<St
     Ok(row.group_unique_global_id)
 }
 
-async fn get_unqiue_ids_from_group_ids(
+async fn get_unique_ids_from_group_ids(
     db: &DbContext,
     group_ids: &[i64],
 ) -> Result<IndexMap<i64, String>, DbError> {
@@ -232,7 +236,7 @@ pub async fn set_group_id_on_models(
         .filter_map(|m| m.group.as_ref().map(|g| g.id))
         .unique()
         .collect();
-    let mut group_ids = get_unqiue_ids_from_group_ids(db, &old_group_ids).await?;
+    let mut group_ids = get_unique_ids_from_group_ids(db, &old_group_ids).await?;
 
     if group_ids.len() != old_group_ids.len() {
         return Err(DbError::RowNotFound);

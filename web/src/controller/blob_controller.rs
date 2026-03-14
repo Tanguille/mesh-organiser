@@ -70,7 +70,7 @@ mod get {
             return None;
         };
 
-        if user.sync_url.is_none() || user.sync_url.clone().unwrap() != *user_hash {
+        if user.sync_url.as_deref() != Some(user_hash) {
             return None;
         }
 
@@ -267,9 +267,9 @@ mod get {
             return Ok(StatusCode::NOT_FOUND.into_response());
         };
 
-        let t = zip_file.file_name();
-        let filename = t.to_string_lossy();
-        if !filename.ends_with(".zip") {
+        let file_name = zip_file.file_name();
+        let name_lossy = file_name.to_string_lossy();
+        if !name_lossy.ends_with(".zip") {
             return Ok(StatusCode::NOT_FOUND.into_response());
         }
 
@@ -287,7 +287,7 @@ mod get {
 
         response.headers_mut().insert(
             axum::http::header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{filename}\"")
+            format!("attachment; filename=\"{name_lossy}\"")
                 .parse()
                 .unwrap(),
         );

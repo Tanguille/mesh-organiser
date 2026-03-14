@@ -247,13 +247,13 @@ pub async fn remove_labels_from_models(
 ) -> Result<(), DbError> {
     let label_global_ids = get_unique_ids_from_label_ids(db, user, label_ids).await?;
 
-    if label_global_ids.values().len() != label_ids.len() {
+    if label_global_ids.len() != label_ids.len() {
         return Err(DbError::RowNotFound);
     }
 
     let model_global_ids = model_db::get_unique_ids_from_model_ids(db, model_ids.to_vec()).await?;
 
-    if model_global_ids.values().len() != model_ids.len() {
+    if model_global_ids.len() != model_ids.len() {
         return Err(DbError::RowNotFound);
     }
 
@@ -405,7 +405,7 @@ pub async fn add_childs_to_label(
     let _parent_hex = get_unique_id_from_label_id(db, user, parent_label_id).await?;
     let access_check = get_unique_ids_from_label_ids(db, user, &child_label_ids).await?;
 
-    if access_check.values().len() != child_label_ids.len() {
+    if access_check.len() != child_label_ids.len() {
         return Err(DbError::RowNotFound);
     }
 
@@ -436,7 +436,7 @@ pub async fn remove_childs_from_label(
     let _parent_hex = get_unique_id_from_label_id(db, user, parent_label_id).await?;
     let access_check = get_unique_ids_from_label_ids(db, user, &child_label_ids).await?;
 
-    if access_check.values().len() != child_label_ids.len() {
+    if access_check.len() != child_label_ids.len() {
         return Err(DbError::RowNotFound);
     }
 
@@ -559,8 +559,8 @@ mod tests {
     #[test]
     fn effective_labels_leaf_label_contains_only_self_and_counts_equal_self() {
         let mut label_map: IndexMap<i64, Label> = IndexMap::new();
-        let m = meta(1, "Leaf");
-        label_map.insert(1, label_with_children(m, vec![], 10, 20));
+        let leaf_meta = meta(1, "Leaf");
+        label_map.insert(1, label_with_children(leaf_meta, vec![], 10, 20));
 
         fill_effective_labels_and_counts(&mut label_map);
 

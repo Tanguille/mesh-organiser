@@ -201,7 +201,7 @@ impl App {
         ensure_config_file_exists(&config_path)?;
         let configuration = load_and_prepare_config(&config_path).await?;
 
-        let data_dir = PathBuf::from(configuration.data_path.clone());
+        let data_dir = PathBuf::from(&configuration.data_path);
         let sqlite_path = PathBuf::from(&data_dir).join("db.sqlite");
         let sqlite_backup_dir = PathBuf::from(&data_dir).join("backups");
         let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;

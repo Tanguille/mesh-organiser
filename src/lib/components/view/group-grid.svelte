@@ -303,13 +303,12 @@
 
     $effect(() => {
         // Clear models list when selected changes
-        let s = selected;
+        let selectedValue = selected;
         splitViewSelectedModels = [];
     })
 
     $effect(() => {
-        let a = props.groupStream;
-        console.log("Group stream changed, resetting group set");
+        let groupStream = props.groupStream;
 
         untrack(async () => {
             await resetGroupSet();

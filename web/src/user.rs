@@ -50,17 +50,17 @@ impl AuthUser {
     }
 
     #[cfg(test)]
-    pub const fn for_test(
+    pub fn for_test(
         id: i64,
-        username: String,
-        email: String,
+        username: &str,
+        email: &str,
         permissions: usize,
         validity_token: Vec<u8>,
     ) -> Self {
         Self {
             id,
-            username,
-            email,
+            username: username.to_string(),
+            email: email.to_string(),
             permissions,
             validity_token,
         }
@@ -168,13 +168,7 @@ mod tests {
 
     #[test]
     fn to_user_round_trip_id_username_email() {
-        let auth = AuthUser::for_test(
-            42,
-            "alice".to_string(),
-            "alice@example.com".to_string(),
-            0,
-            vec![],
-        );
+        let auth = AuthUser::for_test(42, "alice", "alice@example.com", 0, vec![]);
         let user = auth.to_user();
         assert_eq!(user.id, 42);
         assert_eq!(user.username, "alice");
@@ -188,8 +182,8 @@ mod tests {
     fn to_user_permissions_bits() {
         let auth = AuthUser::for_test(
             1,
-            "u".to_string(),
-            "e@e.com".to_string(),
+            "u",
+            "e@e.com",
             UserPermissions::Admin.bits() as usize,
             vec![],
         );
@@ -198,8 +192,8 @@ mod tests {
 
         let auth_sync = AuthUser::for_test(
             2,
-            "u".to_string(),
-            "e@e.com".to_string(),
+            "u",
+            "e@e.com",
             UserPermissions::Sync.bits() as usize,
             vec![],
         );
@@ -209,13 +203,7 @@ mod tests {
 
     #[test]
     fn to_user_permissions_truncate_large_usize() {
-        let auth = AuthUser::for_test(
-            1,
-            "u".to_string(),
-            "e@e.com".to_string(),
-            usize::MAX,
-            vec![],
-        );
+        let auth = AuthUser::for_test(1, "u", "e@e.com", usize::MAX, vec![]);
         let user = auth.to_user();
         assert_eq!(
             user.permissions.bits(),

@@ -26,7 +26,7 @@ impl AppState {
         path_buff.push("models");
 
         if !path_buff.exists() {
-            fs::create_dir_all(path_buff.clone()).expect("Failed to create model directory");
+            fs::create_dir_all(&path_buff).expect("Failed to create model directory");
         }
 
         path_buff
@@ -38,11 +38,11 @@ impl AppState {
     ///
     /// Panics if the image directory cannot be created (e.g. permission or I/O error).
     pub fn get_image_dir(&self) -> PathBuf {
-        let mut path_buff = PathBuf::from(self.app_data_path.clone());
+        let mut path_buff = PathBuf::from(&self.app_data_path);
         path_buff.push("images");
 
         if !path_buff.exists() {
-            fs::create_dir_all(path_buff.clone()).expect("Failed to create image directory");
+            fs::create_dir_all(&path_buff).expect("Failed to create image directory");
         }
 
         path_buff
@@ -58,7 +58,7 @@ impl AppState {
         path_buff.push("resources");
 
         if !path_buff.exists() {
-            fs::create_dir_all(path_buff.clone()).expect("Failed to create resources directory");
+            fs::create_dir_all(&path_buff).expect("Failed to create resources directory");
         }
 
         path_buff

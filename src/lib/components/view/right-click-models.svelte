@@ -26,15 +26,15 @@
             return null;
         }
 
-        const g = props.models[0].group;
+        const firstGroup = props.models[0].group;
 
-        if (!g || g.id <= 0)
+        if (!firstGroup || firstGroup.id <= 0)
         {
             return null;
         }
 
-        return props.models.every(x => x.group?.id === g.id)
-            ? g!
+        return props.models.every(model => model.group?.id === firstGroup.id)
+            ? firstGroup!
             : null;
     });
 
