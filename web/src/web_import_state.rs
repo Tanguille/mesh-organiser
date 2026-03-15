@@ -25,13 +25,13 @@ impl ImportStateEmitter for WebImportStateEmitter {
 
     fn failure_reason_event(&self, status: &ImportState) {
         if let Some(reason) = &status.failure_reason {
-            println!("Import Failure: {}", reason);
+            println!("Import Failure: {reason}");
         }
     }
 
     fn model_group_event(&self, status: &ImportState) {
         if let Some(group_name) = status.get_last_group_name() {
-            println!("Importing Group '{}'", group_name);
+            println!("Importing Group '{group_name}'");
         }
     }
 

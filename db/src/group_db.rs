@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, collections::HashSet};
+use std::collections::HashSet;
 
 use indexmap::IndexMap;
 use itertools::{Itertools, join};
@@ -19,7 +19,7 @@ use crate::{
     util::time_now,
 };
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, Eq, EnumString)]
 pub enum GroupOrderBy {
     CreatedAsc,
     CreatedDesc,
@@ -46,7 +46,7 @@ pub struct GroupFilterOptions {
 }
 
 /// Builds group list from a flat model list. Main cost is typically the upstream fetch of all
-/// models; label dedup is O(1) per model via HashSet.
+/// models; label dedup is O(1) per model via `HashSet`.
 fn convert_model_list_to_groups(
     models: Vec<Model>,
     include_ungrouped_models: bool,
@@ -55,21 +55,20 @@ fn convert_model_list_to_groups(
     let mut index_map: IndexMap<i64, ModelGroup> = IndexMap::new();
 
     for mut model in models {
-        let group_meta = match model.group.take() {
-            Some(g) => g,
-            None => {
-                if !include_ungrouped_models {
-                    continue;
-                }
+        let group_meta = if let Some(group) = model.group.take() {
+            group
+        } else {
+            if !include_ungrouped_models {
+                continue;
+            }
 
-                ModelGroupMeta {
-                    id: -model.id,
-                    name: model.name.clone(),
-                    created: model.added.clone(),
-                    resource_id: None,
-                    unique_global_id: String::from(""),
-                    last_modified: model.last_modified.clone(),
-                }
+            ModelGroupMeta {
+                id: -model.id,
+                name: model.name.clone(),
+                created: model.added.clone(),
+                resource_id: None,
+                unique_global_id: String::new(),
+                last_modified: model.last_modified.clone(),
             }
         };
 
@@ -164,13 +163,17 @@ pub async fn get_groups(
     }
 
     match options.order_by.unwrap_or(GroupOrderBy::CreatedDesc) {
-        GroupOrderBy::CreatedAsc => groups.sort_by_cached_key(|f| f.meta.created.clone()),
-        GroupOrderBy::CreatedDesc => groups.sort_by_cached_key(|f| Reverse(f.meta.created.clone())),
-        GroupOrderBy::NameAsc => groups.sort_by_cached_key(|f| f.meta.name.clone()),
-        GroupOrderBy::NameDesc => groups.sort_by_cached_key(|f| Reverse(f.meta.name.clone())),
-        GroupOrderBy::ModifiedAsc => groups.sort_by_cached_key(|f| f.meta.last_modified.clone()),
+        GroupOrderBy::CreatedAsc => groups.sort_by(|a, b| a.meta.created.cmp(&b.meta.created)),
+        GroupOrderBy::CreatedDesc => {
+            groups.sort_by(|a, b| b.meta.created.cmp(&a.meta.created));
+        }
+        GroupOrderBy::NameAsc => groups.sort_by(|a, b| a.meta.name.cmp(&b.meta.name)),
+        GroupOrderBy::NameDesc => groups.sort_by(|a, b| b.meta.name.cmp(&a.meta.name)),
+        GroupOrderBy::ModifiedAsc => {
+            groups.sort_by(|a, b| a.meta.last_modified.cmp(&b.meta.last_modified));
+        }
         GroupOrderBy::ModifiedDesc => {
-            groups.sort_by_cached_key(|f| Reverse(f.meta.last_modified.clone()))
+            groups.sort_by(|a, b| b.meta.last_modified.cmp(&a.meta.last_modified));
         }
     }
 
@@ -198,7 +201,7 @@ async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<St
     Ok(row.group_unique_global_id)
 }
 
-async fn get_unqiue_ids_from_group_ids(
+async fn get_unique_ids_from_group_ids(
     db: &DbContext,
     group_ids: &[i64],
 ) -> Result<IndexMap<i64, String>, DbError> {
@@ -233,7 +236,7 @@ pub async fn set_group_id_on_models(
         .filter_map(|m| m.group.as_ref().map(|g| g.id))
         .unique()
         .collect();
-    let mut group_ids = get_unqiue_ids_from_group_ids(db, &old_group_ids).await?;
+    let mut group_ids = get_unique_ids_from_group_ids(db, &old_group_ids).await?;
 
     if group_ids.len() != old_group_ids.len() {
         return Err(DbError::RowNotFound);
@@ -384,7 +387,7 @@ pub async fn get_group_count(
     .fetch_one(db)
     .await?;
 
-    group_count += group_query.count as usize;
+    group_count += group_query.count.try_into().unwrap_or(0);
 
     if include_ungrouped_models {
         let ungrouped_query = sqlx::query!(
@@ -394,7 +397,7 @@ pub async fn get_group_count(
         .fetch_one(db)
         .await?;
 
-        group_count += ungrouped_query.count as usize;
+        group_count += ungrouped_query.count.try_into().unwrap_or(0);
     }
 
     Ok(group_count)
@@ -457,8 +460,7 @@ pub async fn set_last_updated_on_groups(
     let formatted_query = format!(
         "UPDATE models_group
          SET group_last_modified = ?
-         WHERE group_id IN ({}) AND group_user_id = ?",
-        ids_placeholder
+         WHERE group_id IN ({ids_placeholder}) AND group_user_id = ?"
     );
 
     sqlx::query(&formatted_query)

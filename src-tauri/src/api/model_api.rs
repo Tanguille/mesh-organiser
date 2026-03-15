@@ -43,7 +43,7 @@ pub async fn add_model(
     let model_ids: Vec<i64> = import_state
         .imported_models
         .iter()
-        .flat_map(|f| f.model_ids.clone())
+        .flat_map(|f| f.model_ids.iter().copied())
         .collect();
 
     let models =
@@ -65,7 +65,6 @@ pub async fn add_model(
         slicer.open(paths, &state.app_state).await?;
     }
 
-    println!("Import finished: {import_state:?}");
     import_state.status = ImportStatus::Finished;
     Ok(import_state)
 }

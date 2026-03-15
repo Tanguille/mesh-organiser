@@ -18,7 +18,7 @@ pub async fn setup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) -> DbC
         Sqlite::create_database(url.as_str())
             .await
             .expect("failed to create database");
-    };
+    }
 
     let connection_option = SqliteConnectOptions::new()
         .filename(sqlite_path)
@@ -56,7 +56,7 @@ async fn get_db_migration_count(db: &DbContext) -> usize {
         Err(_) => return 0,
     };
 
-    row.0 as usize
+    row.0.try_into().unwrap_or(0)
 }
 
 fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
@@ -76,12 +76,9 @@ fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
     let mut backups: Vec<_> = fs::read_dir(sqlite_backup_dir)
         .expect("Failed to read backup directory")
         .filter_map(|entry| {
-            entry.ok().filter(|e| {
-                e.path()
-                    .extension()
-                    .map(|ext| ext == "sqlite")
-                    .unwrap_or(false)
-            })
+            entry
+                .ok()
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "sqlite"))
         })
         .collect();
 

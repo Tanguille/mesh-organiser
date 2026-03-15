@@ -1,5 +1,6 @@
 use async_zip::error::ZipError;
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Serialize, Serializer};
+use service::service_error;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -31,45 +32,50 @@ impl Serialize for ApplicationError {
             return inner.serialize(serializer);
         }
 
-        let mut state = serializer.serialize_struct("ApplicationError", 3)?;
         match self {
-            Self::FileSystemFault(inner) => {
-                state.serialize_field("error_type", "FileSystemFault")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            Self::InternalError(s) => {
-                state.serialize_field("error_type", "InternalError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", s)?;
-            }
-            Self::JsonError(inner) => {
-                state.serialize_field("error_type", "JsonError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            Self::FrameworkError(inner) => {
-                state.serialize_field("error_type", "FrameworkError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            Self::DatabaseError(inner) => {
-                state.serialize_field("error_type", "DatabaseError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            Self::WebRequestError(inner) => {
-                state.serialize_field("error_type", "WebRequestError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            Self::AsyncZipOperationError(inner) => {
-                state.serialize_field("error_type", "AsyncZipOperationError")?;
-                state.serialize_field("error_message", &self.to_string())?;
-                state.serialize_field("error_inner_message", &inner.to_string())?;
-            }
-            Self::ServiceError(_) => {}
+            Self::FileSystemFault(inner) => service_error::serialize_error_struct(
+                serializer,
+                "FileSystemFault",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            Self::InternalError(s) => service_error::serialize_error_struct(
+                serializer,
+                "InternalError",
+                &self.to_string(),
+                s,
+            ),
+            Self::JsonError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "JsonError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            Self::FrameworkError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "FrameworkError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            Self::DatabaseError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "DatabaseError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            Self::WebRequestError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "WebRequestError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            Self::AsyncZipOperationError(inner) => service_error::serialize_error_struct(
+                serializer,
+                "AsyncZipOperationError",
+                &self.to_string(),
+                &inner.to_string(),
+            ),
+            Self::ServiceError(_) => unreachable!(),
         }
-        state.end()
     }
 }

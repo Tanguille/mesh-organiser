@@ -41,7 +41,6 @@
         if (newModels.length > 0)
         {
             loadedModels.push(...newModels);
-            console.log(loadedModels);
         }
         busyLoadingNext = false;
     }
@@ -114,12 +113,11 @@
     }
 
     $effect(() => {
-        let a = props.modelStream;
-        console.log("Model stream changed, resetting model set");
+        let modelStream = props.modelStream;
 
         untrack(async () => {
             await resetModelSet();
-            allModels = await props.modelStream.getAll();
+            allModels = await modelStream.getAll();
         });
     });
 </script>

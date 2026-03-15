@@ -22,8 +22,9 @@ pub struct ModelGroup {
 }
 
 impl ModelGroup {
-    pub fn from_meta(meta: ModelGroupMeta) -> ModelGroup {
-        ModelGroup {
+    #[must_use]
+    pub const fn from_meta(meta: ModelGroupMeta) -> Self {
+        Self {
             meta,
             models: Vec::new(),
             labels: Vec::new(),

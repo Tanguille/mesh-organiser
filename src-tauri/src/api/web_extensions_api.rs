@@ -1,77 +1,31 @@
-use std::{panic, path::PathBuf, sync::Arc};
+use std::{
+    panic,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
 use futures::future::try_join_all;
 use serde::Serialize;
-use tauri::{
-    AppHandle, State,
-    http::header::{CONTENT_DISPOSITION, CONTENT_TYPE},
-    ipc::Response,
-};
+use tauri::{AppHandle, State, http::header::CONTENT_TYPE, ipc::Response};
 use tauri_plugin_http::reqwest::{self, cookie::Jar};
-use tokio::{
-    fs::File,
-    io::{AsyncWriteExt, BufReader},
-    task::JoinSet,
-};
+use tokio::{fs::File, io::BufReader, task::JoinSet};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
+use crate::{error::ApplicationError, tauri_app_state::TauriAppState, tauri_import_state};
+
 use service::{
-    export_service::{ensure_unique_file_full_filename, get_temp_dir},
+    download_file_service,
+    export_service::get_temp_dir,
     import_service::{self, DirectoryScanModel, is_supported_extension},
     import_state::{ImportState, ImportStatus},
 };
 
-use crate::{error::ApplicationError, tauri_app_state::TauriAppState, tauri_import_state};
-
-async fn download_file(url: &str, dir: &PathBuf) -> Result<PathBuf, ApplicationError> {
-    let response = reqwest::get(url).await?;
-
-    if !response.status().is_success() {
-        return Err(ApplicationError::InternalError(
-            "Got a non 2xx status code when downloading a file".into(),
-        ));
-    }
-
-    let content_disposition = response.headers().get(CONTENT_DISPOSITION);
-
-    let filename = match content_disposition {
-        None => match response.url().path().split('/').next_back() {
-            Some(x) => String::from(x),
-            None => {
-                return Err(ApplicationError::InternalError(
-                    "Failed to get filename for file".into(),
-                ));
-            }
-        },
-        Some(header_value) => match header_value.to_str() {
-            Ok(header_value) => {
-                match content_disposition::parse_content_disposition(header_value).filename_full() {
-                    Some(filename) => filename,
-                    None => {
-                        return Err(ApplicationError::InternalError(
-                            "Failed to get filename for file".into(),
-                        ));
-                    }
-                }
-            }
-            Err(_) => {
-                return Err(ApplicationError::InternalError(
-                    "Failed to get filename for file".into(),
-                ));
-            }
-        },
-    };
-
-    println!("Downloading to {filename}");
-
-    let full_path = ensure_unique_file_full_filename(dir, &filename);
-
-    let mut file = File::create(&full_path).await?;
-    let bytes = response.bytes().await?;
-    file.write_all(&bytes).await?;
-
-    Ok(full_path)
+async fn download_file(url: &str, dir: &Path) -> Result<PathBuf, ApplicationError> {
+    let result = download_file_service::download_file_to(url, dir)
+        .await
+        .map_err(ApplicationError::from)?;
+    Ok(PathBuf::from(result.path))
 }
 
 async fn download_files_to_temp_dir(

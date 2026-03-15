@@ -1,7 +1,8 @@
 import { dateToString } from "$lib/utils";
 import type { IModelApi, Model, ModelFlags, ModelOrderBy } from "../shared/model_api";
+import { convertModelFlagsToRaw, type RawModel } from "../shared/raw_model";
 import { HttpMethod, type IServerRequestApi } from "../shared/server_request_api";
-import { convertModelFlagsToRaw, parseRawModel, type RawModel } from "../tauri/model";
+import { parseRawModel } from "../tauri/model";
 
 export class WebModelApi implements IModelApi {
     private requestApi : IServerRequestApi;

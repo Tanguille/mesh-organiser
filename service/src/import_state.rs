@@ -71,6 +71,7 @@ impl ImportStateEmitter for NoneImportStateEmitter {
 }
 
 impl ImportState {
+    #[must_use]
     pub fn new(
         origin_url: Option<String>,
         recursive: bool,
@@ -94,6 +95,7 @@ impl ImportState {
         }
     }
 
+    #[must_use]
     pub fn new_with_emitter(
         origin_url: Option<String>,
         recursive: bool,
@@ -160,6 +162,11 @@ impl ImportState {
         self.emitter.thumbnail_count_event(self);
     }
 
+    /// Appends a model id to the current import set; ensures a set exists.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current set cannot be obtained (logic bug).
     pub fn add_model_id_to_current_set(&mut self, model_id: i64) {
         if self.imported_models.is_empty() {
             self.add_new_import_set(None);
@@ -178,6 +185,7 @@ impl ImportState {
         self.emitter.model_count_event(self);
     }
 
+    #[must_use]
     pub fn get_last_group_name(&self) -> Option<String> {
         if let Some(last) = self.imported_models.last() {
             return last.group_name.clone();
@@ -186,13 +194,22 @@ impl ImportState {
         None
     }
 
+    /// Creates groups from all import sets and assigns model group ids.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a set has no group name (logic bug).
     pub async fn create_groups_from_all_sets(
         &mut self,
         state: &AppState,
     ) -> Result<Vec<i64>, ServiceError> {
         let mut ids = Vec::new();
         let user = &self.user;
-        for set in self.imported_models.iter_mut() {
+        for set in &mut self.imported_models {
             if set.group_id.is_some() || set.group_name.is_none() || set.model_ids.is_empty() {
                 continue;
             }

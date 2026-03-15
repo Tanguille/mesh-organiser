@@ -14,7 +14,7 @@ use crate::{
     util::{random_hex_32, time_now},
 };
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, Eq, EnumString)]
 pub enum ModelOrderBy {
     AddedAsc,
     AddedDesc,
@@ -27,16 +27,17 @@ pub enum ModelOrderBy {
 }
 
 impl ModelOrderBy {
-    pub fn to_sql(&self) -> &'static str {
+    #[must_use]
+    pub const fn to_sql(&self) -> &'static str {
         match self {
-            ModelOrderBy::AddedAsc => "model_added ASC",
-            ModelOrderBy::AddedDesc => "model_added DESC",
-            ModelOrderBy::NameAsc => "model_name ASC",
-            ModelOrderBy::NameDesc => "model_name DESC",
-            ModelOrderBy::SizeAsc => "blob_size ASC",
-            ModelOrderBy::SizeDesc => "blob_size DESC",
-            ModelOrderBy::ModifiedAsc => "model_last_modified ASC",
-            ModelOrderBy::ModifiedDesc => "model_last_modified DESC",
+            Self::AddedAsc => "model_added ASC",
+            Self::AddedDesc => "model_added DESC",
+            Self::NameAsc => "model_name ASC",
+            Self::NameDesc => "model_name DESC",
+            Self::SizeAsc => "blob_size ASC",
+            Self::SizeDesc => "blob_size DESC",
+            Self::ModifiedAsc => "model_last_modified ASC",
+            Self::ModifiedDesc => "model_last_modified DESC",
         }
     }
 }
@@ -53,12 +54,13 @@ pub struct ModelFilterOptions {
     pub page_size: u32,
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn get_models(
     db: &DbContext,
     user: &User,
     options: ModelFilterOptions,
 ) -> Result<PaginatedResponse<Model>, DbError> {
-    let offset = (options.page as i64 - 1) * options.page_size as i64;
+    let offset = (i64::from(options.page) - 1) * i64::from(options.page_size);
 
     let mut query_builder = QueryBuilder::new(
         format!("SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
@@ -152,8 +154,9 @@ pub async fn get_models(
                     unique_global_id: row.get("group_unique_global_id"),
                     last_modified: row.get("group_last_modified"),
                 }),
-            labels: match row.get::<Option<String>, _>("label_ids") {
-                Some(label_ids) => {
+            labels: row
+                .get::<Option<String>, _>("label_ids")
+                .map_or_else(Vec::new, |label_ids| {
                     let label_ids = label_ids
                         .split(',')
                         .filter_map(|s| s.parse::<i64>().ok())
@@ -162,13 +165,13 @@ pub async fn get_models(
                         .iter()
                         .filter_map(|id| min_labels_map.get(id).cloned())
                         .collect()
-                }
-                None => Vec::new(),
-            },
-            flags: ModelFlags::from_bits(row.get::<i64, _>("model_flags") as u32)
-                .unwrap_or(ModelFlags::empty()),
+                }),
+            flags: ModelFlags::from_bits(
+                u32::try_from(row.get::<i64, _>("model_flags")).unwrap_or(0),
+            )
+            .unwrap_or(ModelFlags::empty()),
             unique_global_id: row.get("model_unique_global_id"),
-        })
+        });
     }
 
     Ok(PaginatedResponse {
@@ -236,7 +239,7 @@ pub async fn edit_model(
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
-    let flags = flags.bits() as i64;
+    let flags = i64::from(flags.bits());
     sqlx::query!(
         "UPDATE models SET model_name = ?, model_url = ?, model_desc = ?, model_flags = ?, model_last_modified = ? WHERE model_id = ? AND model_user_id = ?",
         name,
@@ -352,14 +355,13 @@ pub async fn get_model_id_via_sha256(
     .fetch_optional(db)
     .await?;
 
-    match row {
-        Some(r) => Ok(Some(r.model_id.unwrap())),
-        None => Ok(None),
-    }
+    row.map_or_else(|| Ok(None), |r| Ok(Some(r.model_id.unwrap())))
 }
 
-/// Resolve model IDs for a list of blob SHA256 hashes in one query. Returns IDs in the same order
-/// as `sha256s`. Fails with `DbError` if the number of found models does not match (e.g. unknown or inaccessible sha256).
+/// Resolve model IDs for a list of blob SHA256 hashes in one query.
+///
+/// Returns IDs in the same order as `sha256s`. Fails with `DbError` if the number of found
+/// models does not match (e.g. unknown or inaccessible sha256).
 pub async fn get_model_ids_via_sha256s(
     db: &DbContext,
     user: &User,
@@ -370,12 +372,12 @@ pub async fn get_model_ids_via_sha256s(
     }
 
     let placeholders = sha256s.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query_str = format!(
+    let query = format!(
         "SELECT model_id, blob_sha256 FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id \
          WHERE blob_sha256 IN ({placeholders}) AND model_user_id = ?"
     );
 
-    let mut q = sqlx::query(&query_str);
+    let mut q = sqlx::query(&query);
     for sha in sha256s {
         q = q.bind(sha);
     }
@@ -407,7 +409,7 @@ pub async fn get_model_count(
 ) -> Result<usize, DbError> {
     let count = match flags {
         Some(f) => {
-            let bits = f.bits() as i64;
+            let bits = i64::from(f.bits());
             sqlx::query!(
                 "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND (models.model_flags & ?) = ?",
                 user.id,
@@ -428,7 +430,7 @@ pub async fn get_model_count(
         }
     };
 
-    Ok(count as usize)
+    Ok(usize::try_from(count).unwrap_or(0))
 }
 
 pub struct ModelSizeResult {
@@ -446,9 +448,8 @@ pub async fn get_size_of_models(db: &DbContext, user: &User) -> Result<ModelSize
 
     Ok(ModelSizeResult {
         total_size: row.total_size.unwrap_or(0),
-        blob_sha256: row
-            .blob_sha256
-            .map(|f| f.split(",").map(|f| f.to_string()).collect())
-            .unwrap_or(Vec::new()),
+        blob_sha256: row.blob_sha256.map_or(Vec::new(), |f| {
+            f.split(',').map(ToString::to_string).collect()
+        }),
     })
 }

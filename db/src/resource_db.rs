@@ -29,7 +29,7 @@ pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMe
         resources.push(ResourceMeta {
             id: row.resource_id.unwrap(),
             name: row.resource_name,
-            flags: ResourceFlags::from_bits(row.resource_flags as u32)
+            flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
                 .unwrap_or(ResourceFlags::empty()),
             created: row.resource_created,
             unique_global_id: row.resource_unique_global_id,
@@ -91,7 +91,7 @@ pub async fn get_group_id_to_resource_map(
             ResourceMeta {
                 id: row.resource_id,
                 name: row.resource_name,
-                flags: ResourceFlags::from_bits(row.resource_flags as u32)
+                flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
                     .unwrap_or(ResourceFlags::empty()),
                 created: row.resource_created,
                 unique_global_id: row.resource_unique_global_id,
@@ -122,7 +122,7 @@ pub async fn get_resource_meta_by_id(
         Ok(row) => Ok(Some(ResourceMeta {
             id: row.resource_id,
             name: row.resource_name,
-            flags: ResourceFlags::from_bits(row.resource_flags as u32)
+            flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
                 .unwrap_or(ResourceFlags::empty()),
             created: row.resource_created,
             unique_global_id: row.resource_unique_global_id,
@@ -194,7 +194,7 @@ pub async fn edit_resource(
     flags: ResourceFlags,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let bits = flags.bits() as i64;
+    let bits = i64::from(flags.bits());
     let current_time = time_now();
     let timestamp = update_timestamp.unwrap_or(&current_time);
 
@@ -261,11 +261,8 @@ pub async fn set_resource_on_group(
     group_id: i64,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let group = match group_db::get_group_via_id(db, user, group_id).await? {
-        Some(g) => g,
-        None => {
-            return Err(DbError::RowNotFound);
-        }
+    let Some(group) = group_db::get_group_via_id(db, user, group_id).await? else {
+        return Err(DbError::RowNotFound);
     };
 
     // Permission check

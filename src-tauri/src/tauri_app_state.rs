@@ -84,7 +84,7 @@ impl TauriAppState {
     }
 
     fn get_settings_path(&self) -> PathBuf {
-        let mut path_buff = PathBuf::from(self.app_state.app_data_path.clone());
+        let mut path_buff = PathBuf::from(&self.app_state.app_data_path);
         path_buff.push("settings.json");
         path_buff
     }

@@ -7,13 +7,21 @@ use std::{
 
 use regex::Regex;
 
+use db::model::blob::FileType;
+
 use crate::service_error::ServiceError;
 
+/// Returns a human-friendly file name (no path); strips extension if not a directory.
+///
+/// # Panics
+///
+/// Panics if the file name is not valid UTF-8.
+#[must_use]
 pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     let extension = file.extension();
     let mut file_name: String = String::from(
         file.file_name()
-            .unwrap_or(OsStr::new("unknown_filename"))
+            .unwrap_or_else(|| OsStr::new("unknown_filename"))
             .to_str()
             .unwrap(),
     );
@@ -24,10 +32,7 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
 
     let remove_whitespace = Regex::new(r" {2,}").unwrap();
 
-    file_name = file_name
-        .replace("_", " ")
-        .replace("-", " ")
-        .replace("+", " ");
+    file_name = file_name.replace(['_', '-', '+'], " ");
 
     file_name = String::from(remove_whitespace.replace_all(&file_name, " "));
 
@@ -36,21 +41,19 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     file_name
 }
 
+#[must_use]
 pub fn cleanse_evil_from_name(name: &str) -> String {
     String::from(
-        name.replace("\\", " ")
-            .replace("/", " ")
-            .replace(":", " ")
-            .replace("*", " ")
-            .replace("?", " ")
-            .replace("\"", " ")
-            .replace("<", " ")
-            .replace(">", " ")
-            .replace("|", " ")
+        name.replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], " ")
             .trim(),
     )
 }
 
+/// Opens the given path in the system file explorer.
+///
+/// # Panics
+///
+/// Panics if the path is not valid UTF-8.
 pub fn open_folder_in_explorer(path: &Path) {
     let path = path.to_str().unwrap();
     #[cfg(target_os = "windows")]
@@ -69,6 +72,12 @@ pub fn open_folder_in_explorer(path: &Path) {
     }
 }
 
+/// Returns the total size of all files in the directory (non-recursive).
+///
+/// # Panics
+///
+/// Panics if the directory cannot be read or a metadata call fails.
+#[must_use]
 pub fn get_folder_size(path: &PathBuf) -> u64 {
     std::fs::read_dir(path)
         .unwrap()
@@ -76,22 +85,17 @@ pub fn get_folder_size(path: &PathBuf) -> u64 {
         .sum()
 }
 
+#[must_use]
 pub fn is_zippable_file_extension(extension: &str) -> bool {
-    let lowercase = extension.to_lowercase();
-
-    ["stl", "obj", "step", "gcode"]
-        .iter()
-        .any(|f| lowercase.as_str().eq(*f))
+    FileType::from_extension(extension).is_zippable()
 }
 
+#[must_use]
 pub fn is_zipped_file_extension(extension: &str) -> bool {
-    let lowercase = extension.to_lowercase();
-
-    ["stl.zip", "obj.zip", "step.zip", "gcode.zip"]
-        .iter()
-        .any(|f| lowercase.as_str().eq(*f))
+    FileType::from_extension(extension).is_zipped()
 }
 
+#[must_use]
 pub fn convert_extension_to_zip(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
@@ -104,6 +108,7 @@ pub fn convert_extension_to_zip(extension: &str) -> String {
     })
 }
 
+#[must_use]
 pub fn convert_zip_to_extension(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
@@ -116,9 +121,264 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
     })
 }
 
+/// Reads the entire file as a UTF-8 string.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or read.
 pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
     let mut file = std::fs::File::open(path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     Ok(contents)
+}
+
+// -----------------------------------------------------------------------------
+// Regression tests for service::util pure helpers.
+// We test these after consolidating util so that src-tauri uses service::util;
+// the goal is to lock in behaviour and catch regressions from deduplication.
+// Only pure functions are unit-tested here; IO (read_file_as_text,
+// get_folder_size, open_folder_in_explorer) is left out unless tested via temp dir.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use proptest::prelude::*;
+
+    use super::{
+        cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
+        is_zippable_file_extension, is_zipped_file_extension, prettify_file_name,
+    };
+
+    // ---- cleanse_evil_from_name ----
+
+    #[test]
+    fn test_cleanse_evil_empty() {
+        assert_eq!(cleanse_evil_from_name(""), "");
+    }
+
+    #[test]
+    fn test_cleanse_evil_normal_unchanged() {
+        assert_eq!(cleanse_evil_from_name("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_backslash() {
+        assert_eq!(cleanse_evil_from_name("a\\b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_slash() {
+        assert_eq!(cleanse_evil_from_name("a/b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_colon() {
+        assert_eq!(cleanse_evil_from_name("a:b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_asterisk() {
+        assert_eq!(cleanse_evil_from_name("a*b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_question_mark() {
+        assert_eq!(cleanse_evil_from_name("a?b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_double_quote() {
+        assert_eq!(cleanse_evil_from_name("a\"b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_less_than() {
+        assert_eq!(cleanse_evil_from_name("a<b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_greater_than() {
+        assert_eq!(cleanse_evil_from_name("a>b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_removes_pipe() {
+        assert_eq!(cleanse_evil_from_name("a|b"), "a b");
+    }
+
+    #[test]
+    fn test_cleanse_evil_trim_outer_whitespace() {
+        assert_eq!(cleanse_evil_from_name("  x  "), "x");
+    }
+
+    // ---- prettify_file_name ----
+
+    #[test]
+    fn test_prettify_file_name_path_with_extension_is_file() {
+        let path = PathBuf::from("some_dir/My_Cool-Model.stl");
+        assert_eq!(prettify_file_name(&path, false), "My Cool Model");
+    }
+
+    #[test]
+    fn test_prettify_file_name_path_with_extension_is_dir() {
+        let path = PathBuf::from("some_dir/My_Folder.stl");
+        assert_eq!(prettify_file_name(&path, true), "My Folder.stl");
+    }
+
+    #[test]
+    fn test_prettify_file_name_no_extension() {
+        let path = PathBuf::from("myfile");
+        assert_eq!(prettify_file_name(&path, false), "myfile");
+    }
+
+    #[test]
+    fn test_prettify_file_name_replaces_underscore_and_collapses_spaces() {
+        let path = PathBuf::from("a__b___c.stl");
+        assert_eq!(prettify_file_name(&path, false), "a b c");
+    }
+
+    // ---- is_zippable_file_extension ----
+
+    #[test]
+    fn test_is_zippable_stl() {
+        assert!(is_zippable_file_extension("stl"));
+    }
+
+    #[test]
+    fn test_is_zippable_stl_uppercase() {
+        assert!(is_zippable_file_extension("STL"));
+    }
+
+    #[test]
+    fn test_is_zippable_obj() {
+        assert!(is_zippable_file_extension("obj"));
+    }
+
+    #[test]
+    fn test_is_zippable_step() {
+        assert!(is_zippable_file_extension("step"));
+    }
+
+    #[test]
+    fn test_is_zippable_gcode() {
+        assert!(is_zippable_file_extension("gcode"));
+    }
+
+    #[test]
+    fn test_is_zippable_txt_returns_false() {
+        assert!(!is_zippable_file_extension("txt"));
+    }
+
+    /// db maps "stp" to `Step`; `FileType` delegation covers this.
+    #[test]
+    fn test_is_zippable_stp() {
+        assert!(is_zippable_file_extension("stp"));
+    }
+
+    #[test]
+    fn test_is_zippable_step_uppercase() {
+        assert!(is_zippable_file_extension("STEP"));
+    }
+
+    // ---- is_zipped_file_extension ----
+
+    #[test]
+    fn test_is_zipped_stl_zip() {
+        assert!(is_zipped_file_extension("stl.zip"));
+    }
+
+    #[test]
+    fn test_is_zipped_step_zip() {
+        assert!(is_zipped_file_extension("step.zip"));
+    }
+
+    #[test]
+    fn test_is_zipped_obj_zip_gcode_zip() {
+        assert!(is_zipped_file_extension("obj.zip"));
+        assert!(is_zipped_file_extension("gcode.zip"));
+    }
+
+    #[test]
+    fn test_is_zipped_other_returns_false() {
+        assert!(!is_zipped_file_extension("stl"));
+        assert!(!is_zipped_file_extension("zip"));
+        assert!(!is_zipped_file_extension("obj"));
+    }
+
+    // ---- convert_extension_to_zip ----
+
+    #[test]
+    fn test_convert_extension_to_zip_stl() {
+        assert_eq!(convert_extension_to_zip("stl"), "stl.zip");
+    }
+
+    #[test]
+    fn test_convert_extension_to_zip_obj_step_gcode() {
+        assert_eq!(convert_extension_to_zip("obj"), "obj.zip");
+        assert_eq!(convert_extension_to_zip("step"), "step.zip");
+        assert_eq!(convert_extension_to_zip("gcode"), "gcode.zip");
+    }
+
+    #[test]
+    fn test_convert_extension_to_zip_unknown_returns_lowercase() {
+        assert_eq!(convert_extension_to_zip("TXT"), "txt");
+        assert_eq!(convert_extension_to_zip("unknown"), "unknown");
+    }
+
+    // ---- convert_zip_to_extension ----
+
+    #[test]
+    fn test_convert_zip_to_extension_known() {
+        assert_eq!(convert_zip_to_extension("stl.zip"), "stl");
+        assert_eq!(convert_zip_to_extension("obj.zip"), "obj");
+        assert_eq!(convert_zip_to_extension("step.zip"), "step");
+        assert_eq!(convert_zip_to_extension("gcode.zip"), "gcode");
+    }
+
+    #[test]
+    fn test_convert_zip_to_extension_unknown_returns_lowercase() {
+        assert_eq!(convert_zip_to_extension("other.zip"), "other.zip");
+        assert_eq!(convert_zip_to_extension("STL.ZIP"), "stl");
+    }
+
+    // ---- proptest: round-trip and invariants ----
+
+    const EVIL_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+
+    proptest! {
+        /// Round-trip: for known zippable extensions, convert_zip_to_extension(convert_extension_to_zip(ext)) equals canonical form.
+        #[test]
+        fn prop_convert_extension_round_trip_known(ext in prop_oneof![
+            Just("stl"),
+            Just("obj"),
+            Just("gcode"),
+            Just("step"),
+            Just("stp"),
+        ]) {
+            let z = convert_extension_to_zip(ext);
+            let back = convert_zip_to_extension(&z);
+            prop_assert_eq!(back.as_str(), ext);
+        }
+
+        /// For any string, cleanse_evil output must not contain filesystem-unsafe characters.
+        #[test]
+        fn prop_cleanse_evil_removes_evil(s in "[ -~]{0,80}") {
+            let out = cleanse_evil_from_name(&s);
+            for c in EVIL_CHARS {
+                prop_assert!(!out.contains(*c), "output must not contain {:?}", c);
+            }
+        }
+
+        /// Idempotent: cleansing an already-clean string only trims.
+        #[test]
+        fn prop_cleanse_evil_idempotent_clean(s in "[a-zA-Z0-9 _-]{0,50}") {
+            let trimmed = s.trim();
+            let once = cleanse_evil_from_name(trimmed);
+            let twice = cleanse_evil_from_name(&once);
+            prop_assert_eq!(once, twice);
+        }
+    }
 }

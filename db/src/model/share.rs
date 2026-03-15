@@ -19,6 +19,7 @@ pub struct ShareDto {
 }
 
 impl Share {
+    #[must_use]
     pub fn to_dto(self, user_name: String) -> ShareDto {
         ShareDto {
             id: self.id,

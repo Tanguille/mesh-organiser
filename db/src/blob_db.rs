@@ -63,13 +63,13 @@ pub async fn get_blob_via_sha256(db: &DbContext, sha256: &str) -> Result<Option<
     .await?;
 
     match row {
-        Some(r) => Ok(Some(Blob {
-            id: r.blob_id,
-            sha256: r.blob_sha256,
-            filetype: r.blob_filetype,
-            size: r.blob_size,
-            disk_path: r.blob_path,
-            added: r.blob_added.to_string(),
+        Some(record) => Ok(Some(Blob {
+            id: record.blob_id,
+            sha256: record.blob_sha256,
+            filetype: record.blob_filetype,
+            size: record.blob_size,
+            disk_path: record.blob_path,
+            added: record.blob_added,
         })),
         None => Ok(None),
     }
