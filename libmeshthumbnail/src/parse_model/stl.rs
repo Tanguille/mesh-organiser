@@ -44,7 +44,7 @@ fn parse_stl_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        if std::path::Path::new(file.name())
+        if Path::new(file.name())
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("stl"))
         {

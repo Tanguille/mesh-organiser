@@ -5,8 +5,9 @@ use crate::{app_state::AppState, service_error::ServiceError, slicer_service::op
 use super::Slicer;
 
 impl Slicer {
+    #[must_use]
     pub fn is_installed(&self) -> bool {
-        if let Slicer::Custom = self {
+        if matches!(self, Self::Custom) {
             return true;
         }
 
@@ -22,12 +23,17 @@ impl Slicer {
         }
     }
 
+    /// Opens the slicer application with the given paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slicer is not installed or if no models are provided.
     pub async fn open(
         &self,
         paths: Vec<PathBuf>,
         app_state: &AppState,
     ) -> Result<(), ServiceError> {
-        if let Slicer::Custom = self {
+        if matches!(self, Self::Custom) {
             return open_custom_slicer(paths, app_state).await;
         }
 
@@ -37,7 +43,7 @@ impl Slicer {
             )));
         }
 
-        println!("Opening in slicer: {:?}", paths);
+        println!("Opening in slicer: {paths:?}");
 
         if paths.is_empty() {
             return Err(ServiceError::InternalError(String::from(
@@ -64,7 +70,7 @@ fn get_flatpak_slicer_package(slicer: &Slicer) -> String {
         Slicer::OrcaSlicer => "io.github.softfever.OrcaSlicer",
         Slicer::Cura => "com.ultimaker.cura",
         Slicer::BambuStudio => "com.bambulab.BambuStudio",
-        _ => "",
+        Slicer::Custom => "",
     }
     .to_string()
 }

@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 bitflags! {
     #[derive(Debug)]
     pub struct UserPermissions: u32 {
-        const Admin = 0b00000001;
-        const Sync  = 0b00000010;
-        const OnlineAccount = 0b00000100;
+        const Admin = 0b0000_0001;
+        const Sync  = 0b0000_0010;
+        const OnlineAccount = 0b0000_0100;
     }
 }
 
@@ -17,13 +17,13 @@ impl Serialize for UserPermissions {
         S: serde::Serializer,
     {
         let mut flags = Vec::new();
-        if self.contains(UserPermissions::Admin) {
+        if self.contains(Self::Admin) {
             flags.push("Admin");
         }
-        if self.contains(UserPermissions::Sync) {
+        if self.contains(Self::Sync) {
             flags.push("Sync");
         }
-        if self.contains(UserPermissions::OnlineAccount) {
+        if self.contains(Self::OnlineAccount) {
             flags.push("OnlineAccount");
         }
         flags.serialize(serializer)
@@ -36,12 +36,12 @@ impl<'de> Deserialize<'de> for UserPermissions {
         D: serde::Deserializer<'de>,
     {
         let flags: Vec<String> = Vec::deserialize(deserializer)?;
-        let mut result = UserPermissions::empty();
+        let mut result = Self::empty();
         for flag in flags {
             match flag.as_str() {
-                "Admin" => result.insert(UserPermissions::Admin),
-                "Sync" => result.insert(UserPermissions::Sync),
-                "OnlineAccount" => result.insert(UserPermissions::OnlineAccount),
+                "Admin" => result.insert(Self::Admin),
+                "Sync" => result.insert(Self::Sync),
+                "OnlineAccount" => result.insert(Self::OnlineAccount),
                 _ => {}
             }
         }
@@ -65,7 +65,7 @@ pub struct User {
 
 impl Clone for User {
     fn clone(&self) -> Self {
-        User {
+        Self {
             id: self.id,
             username: self.username.clone(),
             email: self.email.clone(),
@@ -83,20 +83,21 @@ impl Clone for User {
 
 impl Default for User {
     fn default() -> Self {
-        User {
+        Self {
             id: 1,
-            username: "".into(),
-            email: "".into(),
-            created_at: "".into(),
+            username: String::new(),
+            email: String::new(),
+            created_at: String::new(),
             sync_url: None,
             sync_token: None,
             last_sync: None,
-            password_hash: "".into(),
+            password_hash: String::new(),
             permissions: UserPermissions::empty(),
         }
     }
 }
 
+#[must_use]
 pub fn hash_password(password: &str) -> String {
     generate_hash(password)
 }

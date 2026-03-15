@@ -1,34 +1,58 @@
 # Agent Guidelines for Mesh Organiser
 
-This document provides guidelines for AI coding agents working in this repository.
+Guidelines for AI coding agents. Keep this file short and to the point—agents read it at the start of every session.
+
+**Harness principles (2026):** The environment (instructions, checks, context) is what makes agent output reliable. Plan before code, work in small verifiable steps, and always run verification before claiming work complete.
 
 ## Workflow Principles
 
 ### Always Understand Before Coding
+
 1. Explore the codebase first to understand structure and patterns
 2. Read existing similar implementations before starting new work
 3. Identify the exact files/locations that need changes
-4. Plan the approach before writing code
+4. Plan the approach before writing code (for large tasks, consider a short spec or implementation plan first)
+
+### Search Before Adding
+
+- Search for existing code, utilities, and patterns before adding new methods, classes, or modules. Avoid duplication.
 
 ### Break Large Tasks Into Smaller Steps
+
 - Split complex tasks into discrete, verifiable steps
 - Complete and verify each step before moving to the next
 - Use a todo list for tracking progress on multi-step tasks
 
 ### Verify After Each Change
+
 - Run type checks after making changes
 - Test the feature works as expected
 - Check for any introduced errors before committing
 - **Run `cargo fmt --all` before every push** (enforced in CI)
 
-### Use Specialist Agents When Appropriate
-- **@explorer**: Find files, locate code patterns, discover what exists
-- **@librarian**: Look up official documentation for libraries/APIs
-- **@oracle**: Complex architectural decisions, persistent bugs, high-stakes choices
-- **@designer**: UI/UX polish, user-facing visual components
-- **@fixer**: Execute well-defined tasks in parallel (3+ independent tasks)
+### Pre-Completion Checklist
+
+Before claiming work complete or ready for review, run verification and only then assert success:
+
+- Frontend: `npm run check`; run relevant tests (`npm run test` if applicable)
+- Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, and tests (e.g. `cargo test -p service`)
+- Do not state that tests or checks pass without having run them
+- **STEP/OCCT**: Full build compiles OCCT from source. To avoid freezing, limit parallelism (e.g. `CARGO_BUILD_JOBS=2`, Windows: `CL=/MP2`); see [docs/commands.md](docs/commands.md).
+
+### Guardrails
+
+- Code produced by agents must receive human review before merge; do not skip PR review.
+- CI (format, lint, tests) is the safety net—ensure changes satisfy it.
+
+### Always Test When Changing Something (Separate Subagent)
+
+- When making behavioural or structural changes (refactors, deduplication, new features), **add or update tests** to guard against regressions.
+- **Dangerous edits — test first:** Before doing edits that can change behaviour (control flow, error handling, types, or semantics), **write tests that capture the current intended behaviour**. Run them to establish a baseline, then apply the edit and re-run to confirm behaviour is unchanged. Only then proceed. Examples: replacing `match` with `let`-else, changing `Option`/`Result` handling, refactoring conditionals or casts.
+- **Use a separate subagent** dedicated to writing/adding tests rather than having the implementation agent add tests in the same pass. This keeps scope clear and improves test quality.
+- The test subagent should: (1) **Explain** what is being tested and why (regression after refactor, new behaviour, etc.), (2) **Plan** concrete test cases (happy path, boundaries, errors), (3) **Execute** (write tests, run test commands, report pass/fail). See [Testing](#testing) below for framework and prompt details.
 
 ### Parallelize When It Saves Time
+
 - Multiple independent file changes → spawn multiple @fixers
 - Research + implementation can run in parallel
 - Sequential work must be done serially
@@ -36,20 +60,29 @@ This document provides guidelines for AI coding agents working in this repositor
 ## Project Overview
 
 Mesh Organiser is a SvelteKit + Tauri desktop application for organizing 3D print models.
+
 - **Frontend**: Svelte 5, SvelteKit, TypeScript, TailwindCSS v4, Three.js (Threlte)
 - **Backend**: Tauri (Rust) with SQLite database
 - **Platforms**: Desktop (Windows/macOS/Linux) via Tauri
 
 ## Quick Reference
 
+### Key rules
+
+- **Verification before completion**: Run the relevant checks and tests (see [docs/commands.md](docs/commands.md)) before claiming work complete; do not assert success without running them.
+- **Search before adding**: Look for existing code and patterns before adding new methods, classes, or modules; reuse instead of duplicating.
+
 ### Commands
-See [docs/commands.md](docs/commands.md) for all build, dev, and test commands.
+
+See [docs/commands.md](docs/commands.md) for all build, dev, and test commands. After making behavioural or structural changes, run tests (e.g. `cargo test -p service`, `npm run test`) and prefer a [separate subagent for adding tests](#always-test-when-changing-something-separate-subagent).
 
 ### Code Style
+
 - **Frontend**: See [docs/frontend-style.md](docs/frontend-style.md)
 - **Rust**: See [docs/rust-style.md](docs/rust-style.md)
 
 ### Git Workflow
+
 See [docs/git-workflow.md](docs/git-workflow.md) for worktree and commit best practices.
 
 ## Project Structure
@@ -71,25 +104,47 @@ Cargo.toml             # Root workspace (all Rust projects)
 ## Common Development Tasks
 
 ### Adding a new API endpoint (Frontend)
+
 1. Create API function in appropriate file under `src/lib/api/`
 2. Export from parent's `index.ts`
 3. Use existing patterns (e.g., `src/lib/api/shared/model_api.ts`)
 
 ### Adding a new Tauri command
+
 1. Add command function in `src-tauri/src/api/`
 2. Register in `src-tauri/src/lib.rs` `invoke_handler`
 3. Create TypeScript wrapper in `src/lib/api/tauri/`
 
 ### Adding a new UI component
+
 1. Use existing shadcn-svelte components as reference
 2. Store in `src/lib/components/ui/`
 3. Follow the `index.ts` + component pattern
 
+## Testing
+
+When changing behaviour or structure (refactors, deduplication, new features), add or update tests and **use a separate subagent** for test writing.
+
+### What we learned (refactor + test subagents)
+
+- **Separate test subagent**: Implementation and test-writing in different subagents improves focus and test quality; the test agent’s only job is to add regression/behavioural coverage.
+- **Prompt structure for test agents**: Use a 3-step prompt: (1) **Explain** — what is under test and why (e.g. “regression after consolidating util”); (2) **Plan** — list concrete cases (happy path, boundaries, errors) in a table or list; (3) **Execute** — where to put tests, framework, Arrange–Act–Assert, and the command to run (`cargo test -p service`, `npm run test`).
+- **Scope one area per agent**: One subagent per test surface (e.g. util, error serialisation, download, frontend raw_model) so each agent has a clear, small scope.
+- **Rust**: Unit tests in `#[cfg(test)] mod tests` next to the code or in `crate/tests/` for integration tests. Use Wiremock (or similar) for HTTP-dependent code so tests don’t hit the network. Run `cargo test -p <crate>`.
+- **Frontend**: Vitest for unit tests (`src/**/*.test.ts`). Add `"test": "vitest run"` and `"test:watch": "vitest"` if not present. Run `npm run test`.
+
+### Commands
+
+- **Rust**: `cargo test --workspace` or `cargo test -p service` (see [docs/commands.md](docs/commands.md)).
+- **Frontend**: `npm run test` (Vitest).
+
 ## Environment Variables
+
 - `VITE_API_PLATFORM`: Set to `"demo"`, `"web"`, or Tauri (default)
 - `TAURI_DEV_HOST`: Override host for Tauri development
 
 ## Additional Resources
+
 - [Svelte 5 Runes](https://svelte.dev/blog/runes)
 - [SvelteKit Docs](https://kit.svelte.dev/)
 - [Tauri Docs](https://tauri.app/)

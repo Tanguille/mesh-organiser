@@ -5,18 +5,18 @@ on:
     branches:
       - main
     paths:
-      - '**/*.rs'
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '.github/workflows/rust-ci.yaml'
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - ".github/workflows/rust-ci.yaml"
 
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - '**/*.rs'
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '.github/workflows/rust-ci.yaml'
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - ".github/workflows/rust-ci.yaml"
 
 permissions: read-all
 
@@ -60,3 +60,4 @@ jobs:
 
       - run: cargo build --workspace --all-targets --all-features
       - run: cargo clippy --workspace --all-targets --all-features
+      - run: cargo test --workspace --all-targets --all-features

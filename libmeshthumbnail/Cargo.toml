@@ -3,27 +3,22 @@ name = "libmeshthumbnail"
 version = "0.1.0"
 edition = "2024"
 
-[lints.clippy]
-# Priority is needed so our config below is respected over the pedantic group
-pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-redundant_clone = "warn"
-style = "warn"
-unnecessary_self_imports = "warn"
+[lints]
+workspace = true
 
 [dependencies]
-euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d" }
-vek = "0.17.2"
-image = { version = "0.25.10", features = ["png", "jpeg"] }
-stl_io = "0.10.0"
-thiserror = "2.0.18"
-zip = "8.2.0"
-wavefront_obj = { version = "11.0.0" }
-threemf = { git = "https://github.com/suchmememanyskill/3mf-rs", rev = "d78e731b2fcf127692380332ad2708aec65dee68" }
-regex = "1.12.3"
-base64 = "0.22.1"
-opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "14fca36e77b52aac4c4c5e75314f79e84b086053", optional = true }
-tempfile = "3.27.0"
+base64 = { workspace = true }
+euc = { workspace = true }
+image = { workspace = true, features = ["png"] }
+opencascade = { workspace = true, optional = true }
+regex = { workspace = true }
+stl_io = { workspace = true }
+tempfile = { workspace = true }
+threemf = { workspace = true }
+thiserror = { workspace = true }
+vek = { workspace = true }
+wavefront_obj = { workspace = true }
+zip = { workspace = true }
 
 [features]
 step = ["dep:opencascade"]

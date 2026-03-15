@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::path::Path;
 
-#[derive(Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub enum FileType {
     Stl,
     ZippedStl,
@@ -26,132 +26,165 @@ pub struct Blob {
 }
 
 impl Blob {
+    #[must_use]
     pub fn to_file_type(&self) -> FileType {
         FileType::from_extension(&self.filetype)
     }
 }
 
 impl FileType {
-    pub fn from_pathbuf(path: &Path) -> FileType {
-        match path.extension() {
-            Some(ext) => FileType::from_extension(&ext.to_string_lossy()),
-            None => FileType::Unknown,
+    #[must_use]
+    pub fn from_pathbuf(path: &Path) -> Self {
+        let name_lower = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        // Compound extensions first so "file.stl.zip" is recognized as ZippedStl
+        if name_lower.ends_with(".stl.zip") {
+            return Self::from_extension("stl.zip");
         }
+        if name_lower.ends_with(".obj.zip") {
+            return Self::from_extension("obj.zip");
+        }
+        if name_lower.ends_with(".gcode.zip") {
+            return Self::from_extension("gcode.zip");
+        }
+        if name_lower.ends_with(".step.zip") || name_lower.ends_with(".stp.zip") {
+            return Self::from_extension(if name_lower.ends_with(".stp.zip") {
+                "stp.zip"
+            } else {
+                "step.zip"
+            });
+        }
+        path.extension().map_or(Self::Unknown, |ext| {
+            Self::from_extension(&ext.to_string_lossy())
+        })
     }
 
-    pub fn from_extension(extension: &str) -> FileType {
+    #[must_use]
+    pub fn from_extension(extension: &str) -> Self {
         match extension.to_lowercase().as_str() {
-            f if f.ends_with("stl") => FileType::Stl,
-            f if f.ends_with("stl.zip") => FileType::ZippedStl,
-            f if f.ends_with("obj") => FileType::Obj,
-            f if f.ends_with("obj.zip") => FileType::ZippedObj,
-            f if f.ends_with("gcode") => FileType::Gcode,
-            f if f.ends_with("gcode.zip") => FileType::ZippedGcode,
-            f if f.ends_with("step") => FileType::Step,
-            f if f.ends_with("stp") => FileType::Step,
-            f if f.ends_with("step.zip") => FileType::ZippedStep,
-            f if f.ends_with("stp.zip") => FileType::ZippedStep,
-            f if f.ends_with("3mf") => FileType::Threemf,
-            _ => FileType::Unknown,
+            f if f.ends_with("stl") => Self::Stl,
+            f if f.ends_with("stl.zip") => Self::ZippedStl,
+            f if f.ends_with("obj") => Self::Obj,
+            f if f.ends_with("obj.zip") => Self::ZippedObj,
+            f if f.ends_with("gcode") => Self::Gcode,
+            f if f.ends_with("gcode.zip") => Self::ZippedGcode,
+            f if f.ends_with("step") => Self::Step,
+            f if f.ends_with("stp") => Self::Step,
+            f if f.ends_with("step.zip") => Self::ZippedStep,
+            f if f.ends_with("stp.zip") => Self::ZippedStep,
+            f if f.ends_with("3mf") => Self::Threemf,
+            _ => Self::Unknown,
         }
     }
 
+    /// # Panics
+    /// Panics if `self` is `FileType::Unknown` (cannot convert to an extension).
+    #[must_use]
     pub fn to_extension(&self) -> String {
         match self {
-            FileType::Stl => "stl",
-            FileType::ZippedStl => "stl.zip",
-            FileType::Obj => "obj",
-            FileType::ZippedObj => "obj.zip",
-            FileType::Gcode => "gcode",
-            FileType::ZippedGcode => "gcode.zip",
-            FileType::Step => "step",
-            FileType::ZippedStep => "step.zip",
-            FileType::Threemf => "3mf",
-            FileType::Unknown => panic!("Cannot convert Unknown FileType to extension"),
+            Self::Stl => "stl",
+            Self::ZippedStl => "stl.zip",
+            Self::Obj => "obj",
+            Self::ZippedObj => "obj.zip",
+            Self::Gcode => "gcode",
+            Self::ZippedGcode => "gcode.zip",
+            Self::Step => "step",
+            Self::ZippedStep => "step.zip",
+            Self::Threemf => "3mf",
+            Self::Unknown => panic!("Cannot convert Unknown FileType to extension"),
         }
         .to_string()
     }
 
-    pub fn is_zipped(&self) -> bool {
+    #[must_use]
+    pub const fn is_zipped(&self) -> bool {
         matches!(
             self,
-            FileType::ZippedStl
-                | FileType::ZippedObj
-                | FileType::ZippedGcode
-                | FileType::ZippedStep
+            Self::ZippedStl | Self::ZippedObj | Self::ZippedGcode | Self::ZippedStep
         )
     }
 
-    pub fn is_stl(&self) -> bool {
-        matches!(self, FileType::Stl | FileType::ZippedStl)
+    #[must_use]
+    pub const fn is_stl(&self) -> bool {
+        matches!(self, Self::Stl | Self::ZippedStl)
     }
 
-    pub fn is_obj(&self) -> bool {
-        matches!(self, FileType::Obj | FileType::ZippedObj)
+    #[must_use]
+    pub const fn is_obj(&self) -> bool {
+        matches!(self, Self::Obj | Self::ZippedObj)
     }
 
-    pub fn is_3mf(&self) -> bool {
-        matches!(self, FileType::Threemf)
+    #[must_use]
+    pub const fn is_3mf(&self) -> bool {
+        matches!(self, Self::Threemf)
     }
 
-    pub fn is_step(&self) -> bool {
-        matches!(self, FileType::Step | FileType::ZippedStep)
+    #[must_use]
+    pub const fn is_step(&self) -> bool {
+        matches!(self, Self::Step | Self::ZippedStep)
     }
 
-    pub fn is_gcode(&self) -> bool {
-        matches!(self, FileType::Gcode | FileType::ZippedGcode)
+    #[must_use]
+    pub const fn is_gcode(&self) -> bool {
+        matches!(self, Self::Gcode | Self::ZippedGcode)
     }
 
-    pub fn is_unsupported(&self) -> bool {
-        matches!(self, FileType::Unknown)
+    #[must_use]
+    pub const fn is_unsupported(&self) -> bool {
+        matches!(self, Self::Unknown)
     }
 
-    pub fn is_zippable(&self) -> bool {
-        matches!(
-            self,
-            FileType::Stl | FileType::Obj | FileType::Step | FileType::Gcode
-        )
+    #[must_use]
+    pub const fn is_zippable(&self) -> bool {
+        matches!(self, Self::Stl | Self::Obj | Self::Step | Self::Gcode)
     }
 
-    pub fn to_zip(&self) -> FileType {
+    #[must_use]
+    pub fn to_zip(&self) -> Self {
         match self {
-            FileType::Stl => FileType::ZippedStl,
-            FileType::Obj => FileType::ZippedObj,
-            FileType::Step => FileType::ZippedStep,
-            FileType::Gcode => FileType::ZippedGcode,
+            Self::Stl => Self::ZippedStl,
+            Self::Obj => Self::ZippedObj,
+            Self::Step => Self::ZippedStep,
+            Self::Gcode => Self::ZippedGcode,
             _ => self.clone(),
         }
     }
 
-    pub fn from_zip(&self) -> FileType {
+    #[must_use]
+    pub fn from_zip(&self) -> Self {
         match self {
-            FileType::ZippedStl => FileType::Stl,
-            FileType::ZippedObj => FileType::Obj,
-            FileType::ZippedStep => FileType::Step,
-            FileType::ZippedGcode => FileType::Gcode,
+            Self::ZippedStl => Self::Stl,
+            Self::ZippedObj => Self::Obj,
+            Self::ZippedStep => Self::Step,
+            Self::ZippedGcode => Self::Gcode,
             _ => self.clone(),
         }
     }
 
-    pub fn is_supported_by_thumbnail_gen(&self) -> bool {
+    #[must_use]
+    pub const fn is_supported_by_thumbnail_gen(&self) -> bool {
         matches!(
             self,
-            FileType::Stl
-                | FileType::ZippedStl
-                | FileType::Obj
-                | FileType::ZippedObj
-                | FileType::Gcode
-                | FileType::ZippedGcode
-                | FileType::Step
-                | FileType::ZippedStep
-                | FileType::Threemf
+            Self::Stl
+                | Self::ZippedStl
+                | Self::Obj
+                | Self::ZippedObj
+                | Self::Gcode
+                | Self::ZippedGcode
+                | Self::Step
+                | Self::ZippedStep
+                | Self::Threemf
         )
     }
 
-    pub fn is_importable(&self) -> bool {
+    #[must_use]
+    pub const fn is_importable(&self) -> bool {
         matches!(
             self,
-            FileType::Stl | FileType::Obj | FileType::Gcode | FileType::Step | FileType::Threemf
+            Self::Stl | Self::Obj | Self::Gcode | Self::Step | Self::Threemf
         )
     }
 }

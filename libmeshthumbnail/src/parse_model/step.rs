@@ -2,7 +2,7 @@ use std::{
     env,
     fs::File,
     io::{self, Write},
-    path::PathBuf,
+    path::Path,
 };
 
 use opencascade::{mesh::Mesher, primitives::Shape};
@@ -13,19 +13,30 @@ use crate::{error::MeshThumbnailError, mesh::Mesh};
 
 const TOLERANCE_DEFAULT: f64 = 0.01;
 
-pub fn handle_step(path: &PathBuf) -> Result<Option<Mesh>, MeshThumbnailError> {
-    let path_str = path.to_string_lossy().to_lowercase();
+pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
+    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let lower_file_name = file_name.to_lowercase();
 
-    if path_str.ends_with(".step.zip") || path_str.ends_with(".stp.zip") {
+    if lower_file_name.ends_with(".step.zip") || lower_file_name.ends_with(".stp.zip") {
         Ok(Some(parse_step_zip(path)?))
-    } else if path_str.ends_with(".step") || path_str.ends_with(".stp") {
-        Ok(Some(parse_step(path)?))
     } else {
-        Ok(None)
+        let extension = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if extension == "step" || extension == "stp" {
+            Ok(Some(parse_step(path)?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
-fn parse_step(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+/// f64→f32 truncation: `OpenCascade` gives `f64`; we need `f32` for STL/thumbnails. Precision is
+/// sufficient for display and export; explicit rounding would add cost with no practical benefit.
+#[allow(clippy::cast_possible_truncation)]
+fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
         .unwrap_or(TOLERANCE_DEFAULT);
@@ -39,11 +50,15 @@ fn parse_step(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
             .into_iter()
             .map(|v| vek::Vec3::new(v.x as f32, v.y as f32, v.z as f32))
             .collect(),
-        indices: mesh.indices.into_iter().map(|i| i as u32).collect(),
+        indices: mesh
+            .indices
+            .into_iter()
+            .map(|i| u32::try_from(i).expect("index too large for u32"))
+            .collect(),
     })
 }
 
-fn parse_step_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
+fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let mut temp_path = temp_dir.path().to_path_buf();
     temp_path.push("a.step");
@@ -54,7 +69,11 @@ fn parse_step_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        if file.name().ends_with(".step") || file.name().ends_with(".stp") {
+        let file_name = file.name();
+        let ext_matches = Path::new(file_name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("step") || ext.eq_ignore_ascii_case("stp"));
+        if ext_matches {
             io::copy(&mut file, &mut temp_file)?;
             temp_file.flush()?;
             write_ok = true;
@@ -74,6 +93,13 @@ fn parse_step_zip(path: &PathBuf) -> Result<Mesh, MeshThumbnailError> {
     parse_step(&temp_path)
 }
 
+/// # Panics
+///
+/// Panics if unable to create a temporary directory.
+///
+/// # Errors
+///
+/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
 pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     // Todo: This is kinda hacky
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
@@ -87,11 +113,21 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     convert_step_path_to_stl(&temp_path)
 }
 
-pub fn convert_step_path_to_stl(step_path: &PathBuf) -> Result<Vec<u8>, MeshThumbnailError> {
+/// # Panics
+///
+/// Panics if unable to create a temporary directory.
+///
+/// # Errors
+///
+/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
+///
+/// f64→f32: same rationale as `parse_step` (STL/display use f32; truncation is intentional).
+#[allow(clippy::cast_possible_truncation)]
+pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
         .unwrap_or(TOLERANCE_DEFAULT);
-    let shape = Shape::read_step(&step_path)?;
+    let shape = Shape::read_step(step_path)?;
     let mesher = Mesher::try_new(&shape, tolerance)?;
     let mesh = mesher.mesh()?;
 

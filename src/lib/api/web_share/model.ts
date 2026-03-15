@@ -1,7 +1,8 @@
 import type { ModelOrderBy, ModelFlags, Model } from "../shared/model_api";
+import { convertModelFlagsToRaw, type RawModel } from "../shared/raw_model";
 import { HttpMethod, type IServerRequestApi } from "../shared/server_request_api";
 import type { Share } from "../shared/share_api";
-import { convertModelFlagsToRaw, parseRawModel, type ModelApi, type RawModel } from "../tauri/model";
+import { type ModelApi, parseRawModel } from "../tauri/model";
 
 export class WebShareModelApi implements ModelApi {
     private requestApi : IServerRequestApi;

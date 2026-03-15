@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2024"
 build = "build.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 bitflags = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 rand = { workspace = true }
 hex = { workspace = true }
 chrono = { workspace = true }
-sqlx = { workspace = true, features = ["sqlite", "runtime-tokio", "chrono"] }
+sqlx = { workspace = true, features = ["chrono", "runtime-tokio", "sqlite", "migrate", "macros"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 strum = { workspace = true, features = ["derive"] }

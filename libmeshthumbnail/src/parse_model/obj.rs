@@ -15,7 +15,7 @@ pub fn handle(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
         && stem.is_some_and(|s| {
-            std::path::Path::new(s)
+            Path::new(s)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
         });
@@ -34,10 +34,10 @@ fn parse(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let mut buffer = Vec::new();
     handle.read_to_end(&mut buffer)?;
 
-    let s = std::str::from_utf8(&buffer).map_err(|e| {
+    let utf8 = std::str::from_utf8(&buffer).map_err(|e| {
         MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
     })?;
-    let obj = obj::parse(s)?;
+    let obj = obj::parse(utf8)?;
     parse_inner(&obj)
 }
 
@@ -47,17 +47,17 @@ fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        if std::path::Path::new(file.name())
+        if Path::new(file.name())
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
         {
             let mut buffer = Vec::with_capacity(usize::try_from(file.size()).unwrap_or(0));
             file.read_to_end(&mut buffer)?;
 
-            let s = std::str::from_utf8(&buffer).map_err(|e| {
+            let utf8 = std::str::from_utf8(&buffer).map_err(|e| {
                 MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
             })?;
-            return parse_inner(&obj::parse(s)?);
+            return parse_inner(&obj::parse(utf8)?);
         }
     }
 
@@ -77,7 +77,7 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
             for mesh in &object.geometry {
                 let mut map: HashMap<usize, usize> = HashMap::new();
 
-                let mut process = |i: wavefront_obj::obj::VTNIndex| {
+                let mut process = |i: obj::VTNIndex| {
                     let mut index = map.get(&i.0).copied();
 
                     if index.is_none() {
@@ -97,7 +97,7 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
                 };
                 for shape in &mesh.shapes {
                     // All triangles with same material
-                    if let wavefront_obj::obj::Primitive::Triangle(i0, i1, i2) = shape.primitive {
+                    if let obj::Primitive::Triangle(i0, i1, i2) = shape.primitive {
                         process(i0);
                         process(i1);
                         process(i2);

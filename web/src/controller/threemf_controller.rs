@@ -33,7 +33,10 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, StatusCode,
+        WebAppState, model_db, threemf_service,
+    };
 
     pub async fn get_threemf_metadata(
         auth_session: AuthSession,
@@ -65,7 +68,10 @@ mod post {
 
     use crate::web_import_state::WebImportStateEmitter;
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, StatusCode,
+        WebAppState, model_db, threemf_service,
+    };
 
     pub async fn extract_threemf_models(
         auth_session: AuthSession,
@@ -89,7 +95,7 @@ mod post {
         let model_ids: Vec<i64> = import_state
             .imported_models
             .iter()
-            .flat_map(|f| f.model_ids.clone())
+            .flat_map(|f| f.model_ids.iter().copied())
             .collect();
 
         let models =
@@ -104,9 +110,17 @@ mod post {
         )
         .await?;
 
+        let first = import_state
+            .imported_models
+            .first()
+            .and_then(|m| m.group_id.zip(m.group_name.clone()));
+        let (id, name) = first.ok_or_else(|| {
+            ApplicationError::InternalError("3MF extract produced no imported group".to_string())
+        })?;
+
         Ok(Json(ModelGroupMeta {
-            id: import_state.imported_models[0].group_id.unwrap(),
-            name: import_state.imported_models[0].group_name.clone().unwrap(),
+            id,
+            name,
             created: time_now(),
             last_modified: time_now(),
             resource_id: None,

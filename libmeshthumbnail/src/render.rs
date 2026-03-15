@@ -66,7 +66,7 @@ pub fn render(
         &mut depth_buffer,
     );
 
-    image::RgbaImage::from_fn(
+    RgbaImage::from_fn(
         u32::try_from(image_size.x).unwrap_or(0),
         u32::try_from(image_size.y).unwrap_or(0),
         |x, y| {

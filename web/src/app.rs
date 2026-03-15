@@ -1,7 +1,8 @@
 use std::{
     env,
+    fmt::Write,
     fs::File,
-    io::Write,
+    io::{self, ErrorKind},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -19,8 +20,10 @@ use axum_login::{
 use axum_messages::MessagesManagerLayer;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
+    cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
 };
 use tower_sessions_sqlx_store::SqliteStore;
@@ -53,7 +56,114 @@ pub struct App {
 }
 
 fn expected_env_error_msg(var_name: &str) -> String {
-    format!("Expected environment variable {} to be set", var_name)
+    format!("Expected environment variable {var_name} to be set")
+}
+
+fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
+    env::var("SERVER_PORT")
+        .unwrap_or_else(|_| "3000".into())
+        .parse::<u16>()
+        .map_err(|e| {
+            io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("SERVER_PORT must be a valid u16: {e}"),
+            )
+            .into()
+        })
+}
+
+fn ensure_config_file_exists(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    if !config_path.exists() {
+        let mut config_file = File::create(config_path)?;
+        io::Write::write_all(
+            &mut config_file,
+            serde_json::to_string_pretty(&Configuration::default())
+                .expect("default configuration is serializable")
+                .as_bytes(),
+        )?;
+    }
+    Ok(())
+}
+
+async fn load_and_prepare_config(
+    config_path: &PathBuf,
+) -> Result<Configuration, Box<dyn std::error::Error>> {
+    let json = fs::read_to_string(config_path).await.map_err(|e| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("Failed to read configuration: {e}"),
+        )
+    })?;
+    let configuration: StoredConfiguration = serde_json::from_str(&json).map_err(|e| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            format!("Failed to parse configuration: {e}"),
+        )
+    })?;
+    let mut configuration = stored_to_configuration(configuration);
+    if configuration.data_path.is_empty() {
+        let default_data_dir = config_path.parent().ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::InvalidData,
+                "APP_CONFIG_PATH has no parent directory",
+            )
+        })?;
+        configuration.data_path = default_data_dir
+            .to_str()
+            .ok_or_else(|| {
+                io::Error::new(ErrorKind::InvalidData, "config path is not valid UTF-8")
+            })?
+            .to_string();
+    }
+    Ok(configuration)
+}
+
+async fn apply_local_account_and_thumbnails(
+    web_app_state: &WebAppState,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let local_pass = env::var("LOCAL_ACCOUNT_PASSWORD").unwrap_or_else(|_| {
+        let key = Key::generate();
+        let key_bytes = key.master();
+        let mut pass = String::new();
+        for b in key_bytes {
+            write!(pass, "{b:02X}").expect("write to String is infallible");
+        }
+
+        pass
+    });
+    user_db::edit_user_password(&web_app_state.app_state.db, 1, &local_pass).await?;
+    user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
+    group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
+
+    let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
+        .unwrap_or_else(|_| "none".into())
+        .to_lowercase();
+    let mut import_state = ImportState::new_with_emitter(
+        None,
+        false,
+        true,
+        false,
+        User::default(),
+        Box::new(WebImportStateEmitter {}),
+    );
+    if regenerate_thumbnails == "all" {
+        println!("Regenerating all thumbnails...");
+        thumbnail_service::generate_all_thumbnails(
+            &web_app_state.app_state,
+            true,
+            &mut import_state,
+        )
+        .await?;
+    } else if regenerate_thumbnails == "missing" {
+        println!("Regenerating missing thumbnails...");
+        thumbnail_service::generate_all_thumbnails(
+            &web_app_state.app_state,
+            false,
+            &mut import_state,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn update_session_middleware(
@@ -78,37 +188,20 @@ async fn update_session_middleware(
 
 impl App {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let port = env::var("SERVER_PORT")
-            .unwrap_or("3000".into())
-            .parse::<u16>()
-            .expect("SERVER_PORT must be a valid u16");
-
+        let port = parse_port()?;
         let config_path = env::var("APP_CONFIG_PATH")
-            .unwrap_or_else(|_| panic!("{}", expected_env_error_msg("APP_CONFIG_PATH")));
-        let config_path = PathBuf::from(config_path);
+            .map_err(|_| {
+                io::Error::new(
+                    ErrorKind::NotFound,
+                    expected_env_error_msg("APP_CONFIG_PATH"),
+                )
+            })
+            .map(PathBuf::from)?;
 
-        if !config_path.exists() {
-            File::create(&config_path)?.write_all(
-                serde_json::to_string_pretty(&Configuration::default())
-                    .unwrap()
-                    .as_bytes(),
-            )?;
-        }
+        ensure_config_file_exists(&config_path)?;
+        let configuration = load_and_prepare_config(&config_path).await?;
 
-        let json = fs::read_to_string(&config_path)
-            .await
-            .expect("Failed to read configuration");
-        let configuration: StoredConfiguration =
-            serde_json::from_str(&json).expect("Failed to parse configuration");
-        let mut configuration = stored_to_configuration(configuration);
-
-        if configuration.data_path.is_empty() {
-            let default_data_dir = config_path.parent().unwrap();
-
-            configuration.data_path = default_data_dir.to_str().unwrap().to_string();
-        }
-
-        let data_dir = PathBuf::from(configuration.data_path.clone());
+        let data_dir = PathBuf::from(&configuration.data_path);
         let sqlite_path = PathBuf::from(&data_dir).join("db.sqlite");
         let sqlite_backup_dir = PathBuf::from(&data_dir).join("backups");
         let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
@@ -118,7 +211,12 @@ impl App {
             app_state: AppState {
                 db: Arc::new(db),
                 configuration: Mutex::new(configuration),
-                app_data_path: data_dir.to_str().unwrap().to_string(),
+                app_data_path: data_dir
+                    .to_str()
+                    .ok_or_else(|| {
+                        io::Error::new(ErrorKind::InvalidData, "data_path is not valid UTF-8")
+                    })?
+                    .to_string(),
                 import_mutex: Arc::new(tokio::sync::Mutex::new(())),
             },
             port,
@@ -127,53 +225,7 @@ impl App {
         let session_store = SqliteStore::new(db_clone);
         session_store.migrate().await?;
 
-        let local_pass = match env::var("LOCAL_ACCOUNT_PASSWORD") {
-            Ok(password) => password,
-            Err(_) => {
-                let key = Key::generate();
-                let key_bytes = key.master();
-                key_bytes
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<String>>()
-                    .join("")
-            }
-        };
-
-        user_db::edit_user_password(&web_app_state.app_state.db, 1, &local_pass).await?;
-        user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
-        group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
-
-        let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
-            .unwrap_or("none".into())
-            .to_lowercase();
-
-        let mut import_state = ImportState::new_with_emitter(
-            None,
-            false,
-            true,
-            false,
-            User::default(),
-            Box::new(WebImportStateEmitter {}),
-        );
-
-        if regenerate_thumbnails == "all" {
-            println!("Regenerating all thumbnails...");
-            thumbnail_service::generate_all_thumbnails(
-                &web_app_state.app_state,
-                true,
-                &mut import_state,
-            )
-            .await?;
-        } else if regenerate_thumbnails == "missing" {
-            println!("Regenerating missing thumbnails...");
-            thumbnail_service::generate_all_thumbnails(
-                &web_app_state.app_state,
-                false,
-                &mut import_state,
-            )
-            .await?;
-        }
+        apply_local_account_and_thumbnails(&web_app_state).await?;
 
         Ok(Self {
             app_state: web_app_state,
@@ -195,20 +247,17 @@ impl App {
         );
 
         let signing_key_path = self.app_state.get_signing_key_path();
-        let key = match signing_key_path.exists() {
-            true => {
-                let key_bytes = fs::read(&signing_key_path).await?;
-                Key::from(&key_bytes)
-            }
-            false => {
-                let key = Key::generate();
-                fs::write(&signing_key_path, key.master()).await?;
-                key
-            }
+        let key = if signing_key_path.exists() {
+            let key_bytes = fs::read(&signing_key_path).await?;
+            Key::from(&key_bytes)
+        } else {
+            let key = Key::generate();
+            fs::write(&signing_key_path, key.master()).await?;
+            key
         };
 
         let session_layer = SessionManagerLayer::new(session_store)
-            .with_secure(false)
+            .with_secure(true)
             .with_expiry(Expiry::OnInactivity(Duration::days(7)))
             .with_signed(key);
 
@@ -223,8 +272,31 @@ impl App {
         let db = self.app_state.app_state.db.clone();
         let port = self.app_state.port;
 
+        // Configure CORS with restricted origins
+        let cors_layer = CorsLayer::new()
+            .allow_origin([
+                "http://localhost:3000".parse().unwrap(),
+                "http://localhost:5173".parse().unwrap(),
+            ])
+            .allow_methods(Any)
+            .allow_headers(Any)
+            .allow_credentials(true);
+
+        // Configure rate limiting for auth endpoints
+        let governor_config = Arc::new(
+            GovernorConfigBuilder::default()
+                .per_second(5)
+                .burst_size(10)
+                .finish()
+                .ok_or_else(|| {
+                    io::Error::new(ErrorKind::InvalidData, "Failed to create governor config")
+                })?,
+        );
+
+        let auth_router = auth_controller::router().layer(GovernorLayer::new(governor_config));
+
         let app = Router::new()
-            .merge(auth_controller::router())
+            .merge(auth_router)
             .merge(blob_controller::router())
             .merge(model_controller::router())
             .merge(group_controller::router())
@@ -235,6 +307,7 @@ impl App {
             .merge(page_controller::router())
             .merge(share_controller::router())
             .with_state(self.app_state)
+            .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(MessagesManagerLayer)
             .layer(auth_layer)
@@ -242,11 +315,9 @@ impl App {
             .layer(CompressionLayer::new())
             .fallback_service(serve_dir);
 
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
-        println!("Server running on port {}", port);
+        println!("Server running on port {port}");
 
         // Ensure we use a shutdown signal to abort the deletion task.
         axum::serve(listener, app.into_make_service())
@@ -278,9 +349,26 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => { deletion_task_abort_handle.abort() },
-        _ = terminate => { deletion_task_abort_handle.abort() },
+        () = ctrl_c => { deletion_task_abort_handle.abort() },
+        () = terminate => { deletion_task_abort_handle.abort() },
     }
 
     db.close().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expected_env_error_msg;
+
+    #[test]
+    fn expected_env_error_msg_format() {
+        assert_eq!(
+            expected_env_error_msg("FOO"),
+            "Expected environment variable FOO to be set"
+        );
+        assert_eq!(
+            expected_env_error_msg("APP_CONFIG_PATH"),
+            "Expected environment variable APP_CONFIG_PATH to be set"
+        );
+    }
 }
