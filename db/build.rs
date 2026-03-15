@@ -8,23 +8,23 @@ fn main() {
         let absolute_path = current_dir.join("model.sqlite");
 
         // Convert to string and normalize for SQLite URL format
-        let path_str = absolute_path.to_str().unwrap().replace('\\', "/");
+        let path = absolute_path.to_str().unwrap().replace('\\', "/");
         // For Windows absolute paths, ensure format is D:/path (no leading slash before drive)
-        let normalized_path = if cfg!(windows) && path_str.len() > 2 {
+        let normalized_path = if cfg!(windows) && path.len() > 2 {
             // On Windows, if we have something like /D:/path, remove the leading slash
-            if let Some(stripped) = path_str.strip_prefix('/') {
+            if let Some(stripped) = path.strip_prefix('/') {
                 let chars: Vec<char> = stripped.chars().collect();
                 if chars.len() > 1 && chars[1] == ':' {
                     // Remove leading slash: /D:/path -> D:/path
                     stripped.to_string()
                 } else {
-                    path_str
+                    path
                 }
             } else {
-                path_str
+                path
             }
         } else {
-            path_str
+            path
         };
 
         let db_url = format!("sqlite:///{normalized_path}");

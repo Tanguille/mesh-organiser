@@ -27,22 +27,21 @@ mod get {
 
     use crate::error::ApplicationError;
 
-    use super::*;
+    use super::{AuthSession, IntoResponse, Json, StatusCode, WebAppState};
 
     pub async fn me(
         auth_session: AuthSession,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = match auth_session.user {
-            Some(u) => u.to_user(),
-            None => return Ok(StatusCode::UNAUTHORIZED.into_response()),
+        let Some(u) = auth_session.user else {
+            return Ok(StatusCode::UNAUTHORIZED.into_response());
         };
+        let user = u.to_user();
 
         let user = user_db::get_user_by_id(&app_state.app_state.db, user.id).await?;
 
-        let user = match user {
-            Some(u) => u,
-            None => return Ok(StatusCode::UNAUTHORIZED.into_response()),
+        let Some(user) = user else {
+            return Ok(StatusCode::UNAUTHORIZED.into_response());
         };
 
         Ok(Json(user).into_response())
@@ -50,7 +49,10 @@ mod get {
 }
 
 mod post {
-    use super::*;
+    use super::{
+        AuthSession, Credentials, IntoResponse, Json, PasswordCredentials, StatusCode,
+        TokenCredentials,
+    };
 
     pub async fn password(
         mut auth_session: AuthSession,

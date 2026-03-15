@@ -14,6 +14,11 @@ mod win;
 
 pub use base::*;
 
+/// Spawns the given program with the model paths as arguments.
+///
+/// # Errors
+///
+/// Returns an error if paths are empty or spawning the process fails.
 pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
     if paths.is_empty() {
         return Err(ServiceError::InternalError(String::from(
@@ -26,6 +31,11 @@ pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), Service
     Ok(())
 }
 
+/// Opens the user-configured custom slicer with the given paths.
+///
+/// # Errors
+///
+/// Returns an error if the custom slicer path is not set, not found, or spawning fails.
 pub async fn open_custom_slicer(
     paths: Vec<PathBuf>,
     app_state: &AppState,
@@ -134,15 +144,8 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
         }
     }
 
-    match first_flag_index {
-        Some(flag_index) => {
-            // Everything before the first flag is the executable
-            let executable = args[..flag_index].join(" ");
-            let args = args[flag_index..].to_vec();
-            (executable, args)
-        }
-        None => {
-            // No flag-like arguments found, assume first token is executable, rest are arguments
+    first_flag_index.map_or_else(
+        || {
             if args.is_empty() {
                 (String::new(), Vec::new())
             } else if args.len() == 1 {
@@ -150,6 +153,12 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
             } else {
                 (args[0].clone(), args[1..].to_vec())
             }
-        }
-    }
+        },
+        |flag_index| {
+            let executable = args[..flag_index].join(" ");
+            let args = args[flag_index..].to_vec();
+
+            (executable, args)
+        },
+    )
 }

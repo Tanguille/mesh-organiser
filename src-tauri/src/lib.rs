@@ -167,7 +167,7 @@ async fn open_in_folder(
 }
 
 #[tauri::command]
-async fn get_theemf_metadata(
+async fn get_threemf_metadata(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ThreemfMetadata, ApplicationError> {
@@ -202,7 +202,7 @@ async fn extract_threemf_models(
     let model_ids: Vec<i64> = import_state
         .imported_models
         .iter()
-        .flat_map(|f| f.model_ids.clone())
+        .flat_map(|f| f.model_ids.iter().copied())
         .collect();
 
     let models =
@@ -725,7 +725,7 @@ pub fn run() {
             api::get_model_count,
             api::get_groups_for_resource,
             api::get_model_disk_space_usage,
-            get_theemf_metadata,
+            get_threemf_metadata,
             extract_threemf_models,
             api::download_files_and_open_in_folder,
             api::download_files_and_open_in_slicer,

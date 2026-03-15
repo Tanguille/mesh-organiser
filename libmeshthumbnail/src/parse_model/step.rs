@@ -20,7 +20,11 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     if lower_file_name.ends_with(".step.zip") || lower_file_name.ends_with(".stp.zip") {
         Ok(Some(parse_step_zip(path)?))
     } else {
-        let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+        let extension = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if extension == "step" || extension == "stp" {
             Ok(Some(parse_step(path)?))
         } else {
@@ -29,6 +33,8 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     }
 }
 
+/// f64→f32 truncation: `OpenCascade` gives `f64`; we need `f32` for STL/thumbnails. Precision is
+/// sufficient for display and export; explicit rounding would add cost with no practical benefit.
 #[allow(clippy::cast_possible_truncation)]
 fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
@@ -44,7 +50,11 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
             .into_iter()
             .map(|v| vek::Vec3::new(v.x as f32, v.y as f32, v.z as f32))
             .collect(),
-        indices: mesh.indices.into_iter().map(|i| u32::try_from(i).expect("index too large for u32")).collect(),
+        indices: mesh
+            .indices
+            .into_iter()
+            .map(|i| u32::try_from(i).expect("index too large for u32"))
+            .collect(),
     })
 }
 
@@ -59,8 +69,11 @@ fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let file_name = file.name().to_string_lossy().to_lowercase();
-        if file_name.ends_with(".step") || file_name.ends_with(".stp") {
+        let file_name = file.name();
+        let ext_matches = Path::new(file_name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("step") || ext.eq_ignore_ascii_case("stp"));
+        if ext_matches {
             io::copy(&mut file, &mut temp_file)?;
             temp_file.flush()?;
             write_ok = true;
@@ -80,15 +93,15 @@ fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     parse_step(&temp_path)
 }
 
+/// # Panics
+///
+/// Panics if unable to create a temporary directory.
+///
+/// # Errors
+///
+/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
 pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     // Todo: This is kinda hacky
-    # Panics
-    #
-    # Panics if unable to create a temporary directory.
-    #
-    # Errors
-    #
-    # Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let mut temp_path = temp_dir.path().to_path_buf();
     temp_path.push("a.step");
@@ -100,14 +113,17 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
     convert_step_path_to_stl(&temp_path)
 }
 
+/// # Panics
+///
+/// Panics if unable to create a temporary directory.
+///
+/// # Errors
+///
+/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
+///
+/// f64→f32: same rationale as `parse_step` (STL/display use f32; truncation is intentional).
+#[allow(clippy::cast_possible_truncation)]
 pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
-    # Panics
-    #
-    # Panics if unable to create a temporary directory.
-    #
-    # Errors
-    #
-    # Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
         .map(|val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT))
         .unwrap_or(TOLERANCE_DEFAULT);
@@ -119,9 +135,9 @@ pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbna
 
     for i in (0..mesh.indices.len()).step_by(3) {
         if i + 2 < mesh.indices.len() {
-            let idx0 = mesh.indices[i] as usize;
-            let idx1 = mesh.indices[i + 1] as usize;
-            let idx2 = mesh.indices[i + 2] as usize;
+            let idx0 = mesh.indices[i];
+            let idx1 = mesh.indices[i + 1];
+            let idx2 = mesh.indices[i + 2];
 
             let v0 = &mesh.vertices[idx0];
             let v1 = &mesh.vertices[idx1];

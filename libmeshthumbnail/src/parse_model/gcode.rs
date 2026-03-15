@@ -48,7 +48,7 @@ fn parse_gcode_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        if std::path::Path::new(file.name())
+        if Path::new(file.name())
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
         {
@@ -193,10 +193,14 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
     // Subdivision indices are small (length_subdivisions=1, angle_subdivisions=3); u32 fits in f32 mantissa with no loss.
     #[allow(clippy::cast_precision_loss)]
     for i in 0..=length_subdivisions {
-        let x = i as f32 / length_subdivisions as f32;
+        let length_ratio = i as f32 / length_subdivisions as f32;
         for j in 0..angle_subdivisions {
             let angle = 2.0 * std::f32::consts::PI * j as f32 / angle_subdivisions as f32;
-            positions.push(Vec3::new(x, angle.cos() * radius, angle.sin() * radius));
+            positions.push(Vec3::new(
+                length_ratio,
+                angle.cos() * radius,
+                angle.sin() * radius,
+            ));
         }
     }
 

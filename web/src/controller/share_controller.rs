@@ -36,7 +36,10 @@ pub fn router() -> Router<WebAppState> {
 mod get {
     use db::{model::share::ShareDto, user_db};
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, WebAppState,
+        share_db,
+    };
 
     pub async fn get_shares(
         auth_session: AuthSession,
@@ -59,13 +62,11 @@ mod get {
     ) -> Result<Response, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
 
-        let user = match user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await? {
-            Some(u) => u,
-            _ => {
-                return Err(ApplicationError::InternalError(
-                    "Share owner user not found.".into(),
-                ));
-            }
+        let Some(user) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await?
+        else {
+            return Err(ApplicationError::InternalError(
+                "Share owner user not found.".into(),
+            ));
         };
 
         let share = share.to_dto(user.username);
@@ -77,7 +78,10 @@ mod get {
 mod post {
     use db::{model::share::ShareDto, time_now};
 
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Response, State,
+        WebAppState, share_db,
+    };
 
     #[derive(Deserialize)]
     pub struct CreateShareParams {
@@ -105,7 +109,10 @@ mod post {
 }
 
 mod put {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, share_db,
+    };
 
     #[derive(Deserialize)]
     pub struct EditShareParams {
@@ -155,7 +162,10 @@ mod put {
 }
 
 mod delete {
-    use super::*;
+    use super::{
+        ApplicationError, AuthSession, IntoResponse, Path, Response, State, StatusCode,
+        WebAppState, share_db,
+    };
 
     pub async fn delete_share(
         auth_session: AuthSession,

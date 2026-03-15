@@ -7,7 +7,9 @@ use tauri::{AppHandle, Manager};
 use tokio::{fs::File, io::BufReader};
 use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
 
-use crate::{db, service::app_state::AppState, util::is_zipped_file_extension};
+use crate::{db, service::app_state::AppState};
+
+use service::is_zipped_file_extension;
 
 struct TauriAppState {
     app: AppHandle,

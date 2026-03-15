@@ -28,7 +28,13 @@ urlencoding = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-process = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "fs",
+    "sync",
+    "macros",
+    "io-util",
+] }
 tokio-util = { workspace = true, features = ["io"] }
 arboard = { workspace = true }
 itertools = { workspace = true }
@@ -38,7 +44,6 @@ db = { workspace = true }
 service = { workspace = true }
 serde_html_form = { workspace = true }
 tauri-plugin-http = { workspace = true, features = ["multipart"] }
-content_disposition = { workspace = true }
 async_zip = { workspace = true, features = [
     "deflate",
     "deflate64",
@@ -46,7 +51,7 @@ async_zip = { workspace = true, features = [
 ] }
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55.0"
+winreg = { workspace = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = { version = "2.3.6", features = ["deep-link"] }

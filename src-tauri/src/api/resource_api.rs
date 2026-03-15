@@ -93,7 +93,7 @@ pub async fn remove_resource(
 
     let resource = resource.unwrap();
 
-    resource_service::delete_resource_folder(&resource, &user, &state.app_state).await?;
+    resource_service::delete_resource_folder(&resource, &user, &state.app_state)?;
     resource_db::delete_resource(&state.app_state.db, &state.get_current_user(), resource.id)
         .await?;
 
@@ -118,7 +118,7 @@ pub async fn open_resource_folder(
 
     let resource = resource.unwrap();
 
-    resource_service::open_resource_folder(&resource, &user, &state.app_state).await?;
+    resource_service::open_resource_folder(&resource, &user, &state.app_state)?;
     Ok(())
 }
 

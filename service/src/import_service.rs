@@ -29,6 +29,11 @@ use crate::{
 
 use super::app_state::AppState;
 
+/// Imports models from a path (file, directory, or zip).
+///
+/// # Errors
+///
+/// Returns an error if the path is invalid, I/O fails, or import rules are violated (e.g. zip as path).
 pub async fn import_path(
     path: &str,
     app_state: &AppState,
@@ -64,13 +69,24 @@ pub async fn import_path(
             Ok(import_state)
         }
         Err(application_error) => {
-            let mut import_state = import_state_clone.lock().await;
-            import_state.set_failure(application_error.to_string());
+            import_state_clone
+                .lock()
+                .await
+                .set_failure(application_error.to_string());
             Err(application_error)
         }
     }
 }
 
+/// Returns the number of models at the path (file, directory, or zip).
+///
+/// # Errors
+///
+/// Returns an error if the path is invalid or I/O fails.
+///
+/// # Panics
+///
+/// Panics if the path has no extension when checked (internal logic bug).
 pub async fn get_model_count(
     path: &str,
     recursive: bool,
@@ -84,7 +100,10 @@ pub async fn get_model_count(
         } else {
             get_model_count_from_dir(path)
         }
-    } else if path_buff.extension().is_some() && path_buff.extension().unwrap() == "zip" {
+    } else if path_buff
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+    {
         if import_state.import_as_path {
             return Err(ServiceError::InternalError(String::from(
                 "Cannot import a zip as path",
@@ -100,6 +119,15 @@ pub async fn get_model_count(
     }
 }
 
+/// Inner import implementation; updates `import_state` in place.
+///
+/// # Errors
+///
+/// Returns an error if I/O or DB operations fail.
+///
+/// # Panics
+///
+/// Panics if the path has no extension when checked (internal logic bug).
 pub async fn import_path_inner(
     path: &str,
     app_state: &AppState,
@@ -109,22 +137,25 @@ pub async fn import_path_inner(
     let name = util::prettify_file_name(&path_buff, path_buff.is_dir());
     let later_import_state = Arc::clone(&import_state);
 
-    let recurisve = {
+    let recursive = {
         let import_state = import_state.lock().await;
         import_state.recursive
     };
 
     if path_buff.is_dir() {
-        if recurisve {
+        if recursive {
             import_models_from_dir_recursive(&path_buff, app_state, import_state).await?;
         } else {
             import_models_from_dir(path, app_state, import_state, name.clone()).await?;
         }
-    } else if path_buff.extension().is_some() && path_buff.extension().unwrap() == "zip" {
+    } else if path_buff
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+    {
         import_models_from_zip(path, app_state, import_state, name.clone()).await?;
     } else if is_supported_extension(&path_buff) {
         let extension = path_buff.extension().unwrap().to_str().unwrap();
-        let size = path_buff.metadata()?.len() as usize;
+        let size = usize::try_from(path_buff.metadata()?.len()).unwrap_or(0);
         let mut import_state = import_state.lock().await;
 
         {
@@ -140,7 +171,7 @@ pub async fn import_path_inner(
                 extension,
                 size,
                 &name,
-                import_state.origin_url.clone(),
+                import_state.origin_url.as_deref(),
                 app_state,
                 &import_state.user,
                 permanent_disk_path,
@@ -158,8 +189,11 @@ pub async fn import_path_inner(
         )));
     }
 
-    let import_state = later_import_state.lock().await;
-    add_labels_by_keywords(&import_state.imported_models, app_state, &import_state).await;
+    {
+        let guard = later_import_state.lock().await;
+        add_labels_by_keywords(&guard.imported_models, app_state, &guard).await;
+        drop(guard);
+    }
 
     Ok(())
 }
@@ -173,27 +207,21 @@ pub async fn add_labels_by_keywords(
     let model_ids = new_models
         .iter()
         .flat_map(|r| r.model_ids.iter())
-        .cloned()
+        .copied()
         .unique()
         .collect::<Vec<i64>>();
 
-    let models = model_db::get_models_via_ids(db, &import_state.user, model_ids).await;
-
-    let models = match models {
-        Ok(m) => m,
-        Err(_) => return,
+    let Ok(models) = model_db::get_models_via_ids(db, &import_state.user, model_ids).await else {
+        return;
     };
 
-    let all_keywords = label_keyword_db::get_all_keywords(db, &import_state.user).await;
-
-    let all_keywords = match all_keywords {
-        Ok(k) => k,
-        Err(_) => return,
+    let Ok(all_keywords) = label_keyword_db::get_all_keywords(db, &import_state.user).await else {
+        return;
     };
 
     let mut all_keywords_map: IndexMap<String, Vec<i64>> = IndexMap::new();
 
-    for (label_id, keywords) in all_keywords.iter() {
+    for (label_id, keywords) in &all_keywords {
         for keyword in keywords {
             if all_keywords_map.contains_key(&keyword.name) {
                 all_keywords_map[&keyword.name].push(*label_id);
@@ -203,11 +231,11 @@ pub async fn add_labels_by_keywords(
         }
     }
 
-    for model in models.iter() {
+    for model in &models {
         let mut name_parts: Vec<String> = model
             .name
             .split(|c: char| !c.is_alphanumeric())
-            .map(|s| s.to_lowercase())
+            .map(str::to_lowercase)
             .collect();
 
         if let Some(group) = &model.group {
@@ -215,7 +243,7 @@ pub async fn add_labels_by_keywords(
                 group
                     .name
                     .split(|c: char| !c.is_alphanumeric())
-                    .map(|s| s.to_lowercase()),
+                    .map(str::to_lowercase),
             );
         }
 
@@ -255,12 +283,11 @@ async fn import_models_from_dir_recursive(
     app_state: &AppState,
     import_state: Arc<Mutex<ImportState>>,
 ) -> Result<(), ServiceError> {
-    let read_dir = match std::fs::read_dir(path) {
-        Ok(rd) => rd,
-        Err(_) => return Ok(()),
+    let Ok(read_dir) = read_dir(path) else {
+        return Ok(());
     };
 
-    let entries: Vec<std::fs::DirEntry> = read_dir.map(|x| x.unwrap()).collect();
+    let entries: Vec<fs::DirEntry> = read_dir.map(|x| x.unwrap()).collect();
 
     for folder in entries.iter().filter(|f| f.path().is_dir()) {
         let import_state = Arc::clone(&import_state);
@@ -292,7 +319,7 @@ async fn import_models_from_dir_inner(
     path: PathBuf,
     import_state_mutex: Arc<Mutex<ImportState>>,
     user: &User,
-    link: &Option<String>,
+    link: Option<&str>,
     delete_after_import: bool,
     import_as_path: bool,
 ) -> Result<(), ServiceError> {
@@ -302,7 +329,8 @@ async fn import_models_from_dir_inner(
 
     let file_name = util::prettify_file_name(&path, false);
     let extension = path.extension().unwrap().to_str().unwrap();
-    let file_size = path.metadata().unwrap().len() as usize;
+    let file_size = path.metadata().unwrap().len();
+    let file_size = usize::try_from(file_size).unwrap_or(0);
 
     let mut file = File::open(&path).await?;
     let permanent_disk_path = if import_as_path {
@@ -316,7 +344,7 @@ async fn import_models_from_dir_inner(
         extension,
         file_size,
         &file_name,
-        link.clone(),
+        link,
         app_state,
         user,
         permanent_disk_path,
@@ -367,10 +395,7 @@ async fn import_models_from_dir(
     let mut active = 0;
 
     while !entries.is_empty() {
-        let entry = match entries.pop() {
-            Some(x) => x,
-            None => continue,
-        };
+        let Some(entry) = entries.pop() else { continue };
         let app_state = app_state.clone();
         let import_state_mutex = Arc::clone(&import_state);
         let user = user.clone();
@@ -383,7 +408,7 @@ async fn import_models_from_dir(
                 entry,
                 import_state_mutex,
                 &user,
-                &origin_url,
+                origin_url.as_deref(),
                 delete_after_import,
                 import_as_path,
             )
@@ -437,12 +462,12 @@ async fn import_models_from_zip(
             }
 
             let path = PathBuf::from(file.entry().filename().as_str()?);
-            /* -- Revist this at some point
+            /* -- TODO: Revist this at some point
             if path.file_name().take().unwrap() == ".link" {
                 let mut file_contents: Vec<u8> = Vec::new();
                 file_compat.read_to_end(&mut file_contents).await?;
-                let temp_str = String::from_utf8(file_contents).unwrap();
-                link.replace(temp_str);
+                let temp = String::from_utf8(file_contents).unwrap();
+                link.replace(temp);
             }*/
 
             if !is_supported_extension(&path) {
@@ -451,7 +476,7 @@ async fn import_models_from_zip(
 
             let file_name = util::prettify_file_name(&path, false);
             let extension = path.extension().unwrap().to_str().unwrap();
-            let file_size = file.entry().uncompressed_size() as usize;
+            let file_size = usize::try_from(file.entry().uncompressed_size()).unwrap_or(0);
             let mut file_compat = file.compat();
 
             let id = import_single_model(
@@ -459,7 +484,7 @@ async fn import_models_from_zip(
                 extension,
                 file_size,
                 &file_name,
-                link,
+                link.as_deref(),
                 app_state,
                 &import_state.user,
                 None,
@@ -474,6 +499,7 @@ async fn import_models_from_zip(
         let _ = fs::remove_file(path);
     }
 
+    drop(import_state);
     Ok(())
 }
 
@@ -483,7 +509,7 @@ async fn import_single_model<W>(
     file_type: &str,
     file_size: usize,
     name: &str,
-    link: Option<String>,
+    link: Option<&str>,
     app_state: &AppState,
     user: &User,
     permanent_disk_path: Option<PathBuf>,
@@ -501,7 +527,7 @@ where
     let mut hasher = Sha256::new();
     hasher.update(&file_contents);
     let bytes = hasher.finalize();
-    let hash = String::from(&format!("{:x}", bytes)[0..32]);
+    let hash = String::from(&format!("{bytes:x}")[0..32]);
 
     let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
 
@@ -520,7 +546,7 @@ where
             &app_state.db,
             &hash,
             file_type,
-            file_size as i64,
+            i64::try_from(file_size).unwrap_or(i64::MAX),
             Some(permanent_disk_path.to_str().unwrap().to_string()),
         )
         .await?;
@@ -546,22 +572,29 @@ where
             file_handle.write_all(&file_contents).await?;
         }
 
-        blob_id =
-            blob_db::add_blob(&app_state.db, &hash, &new_extension, file_size as i64, None).await?;
+        blob_id = blob_db::add_blob(
+            &app_state.db,
+            &hash,
+            &new_extension,
+            i64::try_from(file_size).unwrap_or(i64::MAX),
+            None,
+        )
+        .await?;
     }
 
-    let id = model_db::add_model(&app_state.db, user, name, blob_id, link.as_deref(), None).await?;
+    let id = model_db::add_model(&app_state.db, user, name, blob_id, link, None).await?;
 
     Ok(id)
 }
 
+#[must_use]
 pub fn is_supported_extension(path: &Path) -> bool {
     let file_type = FileType::from_pathbuf(path);
     file_type.is_importable()
 }
 
 fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError> {
-    let entries: Vec<std::fs::DirEntry> = read_dir(path)?.map(|x| x.unwrap()).collect();
+    let entries: Vec<fs::DirEntry> = read_dir(path)?.map(|x| x.unwrap()).collect();
     let mut count = 0;
 
     for folder in entries.iter().filter(|f| f.path().is_dir()) {
@@ -614,18 +647,14 @@ async fn traverse_directory(
 ) -> Result<Vec<DirectoryScanModel>, ServiceError> {
     let mut models = Vec::new();
 
-    let read_dir = match std::fs::read_dir(path) {
-        Ok(rd) => rd,
-        Err(_) => return Ok(models),
+    let Ok(read_dir) = read_dir(path) else {
+        return Ok(models);
     };
 
     let group_name = util::prettify_file_name(path, true);
 
     for entry in read_dir {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let Ok(entry) = entry else { continue };
 
         let entry_path = entry.path();
 
@@ -646,6 +675,11 @@ async fn traverse_directory(
     Ok(models)
 }
 
+/// Expands paths (files/dirs) into a list of directory scan models.
+///
+/// # Errors
+///
+/// Returns an error if directory traversal or I/O fails.
 pub async fn expand_paths(
     paths: &[PathBuf],
     recursive: bool,
@@ -669,4 +703,50 @@ pub async fn expand_paths(
     }
 
     Ok(models)
+}
+
+// -----------------------------------------------------------------------------
+// Regression tests: lock in get_model_count error paths (zip as path,
+// unsupported file type) after clippy refactors.
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use db::model::user::User;
+
+    use crate::{import_state::ImportState, service_error::ServiceError};
+
+    use super::get_model_count;
+
+    #[tokio::test]
+    async fn get_model_count_unsupported_extension_returns_err() {
+        let state = ImportState::new(None, false, false, false, User::default());
+        let result = get_model_count("somefile.xyz", false, &state).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let ServiceError::InternalError(msg) = &err {
+            assert!(
+                msg.contains("Unsupported file type"),
+                "expected 'Unsupported file type' in message, got: {msg}"
+            );
+        } else {
+            panic!("expected InternalError, got: {err:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn get_model_count_zip_with_import_as_path_returns_err() {
+        let state = ImportState::new(None, false, false, true, User::default());
+        let result = get_model_count("archive.zip", false, &state).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let ServiceError::InternalError(msg) = &err {
+            assert!(
+                msg.contains("zip as path"),
+                "expected 'zip as path' in message, got: {msg}"
+            );
+        } else {
+            panic!("expected InternalError, got: {err:?}");
+        }
+    }
 }

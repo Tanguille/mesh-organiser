@@ -1,48 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createModelInstance, type Model, type IModelApi, type ModelFlags, type ModelOrderBy } from "../shared/model_api";
-import { parseRawBlob, type RawBlob } from "./blob";
-import { parseRawGroupMeta, type RawGroupMeta } from "./group";
-import { parseRawLabelMeta, type RawLabelMeta } from "./label";
+import { type RawModel, convertModelFlagsToRaw } from "../shared/raw_model";
+import { parseRawBlob } from "./blob";
+import { parseRawGroupMeta } from "./group";
+import { parseRawLabelMeta } from "./label";
 import { dateToString } from "$lib/utils";
 
-export function convertModelFlagsToRaw(flags : ModelFlags|null) : string[]|null
-{
-    if (flags === null) {
-        return null;
-    }
-
-    let raw_flags : string[] = [];
-
-    if (flags.printed)
-    {
-        raw_flags.push("Printed");
-    }
-
-    if (flags.favorite)
-    {
-        raw_flags.push("Favorite");
-    }
-
-    if (raw_flags.length === 0) {
-        return null;
-    }
-
-    return raw_flags;
-}
-
-export interface RawModel {
-    id: number;
-    name: string;
-    blob: RawBlob;
-    link: string|null;
-    description: string|null;
-    added: string;
-    last_modified: string;
-    group: RawGroupMeta|null;
-    labels: RawLabelMeta[];
-    flags: string[];
-    unique_global_id: string;
-}
+export { type RawModel, convertModelFlagsToRaw } from "../shared/raw_model";
 
 export function parseRawModel(raw: RawModel): Model {
     return createModelInstance(

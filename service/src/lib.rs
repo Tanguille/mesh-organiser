@@ -5,7 +5,7 @@ pub mod export_service;
 pub mod import_service;
 pub mod import_state;
 pub mod resource_service;
-mod service_error;
+pub mod service_error;
 pub mod slicer_service;
 pub mod threemf_service;
 pub mod thumbnail_service;

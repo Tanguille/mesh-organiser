@@ -19,7 +19,7 @@ impl WebAppState {
 
 impl Clone for WebAppState {
     fn clone(&self) -> Self {
-        WebAppState {
+        Self {
             app_state: self.app_state.clone(),
             port: self.port,
         }
