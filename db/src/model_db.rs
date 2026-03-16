@@ -4,7 +4,7 @@ use sqlx::{Execute, QueryBuilder, Row};
 use strum::EnumString;
 
 use crate::{
-    DbError, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     label_db,
     model::{
@@ -60,7 +60,9 @@ pub async fn get_models(
     user: &User,
     options: ModelFilterOptions,
 ) -> Result<PaginatedResponse<Model>, DbError> {
-    let offset = (i64::from(options.page) - 1) * i64::from(options.page_size);
+    // Enforce pagination limits to prevent unbounded queries
+    let page_size = options.page_size.min(MAX_PAGE_SIZE);
+    let offset = (i64::from(options.page) - 1) * i64::from(page_size);
 
     let mut query_builder = QueryBuilder::new(
         format!("SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
@@ -112,10 +114,11 @@ pub async fn get_models(
     query_builder.push(" GROUP BY models.model_id ");
 
     if let Some(order_by) = options.order_by {
-        query_builder.push(format!("ORDER BY {} ", order_by.to_sql()));
+        let order_by_sql = order_by.to_sql();
+        query_builder.push(format!("ORDER BY {order_by_sql} "));
     }
 
-    query_builder.push(format!("LIMIT {} OFFSET {offset}", options.page_size));
+    query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));
 
     let query = query_builder.build();
 
@@ -176,7 +179,7 @@ pub async fn get_models(
 
     Ok(PaginatedResponse {
         page: options.page,
-        page_size: options.page_size,
+        page_size,
         items: models,
     })
 }
@@ -186,10 +189,12 @@ pub async fn get_models_via_ids(
     user: &User,
     ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
+    // Use MAX_PAGE_SIZE instead of u32::MAX to ensure bounded queries
+    // If more items are needed, multiple calls should be made
     let options = ModelFilterOptions {
         model_ids: Some(ids),
         page: 1,
-        page_size: u32::MAX,
+        page_size: MAX_PAGE_SIZE,
         ..Default::default()
     };
 
