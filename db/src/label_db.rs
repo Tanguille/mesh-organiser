@@ -13,6 +13,32 @@ use crate::{
     util::time_now,
 };
 
+/// Builds a batch INSERT query string for N-column values.
+/// Used to efficiently insert multiple rows in a single query.
+fn build_batch_insert_query(
+    table: &str,
+    columns: &[&str],
+    values: &[impl std::fmt::Display],
+) -> String {
+    let columns_joined = columns.join(", ");
+    let values_clause = values
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("INSERT INTO {table} ({columns_joined}) VALUES {values_clause}")
+}
+
+/// Formats a tuple of values for SQL VALUES clause.
+fn sql_tuple(values: &[impl std::fmt::Display]) -> String {
+    let inner = values
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({inner})")
+}
+
 pub async fn get_labels_min(db: &DbContext) -> Result<Vec<LabelMeta>, DbError> {
     let rows = sqlx::query!("SELECT label_id, label_name, label_color, label_unique_global_id, label_last_modified FROM labels")
         .fetch_all(db)
@@ -80,21 +106,36 @@ pub async fn get_labels(
     user: &User,
     include_ungrouped_models: bool,
 ) -> Result<Vec<Label>, DbError> {
+    // Use a CTE with JOIN-based aggregations instead of correlated subqueries
+    // This eliminates N+1 query patterns and improves performance
     let rows = sqlx::query(
-    "SELECT
+    "WITH label_stats AS (
+        SELECT 
+            labels.label_id,
+            COUNT(DISTINCT models_labels.model_id) as model_count,
+            COUNT(DISTINCT models.model_group_id) as group_count,
+            COUNT(DISTINCT CASE WHEN models.model_group_id IS NULL THEN models_labels.model_id END) as ungrouped_count
+        FROM labels
+        LEFT JOIN models_labels ON labels.label_id = models_labels.label_id
+        LEFT JOIN models ON models_labels.model_id = models.model_id
+        WHERE labels.label_user_id = ?
+        GROUP BY labels.label_id
+    )
+    SELECT
             parent_labels.label_id  as parent_label_id,
             parent_labels.label_name as parent_label_name,
             parent_labels.label_color as parent_label_color,
             parent_labels.label_unique_global_id as parent_label_unique_global_id,
             parent_labels.label_last_modified as parent_label_last_modified,
-            (SELECT COUNT(*) FROM models_labels WHERE models_labels.label_id = parent_labels.label_id) as parent_label_model_count,
-            (SELECT COUNT(DISTINCT group_id) FROM models_labels INNER JOIN models ON models_labels.model_id = models.model_id INNER JOIN models_group ON models.model_group_id = models_group.group_id WHERE models_labels.label_id = parent_labels.label_id) as parent_label_group_count,
-            (SELECT COUNT(*) FROM models_labels INNER JOIN models ON models_labels.model_id = models.model_id WHERE models_labels.label_id = parent_labels.label_id AND models.model_group_id IS NULL) as parent_label_ungrouped_count,
+            COALESCE(label_stats.model_count, 0) as parent_label_model_count,
+            COALESCE(label_stats.group_count, 0) as parent_label_group_count,
+            COALESCE(label_stats.ungrouped_count, 0) as parent_label_ungrouped_count,
             child_labels.label_id as child_label_id,
             child_labels.label_name as child_label_name,
             child_labels.label_color as child_label_color,
             child_labels.label_unique_global_id as child_label_unique_global_id
           FROM labels as parent_labels
+          LEFT JOIN label_stats ON parent_labels.label_id = label_stats.label_id
           LEFT JOIN labels_labels ON parent_labels.label_id = labels_labels.parent_label_id
           LEFT JOIN labels as child_labels ON labels_labels.child_label_id = child_labels.label_id
           WHERE parent_labels.label_user_id = ?
@@ -217,23 +258,30 @@ pub async fn add_labels_on_models(
     model_ids: &[i64],
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    for label_id in label_ids {
-        // Permission check
-        let _ = get_unique_id_from_label_id(db, user, *label_id).await?;
-
-        for model_id in model_ids {
-            sqlx::query!(
-                "INSERT INTO models_labels (label_id, model_id) VALUES (?, ?)",
-                label_id,
-                model_id
-            )
-            .execute(db)
-            .await?;
-        }
-
-        set_last_updated_on_label(db, user, *label_id, update_timestamp.unwrap_or(&time_now()))
-            .await?;
+    // Batch permission check for all labels
+    let label_global_ids = get_unique_ids_from_label_ids(db, user, label_ids).await?;
+    if label_global_ids.values().len() != label_ids.len() {
+        return Err(DbError::RowNotFound);
     }
+
+    // Collect all label-model combinations
+    let mut values = Vec::with_capacity(label_ids.len() * model_ids.len());
+    for label_id in label_ids {
+        for model_id in model_ids {
+            values.push((*label_id, *model_id));
+        }
+    }
+
+    // Batch insert using a single query with multiple VALUES
+    if !values.is_empty() {
+        let tuples: Vec<String> = values.iter().map(|(l, m)| sql_tuple(&[*l, *m])).collect();
+        let query = build_batch_insert_query("models_labels", &["label_id", "model_id"], &tuples);
+        sqlx::query(&query).execute(db).await?;
+    }
+
+    // Batch update timestamps
+    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&time_now()))
+        .await?;
 
     Ok(())
 }
@@ -409,14 +457,18 @@ pub async fn add_childs_to_label(
         return Err(DbError::RowNotFound);
     }
 
-    for child_label_id in &child_label_ids {
-        sqlx::query!(
-            "INSERT INTO labels_labels (parent_label_id, child_label_id) VALUES (?, ?)",
-            parent_label_id,
-            child_label_id
-        )
-        .execute(db)
-        .await?;
+    // Batch insert using a single query with multiple VALUES
+    if !child_label_ids.is_empty() {
+        let tuples: Vec<String> = child_label_ids
+            .iter()
+            .map(|child_id| sql_tuple(&[parent_label_id, *child_id]))
+            .collect();
+        let query = build_batch_insert_query(
+            "labels_labels",
+            &["parent_label_id", "child_label_id"],
+            &tuples,
+        );
+        sqlx::query(&query).execute(db).await?;
     }
 
     set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
@@ -440,14 +492,17 @@ pub async fn remove_childs_from_label(
         return Err(DbError::RowNotFound);
     }
 
-    for child_label_id in &child_label_ids {
-        sqlx::query!(
-            "DELETE FROM labels_labels WHERE parent_label_id = ? AND child_label_id = ?",
-            parent_label_id,
-            child_label_id
-        )
-        .execute(db)
-        .await?;
+    // Batch delete using IN clause
+    if !child_label_ids.is_empty() {
+        let child_ids_placeholder = join(child_label_ids.iter(), ",");
+        let query = format!(
+            "DELETE FROM labels_labels WHERE parent_label_id = ? AND child_label_id IN ({child_ids_placeholder})"
+        );
+
+        sqlx::query(&query)
+            .bind(parent_label_id)
+            .execute(db)
+            .await?;
     }
 
     set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
