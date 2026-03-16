@@ -53,7 +53,7 @@ serde_json = "1.0.149"
 service = { path = "service" }
 sha2 = "0.10.9"
 sqlx = { version = "0.8.6", default-features = false }
-stl_io = "0.10.0"
+stl_io = "0.11.0"
 strum = "0.28.0"
 tauri = "2.10.3"
 tauri-build = "2.5.6"
