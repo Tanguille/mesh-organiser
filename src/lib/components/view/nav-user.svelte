@@ -10,7 +10,6 @@
     import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
     import CircleUser from "@lucide/svelte/icons/circle-user";
     import LogOutIcon from "@lucide/svelte/icons/log-out";
-    import SparklesIcon from "@lucide/svelte/icons/sparkles";
     import { onMount } from "svelte";
     import Progress from "../ui/progress/progress.svelte";
     import { IHostApi, isCurrentPlatformDesktop } from "$lib/api/shared/host_api";
@@ -77,10 +76,6 @@
         location.reload();
     }
 
-    function openDonationInDefaultBrowser(){
-        document.getElementById("donate-link")?.click();
-    }
-
     async function logout() {
         await logoutApi?.logoutCurrentUser();
         location.reload();
@@ -119,12 +114,6 @@
                 {/snippet}
             </DropdownMenu.Trigger>
             <DropdownMenu.Content>
-                <DropdownMenu.Group>
-                    <DropdownMenu.Item onclick={() => openDonationInDefaultBrowser()}>
-                        <SparklesIcon />
-                        Donate to Mesh Organiser
-                    </DropdownMenu.Item>
-                </DropdownMenu.Group>
                 {#if filteredUsers.length > 0}
                     <DropdownMenu.Separator />
                     <DropdownMenu.Group>

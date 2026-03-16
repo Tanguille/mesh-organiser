@@ -23,12 +23,6 @@ See the [Releases](https://github.com/suchmememanyskill/mesh-organiser/releases)
 
 Mesh Organiser is also available to be hosted as a website by making use of a server running Docker. See the [Web folder](./web/README.md) for server installation instructions.
 
-## Support/Donate
-
-If you like this program, consider [boosting the logo's model on makerworld](https://makerworld.com/en/models/1298078-mesh-organiser-logo-cardboard-box#profileId-1329865) for free
-
-If you really like this program, consider donating on [Ko-Fi](https://ko-fi.com/suchmememanyskill)
-
 ## Site integrations
 
 Note: To open 'Open in ...' links from these websites, you need to enable them in settings. By default they are disabled to not overwrite any integrations you may currently have.

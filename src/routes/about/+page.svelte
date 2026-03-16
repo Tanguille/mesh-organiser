@@ -7,13 +7,6 @@
 
     let version = $state("");
 
-    let authorLinks = [
-        {
-            name: "Donate on Ko-Fi",
-            url: "https://ko-fi.com/suchmememanyskill",
-        },
-    ];
-
     let repositoryLinks = [
         {
             name: "Project Repository",
@@ -50,18 +43,6 @@
             target="_blank">Sims</a
         >
     </p>
-    {#each authorLinks as link}
-        <p class="flex items-center gap-1">
-            <Link size="16" />
-            <a
-                href={link.url}
-                target="_blank"
-                class="text-primary hover:underline"
-            >
-                {link.name}
-            </a>
-        </p>
-    {/each}
     <div class="h-10"></div>
     <h1 class="font-bold">Code/Repositories</h1>
     <p class="mb-2">Contributions are welcome!</p>
