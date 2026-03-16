@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError,
+    DbError, MAX_PAGE_SIZE,
     db_context::DbContext,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
@@ -60,7 +60,7 @@ pub async fn get_groups_for_resource(
             group_ids: Some(rows.iter().map(|r| r.group_id.unwrap()).collect()),
             order_by: Some(GroupOrderBy::NameAsc),
             page: 1,
-            page_size: u32::MAX,
+            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )

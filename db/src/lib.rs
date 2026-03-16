@@ -19,3 +19,6 @@ mod util;
 pub use util::{random_hex_32, time_now};
 
 pub type DbError = sqlx::Error;
+
+/// Maximum page size to prevent memory exhaustion and unbounded queries
+pub const MAX_PAGE_SIZE: u32 = 1000;
