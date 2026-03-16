@@ -8,11 +8,14 @@ Mesh organiser web makes use of the Docker Engine. See [the installation page on
 
 Mesh organiser web expects you to route it through a reverse proxy to serve to the public. Please refer to for example [Traefik](https://doc.traefik.io/traefik/) or [Ngnix](https://nginx.org/en/).
 
-**compose.yml**
-```yml
+### Docker Compose
+
+`compose.yaml`:
+
+```yaml
 services:
   mesh-web:
-    image: ghcr.io/suchmememanyskill/mesh-organiser:latest
+    image: ghcr.io/tanguille/mesh-organiser:latest
     container_name: mesh-organiser
     environment:
       - APP_CONFIG_PATH=/cfg/config.json
@@ -26,7 +29,10 @@ services:
 networks: {}
 ```
 
-**.env**
+### .env
+
+`.env`:
+
 ```ini
 LOCAL_ACCOUNT_PASSWORD=changeme
 DATA=/path/to/storage/folder
@@ -39,6 +45,7 @@ Mesh organiser web makes use of a local account as entrypoint for server admins.
 If you leave LOCAL_ACCOUNT_PASSWORD commented out, the password will randomise each session of the local user. Check your docker compose logs for the password this session. If you prefer the password to stay permanent, uncomment LOCAL_ACCOUNT_PASSWORD (this will start using the value defined in your .env file).
 
 After you started the mesh organiser web server (with for example `docker compose up -d`), navigate to where the server is hosted in a web browser. You will be greeted with a login screen. Log in with the following credentials:
+
 - Username: `local@noemail.com`
 - Password: (password you either got from the docker compose logs or defined in your .env file)
 
@@ -46,11 +53,11 @@ Create a new user in the settings using the local account. Optionally edit this 
 
 ### Environment variables
 
-Key|Value|Default|Required
----|---|---|---
-APP_CONFIG_PATH|Path to the server configuration|-|Yes
-LOCAL_ACCOUNT_PASSWORD|Password for the `local@noemail.com` account|Random key|No
-SERVER_PORT|Port to host Mesh Organiser Web on|3000|No
+| Key                    | Value                                        | Default    | Required |
+|------------------------|----------------------------------------------|------------|----------|
+| APP_CONFIG_PATH        | Path to the server configuration             | -          | Yes      |
+| LOCAL_ACCOUNT_PASSWORD | Password for the `local@noemail.com` account | Random key | No       |
+| SERVER_PORT            | Port to host Mesh Organiser Web on           | 3000       | No       |
 
 ### Configuration
 

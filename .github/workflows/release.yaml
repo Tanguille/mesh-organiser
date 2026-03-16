@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       releaseType:
-        description: 'Release type'
+        description: "Release type"
         required: true
-        default: 'publish'
+        default: "publish"
         type: choice
         options:
           - publish
@@ -49,28 +49,28 @@ jobs:
             args: "--target aarch64-apple-darwin"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320  # v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
         with:
           version: 10
 
       - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: current
           cache: pnpm
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           shared-key: release
 
@@ -133,5 +133,4 @@ jobs:
           releaseBody: "See the assets to download this version and install."
           releaseDraft: ${{ steps.release-settings.outputs.release_draft }}
           prerelease: false
-          uploadWorkflowArtifacts: ${{ steps.release-settings.outputs.upload_workflow_artifacts }}
           args: ${{ matrix.args }}

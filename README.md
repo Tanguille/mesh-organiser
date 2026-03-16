@@ -6,18 +6,11 @@ Competes with your downloads folder for storing 3d models.
 
 ## Install
 
-Download desktop edition for:
+Download the latest desktop edition from the [Releases](https://github.com/tanguille/mesh-organiser/releases/latest) page:
 
-- [Windows](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_x64_en-US.msi) (.msi)
-- Macos
-  - [aarch64/Arm based chips (M-line)](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_aarch64_darwin.dmg)
-  - [x64/Intel based chips](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_x64_darwin.dmg)
-- Linux
-  - [Debian/Ubuntu](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser_1.9.0_amd64_linux.deb) (.deb)
-  - [Fedora/RHEL](https://github.com/suchmememanyskill/mesh-organiser/releases/download/v1.9.0/Mesh.Organiser-1.9.0-1.x86_64_linux.rpm) (.rpm)
-  - Note: Only slicers installed via flatpak are supported
-
-See the [Releases](https://github.com/suchmememanyskill/mesh-organiser/releases) tab for more downloads and release notes
+- **Windows** — .msi
+- **macOS** — .dmg (aarch64/Arm and x64/Intel)
+- **Linux** — .deb (Debian/Ubuntu), .rpm (Fedora/RHEL). Note: only slicers installed via Flatpak are supported.
 
 ## Install (Server)
 
@@ -64,19 +57,18 @@ The app knows 4 layers of organisation:
 - Import .gcode files
 - Open slicer after importing from website (see settings, disabled by default)
 - Supported slicers: PrusaSlicer, OrcaSlicer, Cura, Bambu Studio
-  - Request more via the [Issues tab](https://github.com/suchmememanyskill/mesh-organiser/issues)
+  - Request more via the [Issues tab](https://github.com/tanguille/mesh-organiser/issues)
 - Deduplicates imported models using a hash
   - Importing the same model twice will not duplicate it; it'll be registered as the same model
 
 ## Credits
 
-Developed by [Sims](https://github.com/suchmememanyskill)
-Forked by [Tanguille](https://github.com/tanguille)
+Originally developed by Sims. Forked by [Tanguille](https://github.com/tanguille)
 
 - With development help from [dorkeline](https://github.com/dorkeline) and Ajadaz
 - With testing help from atomique13, ioan18 and einso
 
 Links:
 
-- [Thumbnail Generator](https://github.com/suchmememanyskill/mesh-thumbnail)
-- [Report an issue / Request a feature](https://github.com/suchmememanyskill/mesh-organiser/issues)
+- [Thumbnail Generator](https://github.com/tanguille/mesh-thumbnail)
+- [Report an issue / Request a feature](https://github.com/tanguille/mesh-organiser/issues)
