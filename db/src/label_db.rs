@@ -23,7 +23,7 @@ fn build_batch_insert_query(
     let columns_joined = columns.join(", ");
     let values_clause = values
         .iter()
-        .map(|v| v.to_string())
+        .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ");
     format!("INSERT INTO {table} ({columns_joined}) VALUES {values_clause}")
@@ -33,7 +33,7 @@ fn build_batch_insert_query(
 fn sql_tuple(values: &[impl std::fmt::Display]) -> String {
     let inner = values
         .iter()
-        .map(|v| v.to_string())
+        .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ");
     format!("({inner})")

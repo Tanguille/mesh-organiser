@@ -62,7 +62,7 @@ pub async fn get_models(
 ) -> Result<PaginatedResponse<Model>, DbError> {
     // Enforce pagination limits to prevent unbounded queries
     let page_size = options.page_size.min(MAX_PAGE_SIZE);
-    let offset = (options.page as i64 - 1) * page_size as i64;
+    let offset = (i64::from(options.page) - 1) * i64::from(page_size);
 
     let mut query_builder = QueryBuilder::new(
         format!("SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
