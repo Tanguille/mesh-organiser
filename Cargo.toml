@@ -21,7 +21,7 @@ edition = "2024"
 arboard = { version = "3.6.1", default-features = false }
 async_zip = "0.0.18"
 base64 = "0.22.1"
-fake = { version = "4.4.0", features = ["derive"] }
+fake = { version = "5.1.0", features = ["derive"] }
 proptest = "1.10.0"
 euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d", default-features = false }
 opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b2614613a88e21267be656992212c87df96805" }
