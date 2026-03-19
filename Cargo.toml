@@ -28,7 +28,7 @@ opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b26
 tempfile = "3.27.0"
 vek = "0.17.2"
 wavefront_obj = "11.0.0"
-zip = "8.2.0"
+zip = "8.3.0"
 axum = "0.8.8"
 axum-extra = "0.12.5"
 axum-login = "0.18.0"
