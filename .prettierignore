@@ -1,0 +1,13 @@
+node_modules
+build
+dist
+.svelte-kit
+src-tauri/target
+src-tauri/.sqlx
+src-tauri/gen
+.trunk
+vendor
+pnpm-lock.yaml
+*.min.js
+*.min.css
+*.rs

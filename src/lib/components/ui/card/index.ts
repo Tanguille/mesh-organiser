@@ -7,19 +7,19 @@ import Title from "./card-title.svelte";
 import TitleMarquee from "./card-title-marquee.svelte";
 
 export {
-	Root,
-	Content,
-	Description,
-	Footer,
-	Header,
-	Title,
-	TitleMarquee,
-	//
-	Root as Card,
-	Content as CardContent,
-	Description as CardDescription,
-	Footer as CardFooter,
-	Header as CardHeader,
-	Title as CardTitle,
-	TitleMarquee as CardTitleMarquee,
+  Root,
+  Content,
+  Description,
+  Footer,
+  Header,
+  Title,
+  TitleMarquee,
+  //
+  Root as Card,
+  Content as CardContent,
+  Description as CardDescription,
+  Footer as CardFooter,
+  Header as CardHeader,
+  Title as CardTitle,
+  TitleMarquee as CardTitleMarquee,
 };
