@@ -6,26 +6,24 @@ import Star from "@lucide/svelte/icons/star";
 import type { ClassValue } from "svelte/elements";
 import type { ModelFlags } from "./api/shared/model_api";
 
-export type Glyph = Component<IconProps, {}, "">;
+export type Glyph = Component<IconProps, Record<string, unknown>, "">;
 
-export interface GlyphObject 
-{
-    glyph: Glyph;
-    badgeClasses?: ClassValue;
-    glyphClasses?: ClassValue;
+export interface GlyphObject {
+  glyph: Glyph;
+  badgeClasses?: ClassValue;
+  glyphClasses?: ClassValue;
 }
 
-export function flagsToGlyphObjects(flags: ModelFlags): GlyphObject[]
-{
-    const glyphs : GlyphObject[] = [];
+export function flagsToGlyphObjects(flags: ModelFlags): GlyphObject[] {
+  const glyphs: GlyphObject[] = [];
 
-    if (flags.printed) {
-        glyphs.push({ glyph: PrinterCheck });
-    }
-    
-    if (flags.favorite) {
-        glyphs.push({ glyph: Star });
-    }
+  if (flags.printed) {
+    glyphs.push({ glyph: PrinterCheck });
+  }
 
-    return glyphs;
+  if (flags.favorite) {
+    glyphs.push({ glyph: Star });
+  }
+
+  return glyphs;
 }
