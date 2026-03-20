@@ -46,6 +46,8 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
+    use crate::path_safety::{resolve_path_under_base, resolve_path_under_temp};
+
     use super::{
         ApplicationError, AuthSession, Blob, Body, BufReader, Deserialize, File,
         FuturesAsyncReadCompatExt, IntoResponse, Path, Query, ReaderStream, Response, State,
@@ -206,24 +208,28 @@ mod get {
     pub async fn get_blob_thumb(
         Path(sha256): Path<String>,
         State(app_state): State<WebAppState>,
-    ) -> Response {
+    ) -> Result<Response, ApplicationError> {
         // Validate that the sha256 parameter is a well-formed SHA-256 hex string.
-        // This prevents path traversal by ensuring it is a single, safe path component.
+        // Ensures a single, safe filename component (no separators).
         if sha256.len() != 64 || !sha256.chars().all(|c: char| c.is_ascii_hexdigit()) {
-            return StatusCode::BAD_REQUEST.into_response();
+            return Ok(StatusCode::BAD_REQUEST.into_response());
         }
 
         let base_dir = app_state.get_image_dir();
-        let src_file_path = base_dir.join(format!("{sha256}.png"));
+        let src_file_path = match resolve_path_under_base(&base_dir, &format!("{sha256}.png")).await
+        {
+            Ok(path) => path,
+            Err(e) => return e.respond(),
+        };
 
         let Ok(file) = File::open(src_file_path).await else {
-            return StatusCode::NOT_FOUND.into_response();
+            return Ok(StatusCode::NOT_FOUND.into_response());
         };
 
         let buffered_reader = BufReader::new(file);
         let stream = ReaderStream::new(buffered_reader);
 
-        Body::from_stream(stream).into_response()
+        Ok(Body::from_stream(stream).into_response())
     }
 
     async fn get_blob_bytes_inner(blob: &Blob, app_state: &WebAppState) -> Response {
@@ -260,11 +266,10 @@ mod get {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         }
 
-        let path = std::env::temp_dir().join(zip_dir);
-
-        if !path.exists() {
-            return Ok(StatusCode::NOT_FOUND.into_response());
-        }
+        let path = match resolve_path_under_temp(&zip_dir).await {
+            Ok(path) => path,
+            Err(e) => return e.respond(),
+        };
 
         let mut list_dir = tokio::fs::read_dir(&path).await?;
         let next = list_dir.next_entry().await?;

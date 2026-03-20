@@ -46,9 +46,11 @@ mod get {
     use axum_extra::extract::Query;
     use db::{share_db, user_db};
 
+    use crate::query_bounds;
+
     use super::{
         ApplicationError, AuthSession, Deserialize, FromStr, GroupFilterOptions, GroupOrderBy,
-        IntoResponse, Json, Path, Response, Serialize, State, WebAppState, group_db,
+        IntoResponse, Json, Path, Response, Serialize, State, StatusCode, WebAppState, group_db,
     };
 
     #[derive(Deserialize)]
@@ -73,11 +75,33 @@ mod get {
         Query(params): Query<GetGroupParams>,
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
-        let model_ids = params.model_ids_str.map(|s| {
-            s.split(',')
-                .filter_map(|x| x.parse::<i64>().ok())
-                .collect::<Vec<i64>>()
-        });
+
+        if let Err(e) = query_bounds::validate_three_id_lists(
+            &params.model_ids,
+            &params.group_ids,
+            &params.label_ids,
+        ) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+        if let Err(e) = query_bounds::validate_list_query_strings(
+            params.text_search.as_deref(),
+            params.order_by.as_deref(),
+        ) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+        if let Err(e) = query_bounds::validate_model_ids_str_raw(params.model_ids_str.as_deref()) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+
+        let model_ids = match params.model_ids_str.as_deref() {
+            None => None,
+            Some(s) => {
+                match query_bounds::parse_comma_separated_i64(s, query_bounds::MAX_ID_LIST_ITEMS) {
+                    Ok(ids) => Some(ids),
+                    Err(e) => return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response()),
+                }
+            }
+        };
 
         let groups = group_db::get_groups(
             &app_state.app_state.db,
@@ -126,6 +150,23 @@ mod get {
                 "Share owner user not found.".into(),
             ));
         };
+
+        if let Err(e) = query_bounds::validate_three_id_lists(
+            &params.model_ids,
+            &params.group_ids,
+            &params.label_ids,
+        ) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+        if let Err(e) = query_bounds::validate_list_query_strings(
+            params.text_search.as_deref(),
+            params.order_by.as_deref(),
+        ) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+        if let Err(e) = query_bounds::validate_model_ids_str_raw(params.model_ids_str.as_deref()) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
 
         let groups = group_db::get_groups(
             &app_state.app_state.db,

@@ -45,9 +45,11 @@ mod get {
     use axum_extra::extract::Query;
     use db::{model::user::User, share_db};
 
+    use crate::query_bounds;
+
     use super::{
         ApplicationError, AuthSession, Deserialize, FromStr, IntoResponse, Json,
-        ModelFilterOptions, ModelFlags, ModelOrderBy, Path, Response, Serialize, State,
+        ModelFilterOptions, ModelFlags, ModelOrderBy, Path, Response, Serialize, State, StatusCode,
         WebAppState, export_service, model_db,
     };
 
@@ -72,6 +74,20 @@ mod get {
         user: &User,
         params: GetModelParams,
     ) -> Result<Response, ApplicationError> {
+        if let Err(e) = query_bounds::validate_three_id_lists(
+            &params.model_ids,
+            &params.group_ids,
+            &params.label_ids,
+        ) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+        if let Err(e) = query_bounds::validate_list_query_strings(
+            params.text_search.as_deref(),
+            params.order_by.as_deref(),
+        ) {
+            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        }
+
         let flags = params.model_flags;
 
         let models = model_db::get_models(

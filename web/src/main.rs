@@ -8,6 +8,8 @@ use crate::{app::App, error::ApplicationError};
 mod app;
 mod controller;
 mod error;
+mod path_safety;
+mod query_bounds;
 mod user;
 mod web_app_state;
 mod web_import_state;
