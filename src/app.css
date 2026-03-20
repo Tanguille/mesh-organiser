@@ -1,28 +1,113 @@
-@import './themes/default.css' layer(base);
-@import './themes/shadcnred.css' layer(base);
-@import './themes/shadcnrose.css' layer(base);
-@import './themes/shadcnorange.css' layer(base);
-@import './themes/shadcngreen.css' layer(base);
-@import './themes/shadcnblue.css' layer(base);
-@import './themes/shadcnyellow.css' layer(base);
-@import './themes/shadcnviolet.css' layer(base);
-@import './themes/nord.css' layer(base);
-@import './themes/vintageretro.css' layer(base);
-@import './themes/synthwave.css' layer(base);
-@import './themes/quantumrose.css' layer(base);
-@import './themes/graphite.css' layer(base);
-@import './themes/perpetuity.css' layer(base);
-@import './themes/nature.css' layer(base);
-@import './themes/sunsethorizon.css' layer(base);
-@import './themes/amethysthaze.css' layer(base);
+@import "./themes/default.css" layer(base);
+@import "./themes/shadcnred.css" layer(base);
+@import "./themes/shadcnrose.css" layer(base);
+@import "./themes/shadcnorange.css" layer(base);
+@import "./themes/shadcngreen.css" layer(base);
+@import "./themes/shadcnblue.css" layer(base);
+@import "./themes/shadcnyellow.css" layer(base);
+@import "./themes/shadcnviolet.css" layer(base);
+@import "./themes/nord.css" layer(base);
+@import "./themes/vintageretro.css" layer(base);
+@import "./themes/synthwave.css" layer(base);
+@import "./themes/quantumrose.css" layer(base);
+@import "./themes/graphite.css" layer(base);
+@import "./themes/perpetuity.css" layer(base);
+@import "./themes/nature.css" layer(base);
+@import "./themes/sunsethorizon.css" layer(base);
+@import "./themes/amethysthaze.css" layer(base);
 
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme {
-  --font-family-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-family-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  /* Breakpoint & container (from tailwind.config theme) */
+  --breakpoint-2xl: 87.5rem;
+
+  /* Border radius (from theme.extend.borderRadius) */
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* Accordion & caret keyframes (from theme.extend) */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-caret-blink: caret-blink 1.25s ease-out infinite;
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--bits-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--bits-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes caret-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+
+  --animate-marquee: marquee 10s linear infinite;
+  @keyframes marquee {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
 }
 
-@config '../tailwind.config.ts';
+/* Semantic colors (from tailwind.config theme.extend.colors) – use inline so utilities use the var() value */
+@theme inline {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+}
+
+@config "../tailwind.config.ts";
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
@@ -51,8 +136,7 @@
 }
 
 @layer base {
-  :root 
-  {
+  :root {
     --sidebar-background: var(--background);
     --sidebar-foreground: var(--foreground);
     --sidebar-primary: var(--primary);
@@ -101,6 +185,19 @@
 
   .widthhack {
     width: 36px;
+  }
+
+  /* Scoped overrides previously in component <style> blocks */
+  .hidden-if-small p.hidden-if-small {
+    display: none;
+  }
+
+  .border-secondary:not(:hover):not(.tooltip) {
+    border-radius: 0;
+  }
+
+  .fix-card-width > .bg-card {
+    width: 500px;
   }
 }
 
