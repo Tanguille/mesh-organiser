@@ -16,7 +16,7 @@ The release **tag and name** use the version from **`src-tauri/tauri.conf.json`*
 For signed in-app updates you need two repository **Secrets** (Settings → Secrets and variables → Actions):
 
 | Secret               | Description                              |
-|----------------------|------------------------------------------|
+| -------------------- | ---------------------------------------- |
 | `TAURI_PRIVATE_KEY`  | Private key from `tauri signer generate` |
 | `TAURI_KEY_PASSWORD` | Password for that key                    |
 
@@ -43,11 +43,13 @@ Without these, builds and releases still work; only the updater signature is ski
 ### 4. After the run
 
 For draft releases:
+
 - Find the draft release under **Releases**.
 - Confirm all expected platform assets (Windows, Linux, macOS) are attached.
 - Click **Publish release** to make it public.
 
 For build-only:
+
 - Download artifacts from the **Actions** run page (under "Artifacts").
 
 ## Workflows
