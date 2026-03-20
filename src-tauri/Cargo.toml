@@ -1,9 +1,9 @@
 [package]
 name = "mesh-organiser"
-version = "2.0.0"
+version.workspace = true
 description = "Organise your 3d models"
 authors = ["suchmememanyskill", "Tanguille"]
-edition = "2024"
+edition.workspace = true
 
 [lib]
 name = "mesh_organiser_lib"
@@ -54,4 +54,4 @@ async_zip = { workspace = true, features = [
 winreg = { workspace = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = { version = "2.3.6", features = ["deep-link"] }
+tauri-plugin-single-instance = { workspace = true, features = ["deep-link"] }

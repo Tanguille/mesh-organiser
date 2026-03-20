@@ -1,7 +1,7 @@
 [package]
 name = "web"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [lints]
 workspace = true
@@ -28,8 +28,7 @@ axum-messages = { workspace = true }
 time = { workspace = true }
 tower_governor = { workspace = true }
 tower-http = { workspace = true, features = ["compression-gzip", "cors", "fs"] }
-tower-sessions = { version = "0.14", features = ["signed"] }
-# Use 0.14 to match axum-login so SessionManagerLayer has with_signed; 0.15 would be type-incompatible
+tower-sessions = { workspace = true, features = ["signed"] }
 tower-sessions-sqlx-store = { workspace = true, features = ["sqlite"] }
 async_zip = { workspace = true, features = [
     "deflate",

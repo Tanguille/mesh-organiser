@@ -1,10 +1,13 @@
 [package]
 name = "libmeshthumbnail"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+step = ["dep:opencascade"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -19,6 +22,3 @@ thiserror = { workspace = true }
 vek = { workspace = true }
 wavefront_obj = { workspace = true }
 zip = { workspace = true }
-
-[features]
-step = ["dep:opencascade"]
