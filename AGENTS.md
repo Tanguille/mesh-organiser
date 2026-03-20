@@ -35,6 +35,7 @@ Guidelines for AI coding agents. Keep this file short and to the point—agents 
 Before claiming work complete or ready for review, run verification and only then assert success:
 
 - Frontend: `npm run check`; run relevant tests (`npm run test` if applicable)
+- **Frontend (Svelte):** After editing `.svelte` or `.svelte.ts` files, run **svelte-autofixer** (Svelte MCP) on the changed files, fix any reported issues, and run it again to confirm clean. If the Svelte MCP is unavailable, skip this step.
 - Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, and tests (e.g. `cargo test -p service`)
 - Do not state that tests or checks pass without having run them
 - **STEP/OCCT**: Full build compiles OCCT from source. To avoid freezing, limit parallelism (e.g. `CARGO_BUILD_JOBS=2`, Windows: `CL=/MP2`); see [docs/commands.md](docs/commands.md).
@@ -64,6 +65,7 @@ Mesh Organiser is a SvelteKit + Tauri desktop application for organizing 3D prin
 - **Frontend**: Svelte 5, SvelteKit, TypeScript, TailwindCSS v4, Three.js (Threlte)
 - **Backend**: Tauri (Rust) with SQLite database
 - **Platforms**: Desktop (Windows/macOS/Linux) via Tauri
+- **Tauri + SvelteKit**: Static adapter with SPA **`fallback`**, dev server on **port 9435**, release CSP merge — see [docs/tauri-sveltekit.md](docs/tauri-sveltekit.md)
 
 ## Quick Reference
 
@@ -142,6 +144,17 @@ When changing behaviour or structure (refactors, deduplication, new features), a
 
 - `VITE_API_PLATFORM`: Set to `"demo"`, `"web"`, or Tauri (default)
 - `TAURI_DEV_HOST`: Override host for Tauri development
+
+## Svelte MCP
+
+When working on Svelte or SvelteKit code, use the Svelte MCP server if available:
+
+1. **list-sections** — Call first to discover documentation sections (titles, use_cases, paths).
+2. **get-documentation** — Fetch full docs for sections relevant to the task (e.g. runes, load, forms).
+3. **svelte-autofixer** — After writing or editing Svelte code, run this and fix any reported issues before finishing.
+4. **playground-link** — Only when the user asks for a shareable demo; do not use for code written into the project.
+
+For unfamiliar Svelte 5 or SvelteKit behaviour, use **list-sections** then **get-documentation** before implementing. On every Svelte-related task, run **svelte-autofixer** on changed components before claiming completion (see Pre-Completion Checklist). If the Svelte MCP is unavailable, use the links below and follow [docs/frontend-style.md](docs/frontend-style.md).
 
 ## Additional Resources
 

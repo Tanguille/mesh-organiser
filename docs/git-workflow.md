@@ -18,6 +18,7 @@ git branch -D feature/your-task-name
 ```
 
 This ensures:
+
 - Each task starts from a clean main branch state
 - No uncommitted or unrelated changes leak into your commits
 - Multiple tasks can be worked on in parallel without interference
@@ -25,6 +26,7 @@ This ensures:
 ## Dependency Files
 
 **Do NOT** commit changes to these files unless the task explicitly involves updating dependencies:
+
 - package.json
 - package-lock.json
 - Cargo.lock
