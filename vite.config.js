@@ -72,10 +72,10 @@ export default defineConfig(() => ({
     hmr:
       process.env.TAURI_DEV_HOST != null
         ? {
-          protocol: "ws",
-          host: process.env.TAURI_DEV_HOST,
-          port: 1421,
-        }
+            protocol: "ws",
+            host: process.env.TAURI_DEV_HOST,
+            port: 1421,
+          }
         : undefined,
     watch: {
       ignored: ["**/src-tauri/**"],
@@ -85,14 +85,14 @@ export default defineConfig(() => ({
   // Only when invoked via `tauri build` (plain `vite build` keeps default targets for static/web deploys).
   ...(isTauriCliBuild
     ? {
-      build: {
-        target:
-          process.env.TAURI_ENV_PLATFORM === "windows"
-            ? "chrome105"
-            : "safari13",
-        minify: tauriMinify,
-        sourcemap: Boolean(process.env.TAURI_ENV_DEBUG),
-      },
-    }
+        build: {
+          target:
+            process.env.TAURI_ENV_PLATFORM === "windows"
+              ? "chrome105"
+              : "safari13",
+          minify: tauriMinify,
+          sourcemap: Boolean(process.env.TAURI_ENV_DEBUG),
+        },
+      }
     : {}),
 }));
