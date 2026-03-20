@@ -9,6 +9,8 @@ import type { ModelFlags } from "./api/shared/model_api";
 export type Glyph = Component<IconProps, Record<string, unknown>, "">;
 
 export interface GlyphObject {
+  /** Stable key for `{#each ...}` (order matches flag checks). */
+  id: string;
   glyph: Glyph;
   badgeClasses?: ClassValue;
   glyphClasses?: ClassValue;
@@ -18,11 +20,11 @@ export function flagsToGlyphObjects(flags: ModelFlags): GlyphObject[] {
   const glyphs: GlyphObject[] = [];
 
   if (flags.printed) {
-    glyphs.push({ glyph: PrinterCheck });
+    glyphs.push({ id: "printed", glyph: PrinterCheck });
   }
 
   if (flags.favorite) {
-    glyphs.push({ glyph: Star });
+    glyphs.push({ id: "favorite", glyph: Star });
   }
 
   return glyphs;

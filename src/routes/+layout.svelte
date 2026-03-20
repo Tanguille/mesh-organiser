@@ -32,12 +32,6 @@
   let initializationDone = $state(false);
   let hasSidebar = $state(true);
 
-  interface Error {
-    error_inner_message: string;
-    error_message: string;
-    error_type: string;
-  }
-
   /** Vite 8 dev client can race HMR transport `send` before `connect` (see `vite/dist/client/client.mjs`). */
   function isViteDevClientNoise(message: string): boolean {
     return (
@@ -53,31 +47,47 @@
     return String(reason);
   }
 
+  function isApiRejectionPayload(
+    reason: unknown,
+  ): reason is { error_message: string; error_inner_message: string } {
+    if (typeof reason !== "object" || reason === null) {
+      return false;
+    }
+    const r = reason as Record<string, unknown>;
+    return (
+      typeof r.error_message === "string" &&
+      typeof r.error_inner_message === "string"
+    );
+  }
+
+  function handleWindowError(event: Event) {
+    const message =
+      event instanceof ErrorEvent ? event.message : "Unknown error";
+    toast.error(`Error: ${message}`);
+  }
+
+  function handleUnhandledRejection(event: PromiseRejectionEvent) {
+    const plain = rejectionPlainMessage(event.reason);
+    if (import.meta.env.DEV && isViteDevClientNoise(plain)) {
+      console.warn("[vite dev]", plain);
+      event.preventDefault();
+      return;
+    }
+
+    const reason = event.reason;
+    if (isApiRejectionPayload(reason)) {
+      toast.error(reason.error_message, {
+        description: reason.error_inner_message,
+      });
+    } else {
+      toast.error("An unknown error occurred.", {
+        description: plain,
+      });
+    }
+  }
+
   onMount(async () => {
     initializationDone = false;
-    window.onerror = function (message) {
-      toast.error(`Error: ${message}`);
-    };
-
-    addEventListener("unhandledrejection", (event) => {
-      const plain = rejectionPlainMessage(event.reason);
-      if (import.meta.env.DEV && isViteDevClientNoise(plain)) {
-        console.warn("[vite dev]", plain);
-        event.preventDefault();
-        return;
-      }
-
-      let reason: Error = event.reason;
-      if (reason.error_message && reason.error_inner_message) {
-        toast.error(reason.error_message, {
-          description: reason.error_inner_message,
-        });
-      } else {
-        toast.error("An unknown error occurred.", {
-          description: plain,
-        });
-      }
-    });
 
     try {
       await initApi();
@@ -140,6 +150,10 @@
   });
 </script>
 
+<svelte:window
+  onerror={handleWindowError}
+  onunhandledrejection={handleUnhandledRejection}
+/>
 <ModeWatcher />
 <Toaster />
 {#if initializationDone}

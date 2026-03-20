@@ -16,7 +16,7 @@
   import { buttonVariants } from "../ui/button/button.svelte";
   import { getContainer } from "$lib/api/dependency_injection";
   import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { onMount } from "svelte";
+  import { untrack } from "svelte";
   import { IShareApi, type Share } from "$lib/api/shared/share_api";
   import { toast } from "svelte-sonner";
   import AsyncButton from "../ui/button/async-button.svelte";
@@ -33,7 +33,6 @@
   const shareApi = getContainer().require<IShareApi>(IShareApi);
 
   const saveShareDebounced = debounce(async (editedShare: Share) => {
-    console.log("Saving Share");
     await shareApi.editShare(editedShare);
   }, 1000);
 
@@ -53,8 +52,30 @@
     await updateSidebarState();
   }
 
-  onMount(async () => {
-    link = await shareApi.getShareLink(props.share);
+  let linkLoadGen = 0;
+
+  // Re-fetch when share identity changes; `void share.id` keeps the effect keyed to id (not every field).
+  $effect(() => {
+    const share = $state.snapshot(props.share);
+    void share.id;
+    const gen = ++linkLoadGen;
+    untrack(async () => {
+      try {
+        const l = await shareApi.getShareLink(share);
+        if (gen !== linkLoadGen) {
+          return;
+        }
+        link = l;
+      } catch (e) {
+        if (gen !== linkLoadGen) {
+          return;
+        }
+        link = "";
+        toast.error(
+          e instanceof Error ? e.message : "Failed to load share link",
+        );
+      }
+    });
   });
 </script>
 

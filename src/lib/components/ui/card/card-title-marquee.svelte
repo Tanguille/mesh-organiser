@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import type { Snippet } from "svelte";
   import type { ClassValue } from "svelte/elements";
 
@@ -9,10 +8,26 @@
 
   const props: { children: Snippet; class?: ClassValue } = $props();
 
-  onMount(() => {
+  function measureOverflow() {
     if (containerRef && contentRef) {
       overflow = contentRef.scrollWidth > containerRef.clientWidth;
     }
+  }
+
+  function scheduleMeasure() {
+    requestAnimationFrame(() => measureOverflow());
+  }
+
+  $effect(() => {
+    if (!containerRef || !contentRef) {
+      return;
+    }
+
+    scheduleMeasure();
+    const ro = new ResizeObserver(() => scheduleMeasure());
+    ro.observe(containerRef);
+    ro.observe(contentRef);
+    return () => ro.disconnect();
   });
 </script>
 

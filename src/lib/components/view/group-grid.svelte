@@ -88,7 +88,9 @@
     }
 
     loadedGroups = [];
+    pruneSelectedToLoaded();
     await fetchNextGroupSet();
+    pruneSelectedToLoaded();
   }
 
   async function setNewSearchText(newText: string | null) {
@@ -139,15 +141,20 @@
 
   const interval = setInterval(handleScroll, 1000);
 
-  $effect(() => {
-    let groups = loadedGroups;
+  let splitViewSelectedModels = $state.raw<Model[]>([]);
 
-    untrack(() => {
-      selected = selected.filter((x) =>
-        groups.some((y) => y.meta.id === x.meta.id),
-      );
-    });
-  });
+  function clearSplitViewModels() {
+    splitViewSelectedModels = [];
+  }
+
+  function pruneSelectedToLoaded() {
+    const ids = new Set(loadedGroups.map((g) => g.meta.id));
+    const next = selected.filter((x) => ids.has(x.meta.id));
+    if (next.length !== selected.length) {
+      clearSplitViewModels();
+    }
+    selected = next;
+  }
 
   onDestroy(() => {
     clearInterval(interval);
@@ -160,6 +167,8 @@
       preventOnClick = false;
       return;
     }
+
+    clearSplitViewModels();
 
     if (event.shiftKey && selected.length === 1) {
       let start = loadedGroups.indexOf(selected[0]);
@@ -207,6 +216,7 @@
       return;
     }
 
+    clearSplitViewModels();
     selected = [group];
 
     const el = event.target;
@@ -233,7 +243,6 @@
     );
   }
 
-  let splitViewSelectedModels = $state.raw<Model[]>([]);
   let selectedModels = $derived(
     splitViewSelectedModels.length <= 0
       ? selected.map((x) => x.models).flat()
@@ -268,7 +277,7 @@
       }
     }
 
-    splitViewSelectedModels = [];
+    clearSplitViewModels();
     selected = [];
     props.onDelete?.(affectedGroups);
   }
@@ -297,7 +306,7 @@
       });
     }
 
-    splitViewSelectedModels = [];
+    clearSplitViewModels();
     selected = [];
   }
 
@@ -317,17 +326,17 @@
     }
   }
 
-  $effect(() => {
-    // Clear models list when selected changes
-    void selected;
-    splitViewSelectedModels = [];
-  });
+  let groupStreamLoadGen = 0;
 
   $effect(() => {
     void props.groupStream;
 
+    const gen = ++groupStreamLoadGen;
     untrack(async () => {
       await resetGroupSet();
+      if (gen !== groupStreamLoadGen) {
+        return;
+      }
     });
   });
 </script>
@@ -445,6 +454,7 @@
       {#if isMobile.current}
         <Button
           onclick={() => {
+            clearSplitViewModels();
             selected = [];
           }}
         >
@@ -492,6 +502,7 @@
         <EditMultiModel
           models={loadedGroups.map((x) => x.models).flat()}
           onDelete={() => {
+            clearSplitViewModels();
             selected = [...loadedGroups];
             onDelete();
           }}
@@ -587,10 +598,14 @@
       class={clazz}
       bind:checked={
         () => isSelected,
-        (val) =>
-          val
-            ? (selected = [...selected, group])
-            : (selected = selected.filter((x) => x.meta.id !== group.meta.id))
+        (val) => {
+          clearSplitViewModels();
+          if (val) {
+            selected = [...selected, group];
+          } else {
+            selected = selected.filter((x) => x.meta.id !== group.meta.id);
+          }
+        }
       }
     />
   {:else}

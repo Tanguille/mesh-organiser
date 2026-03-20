@@ -47,12 +47,9 @@
   let isDesktop = $state<boolean>(false);
 
   onMount(async () => {
-    console.log(switchUserApi);
     if (switchUserApi) {
       availableUsers = await switchUserApi.getAvailableUsers();
     }
-
-    console.log(availableUsers);
 
     if (diskUsageInfoApi) {
       diskUsage = await diskUsageInfoApi.getDiskUsageInfo();

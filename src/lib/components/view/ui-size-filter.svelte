@@ -23,13 +23,18 @@
     onchange = () => {},
     ...restProps
   }: Props = $props();
-
-  $effect(() => {
-    onchange(value);
-  });
 </script>
 
-<Select.Root type="single" name="Size" bind:value>
+<Select.Root
+  type="single"
+  name="Size"
+  bind:value
+  onValueChange={(v) => {
+    if (v != null) {
+      onchange(v as SizeOptionModels);
+    }
+  }}
+>
   <Select.Trigger
     class="w-auto border-primary {restProps.class}"
     hideArrow={true}

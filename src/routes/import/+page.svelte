@@ -118,18 +118,28 @@
     }
   });
 
+  let importGroupsLoadGen = 0;
+  let previousImportStatus: ImportStatus | undefined = undefined;
+
   $effect(() => {
-    if (importState.status != ImportStatus.Finished) {
+    const status = importState.status;
+    if (status != ImportStatus.Finished) {
       importedGroups = [];
+      if (previousImportStatus === ImportStatus.Finished) {
+        importGroupsLoadGen++;
+      }
+      previousImportStatus = status;
       return;
     }
 
-    let importedModelIds = importState.imported_models
+    const importedModelIds = importState.imported_models
       .map((res) => res.model_ids)
       .flat();
 
+    previousImportStatus = status;
+    const gen = ++importGroupsLoadGen;
     untrack(async () => {
-      importedGroups = await groupApi.getGroups(
+      const groups = await groupApi.getGroups(
         importedModelIds,
         null,
         null,
@@ -139,6 +149,10 @@
         importedModelIds.length,
         true,
       );
+      if (gen !== importGroupsLoadGen) {
+        return;
+      }
+      importedGroups = groups;
     });
   });
 </script>
@@ -249,7 +263,7 @@
             >
           </CardHeader>
           <CardContent class="grid grid-cols-2 gap-4">
-            {#each model_sites as site (site.name)}
+            {#each model_sites as site (site.url)}
               <AsyncButton
                 onclick={() =>
                   internalBrowserApi?.openInternalBrowser(site.url) ??

@@ -40,7 +40,7 @@
   {/if}
 
   <div class="my-auto flex h-fit flex-row gap-2 empty:hidden">
-    {#each flagsToGlyphObjects(props.group.flags) as glyph, idx (idx)}
+    {#each flagsToGlyphObjects(props.group.flags) as glyph (glyph.id)}
       <Badge class={glyph.badgeClasses}
         ><glyph.glyph size="16" class={glyph.glyphClasses} /></Badge
       >

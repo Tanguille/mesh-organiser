@@ -20,6 +20,7 @@ export default defineConfig(() => ({
 
   // Pre-bundle deep imports so Vite does not discover them mid-session, invalidate the dep
   // cache, and full-reload (which races dynamic imports like `.svelte-kit/generated/client/nodes/0.js`).
+  // Three/Threlte are large; without explicit `include`, first load can block ~1min then reload.
   optimizeDeps: {
     include: [
       "@lucide/svelte/icons/**",
@@ -42,6 +43,13 @@ export default defineConfig(() => ({
       "svelte-sonner",
       "tailwind-merge",
       "tailwind-variants",
+      "three",
+      "@threlte/core",
+      "@threlte/extras",
+      "three/examples/jsm/loaders/OBJLoader.js",
+      "three/examples/jsm/loaders/STLLoader.js",
+      "three/examples/jsm/utils/BufferGeometryUtils.js",
+      "threejs-webworker-3mf-loader",
     ],
   },
 
@@ -64,7 +72,13 @@ export default defineConfig(() => ({
         "node_modules/@sveltejs/kit/src/runtime/server/index.js",
         "node_modules/@sveltejs/kit/src/utils/promise.js",
       ],
-      clientFiles: ["./src/routes/+layout.svelte", "./src/routes/+page.svelte"],
+      clientFiles: [
+        "./src/routes/+layout.svelte",
+        "./src/routes/+page.svelte",
+        "./src/lib/components/view/three-d-canvas.svelte",
+        "./src/lib/components/view/three-d-scene.svelte",
+        "./src/lib/workers/parseModelWorker.ts",
+      ],
     },
     port: DEV_PORT,
     strictPort: true,
@@ -72,10 +86,10 @@ export default defineConfig(() => ({
     hmr:
       process.env.TAURI_DEV_HOST != null
         ? {
-            protocol: "ws",
-            host: process.env.TAURI_DEV_HOST,
-            port: 1421,
-          }
+          protocol: "ws",
+          host: process.env.TAURI_DEV_HOST,
+          port: 1421,
+        }
         : undefined,
     watch: {
       ignored: ["**/src-tauri/**"],
@@ -85,14 +99,14 @@ export default defineConfig(() => ({
   // Only when invoked via `tauri build` (plain `vite build` keeps default targets for static/web deploys).
   ...(isTauriCliBuild
     ? {
-        build: {
-          target:
-            process.env.TAURI_ENV_PLATFORM === "windows"
-              ? "chrome105"
-              : "safari13",
-          minify: tauriMinify,
-          sourcemap: Boolean(process.env.TAURI_ENV_DEBUG),
-        },
-      }
+      build: {
+        target:
+          process.env.TAURI_ENV_PLATFORM === "windows"
+            ? "chrome105"
+            : "safari13",
+        minify: tauriMinify,
+        sourcemap: Boolean(process.env.TAURI_ENV_DEBUG),
+      },
+    }
     : {}),
 }));

@@ -13,13 +13,11 @@ export const state = $state({
 export function startDragging(models: Model[]) {
   state.dragging_models = models;
   state.dragging = true;
-  console.log("Started dragging");
 }
 
 export function stopDragging() {
   state.dragging_models = [];
   state.dragging = false;
-  console.log("Stopped dragging");
 }
 
 export async function addModelsToLabel(label: LabelMeta) {

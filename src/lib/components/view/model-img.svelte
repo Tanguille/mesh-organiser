@@ -4,31 +4,36 @@
   import Boxes from "@lucide/svelte/icons/boxes";
   import type { Model } from "$lib/api/shared/model_api";
   import { getContainer } from "$lib/api/dependency_injection";
-  import { type Blob, IBlobApi } from "$lib/api/shared/blob_api";
+  import { IBlobApi } from "$lib/api/shared/blob_api";
   import { configuration } from "$lib/configuration.svelte";
 
   let img_src = $state("");
   let load_failed = $state(false);
-  let lastLoadId = -1;
+  let loadGeneration = 0;
 
   let props: { model: Model; class?: ClassValue } = $props();
 
   let blobApi = getContainer().require<IBlobApi>(IBlobApi);
 
-  async function update_image(blob: Blob) {
-    img_src = await blobApi.getBlobThumbnailUrl(blob);
-    load_failed = false;
-  }
-
   $effect(() => {
-    if (props.model.id === lastLoadId) {
-      return;
-    }
-
-    lastLoadId = $state.snapshot(props.model.id);
-
-    untrack(() => {
-      update_image($state.snapshot(props.model.blob));
+    const blob = $state.snapshot(props.model.blob);
+    const gen = ++loadGeneration;
+    untrack(async () => {
+      try {
+        img_src = await blobApi.getBlobThumbnailUrl(blob);
+        if (gen !== loadGeneration) {
+          return;
+        }
+        load_failed = false;
+      } catch (e) {
+        if (gen !== loadGeneration) {
+          return;
+        }
+        load_failed = true;
+        if (import.meta.env.DEV) {
+          console.warn("Thumbnail load failed", e);
+        }
+      }
     });
   });
 </script>

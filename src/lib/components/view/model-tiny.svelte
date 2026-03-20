@@ -18,7 +18,7 @@
     <ModelImg model={props.model} class="aspect-square w-full" />
 
     <div class="absolute bottom-2 left-2 flex flex-col gap-2">
-      {#each flagsToGlyphObjects(props.model.flags) as glyph, idx (idx)}
+      {#each flagsToGlyphObjects(props.model.flags) as glyph (glyph.id)}
         <Badge class={glyph.badgeClasses}
           ><glyph.glyph size="16" class={glyph.glyphClasses} /></Badge
         >

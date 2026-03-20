@@ -128,12 +128,22 @@
     }
   }
 
+  let modelStreamLoadGen = 0;
+
   $effect(() => {
     let modelStream = props.modelStream;
 
+    const gen = ++modelStreamLoadGen;
     untrack(async () => {
       await resetModelSet();
-      allModels = await modelStream.getAll();
+      if (gen !== modelStreamLoadGen) {
+        return;
+      }
+      const all = await modelStream.getAll();
+      if (gen !== modelStreamLoadGen) {
+        return;
+      }
+      allModels = all;
     });
   });
 </script>

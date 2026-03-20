@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  three: 0.183.2
+
 patchedDependencies:
   vite@8.0.1:
     hash: e2d043bfb91f8dfc19f4fb4445388d8142a6517b4950ace9c2b951c07319cda3
@@ -65,7 +68,7 @@ importers:
         specifier: ^6.15.0
         version: 6.15.0
       three:
-        specifier: ^0.183.2
+        specifier: 0.183.2
         version: 0.183.2
       threejs-webworker-3mf-loader:
         specifier: github:manyfold3d/threejs-webworker-3mf-loader
@@ -782,19 +785,19 @@ packages:
   '@threejs-kit/instanced-sprite-mesh@2.5.1':
     resolution: {integrity: sha512-pmt1ALRhbHhCJQTj2FuthH6PeLIeaM4hOuS2JO3kWSwlnvx/9xuUkjFR3JOi/myMqsH7pSsLIROSaBxDfttjeA==}
     peerDependencies:
-      three: '>=0.170.0'
+      three: 0.183.2
 
   '@threlte/core@8.5.0':
     resolution: {integrity: sha512-gEG5lOu6Rk00ISm5JdlTuo1AuX5u5N3iQ+LdbTLCzqsQmkr2iPJ/aM3pJkn9NJCC98hkK3sysBLHIHJVu5jOIw==}
     peerDependencies:
       svelte: '>=5'
-      three: '>=0.160'
+      three: 0.183.2
 
   '@threlte/extras@9.9.0':
     resolution: {integrity: sha512-cTYXEfK+P2zj0eeBawkwZNVWyBMsoDuY341SU1z34KQcgCOwZDOIwlkJV+05f4AJMfgufSiT/582rOrdcuu9dQ==}
     peerDependencies:
       svelte: '>=5'
-      three: '>=0.160'
+      three: 0.183.2
 
   '@tweenjs/tween.js@23.1.3':
     resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
@@ -1008,7 +1011,7 @@ packages:
     resolution: {integrity: sha512-xkxfpG2ECZ6Ww5/9+kf4mfg1VEYAoe9aDSY+IwF0UEs7qEzwy0aVRfs2grImIECs/PoBtWFrh7RXsQkwG922JA==}
     engines: {node: '>=22.0.0', npm: '>=10.5.1'}
     peerDependencies:
-      three: '>=0.126.1'
+      three: 0.183.2
 
   caniuse-lite@1.0.30001780:
     resolution: {integrity: sha512-llngX0E7nQci5BPJDqoZSbuZ5Bcs9F5db7EtgfwBerX9XGtkkiO4NwfDDIRzHTTwcYC8vC7bmeUEPGrKlR/TkQ==}
@@ -1434,7 +1437,7 @@ packages:
     resolution: {integrity: sha512-tRvbDF0Pgqz+9XUa4jjfgAQ8/aPKmQdWXilFu2tMy4GWj4NOsx99HlULO4IeREfbO3a0sA145DZYyvXPkybm0g==}
     peerDependencies:
       '@types/three': '>=0.134.0'
-      three: '>=0.134.0'
+      three: 0.183.2
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -1795,25 +1798,22 @@ packages:
   three-instanced-uniforms-mesh@0.52.4:
     resolution: {integrity: sha512-YwDBy05hfKZQtU+Rp0KyDf9yH4GxfhxMbVt9OYruxdgLfPwmDG5oAbGoW0DrKtKZSM3BfFcCiejiOHCjFBTeng==}
     peerDependencies:
-      three: '>=0.125.0'
+      three: 0.183.2
 
   three-mesh-bvh@0.9.9:
     resolution: {integrity: sha512-FJKitcjvbALmeQRK+Sc+nLGorCpkrZBrbgJZFzhdyWboak37DZikn46hvQkNqSbJPm227ahYmS6k3N/GXaAyXw==}
     peerDependencies:
-      three: '>= 0.159.0'
+      three: 0.183.2
 
   three-perf@1.0.11:
     resolution: {integrity: sha512-OgBpZjwL+csQKGKZjpkH/QHdbGFMxqngMbSEJeSnVNfXDYd6On7WHNv/GhUZH4YxIpNMwMahBWrNnsJvnbSJHQ==}
     peerDependencies:
-      three: '>=0.170'
+      three: 0.183.2
 
   three-viewport-gizmo@2.2.0:
     resolution: {integrity: sha512-Jo9Liur1rUmdKk75FZumLU/+hbF+RtJHi1qsKZpntjKlCYScK6tjbYoqvJ9M+IJphrlQJF5oReFW7Sambh0N4Q==}
     peerDependencies:
-      three: '>=0.162.0 <1.0.0'
-
-  three@0.164.1:
-    resolution: {integrity: sha512-iC/hUBbl1vzFny7f5GtqzVXYjMJKaTPxiCxXfrvVdBi1Sf+jhd1CAkitiFwC7mIBFCo3MrDLJG97yisoaWig0w==}
+      three: 0.183.2
 
   three@0.183.2:
     resolution: {integrity: sha512-di3BsL2FEQ1PA7Hcvn4fyJOlxRRgFYBpMTcyOgkwJIaDOdJMebEFPA+t98EvjuljDx4hNulAGwF6KIjtwI5jgQ==}
@@ -1844,12 +1844,12 @@ packages:
   troika-three-text@0.52.4:
     resolution: {integrity: sha512-V50EwcYGruV5rUZ9F4aNsrytGdKcXKALjEtQXIOBfhVoZU9VAqZNIoGQ3TMiooVqFAbR1w15T+f+8gkzoFzawg==}
     peerDependencies:
-      three: '>=0.125.0'
+      three: 0.183.2
 
   troika-three-utils@0.52.4:
     resolution: {integrity: sha512-NORAStSVa/BDiG52Mfudk4j1FG4jC4ILutB3foPnfGbOeIs9+G5vZLa0pnmnaftZUGm4UwSoqEpWdqvC7zms3A==}
     peerDependencies:
-      three: '>=0.125.0'
+      three: 0.183.2
 
   troika-worker-utils@0.52.0:
     resolution: {integrity: sha512-W1CpvTHykaPH5brv5VHLfQo9D1OYuo0cSBEUQFFT/nBUzM8iD6Lq2/tgG/f1OelbAS1WtaTPQzE5uM49egnngw==}
@@ -3463,14 +3463,12 @@ snapshots:
     dependencies:
       three: 0.183.2
 
-  three@0.164.1: {}
-
   three@0.183.2: {}
 
   threejs-webworker-3mf-loader@https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/cd9967b4e50e0ee07d511d481f525a97d98a0876:
     dependencies:
       '@xmldom/xmldom': 0.8.11
-      three: 0.164.1
+      three: 0.183.2
 
   tinybench@2.9.0: {}
 

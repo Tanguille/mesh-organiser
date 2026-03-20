@@ -35,7 +35,7 @@
     $props();
   const tracked_label = $derived(props.label);
   const parentId = $derived(page.url.searchParams.get("parentId"));
-  let lastId = $state(-1);
+  let lastId = -1;
   let availableLabels = $derived(
     sidebarState.labels
       .map((l) => l.meta)
@@ -51,7 +51,6 @@
   let keywords = $state<string[]>([]);
 
   const saveLabelDebounced = debounce(async (edited_label: LabelClass) => {
-    console.log("Saving Label");
     await labelApi.editLabel(edited_label.meta);
     await labelApi.setChildrenOnLabel(edited_label.meta, edited_label.children);
     await updateSidebarState();
@@ -78,7 +77,6 @@
 
   async function updateKeywords() {
     let snapshot = $state.snapshot(keywords);
-    console.log("Updating keywords: ", snapshot);
     await labelApi.setKeywordsOnLabel(tracked_label.meta, snapshot);
   }
 

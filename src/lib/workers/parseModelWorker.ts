@@ -8,6 +8,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { ThreeMFLoader } from "threejs-webworker-3mf-loader";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { FileType } from "$lib/api/shared/blob_api";
+import { isValidWorkerMessage } from "./parseModelWorkerMessage.js";
 
 function convertGeometry(group: Group): BufferGeometry | null {
   const geometries: BufferGeometry[] = [];
@@ -105,15 +106,16 @@ export function loadModel(
       "for fileType:",
       fileType,
       "buffer length:",
-      buffer.length,
+      buffer?.length ?? "(n/a)",
     );
     return null;
   }
 }
 
-self.onmessage = async (
-  e: MessageEvent<{ buffer: Uint8Array; fileType: FileType }>,
-) => {
+self.onmessage = async (e: MessageEvent<unknown>) => {
+  if (!isValidWorkerMessage(e.data)) {
+    return;
+  }
   const { buffer, fileType } = e.data;
   console.log(
     "Worker received message, fileType:",

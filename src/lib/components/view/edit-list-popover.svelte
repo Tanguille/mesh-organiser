@@ -60,7 +60,7 @@
     <h1>{title}</h1>
     <p class="mb-2 text-sm">{description}</p>
     <section class="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
-      {#each value as entry, index (entry + index)}
+      {#each value as entry, index (index)}
         <div class="mr-1 flex flex-row gap-2">
           <p class="grow truncate text-sm capitalize">{entry}</p>
           <Button

@@ -18,7 +18,15 @@
   let geometry: BufferGeometry | null = $state.raw(null);
   let loading = $state(true);
   let error: string | null = $state(null);
-  let lastLoadId = -1;
+  let loadGeneration = 0;
+  /** Skip reload when parent re-renders the same model + blob (new object reference). */
+  let lastSuccessfulGeometryKey = "";
+  /** Avoid duplicate loads while a fetch for this key is already in flight. */
+  let pendingGeometryKey = "";
+
+  function geometryLoadKey(model: Model): string {
+    return `${model.id}:${model.blob.sha256}`;
+  }
 
   async function loadUsingWorker(
     buffer: Uint8Array,
@@ -34,7 +42,6 @@
     return new Promise((resolve, reject) => {
       worker.onmessage = (event) => {
         const { success, geometry, error } = event.data;
-        console.log(event.data);
         let incomingGeometry = geometry;
         worker.terminate();
 
@@ -62,14 +69,11 @@
       };
 
       let obj = { buffer, fileType };
-      console.log(obj);
-      console.log(buffer, buffer instanceof ArrayBuffer);
       worker.postMessage(obj, [buffer.buffer]);
-      console.log(obj);
     });
   }
 
-  async function load(model: Model) {
+  async function load(model: Model, gen: number) {
     loading = true;
     error = null;
     let localGeometry: BufferGeometry | null = geometry;
@@ -80,7 +84,7 @@
       let blobApi = getContainer().require<IBlobApi>(IBlobApi);
       let bytes = await blobApi.getBlobBytes(model.blob);
 
-      if (model.id !== props.model.id) {
+      if (gen !== loadGeneration) {
         return;
       }
 
@@ -90,31 +94,42 @@
         localGeometry = loadModel(bytes, model.blob.filetype);
       }
 
-      if (model.id === props.model.id) {
-        geometry = localGeometry;
-      } else {
+      if (gen !== loadGeneration) {
         localGeometry?.dispose();
+        return;
       }
+
+      geometry = localGeometry;
+      lastSuccessfulGeometryKey = geometryLoadKey(model);
     } catch (err) {
+      if (gen !== loadGeneration) {
+        return;
+      }
       console.warn("Failed to load model geometry:", err);
       error = err instanceof Error ? err.message : "Failed to load model";
     } finally {
-      loading = false;
+      if (gen === loadGeneration) {
+        loading = false;
+        pendingGeometryKey = "";
+      }
     }
   }
 
   $effect(() => {
-    let snapshot = $state.snapshot(props.model);
-
-    if (snapshot.id === lastLoadId) {
+    const snapshot = $state.snapshot(props.model);
+    if (!snapshot) {
       return;
     }
-
-    lastLoadId = snapshot.id;
-
-    if (snapshot) {
-      untrack(() => load(snapshot));
+    const key = geometryLoadKey(snapshot);
+    if (key === lastSuccessfulGeometryKey && geometry) {
+      return;
     }
+    if (pendingGeometryKey === key) {
+      return;
+    }
+    pendingGeometryKey = key;
+    const gen = ++loadGeneration;
+    untrack(() => load(snapshot, gen));
   });
 </script>
 
