@@ -1,6 +1,6 @@
-// Tauri doesn't have a Node.js server to do proper SSR
-// so we will use adapter-static to prerender the app (SSG)
-// See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
+// Tauri: static build with SPA fallback so client routing works for any deep link
+// (dynamic [slug] routes, share links, etc.). See:
+// https://v2.tauri.app/start/frontend/sveltekit/
 import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
@@ -8,10 +8,10 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter(),
+    adapter: adapter({ fallback: "index.html" }),
     alias: {
       "@/*": "./src/lib/*",
-      "$lib": "./src/lib",
+      $lib: "./src/lib",
       "$lib/*": "./src/lib/*",
     },
   },
