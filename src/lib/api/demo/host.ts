@@ -6,6 +6,6 @@ export class DemoHostApi implements IHostApi {
   }
 
   async getVersion(): Promise<string> {
-    return import.meta.env.VITE_APP_VERSION ?? "v2.0.0 (Demo)";
+    return import.meta.env.VITE_APP_VERSION ?? "v2.1.0 (Demo)";
   }
 }
