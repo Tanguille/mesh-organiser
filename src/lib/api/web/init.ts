@@ -1,7 +1,13 @@
-import { contain } from "three/src/extras/TextureUtils.js";
 import { getContainer, resetContainer } from "../dependency_injection";
 import { IServerRequestApi } from "../shared/server_request_api";
-import { IAdminUserApi, IUserApi, IUserLoginApi, IUserLogoutApi, IUserManageSelfApi, IUserTokenApi } from "../shared/user_api";
+import {
+  IAdminUserApi,
+  IUserApi,
+  IUserLoginApi,
+  IUserLogoutApi,
+  IUserManageSelfApi,
+  IUserTokenApi,
+} from "../shared/user_api";
 import { WebUserLoginApi } from "./login";
 import { ServerRequestApi } from "./request";
 import { WebUserApi } from "./user";
@@ -15,9 +21,16 @@ import { WebResourceApi } from "./resource";
 import { WebSettingsApi } from "./settings";
 import { WebImportApi } from "./web_import";
 import { DefaultSlicerApi, ISlicerApi } from "../shared/slicer_api";
-import { DefaultSidebarStateApi, ISidebarStateApi } from "../shared/sidebar_state_api";
+import {
+  DefaultSidebarStateApi,
+  ISidebarStateApi,
+} from "../shared/sidebar_state_api";
 import { DefaultDownloadApi, IDownloadApi } from "../shared/download_api";
-import { configuration, currentUser as globalCurrentUser, panicState } from "$lib/configuration.svelte";
+import {
+  configuration,
+  currentUser as globalCurrentUser,
+  panicState,
+} from "$lib/configuration.svelte";
 import { IBlobApi } from "../shared/blob_api";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";
 import { IGroupApi } from "../shared/group_api";
@@ -35,82 +48,80 @@ import { WebUserAdminApi } from "./user_admin";
 import { WebShareApi } from "./share";
 import { IShareApi } from "../shared/share_api";
 
-export async function initWebApi() : Promise<void> {
-    resetContainer();
+export async function initWebApi(): Promise<void> {
+  resetContainer();
 
-    const container = getContainer();
-    const request = new ServerRequestApi(document.location.origin, fetch);
-    const user = new WebUserApi(request);
-    const login = new WebUserLoginApi(request);
+  const container = getContainer();
+  const request = new ServerRequestApi(document.location.origin, fetch);
+  const user = new WebUserApi(request);
+  const login = new WebUserLoginApi(request);
 
-    container.addSingleton(IServerRequestApi, request);
-    container.addSingleton(IUserApi, user);
-    container.addSingleton(IUserLoginApi, login);
-    container.addSingleton(IUserLogoutApi, login);
+  container.addSingleton(IServerRequestApi, request);
+  container.addSingleton(IUserApi, user);
+  container.addSingleton(IUserLoginApi, login);
+  container.addSingleton(IUserLogoutApi, login);
 
-    if (!await user.isAuthenticated()) {
-        console.log("User is not authenticated");
-        return;
-    }
-    let currentUser;
+  if (!(await user.isAuthenticated())) {
+    console.log("User is not authenticated");
+    return;
+  }
+  let currentUser;
 
-    try {
-        currentUser = await user.getCurrentUser();
-    }
-    catch {
-        console.log("User is not authenticated");
-        return;
-    }
+  try {
+    currentUser = await user.getCurrentUser();
+  } catch {
+    console.log("User is not authenticated");
+    return;
+  }
 
-    Object.assign(globalCurrentUser, currentUser);
-    const blob = new WebBlobApi(request, currentUser);
-    const diskUsageInfo = new WebDiskUsageInfoApi(request);
-    const group = new WebGroupApi(request);
-    const host = new WebHostApi();
-    const label = new WebLabelApi(request);
-    const model = new WebModelApi(request);
-    const resource = new WebResourceApi(request);
-    const settings = new WebSettingsApi();
-    const importApi = new WebImportApi(request);
-    const slicer = new DefaultSlicerApi(blob);
-    const sidebarApi = new DefaultSidebarStateApi();
-    const downloadApi = new DefaultDownloadApi(blob);
-    const internalBrowserApi = new WebBrowserApi();
-    const threemf = new WebThreemfApi(request);
-    const userAdmin = new WebUserAdminApi(request, currentUser);
-    const shareApi = new WebShareApi(request);
+  Object.assign(globalCurrentUser, currentUser);
+  const blob = new WebBlobApi(request, currentUser);
+  const diskUsageInfo = new WebDiskUsageInfoApi(request);
+  const group = new WebGroupApi(request);
+  const host = new WebHostApi();
+  const label = new WebLabelApi(request);
+  const model = new WebModelApi(request);
+  const resource = new WebResourceApi(request);
+  const settings = new WebSettingsApi();
+  const importApi = new WebImportApi(request);
+  const slicer = new DefaultSlicerApi(blob);
+  const sidebarApi = new DefaultSidebarStateApi();
+  const downloadApi = new DefaultDownloadApi(blob);
+  const internalBrowserApi = new WebBrowserApi();
+  const threemf = new WebThreemfApi(request);
+  const userAdmin = new WebUserAdminApi(request, currentUser);
+  const shareApi = new WebShareApi(request);
 
-    const config = await settings.getConfiguration();
-    Object.assign(configuration, config);
+  const config = await settings.getConfiguration();
+  Object.assign(configuration, config);
 
-    container.addSingleton(IBlobApi, blob);
-    container.addSingleton(IDiskUsageInfoApi, diskUsageInfo);
-    container.addSingleton(IGroupApi, group);
-    container.addSingleton(ILabelApi, label);
-    container.addSingleton(IModelApi, model);
-    container.addSingleton(IResourceApi, resource);
-    container.addSingleton(IWebImportApi, importApi);
-    container.addSingleton(IHostApi, host);
-    container.addSingleton(ISettingsApi, settings);
-    container.addSingleton(ISlicerApi, slicer);
-    container.addSingleton(ISidebarStateApi, sidebarApi);
-    container.addSingleton(IDownloadApi, downloadApi);
-    container.addSingleton(IInternalBrowserApi, internalBrowserApi);
-    container.addSingleton(IThreemfApi, threemf);
-    container.addSingleton(IUserManageSelfApi, userAdmin);
-    container.addSingleton(IShareApi, shareApi);
+  container.addSingleton(IBlobApi, blob);
+  container.addSingleton(IDiskUsageInfoApi, diskUsageInfo);
+  container.addSingleton(IGroupApi, group);
+  container.addSingleton(ILabelApi, label);
+  container.addSingleton(IModelApi, model);
+  container.addSingleton(IResourceApi, resource);
+  container.addSingleton(IWebImportApi, importApi);
+  container.addSingleton(IHostApi, host);
+  container.addSingleton(ISettingsApi, settings);
+  container.addSingleton(ISlicerApi, slicer);
+  container.addSingleton(ISidebarStateApi, sidebarApi);
+  container.addSingleton(IDownloadApi, downloadApi);
+  container.addSingleton(IInternalBrowserApi, internalBrowserApi);
+  container.addSingleton(IThreemfApi, threemf);
+  container.addSingleton(IUserManageSelfApi, userAdmin);
+  container.addSingleton(IShareApi, shareApi);
 
-    if (currentUser.permissions.admin) {
-        container.addSingleton(IAdminUserApi, userAdmin);
-    }
+  if (currentUser.permissions.admin) {
+    container.addSingleton(IAdminUserApi, userAdmin);
+  }
 
-    // Local user, shouldn't be used for anything other than account creation and recovery
-    if (currentUser.id === 1)
-    {
-        panicState.inPanic = true;
-        panicState.message = "Logged in as the local administrator user.\nThis account cannot be used for normal operation.\nPlease create a new user account in the settings and log in with that account.";
-    }
-    else {
-        container.addSingleton(IUserTokenApi, user);
-    }
+  // Local user, shouldn't be used for anything other than account creation and recovery
+  if (currentUser.id === 1) {
+    panicState.inPanic = true;
+    panicState.message =
+      "Logged in as the local administrator user.\nThis account cannot be used for normal operation.\nPlease create a new user account in the settings and log in with that account.";
+  } else {
+    container.addSingleton(IUserTokenApi, user);
+  }
 }

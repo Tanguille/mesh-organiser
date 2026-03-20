@@ -1,6 +1,5 @@
-
-export const IInternalBrowserApi = Symbol('IInternalBrowserApi');
+export const IInternalBrowserApi = Symbol("IInternalBrowserApi");
 
 export interface IInternalBrowserApi {
-    openInternalBrowser(url: string) : Promise<void>;
+  openInternalBrowser(url: string): Promise<void>;
 }

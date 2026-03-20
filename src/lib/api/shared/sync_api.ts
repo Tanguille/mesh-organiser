@@ -1,5 +1,5 @@
-export const ISyncApi = Symbol('ISyncApi');
+export const ISyncApi = Symbol("ISyncApi");
 
 export interface ISyncApi {
-    syncData() : Promise<void>;
+  syncData(): Promise<void>;
 }

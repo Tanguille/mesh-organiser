@@ -17,54 +17,56 @@ import { WebShareModelApi } from "./model";
 import { WebShareResourceApi } from "./resource";
 import { LimitedWebShareApi } from "./share";
 
-export async function initWebShareApi() : Promise<boolean> {
-    resetContainer();
+export async function initWebShareApi(): Promise<boolean> {
+  resetContainer();
 
-    const container = getContainer();
-    const requestApi = new ServerRequestApi(document.location.origin, fetch);
-    const shareApi = new LimitedWebShareApi(requestApi);
+  const container = getContainer();
+  const requestApi = new ServerRequestApi(document.location.origin, fetch);
+  const shareApi = new LimitedWebShareApi(requestApi);
 
-    container.addSingleton(IServerRequestApi, requestApi);
-    container.addSingleton(IShareApi, shareApi);
+  container.addSingleton(IServerRequestApi, requestApi);
+  container.addSingleton(IShareApi, shareApi);
 
-    let windowPathname = window.location.pathname;
+  const windowPathname = window.location.pathname;
 
-    if (!windowPathname.startsWith("/share/") || windowPathname.endsWith("/share/")) {
-        return false;
-    }
+  if (
+    !windowPathname.startsWith("/share/") ||
+    windowPathname.endsWith("/share/")
+  ) {
+    return false;
+  }
 
-    let shareId = windowPathname.replace("/share/", "").split("/")[0];
+  const shareId = windowPathname.replace("/share/", "").split("/")[0];
 
-    let share;
+  let share;
 
-    try {
-        share = await shareApi.getShare(shareId);
-    }
-    catch {
-        return false;
-    }
+  try {
+    share = await shareApi.getShare(shareId);
+  } catch {
+    return false;
+  }
 
-    const blobApi = new WebShareBlobApi(requestApi, share);
-    const groupApi = new WebShareGroupApi(requestApi, share);
-    const labelApi = new WebShareLabelApi();
-    const modelApi = new WebShareModelApi(requestApi, share);
-    const slicerApi = new DefaultSlicerApi(blobApi);
-    const downloadApi = new DefaultDownloadApi(blobApi);
-    const resourceApi = new WebShareResourceApi();
+  const blobApi = new WebShareBlobApi(requestApi, share);
+  const groupApi = new WebShareGroupApi(requestApi, share);
+  const labelApi = new WebShareLabelApi();
+  const modelApi = new WebShareModelApi(requestApi, share);
+  const slicerApi = new DefaultSlicerApi(blobApi);
+  const downloadApi = new DefaultDownloadApi(blobApi);
+  const resourceApi = new WebShareResourceApi();
 
-    container.addSingleton(IBlobApi, blobApi);
-    container.addSingleton(IGroupApi, groupApi);
-    container.addSingleton(ILabelApi, labelApi);
-    container.addSingleton(IModelApi, modelApi);
-    container.addSingleton(IDownloadApi, downloadApi);
-    container.addSingleton(ISlicerApi, slicerApi);
-    container.addSingleton(IResourceApi, resourceApi);
+  container.addSingleton(IBlobApi, blobApi);
+  container.addSingleton(IGroupApi, groupApi);
+  container.addSingleton(ILabelApi, labelApi);
+  container.addSingleton(IModelApi, modelApi);
+  container.addSingleton(IDownloadApi, downloadApi);
+  container.addSingleton(ISlicerApi, slicerApi);
+  container.addSingleton(IResourceApi, resourceApi);
 
-    configurationMeta.applicationReadOnly = true;
-    configuration.group_split_view = "split-left-right";
-    configuration.show_multiselect_checkboxes = true;
-    configuration.only_show_single_image_in_groups = true;
-    configuration.show_date_on_list_view = false;
+  configurationMeta.applicationReadOnly = true;
+  configuration.group_split_view = "split-left-right";
+  configuration.show_multiselect_checkboxes = true;
+  configuration.only_show_single_image_in_groups = true;
+  configuration.show_date_on_list_view = false;
 
-    return true;
+  return true;
 }

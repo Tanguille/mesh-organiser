@@ -18,11 +18,18 @@ import { IResourceFolderApi } from "../shared/resource_folder_api";
 import { IResourceApi } from "../shared/resource_api";
 import { ISettingsApi } from "../shared/settings_api";
 import { ITauriImportApi } from "../shared/tauri_import_api";
-import { configuration, currentUser, currentUser as globalCurrentUser, panicState } from "$lib/configuration.svelte";
+import {
+  configuration,
+  currentUser as globalCurrentUser,
+  panicState,
+} from "$lib/configuration.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { debounce } from "$lib/utils";
-import { DefaultSidebarStateApi, EmptySidebarStateApi, ISidebarStateApi } from "../shared/sidebar_state_api";
+import {
+  EmptySidebarStateApi,
+  ISidebarStateApi,
+} from "../shared/sidebar_state_api";
 import { HostApi } from "./host";
 import { IHostApi } from "../shared/host_api";
 import { check } from "@tauri-apps/plugin-updater";
@@ -32,10 +39,16 @@ import { DiskUsageInfoApi } from "./disk_usage_info";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";
 import { SlicerApi } from "./slicer";
 import { LocalApi } from "./local";
-import { DefaultSlicerApi, ISlicerApi } from "../shared/slicer_api";
+import { ISlicerApi } from "../shared/slicer_api";
 import { ILocalApi } from "../shared/local_api";
 import { UserApi } from "./user";
-import { IAdminUserApi, ISwitchUserApi, IUserApi, IUserManageSelfApi, type User } from "../shared/user_api";
+import {
+  IAdminUserApi,
+  ISwitchUserApi,
+  IUserApi,
+  IUserManageSelfApi,
+  type User,
+} from "../shared/user_api";
 import { ThreemfApi } from "./threemf";
 import { IThreemfApi } from "../shared/threemf_api";
 import { ThumbnailApi } from "./thumbnail";
@@ -54,179 +67,184 @@ import { TauriProxyShareApi } from "../tauri-online/local-proxy-share";
 import { IShareApi } from "../shared/share_api";
 import { TauriSidebarStateApi } from "./sidebar_state";
 
-interface InitialState
-{
-    deep_link_url?: string;
-    max_parallelism?: number;
-    collapse_sidebar?: boolean;
-    account_link?: AccountLinkEmit;
+interface InitialState {
+  deep_link_url?: string;
+  max_parallelism?: number;
+  collapse_sidebar?: boolean;
+  account_link?: AccountLinkEmit;
 }
 
-async function getInitialState() : Promise<InitialState>
-{
-    return await invoke("get_initial_state");
+async function getInitialState(): Promise<InitialState> {
+  return await invoke("get_initial_state");
 }
 
-export async function initTauriLocalApis() : Promise<void> {
-    resetContainer();
-    const container = getContainer();
-    const state = await getInitialState();
+export async function initTauriLocalApis(): Promise<void> {
+  resetContainer();
+  const container = getContainer();
+  const state = await getInitialState();
 
-    const appDataDirPath = await appDataDir();
-    const blob = new BlobApi(appDataDirPath);
-    const group = new GroupApi();
-    const internalBrowser = new InternalBrowserApi();
-    const label = new LabelApi();
-    const model = new ModelApi();
-    const resourceFolder = new ResourceFolderApi();
-    const resource = new ResourceApi();
-    const settings = new SettingsApi();
-    const tauriImport = new TauriImportApi();
-    const sidebarApi = new TauriSidebarStateApi();
-    const hostApi = new HostApi();
-    const diskUsageInfoApi = new DiskUsageInfoApi();
-    const slicerApi = new SlicerApi();
-    const localApi = new LocalApi(appDataDirPath, state.max_parallelism ?? 2);
-    const userApi = new UserApi();
-    const threemfApi = new ThreemfApi();
-    const thumbnailApi = new ThumbnailApi();
-    const userSyncApi = new TauriUserSyncApi();
+  const appDataDirPath = await appDataDir();
+  const blob = new BlobApi(appDataDirPath);
+  const group = new GroupApi();
+  const internalBrowser = new InternalBrowserApi();
+  const label = new LabelApi();
+  const model = new ModelApi();
+  const resourceFolder = new ResourceFolderApi();
+  const resource = new ResourceApi();
+  const settings = new SettingsApi();
+  const tauriImport = new TauriImportApi();
+  const sidebarApi = new TauriSidebarStateApi();
+  const hostApi = new HostApi();
+  const diskUsageInfoApi = new DiskUsageInfoApi();
+  const slicerApi = new SlicerApi();
+  const localApi = new LocalApi(appDataDirPath, state.max_parallelism ?? 2);
+  const userApi = new UserApi();
+  const threemfApi = new ThreemfApi();
+  const thumbnailApi = new ThumbnailApi();
+  const userSyncApi = new TauriUserSyncApi();
 
-    let config = await settings.getConfiguration();
-    Object.assign(configuration, config);
+  const config = await settings.getConfiguration();
+  Object.assign(configuration, config);
 
-    console.log('initial state:', state);
-    if (state.deep_link_url)
-    {
-        await tauriImport.handleDeepLink({
-            download_url: state.deep_link_url,
-            source_url: null
-        });
+  console.log("initial state:", state);
+  if (state.deep_link_url) {
+    await tauriImport.handleDeepLink({
+      download_url: state.deep_link_url,
+      source_url: null,
+    });
+  }
+
+  const webview = getCurrentWebview();
+  webview.setZoom(configuration.zoom_level / 100);
+
+  const debounced_resize = debounce(() => {
+    const zoom_level = Math.round(
+      (window.outerWidth / window.innerWidth) * 100,
+    );
+
+    if (zoom_level === configuration.zoom_level) {
+      return;
     }
+    configuration.zoom_level = zoom_level;
+  }, 100);
 
-    const webview = getCurrentWebview();
-    webview.setZoom(configuration.zoom_level / 100);
+  addEventListener("resize", debounced_resize);
 
-    const debounced_resize = debounce(() => {
-        const zoom_level = Math.round((window.outerWidth) / window.innerWidth * 100);
-        
-        if (zoom_level === configuration.zoom_level)
-        {
-            return;
-        }
-        configuration.zoom_level = zoom_level;
-        
-    }, 100);
+  const currentUser = await userApi.getCurrentUser();
+  Object.assign(globalCurrentUser, currentUser);
 
-    addEventListener("resize", debounced_resize);
+  container.addSingleton(IInternalBrowserApi, internalBrowser);
+  container.addSingleton(ISwitchUserApi, userApi);
+  container.addSingleton(ISettingsApi, settings);
+  container.addSingleton(IHostApi, hostApi);
 
-    let currentUser = await userApi.getCurrentUser();
-    Object.assign(globalCurrentUser, currentUser);
+  checkForUpdates();
 
-    container.addSingleton(IInternalBrowserApi, internalBrowser);
-    container.addSingleton(ISwitchUserApi, userApi);
-    container.addSingleton(ISettingsApi, settings);
-    container.addSingleton(IHostApi, hostApi);
+  panicState.inPanic = false;
+  if (currentUser.syncToken && currentUser.syncUrl) {
+    const tauriRequestApi = new ServerRequestApi(currentUser.syncUrl, fetch);
+    const user = await loginWeb(currentUser.syncToken, tauriRequestApi);
+    if (user) {
+      container.addSingleton(IServerRequestApi, tauriRequestApi);
 
-    checkForUpdates();
-
-    panicState.inPanic = false;
-    if (currentUser.syncToken && currentUser.syncUrl)
-    {
-        const tauriRequestApi = new ServerRequestApi(currentUser.syncUrl, fetch);
-        let user = await loginWeb(currentUser.syncToken, tauriRequestApi);
-        if (user)
-        {
-            container.addSingleton(IServerRequestApi, tauriRequestApi);
-
-            if (currentUser.permissions.onlineAccount)
-            {
-                await initTauriOnlineAccountApi(user, currentUser.syncUrl, appDataDirPath);
-                return;
-            }
-            else {
-                const remoteModelApi = new WebModelApi(tauriRequestApi);
-                const remoteShareApi = new TauriProxyShareApi(tauriRequestApi, remoteModelApi, model);
-                const remoteSyncApi = new SyncApi(tauriRequestApi, user, currentUser.syncUrl);
-                container.addSingleton(ISyncApi, remoteSyncApi);
-                container.addSingleton(IShareApi, remoteShareApi);
-            }
-        }
-        else if (currentUser.permissions.onlineAccount) {
-            // Failed to login, but user needs online account access
-            panicState.inPanic = true;
-            panicState.message = `Failed to connect to online account at '${currentUser.syncUrl}'.\nPlease confirm network connectivity and check your sync settings.`;
-        }
-    }
-
-    container.addSingleton(ILocalApi, localApi);
-    container.addSingleton(IUserApi, userApi);
-    container.addSingleton(IAdminUserApi, userApi);
-    container.addSingleton(IUserManageSelfApi, userApi);
-    container.addSingleton(IUserSyncApi, userSyncApi);
-
-    if (state.account_link)
-    {
-        await tauriImport.setAccountLink(state.account_link);
-    }
-
-    if (panicState.inPanic)
-    {
-        let sidebarApi = new EmptySidebarStateApi();
-        container.addSingleton(ISidebarStateApi, sidebarApi);
+      if (currentUser.permissions.onlineAccount) {
+        await initTauriOnlineAccountApi(
+          user,
+          currentUser.syncUrl,
+          appDataDirPath,
+        );
         return;
+      } else {
+        const remoteModelApi = new WebModelApi(tauriRequestApi);
+        const remoteShareApi = new TauriProxyShareApi(
+          tauriRequestApi,
+          remoteModelApi,
+          model,
+        );
+        const remoteSyncApi = new SyncApi(
+          tauriRequestApi,
+          user,
+          currentUser.syncUrl,
+        );
+        container.addSingleton(ISyncApi, remoteSyncApi);
+        container.addSingleton(IShareApi, remoteShareApi);
+      }
+    } else if (currentUser.permissions.onlineAccount) {
+      // Failed to login, but user needs online account access
+      panicState.inPanic = true;
+      panicState.message = `Failed to connect to online account at '${currentUser.syncUrl}'.\nPlease confirm network connectivity and check your sync settings.`;
     }
-    
-    container.addSingleton(IBlobApi, blob);
-    container.addSingleton(IGroupApi, group);
-    container.addSingleton(ILabelApi, label);
-    container.addSingleton(IModelApi, model);
-    container.addSingleton(IResourceFolderApi, resourceFolder);
-    container.addSingleton(IResourceApi, resource);
-    container.addSingleton(ITauriImportApi, tauriImport);
+  }
+
+  container.addSingleton(ILocalApi, localApi);
+  container.addSingleton(IUserApi, userApi);
+  container.addSingleton(IAdminUserApi, userApi);
+  container.addSingleton(IUserManageSelfApi, userApi);
+  container.addSingleton(IUserSyncApi, userSyncApi);
+
+  if (state.account_link) {
+    await tauriImport.setAccountLink(state.account_link);
+  }
+
+  if (panicState.inPanic) {
+    const sidebarApi = new EmptySidebarStateApi();
     container.addSingleton(ISidebarStateApi, sidebarApi);
-    container.addSingleton(IDiskUsageInfoApi, diskUsageInfoApi);
-    container.addSingleton(ISlicerApi, slicerApi);
-    container.addSingleton(IThreemfApi, threemfApi);
-    container.addSingleton(IThumbnailApi, thumbnailApi);
+    return;
+  }
 
-    await tauriImport.initImportListeners();
+  container.addSingleton(IBlobApi, blob);
+  container.addSingleton(IGroupApi, group);
+  container.addSingleton(ILabelApi, label);
+  container.addSingleton(IModelApi, model);
+  container.addSingleton(IResourceFolderApi, resourceFolder);
+  container.addSingleton(IResourceApi, resource);
+  container.addSingleton(ITauriImportApi, tauriImport);
+  container.addSingleton(ISidebarStateApi, sidebarApi);
+  container.addSingleton(IDiskUsageInfoApi, diskUsageInfoApi);
+  container.addSingleton(ISlicerApi, slicerApi);
+  container.addSingleton(IThreemfApi, threemfApi);
+  container.addSingleton(IThumbnailApi, thumbnailApi);
+
+  await tauriImport.initImportListeners();
 }
 
-async function checkForUpdates() : Promise<void> { 
-    try 
-    {
-        const update = await check();
-        console.log(update);
+async function checkForUpdates(): Promise<void> {
+  try {
+    const update = await check();
+    console.log(update);
 
-        if (update && update.version && update.version !== configuration.ignore_update && configuration.ignore_update !== "always")
-        {
-            updateState.update = update;
-        }
+    if (
+      update &&
+      update.version &&
+      update.version !== configuration.ignore_update &&
+      configuration.ignore_update !== "always"
+    ) {
+      updateState.update = update;
     }
-    catch
-    {
-        toast.error("Failed to check for updates");
-    }
+  } catch {
+    toast.error("Failed to check for updates");
+  }
 }
 
-async function loginWeb(token : string, requestApi : IServerRequestApi): Promise<User|null> {
-    try {
-        await requestApi.request<void>("/logout", HttpMethod.POST);
-    } catch (e) {
-        console.warn("Logout failed ", e);
-    }
+async function loginWeb(
+  token: string,
+  requestApi: IServerRequestApi,
+): Promise<User | null> {
+  try {
+    await requestApi.request<void>("/logout", HttpMethod.POST);
+  } catch (e) {
+    console.warn("Logout failed ", e);
+  }
 
-    try {
-        await requestApi.request<void>("/login/token", HttpMethod.POST, {
-            token: token
-        });
+  try {
+    await requestApi.request<void>("/login/token", HttpMethod.POST, {
+      token: token,
+    });
 
-        const userApi = new WebUserApi(requestApi);
-        return await userApi.getCurrentUser();
-    }
-    catch (e) {
-        console.warn("Token login failed ", e);
-        return null;
-    }
+    const userApi = new WebUserApi(requestApi);
+    return await userApi.getCurrentUser();
+  } catch (e) {
+    console.warn("Token login failed ", e);
+    return null;
+  }
 }
