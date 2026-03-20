@@ -1,22 +1,7 @@
-<script>
-    import LoaderCircle from "@lucide/svelte/icons/loader-circle"
+<script lang="ts">
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 </script>
 
-<div class="animate w-fit h-fit">
-    <LoaderCircle class="h-10 w-10" />
+<div class="h-fit w-fit">
+  <LoaderCircle class="h-10 w-10 animate-spin" />
 </div>
-
-<style>
-    @keyframes spin {
-        from {
-            transform: rotate(0deg);
-        }
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    .animate {
-        animation: spin 1s linear infinite;
-    }
-</style>
