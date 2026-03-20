@@ -1,0 +1,26 @@
+diff --git a/dist/node/chunks/node.js b/dist/node/chunks/node.js
+index 36ba8f46c62956e2cca1e66c92e3e9c56d99f55f..d779d5aa57c1a776cbcb954da1ae1a269ae52f27 100644
+--- a/dist/node/chunks/node.js
++++ b/dist/node/chunks/node.js
+@@ -10761,7 +10761,9 @@ function createServerModuleRunner(environment, options = {}) {
+ 	const hmr = createHMROptions(environment, options);
+ 	return new ModuleRunner({
+ 		...options,
+-		transport: createServerModuleRunnerTransport({ channel: environment.hot }),
++		transport: Object.assign(createServerModuleRunnerTransport({ channel: environment.hot }), {
++			timeout: Math.max(6e4, Number(process.env.VITE_SSR_FETCH_MODULE_TIMEOUT_MS ?? 300000))
++		}),
+ 		hmr,
+ 		createImportMeta: createNodeImportMeta,
+ 		sourcemapInterceptor: resolveSourceMapOptions(options)
+@@ -10794,7 +10796,9 @@ async function instantiateModule(url, runner, environment, fixStacktrace) {
+ var SSRCompatModuleRunner = class extends ModuleRunner {
+ 	constructor(environment) {
+ 		super({
+-			transport: createServerModuleRunnerTransport({ channel: environment.hot }),
++			transport: Object.assign(createServerModuleRunnerTransport({ channel: environment.hot }), {
++				timeout: Math.max(6e4, Number(process.env.VITE_SSR_FETCH_MODULE_TIMEOUT_MS ?? 300000))
++			}),
+ 			createImportMeta: createNodeImportMeta,
+ 			sourcemapInterceptor: false,
+ 			hmr: false

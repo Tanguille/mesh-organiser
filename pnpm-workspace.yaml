@@ -1,2 +1,5 @@
 onlyBuiltDependencies:
   - esbuild
+
+patchedDependencies:
+  vite@8.0.1: patches/vite@8.0.1.patch
