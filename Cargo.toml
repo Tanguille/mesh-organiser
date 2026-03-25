@@ -31,7 +31,7 @@ arboard = { version = "3.6.1", default-features = false }
 async_zip = "0.0.18"
 base64 = "0.22.1"
 fake = { version = "5.1.0", features = ["derive"] }
-proptest = "1.10.0"
+proptest = "1.11.0"
 tempfile = "3.27.0"
 vek = "0.17.2"
 wavefront_obj = "11.0.0"
