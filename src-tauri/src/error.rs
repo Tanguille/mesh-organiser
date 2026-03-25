@@ -1,7 +1,8 @@
 use async_zip::error::ZipError;
 use serde::{Serialize, Serializer};
-use service::service_error;
 use thiserror::Error;
+
+use service::service_error;
 
 #[derive(Error, Debug)]
 pub enum ApplicationError {
