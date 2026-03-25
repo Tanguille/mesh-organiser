@@ -238,7 +238,7 @@ fn extract_models_inner(
         let obj_id = u32::try_from(obj.id).unwrap_or(0);
         let obj_name = names_map.get(&obj_id).cloned().unwrap_or_else(|| {
             obj.name.as_ref().map_or_else(
-                || format!("object_{}", obj.id),
+                || format!("object_{id}", id = obj.id),
                 |s| cleanse_evil_from_name(s),
             )
         });

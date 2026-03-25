@@ -15,7 +15,7 @@ pub fn open_resource_folder(
     app_state: &AppState,
 ) -> Result<(), ServiceError> {
     let path = app_state.get_resources_dir();
-    let resource_path = path.join(format!("{}_{}", resource.id, user.id));
+    let resource_path = path.join(format!("{rid}_{uid}", rid = resource.id, uid = user.id));
 
     if !resource_path.exists() {
         let old_resource_path = path.join(resource.id.to_string());
@@ -42,7 +42,7 @@ pub fn delete_resource_folder(
     app_state: &AppState,
 ) -> Result<(), ServiceError> {
     let mut path = app_state.get_resources_dir();
-    path.push(format!("{}_{}", resource.id, user.id));
+    path.push(format!("{rid}_{uid}", rid = resource.id, uid = user.id));
 
     if path.exists() {
         std::fs::remove_dir_all(&path)?;
