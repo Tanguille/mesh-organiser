@@ -42,8 +42,8 @@ importers:
         specifier: ~2.10.0
         version: 2.10.0
       '@threlte/core':
-        specifier: ^8.5.0
-        version: 8.5.0(svelte@5.54.0)(three@0.183.2)
+        specifier: ^8.5.1
+        version: 8.5.1(svelte@5.54.0)(three@0.183.2)
       '@threlte/extras':
         specifier: ^9.9.0
         version: 9.9.0(@types/three@0.183.1)(svelte@5.54.0)(three@0.183.2)
@@ -767,8 +767,8 @@ packages:
     peerDependencies:
       three: 0.183.2
 
-  '@threlte/core@8.5.0':
-    resolution: {integrity: sha512-gEG5lOu6Rk00ISm5JdlTuo1AuX5u5N3iQ+LdbTLCzqsQmkr2iPJ/aM3pJkn9NJCC98hkK3sysBLHIHJVu5jOIw==}
+  '@threlte/core@8.5.1':
+    resolution: {integrity: sha512-OsJDIJlrcmky3yeSwdhHXClbHvONBDE+EE3DlXMmBdgxhRNHg7uH9pYRQ3XqZP9PHCY570ajRgb//dJCQGXXSQ==}
     peerDependencies:
       svelte: '>=5'
       three: 0.183.2
@@ -2453,7 +2453,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/three'
 
-  '@threlte/core@8.5.0(svelte@5.54.0)(three@0.183.2)':
+  '@threlte/core@8.5.1(svelte@5.54.0)(three@0.183.2)':
     dependencies:
       mitt: 3.0.1
       svelte: 5.54.0
