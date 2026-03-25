@@ -44,18 +44,19 @@ pub async fn download_model(
 
     let id = id.into_inner() as i64;
 
-    let users = match user_db::get_users(&app_state.db).await {
-        Ok(u) => u,
+    let config = app_state.get_configuration();
+
+    let user = match user_db::get_user_by_id(&app_state.db, config.last_user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return HttpResponse::InternalServerError().body("Configured user not found");
+        }
         Err(_) => {
             return HttpResponse::InternalServerError().body("Database error");
         }
     };
 
-    let Some(user) = users.first() else {
-        return HttpResponse::InternalServerError().body("No user");
-    };
-
-    let models = match model_db::get_models_via_ids(&app_state.db, user, vec![id]).await {
+    let models = match model_db::get_models_via_ids(&app_state.db, &user, vec![id]).await {
         Ok(m) => m,
         Err(_) => {
             return HttpResponse::InternalServerError().body("Database error");
