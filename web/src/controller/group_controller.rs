@@ -50,7 +50,7 @@ mod get {
 
     use super::{
         ApplicationError, AuthSession, Deserialize, FromStr, GroupFilterOptions, GroupOrderBy,
-        IntoResponse, Json, Path, Response, Serialize, State, StatusCode, WebAppState, group_db,
+        IntoResponse, Json, Path, Response, Serialize, State, WebAppState, group_db,
     };
 
     #[derive(Deserialize)]
@@ -69,6 +69,20 @@ mod get {
         pub include_ungrouped_models: Option<bool>,
     }
 
+    impl GetGroupParams {
+        fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
+            query_bounds::PaginatedListQueryBounds {
+                model_ids: &self.model_ids,
+                group_ids: &self.group_ids,
+                label_ids: &self.label_ids,
+                text_search: self.text_search.as_deref(),
+                order_by: self.order_by.as_deref(),
+                page: self.page,
+                page_size: self.page_size,
+            }
+        }
+    }
+
     pub async fn get_groups(
         auth_session: AuthSession,
         State(app_state): State<WebAppState>,
@@ -76,32 +90,19 @@ mod get {
     ) -> Result<Response, ApplicationError> {
         let user = auth_session.user.unwrap().to_user();
 
-        if let Err(e) = query_bounds::validate_three_id_lists(
-            &params.model_ids,
-            &params.group_ids,
-            &params.label_ids,
+        if let Err(e) = query_bounds::validate_group_list_query_bounds(
+            params.paginated_bounds(),
+            params.model_ids_str.as_deref(),
         ) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
-        }
-        if let Err(e) = query_bounds::validate_list_query_strings(
-            params.text_search.as_deref(),
-            params.order_by.as_deref(),
-        ) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
-        }
-        if let Err(e) = query_bounds::validate_model_ids_str_raw(params.model_ids_str.as_deref()) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+            return Ok(query_bounds::bad_request(&e));
         }
 
-        let model_ids = match params.model_ids_str.as_deref() {
-            None => None,
-            Some(s) => {
-                match query_bounds::parse_comma_separated_i64(s, query_bounds::MAX_ID_LIST_ITEMS) {
-                    Ok(ids) => Some(ids),
-                    Err(e) => return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response()),
-                }
-            }
-        };
+        let model_ids =
+            match query_bounds::optional_comma_separated_model_ids(params.model_ids_str.as_deref())
+            {
+                Ok(v) => v,
+                Err(e) => return Ok(query_bounds::bad_request(&e)),
+            };
 
         let groups = group_db::get_groups(
             &app_state.app_state.db,
@@ -151,21 +152,11 @@ mod get {
             ));
         };
 
-        if let Err(e) = query_bounds::validate_three_id_lists(
-            &params.model_ids,
-            &params.group_ids,
-            &params.label_ids,
+        if let Err(e) = query_bounds::validate_group_list_query_bounds(
+            params.paginated_bounds(),
+            params.model_ids_str.as_deref(),
         ) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
-        }
-        if let Err(e) = query_bounds::validate_list_query_strings(
-            params.text_search.as_deref(),
-            params.order_by.as_deref(),
-        ) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
-        }
-        if let Err(e) = query_bounds::validate_model_ids_str_raw(params.model_ids_str.as_deref()) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+            return Ok(query_bounds::bad_request(&e));
         }
 
         let groups = group_db::get_groups(

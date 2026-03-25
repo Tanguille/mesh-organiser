@@ -49,7 +49,7 @@ mod get {
 
     use super::{
         ApplicationError, AuthSession, Deserialize, FromStr, IntoResponse, Json,
-        ModelFilterOptions, ModelFlags, ModelOrderBy, Path, Response, Serialize, State, StatusCode,
+        ModelFilterOptions, ModelFlags, ModelOrderBy, Path, Response, Serialize, State,
         WebAppState, export_service, model_db,
     };
 
@@ -69,23 +69,27 @@ mod get {
         pub page_size: u32,
     }
 
+    impl GetModelParams {
+        fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
+            query_bounds::PaginatedListQueryBounds {
+                model_ids: &self.model_ids,
+                group_ids: &self.group_ids,
+                label_ids: &self.label_ids,
+                text_search: self.text_search.as_deref(),
+                order_by: self.order_by.as_deref(),
+                page: self.page,
+                page_size: self.page_size,
+            }
+        }
+    }
+
     async fn get_models_inner(
         app_state: &WebAppState,
         user: &User,
         params: GetModelParams,
     ) -> Result<Response, ApplicationError> {
-        if let Err(e) = query_bounds::validate_three_id_lists(
-            &params.model_ids,
-            &params.group_ids,
-            &params.label_ids,
-        ) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
-        }
-        if let Err(e) = query_bounds::validate_list_query_strings(
-            params.text_search.as_deref(),
-            params.order_by.as_deref(),
-        ) {
-            return Ok((StatusCode::BAD_REQUEST, e.to_string()).into_response());
+        if let Err(e) = query_bounds::validate_model_list_query_bounds(params.paginated_bounds()) {
+            return Ok(query_bounds::bad_request(&e));
         }
 
         let flags = params.model_flags;
