@@ -52,7 +52,11 @@ pub async fn download_model(
 
     let model = &model[0];
     let base_dir = PathBuf::from(app_state.get_model_dir());
-    let src_file_path = base_dir.join(format!("{}.{}", model.sha256, model.filetype));
+    let src_file_path = base_dir.join(format!(
+        "{sha256}.{filetype}",
+        sha256 = model.sha256,
+        filetype = model.filetype
+    ));
 
     let file = match File::open(src_file_path).await {
         Ok(f) => f,
