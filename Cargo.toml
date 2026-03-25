@@ -55,7 +55,7 @@ reqwest = { version = "0.13.2", default-features = false }
 serde = "1.0.228"
 serde_html_form = "0.4.0"
 serde_json = "1.0.149"
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 sqlx = { version = "0.8.6", default-features = false }
 stl_io = "0.11.0"
 strum = "0.28.0"
