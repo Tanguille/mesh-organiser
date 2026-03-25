@@ -9,12 +9,11 @@ unused_qualifications = "warn"
 # Priority is needed so our config below is respected over the pedantic group
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
-redundant_clone = "warn"
 style = "warn"
 unnecessary_self_imports = "warn"
 
 [workspace.package]
-version = "2.2.0"
+version = "2.3.0"
 edition = "2024"
 rust-version = "1.94.0"
 
