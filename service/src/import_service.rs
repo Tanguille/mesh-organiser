@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write,
     fs::{self, read_dir},
     panic,
     path::{Path, PathBuf},
@@ -527,7 +528,11 @@ where
     let mut hasher = Sha256::new();
     hasher.update(&file_contents);
     let bytes = hasher.finalize();
-    let hash = String::from(&format!("{bytes:x}")[0..32]);
+    // First 128 bits of the digest as 32 hex chars (matches `blob_sha256` / `random_hex_32` shape).
+    let mut hash = String::with_capacity(32);
+    for b in bytes.iter().take(16) {
+        let _ = write!(hash, "{b:02x}");
+    }
 
     let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
 
