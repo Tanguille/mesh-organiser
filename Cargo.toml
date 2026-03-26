@@ -13,7 +13,7 @@ style = "warn"
 unnecessary_self_imports = "warn"
 
 [workspace.package]
-version = "2.3.0"
+version = "2.4.0"
 edition = "2024"
 rust-version = "1.94.0"
 
@@ -24,7 +24,7 @@ service = { path = "service" }
 
 euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d", default-features = false }
 opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b2614613a88e21267be656992212c87df96805" }
-threemf = { git = "https://github.com/suchmememanyskill/3mf-rs", rev = "d78e731b2fcf127692380332ad2708aec65dee68" }
+threemf = { version = "0.8.0" }
 
 arboard = { version = "3.6.1", default-features = false }
 async_zip = "0.0.18"

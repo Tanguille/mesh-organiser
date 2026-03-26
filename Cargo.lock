@@ -821,9 +821,9 @@ checksum = "8aa02ab3f9d7d7dd389014f64b681a1bd0c0fd88b17373a2b438bb9cafb4dc31"
 
 [[package]]
 name = "cmake"
-version = "0.1.57"
+version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75443c44cd6b379beb8c5b45d85d0773baf31cce901fe7bb252f4eff3008ef7d"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
 dependencies = [
  "cc",
 ]
@@ -1315,7 +1315,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "db"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "bitflags 2.11.0",
  "chrono",
@@ -3183,7 +3183,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libmeshthumbnail"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "base64 0.22.1",
  "euc",
@@ -3370,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-organiser"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "arboard",
  "async_zip",
@@ -4392,7 +4392,7 @@ checksum = "740ebea15c5d1428f910cd1a5f52cebf8d25006245ed8ade92702f4943d91e07"
 dependencies = [
  "base64 0.22.1",
  "indexmap 2.13.0",
- "quick-xml",
+ "quick-xml 0.38.4",
  "serde",
  "time",
 ]
@@ -4624,6 +4624,15 @@ name = "quick-xml"
 version = "0.38.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b66c2058c55a409d601666cffe35f04333cf1013010882cec174a7467cd4e21c"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.39.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "958f21e8e7ceb5a1aa7fa87fab28e7c75976e0bfe7e23ff069e0a260f894067d"
 dependencies = [
  "memchr",
  "serde",
@@ -5585,7 +5594,7 @@ dependencies = [
 
 [[package]]
 name = "service"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "async_zip",
  "chrono",
@@ -6803,13 +6812,14 @@ dependencies = [
 
 [[package]]
 name = "threemf"
-version = "0.7.0"
-source = "git+https://github.com/suchmememanyskill/3mf-rs?rev=d78e731b2fcf127692380332ad2708aec65dee68#d78e731b2fcf127692380332ad2708aec65dee68"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a7b402a28a34887fd3bd06ffc49702af78454c9dd17af4bbe2c0a7255274f89"
 dependencies = [
- "quick-xml",
+ "quick-xml 0.39.2",
  "serde",
  "thiserror 2.0.18",
- "zip 4.6.1",
+ "zip 8.4.0",
 ]
 
 [[package]]
@@ -7419,9 +7429,9 @@ checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.13.1"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da36089a805484bcccfffe0739803392c8298778a2d2f09febf76fac5ad9025b"
+checksum = "9629274872b2bfaf8d66f5f15725007f635594914870f65218920345aa11aa8c"
 
 [[package]]
 name = "unicode-width"
@@ -7731,7 +7741,7 @@ checksum = "934504ea79927c25f18e980053b64269490284129b327334fc2591daf1539b9c"
 
 [[package]]
 name = "web"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "async_zip",
  "axum",
@@ -8846,10 +8856,8 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
- "flate2",
  "indexmap 2.13.0",
  "memchr",
- "zopfli",
 ]
 
 [[package]]
