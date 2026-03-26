@@ -19,7 +19,11 @@ use tokio::{
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
-use db::{blob_db, label_db, label_keyword_db, model::blob::FileType, model::user::User, model_db};
+use db::{
+    blob_db, label_db, label_keyword_db,
+    model::{blob::FileType, user::User},
+    model_db,
+};
 
 use crate::{
     ASYNC_MULT,

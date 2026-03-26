@@ -37,8 +37,9 @@ use super::app_state::AppState;
 #[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
     let temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_{action}_action_{}",
-        Utc::now().timestamp_nanos_opt().unwrap()
+        "meshorganiser_{action}_action_{nanos}",
+        action = action,
+        nanos = Utc::now().timestamp_nanos_opt().unwrap()
     ));
     std::fs::create_dir(&temp_dir).unwrap();
     temp_dir
@@ -48,7 +49,11 @@ pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
     blob.disk_path.as_ref().map_or_else(
         || {
             let base_dir = app_state.get_model_dir();
-            base_dir.join(format!("{}.{}", blob.sha256, blob.filetype))
+            base_dir.join(format!(
+                "{sha256}.{filetype}",
+                sha256 = blob.sha256,
+                filetype = blob.filetype
+            ))
         },
         PathBuf::from,
     )
@@ -56,7 +61,7 @@ pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
 
 pub fn get_image_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
     let base_dir = app_state.get_image_dir();
-    base_dir.join(format!("{}.png", blob.sha256))
+    base_dir.join(format!("{sha256}.png", sha256 = blob.sha256))
 }
 
 /// Opens a blob's content as an async reader (plain file or first entry of a zip).

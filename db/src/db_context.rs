@@ -10,8 +10,8 @@ pub type DbContext = Pool<Sqlite>;
 
 pub async fn setup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) -> DbContext {
     let url = format!(
-        "sqlite:{}",
-        sqlite_path.to_str().expect("path should be something")
+        "sqlite:{path}",
+        path = sqlite_path.to_str().expect("path should be something")
     );
 
     if !Sqlite::database_exists(url.as_str()).await.unwrap() {

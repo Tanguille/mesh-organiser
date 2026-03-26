@@ -7,9 +7,8 @@ use tauri::{AppHandle, Manager};
 use tokio::{fs::File, io::BufReader};
 use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
 
-use crate::{db, service::app_state::AppState};
-
-use service::is_zipped_file_extension;
+use db::{model_db, user_db};
+use service::{app_state::AppState, is_zipped_file_extension};
 
 struct TauriAppState {
     app: AppHandle,
@@ -44,15 +43,37 @@ pub async fn download_model(
     let app_state = data.app.state::<AppState>();
 
     let id = id.into_inner() as i64;
-    let model = db::model::get_models_by_id(vec![id], &app_state.db).await;
 
-    if model.is_empty() {
+    let config = app_state.get_configuration();
+
+    let user = match user_db::get_user_by_id(&app_state.db, config.last_user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return HttpResponse::InternalServerError().body("Configured user not found");
+        }
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let models = match model_db::get_models_via_ids(&app_state.db, &user, vec![id]).await {
+        Ok(m) => m,
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    if models.is_empty() {
         return HttpResponse::NotFound().body("Model not found");
     }
 
-    let model = &model[0];
+    let model = &models[0];
     let base_dir = PathBuf::from(app_state.get_model_dir());
-    let src_file_path = base_dir.join(format!("{}.{}", model.sha256, model.filetype));
+    let src_file_path = base_dir.join(format!(
+        "{sha256}.{filetype}",
+        sha256 = model.sha256,
+        filetype = model.filetype
+    ));
 
     let file = match File::open(src_file_path).await {
         Ok(f) => f,

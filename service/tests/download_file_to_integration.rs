@@ -28,7 +28,7 @@ async fn download_file_to_writes_file_with_content_disposition() {
         .await;
 
     let dir = tempdir().unwrap();
-    let url = format!("{}/file", mock_server.uri());
+    let url = format!("{base}/file", base = mock_server.uri());
     let result = download_file_to(&url, dir.path())
         .await
         .expect("download should succeed");
@@ -58,7 +58,7 @@ async fn download_file_to_uses_url_path_when_no_content_disposition() {
         .await;
 
     let dir = tempdir().unwrap();
-    let url = format!("{}/some/path/model.stl", mock_server.uri());
+    let url = format!("{base}/some/path/model.stl", base = mock_server.uri());
     let result = download_file_to(&url, dir.path())
         .await
         .expect("download should succeed");
@@ -89,7 +89,7 @@ async fn get_content_disposition_filename_uses_header_when_present() {
         .mount(&mock_server)
         .await;
 
-    let url = format!("{}/any/path/ignored.stl", mock_server.uri());
+    let url = format!("{base}/any/path/ignored.stl", base = mock_server.uri());
     let response = reqwest::get(&url).await.expect("GET should succeed");
     let name = get_content_disposition_filename(&response);
     assert_eq!(name.as_deref(), Some("from-header.stl"));
@@ -104,7 +104,7 @@ async fn get_content_disposition_filename_uses_url_path_when_header_missing() {
         .mount(&mock_server)
         .await;
 
-    let url = format!("{}/some/path/model.stl", mock_server.uri());
+    let url = format!("{base}/some/path/model.stl", base = mock_server.uri());
     let response = reqwest::get(&url).await.expect("GET should succeed");
     let name = get_content_disposition_filename(&response);
     assert_eq!(name.as_deref(), Some("model.stl"));
@@ -126,7 +126,7 @@ async fn get_content_disposition_filename_rfc5987_from_header() {
         .mount(&mock_server)
         .await;
 
-    let url = format!("{}/url.stl", mock_server.uri());
+    let url = format!("{base}/url.stl", base = mock_server.uri());
     let response = reqwest::get(&url).await.expect("GET should succeed");
     let name = get_content_disposition_filename(&response);
     assert_eq!(name.as_deref(), Some("my percent file.stl"));
