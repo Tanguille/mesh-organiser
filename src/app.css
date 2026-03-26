@@ -17,6 +17,9 @@
 @import "./themes/amethysthaze.css" layer(base);
 
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-family-sans:
@@ -106,8 +109,6 @@
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 }
-
-@config "../tailwind.config.ts";
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
