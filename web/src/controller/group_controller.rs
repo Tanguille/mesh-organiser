@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -11,10 +9,8 @@ use axum_login::login_required;
 use serde::{Deserialize, Serialize};
 
 use db::{
-    group_db,
-    group_db::{GroupFilterOptions, GroupOrderBy},
-    model::model_group::ModelGroupMeta,
-    random_hex_32, time_now,
+    group_db, group_db::GroupFilterOptions, model::model_group::ModelGroupMeta, random_hex_32,
+    time_now,
 };
 
 use crate::{
@@ -49,8 +45,8 @@ mod get {
     use crate::query_bounds;
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, FromStr, GroupFilterOptions, GroupOrderBy,
-        IntoResponse, Json, Path, Response, Serialize, State, WebAppState, group_db,
+        ApplicationError, AuthSession, Deserialize, GroupFilterOptions, IntoResponse, Json, Path,
+        Response, Serialize, State, WebAppState, group_db,
     };
 
     #[derive(Deserialize)]
@@ -125,7 +121,8 @@ mod get {
                 },
                 order_by: params
                     .order_by
-                    .map(|s| GroupOrderBy::from_str(&s).unwrap_or(GroupOrderBy::NameAsc)),
+                    .as_deref()
+                    .map(query_bounds::parse_group_order_by_bounded),
                 text_search: params.text_search,
                 page: params.page,
                 page_size: params.page_size,
@@ -172,7 +169,8 @@ mod get {
                 label_ids: None,
                 order_by: params
                     .order_by
-                    .map(|s| GroupOrderBy::from_str(&s).unwrap_or(GroupOrderBy::NameAsc)),
+                    .as_deref()
+                    .map(query_bounds::parse_group_order_by_bounded),
                 text_search: params.text_search,
                 page: params.page,
                 page_size: params.page_size,

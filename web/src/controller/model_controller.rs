@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use axum::{
     Json, Router,
     extract::{Multipart, Path, State},
@@ -12,11 +10,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tokio::fs;
 
-use db::{
-    model::ModelFlags,
-    model_db,
-    model_db::{ModelFilterOptions, ModelOrderBy},
-};
+use db::{model::ModelFlags, model_db, model_db::ModelFilterOptions};
 use service::{cleanse_evil_from_name, export_service, import_service, import_state::ImportState};
 
 use crate::{
@@ -48,9 +42,8 @@ mod get {
     use crate::query_bounds;
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, FromStr, IntoResponse, Json,
-        ModelFilterOptions, ModelFlags, ModelOrderBy, Path, Response, Serialize, State,
-        WebAppState, export_service, model_db,
+        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ModelFilterOptions,
+        ModelFlags, Path, Response, Serialize, State, WebAppState, export_service, model_db,
     };
 
     #[derive(Deserialize)]
@@ -115,7 +108,8 @@ mod get {
                 },
                 order_by: params
                     .order_by
-                    .map(|s| ModelOrderBy::from_str(&s).unwrap_or(ModelOrderBy::AddedDesc)),
+                    .as_deref()
+                    .map(query_bounds::parse_model_order_by_bounded),
                 model_flags: if flags.is_empty() { None } else { Some(flags) },
                 text_search: params.text_search,
                 page: params.page,

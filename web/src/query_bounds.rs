@@ -2,13 +2,15 @@
 //!
 //! Limits are expressed in UTF-8 bytes for strings (`str::len()`).
 
+use std::str::FromStr;
+
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use thiserror::Error;
 
-use db::MAX_PAGE_SIZE;
+use db::{MAX_PAGE_SIZE, group_db::GroupOrderBy, model_db::ModelOrderBy};
 
 /// Maximum number of `i64` IDs accepted per repeated query parameter (`?model_ids=1&model_ids=2`).
 pub const MAX_ID_LIST_ITEMS: usize = 10_000;
@@ -192,6 +194,27 @@ pub fn validate_list_query_strings(
     Ok(())
 }
 
+/// Parses `order_by` query values only when UTF-8 length is within [`MAX_ORDER_BY_BYTES`], so
+/// `FromStr` work stays bounded even if validation is skipped by mistake.
+#[must_use]
+pub fn parse_model_order_by_bounded(str: &str) -> ModelOrderBy {
+    if str.len() > MAX_ORDER_BY_BYTES {
+        return ModelOrderBy::AddedDesc;
+    }
+
+    ModelOrderBy::from_str(str).unwrap_or(ModelOrderBy::AddedDesc)
+}
+
+/// Same as [`parse_model_order_by_bounded`] for group list `order_by`.
+#[must_use]
+pub fn parse_group_order_by_bounded(str: &str) -> GroupOrderBy {
+    if str.len() > MAX_ORDER_BY_BYTES {
+        return GroupOrderBy::NameAsc;
+    }
+
+    GroupOrderBy::from_str(str).unwrap_or(GroupOrderBy::NameAsc)
+}
+
 /// Rejects pagination parameters that would allow unbounded allocations or overflow in offset math.
 pub fn validate_pagination(page: u32, page_size: u32) -> Result<(), QueryBoundsError> {
     if !(1..=MAX_PAGE).contains(&page) {
@@ -207,7 +230,7 @@ pub fn validate_pagination(page: u32, page_size: u32) -> Result<(), QueryBoundsE
 
 #[cfg(test)]
 mod tests {
-    use db::MAX_PAGE_SIZE;
+    use db::{MAX_PAGE_SIZE, group_db::GroupOrderBy, model_db::ModelOrderBy};
 
     use super::*;
 
@@ -332,6 +355,36 @@ mod tests {
         assert_eq!(
             optional_comma_separated_model_ids(Some("1,2")).unwrap(),
             Some(vec![1, 2])
+        );
+    }
+
+    #[test]
+    fn parse_model_order_by_bounded_rejects_oversized_without_parsing() {
+        let junk = "AddedDesc".repeat(100);
+        assert!(junk.len() > MAX_ORDER_BY_BYTES);
+        assert_eq!(parse_model_order_by_bounded(&junk), ModelOrderBy::AddedDesc);
+    }
+
+    #[test]
+    fn parse_model_order_by_bounded_accepts_known_variant() {
+        assert_eq!(
+            parse_model_order_by_bounded("NameAsc"),
+            ModelOrderBy::NameAsc
+        );
+    }
+
+    #[test]
+    fn parse_group_order_by_bounded_rejects_oversized() {
+        let junk = "NameAsc".repeat(100);
+        assert!(junk.len() > MAX_ORDER_BY_BYTES);
+        assert_eq!(parse_group_order_by_bounded(&junk), GroupOrderBy::NameAsc);
+    }
+
+    #[test]
+    fn parse_group_order_by_bounded_accepts_known_variant() {
+        assert_eq!(
+            parse_group_order_by_bounded("CreatedDesc"),
+            GroupOrderBy::CreatedDesc
         );
     }
 }
