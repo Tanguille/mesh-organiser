@@ -81,7 +81,7 @@ See [docs/commands.md](docs/commands.md) for all build, dev, and test commands. 
 ### Code Style
 
 - **Frontend**: See [docs/frontend-style.md](docs/frontend-style.md)
-- **Rust**: See [docs/rust-style.md](docs/rust-style.md)
+- **Rust**: See [docs/rust-style.md](docs/rust-style.md) (imports, **blank line before return/final expression**, **tight typing** / unsigned vs signed, `format!` style, **identifiers**, **strings** — `&str` vs `impl AsRef<str>` vs owned)
 
 ### Git Workflow
 

@@ -5,6 +5,7 @@
 - **Strict mode enabled**: All TypeScript must pass strict type checking
 - Use explicit type annotations for function parameters/returns when not inferrable
 - Prefer interfaces over types for object shapes; use `type` for unions/intersections
+- **Names:** prefer full words (`modelId`, `totalBytes`) over single-letter variables. **`e`** is acceptable for errors in `catch (e)` / `.catch((e) => …)`. Trivial loop indices (`i` in a short `for`) are fine; otherwise use descriptive names unless awkwardly long.
 
 ```typescript
 // Good - explicit types

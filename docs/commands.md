@@ -50,18 +50,41 @@ cargo clippy --workspace --all-targets --all-features
 
 The **`step`** feature builds OpenCascade/OCCT from C++ source the first time. That build is heavy and can freeze the PC if too many compiler processes run at once. **Limit parallelism** so the machine stays responsive:
 
-**PowerShell (Windows):** from repo root you can run:
+**Windows (PowerShell or cmd):** from repo root, prefer `.ps1` or `.cmd`. **`./scripts/build-with-step.sh` in PowerShell often does not run bash** (you may see no cargo output and exit code 0).
 
 ```powershell
 .\scripts\build-with-step.ps1
 ```
 
-Or set the env vars yourself: `CARGO_BUILD_JOBS=2`, `CL=/MP2`; if CMake errors about "Compatibility with CMake < 3.5", set `CMAKE_POLICY_VERSION_MINIMUM=3.5`.
+or:
 
-**Bash (Linux/macOS):**
+```bat
+scripts\build-with-step.cmd
+```
+
+With extra Cargo arguments (PowerShell example):
+
+```powershell
+.\scripts\build-with-step.ps1 check --workspace --all-targets --all-features
+```
+
+The script sets `CMAKE_POLICY_VERSION_MINIMUM=3.5`, `CARGO_BUILD_JOBS=2`, and on Windows `CL=/MP2` so OCCT configures under CMake 4.x and the compile does not overwhelm the machine. On **Windows**, the script sets **`CMAKE_GENERATOR=Ninja`** when **`ninja`** is on `PATH` _or_ when it finds **Visual Studio’s bundled Ninja** (via `vswhere`), and prepends that folder to `PATH` for the build. Ninja avoids many fragile **Visual Studio + MSBuild** combinations on new toolchains. If you already have a half-configured OCCT tree, delete `target\OCCT` and run `cargo clean -p opencascade-sys` before rebuilding so CMake picks Ninja instead of an old generator cache.
+
+Optional **`MESH_STEP_SINGLE_JOB=1`** (environment variable) forces minimal parallelism (`CARGO_BUILD_JOBS=1`, and on Windows `CL=/MP1`) if the OCCT compile runs out of memory or overloads the machine.
+
+**Bash (Linux/macOS, or Git Bash on Windows):**
 
 ```bash
-CARGO_BUILD_JOBS=2 cargo build --workspace --all-targets --all-features
+chmod +x ./scripts/build-with-step.sh   # once, if needed
+./scripts/build-with-step.sh
+```
+
+From **Git Bash on Windows** you can also run `bash scripts/build-with-step.sh` if `./scripts/build-with-step.sh` is not executable.
+
+Or one-liner (same vars as the script):
+
+```bash
+CMAKE_POLICY_VERSION_MINIMUM=3.5 CARGO_BUILD_JOBS=2 cargo build --workspace --all-targets --all-features
 ```
 
 After OCCT has built once, later builds are quick (Cargo caches it). For day-to-day work without STEP you can omit `--all-features`:
@@ -71,6 +94,30 @@ cargo build --workspace --all-targets
 cargo clippy --workspace --all-targets
 cargo test --workspace --all-targets
 ```
+
+#### Troubleshooting: OCCT compile fails after CMake configure
+
+If configuration succeeds (you only see a CMake _deprecation_ warning) but the build stops during `cmake --build` / `install` with little or no compiler output, Cargo is often hiding **MSBuild** or **ninja** errors.
+
+1. **Verbose OCCT rebuild (Windows, PowerShell):** from repo root, after a failed run:
+
+   ```powershell
+   .\scripts\log-occt-build.ps1
+   ```
+
+   That re-runs the compile for `target\OCCT\build` with **`cmake --build … --verbose`**. If you use a custom **`CARGO_TARGET_DIR`**, run the same against `%CARGO_TARGET_DIR%\OCCT\build` instead.
+
+2. **Install Ninja and clean stale CMake files** so the next run uses **Ninja** (the `build-with-step` scripts set `CMAKE_GENERATOR=Ninja` when `ninja` exists). Then remove the old tree and rebuild:
+
+   ```powershell
+   Remove-Item -Recurse -Force .\target\OCCT -ErrorAction SilentlyContinue
+   cargo clean -p opencascade-sys
+   .\scripts\build-with-step.ps1
+   ```
+
+3. **Shorter paths:** extreme Windows path lengths can break the OCCT build; try e.g. `CARGO_TARGET_DIR=D:\t\mo` (short directory) for the STEP build.
+
+4. **Single job:** `MESH_STEP_SINGLE_JOB=1 .\scripts\build-with-step.ps1`
 
 ## Testing
 
@@ -112,4 +159,4 @@ cargo clippy --workspace --all-targets --all-features
 cargo test --workspace   # or -p <crate> for specific crate
 ```
 
-To build with STEP, use the [parallelism limits](#step-support-opencascadeocct) so the OCCT build doesn’t freeze the machine.
+To verify with **`--all-features`** (includes STEP / OCCT), use [`scripts/build-with-step.ps1`](../scripts/build-with-step.ps1), [`scripts/build-with-step.cmd`](../scripts/build-with-step.cmd) (Windows), or [`scripts/build-with-step.sh`](../scripts/build-with-step.sh) (bash/Git Bash) so CMake and job limits are set; plain `cargo clippy … --all-features` may fail on CMake 4.x without `CMAKE_POLICY_VERSION_MINIMUM`. For day-to-day work without STEP you can omit `--all-features` (see [STEP support](#step-support-opencascadeocct)).
