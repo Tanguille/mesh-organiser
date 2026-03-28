@@ -29,11 +29,11 @@ strum = { workspace = true, features = ["derive"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-process = { workspace = true }
 tokio = { workspace = true, features = [
-    "rt-multi-thread",
     "fs",
-    "sync",
-    "macros",
     "io-util",
+    "macros",
+    "rt-multi-thread",
+    "sync",
 ] }
 tokio-util = { workspace = true, features = ["io"] }
 arboard = { workspace = true }

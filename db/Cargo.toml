@@ -15,10 +15,10 @@ hex = { workspace = true }
 chrono = { workspace = true }
 sqlx = { workspace = true, features = [
     "chrono",
+    "macros",
+    "migrate",
     "runtime-tokio",
     "sqlite",
-    "migrate",
-    "macros",
 ] }
 indexmap = { workspace = true }
 itertools = { workspace = true }

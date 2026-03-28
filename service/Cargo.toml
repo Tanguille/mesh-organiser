@@ -14,7 +14,7 @@ db = { workspace = true }
 libmeshthumbnail = { workspace = true }
 
 futures = { workspace = true }
-image = { workspace = true, features = ["png", "jpeg"] }
+image = { workspace = true, features = ["jpeg", "png"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 regex = { workspace = true }
