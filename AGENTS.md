@@ -81,6 +81,7 @@ See [docs/commands.md](docs/commands.md) for all build, dev, and test commands. 
 ### Code Style
 
 - **Frontend**: See [docs/frontend-style.md](docs/frontend-style.md)
+- **Tailwind CSS**: Use Tailwind CSS utility classes instead of raw `<style>` blocks. Do not add custom CSS unless Tailwind utilities cannot achieve the desired styling.
 - **Rust**: See [docs/rust-style.md](docs/rust-style.md) (imports, **blank line before return/final expression**, **tight typing** / unsigned vs signed, `format!` style, **identifiers**, **strings** — `&str` vs `impl AsRef<str>` vs owned)
 
 ### Git Workflow
