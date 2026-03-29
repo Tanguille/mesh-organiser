@@ -80,13 +80,13 @@
     </div>
   {:else}
     <div class="space-y-3">
-      {#each models as model}
+      {#each models as model (model.id)}
         <button
           class="flex w-full items-center space-x-4 rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:bg-muted"
           onclick={() => viewModel(model.id)}
         >
           <div
-            class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded bg-muted"
+            class="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-muted"
           >
             <File class="h-6 w-6 text-muted-foreground" />
           </div>

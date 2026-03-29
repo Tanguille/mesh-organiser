@@ -71,7 +71,7 @@
     </div>
   {:else}
     <div class="space-y-3">
-      {#each printJobs as job}
+      {#each printJobs as job (job.id)}
         <button
           class="flex w-full items-center justify-between rounded-lg border border-border p-4 text-left transition-all hover:border-primary hover:bg-muted"
           onclick={() => viewPrintJob(job.id)}
