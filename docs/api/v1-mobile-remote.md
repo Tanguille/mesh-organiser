@@ -2,6 +2,8 @@
 
 Contract note for **Tauri mobile** talking to a remotely hosted **`web`** (Axum) instance. Canonical product decisions live in [2026-03-29-remote-client-and-http-api-design.md](../superpowers/specs/2026-03-29-remote-client-and-http-api-design.md).
 
+**CORS:** Browsers enforce CORS on cross-origin `fetch` / XHR. The **`web`** server sends `Access-Control-Allow-Origin` for an explicit allowlist (default localhost dev URLs, plus any origins from **`MESH_ORGANISER_CORS_ORIGINS`** — see [commands.md](../commands.md#web-server-web-crate)). **Native** HTTP clients (e.g. **Tauri `tauri-plugin-http`**) are not subject to browser CORS; only browser-based or WebView `fetch` to a different origin needs the server allowlist to include the client origin.
+
 ---
 
 ## Base URL and path construction
