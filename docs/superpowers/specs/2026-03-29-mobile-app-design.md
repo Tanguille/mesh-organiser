@@ -1,10 +1,10 @@
-# Mobile App for Mesh Organiser - Design Specification
+# Mobile and Web App for Mesh Organiser - Design Specification
 
 ## Overview
 
-This document outlines the design for a mobile companion app to Mesh Organiser that provides model viewing, importing from supported websites, and basic slicing capabilities. The app will be desktop-independent by leveraging a NAS-based Mesh Organiser web instance running in a container, which handles slicing via OrcaSlicer and provides the web UI for advanced features.
+This document outlines the design for mobile and web companion apps to Mesh Organiser that provide model viewing, importing from supported websites, and basic slicing capabilities. The apps will be desktop-independent by leveraging a NAS-based Mesh Organiser web instance running in a container, which handles slicing via OrcaSlicer and provides the web UI for advanced features. Both mobile and web apps will offer comparable core functionality, with the mobile app focusing on Android initially (iOS may be added if it doesn't cause additional overhead).
 
-## Core Features
+## Core Features (Both Mobile and Web Apps)
 
 ### 1. Model Viewing and Organization
 
@@ -39,26 +39,31 @@ This document outlines the design for a mobile companion app to Mesh Organiser t
 ### Client-Server Model
 
 ```
-Mobile App ↔ NAS Mesh Organiser (Web Instance in Container) ↔ Printers
-          ↓                                    ↓
-    Model Requests                     Slicing via OrcaSlicer
-          ↓                                    ↓
-    Sliced G-code                    Printer Communication
+Mobile/Web App ↔ NAS Mesh Organiser (Web Instance in Container) ↔ Printers
+                  ↓                                    ↓
+          Model Requests                     Slicing via OrcaSlicer
+                  ↓                                    ↓
+              Sliced G-code                    Printer Communication
 ```
 
 ### Components
 
-1. **Mobile Client App** (React Native or similar)
-   - UI for model browsing, importing, and basic settings
-   - Communication layer with NAS instance
-   - Model viewing component (using existing thumbnails or generating previews)
-   - Basic slicing settings UI
+1. **Client Apps** (Mobile and Web)
+   - **Mobile Client App** (React Native or similar, Android focus)
+     - UI for model browsing, importing, and basic settings
+     - Communication layer with NAS instance
+     - Model viewing component (using existing thumbnails or generating previews)
+     - Basic slicing settings UI
+   - **Web Client App** (Existing mesh-organiser web)
+     - Standard browser-based interface
+     - Full feature set including advanced slicing and model management
+     - Accessible via browser on any device
 
 2. **NAS Mesh Organiser Instance** (Docker Container)
-   - Running mesh-organiser web instance
+   - Running mesh-organiser web instance (serves both mobile and web clients)
    - Handles model storage and organization
    - Provides slicing functionality via OrcaSlicer integration
-   - Exposes API for mobile app communication
+   - Exposes API for client app communication
    - Manages printer connections and print jobs
 
 3. **OrcaSlicer Integration**
@@ -97,45 +102,53 @@ Mobile App ↔ NAS Mesh Organiser (Web Instance in Container) ↔ Printers
 
 ## Technical Implementation
 
-### Mobile App Technologies
+### Client App Technologies
 
-- Framework: React Native (for cross-platform iOS/Android support)
-- State Management: Redux or Context API
-- Networking: Axios or Fetch for REST API calls
-- Model Viewing: Possibly use existing thumbnail generation or lightweight 3D viewer
-- Authentication: Token-based auth with NAS instance
+- **Mobile App** (React Native or similar, Android focus)
+  - Framework: React Native (for cross-platform iOS/Android support)
+  - State Management: Redux or Context API
+  - Networking: Axios or Fetch for REST API calls
+  - Model Viewing: Possibly use existing thumbnail generation or lightweight 3D viewer
+  - Authentication: Token-based auth with NAS instance
+- **Web App** (Existing mesh-organiser web)
+  - Standard browser-based application
+  - Built with SvelteKit (existing technology stack)
+  - Accessible via any modern browser
 
-### NAS Instance Configuration
+### Shared NAS Instance Configuration
 
-- Docker container running mesh-organiser web
+- Docker container running mesh-organiser web instance
 - Standard mesh-organiser configuration with:
   - Enabled slicer support (including OrcaSlicer)
   - Configured data persistence via volume mounts
-  - Network exposure for mobile app access
+  - Network exposure for both mobile and web app access
   - Optional reverse proxy for HTTPS
+  - Configured for multi-user support (existing feature)
 
-### API Endpoints (Extension of Existing)
+### API Endpoints (Used by Both Apps)
 
-The mobile app will primarily use existing mesh-organiser web APIs, potentially with minor extensions for mobile-specific needs:
+Both mobile and web apps will use the existing mesh-organiser web APIs:
 
-1. **Model Operations** (Existing)
+1. **Model Operations**
    - GET `/api/models` - List models
    - GET `/api/models/{id}` - Get model details
    - POST `/api/models` - Import model
    - DELETE `/api/models/{id}` - Delete model
 
-2. **Slicing Operations** (Likely Existing or Minor Extension)
+2. **Slicing Operations**
    - POST `/api/slicer/slice` - Slice model with settings
    - Returns: Sliced G-code/3MF file and metadata
 
-3. **Printer Operations** (Existing)
+3. **Printer Operations**
    - GET `/api/printers` - List configured printers
    - POST `/api/printers/{id}/print` - Send print job
    - GET `/api/printers/{id}/status` - Get printer status
 
-## User Interface
+## User Interface (Comparable Functionality)
 
-### Main Screens
+Both mobile and web apps will provide comparable core functionality with platform-appropriate interfaces:
+
+### Main Screens (Both Apps)
 
 1. **Model Library**
    - Grid/list view of models
@@ -161,6 +174,11 @@ The mobile app will primarily use existing mesh-organiser web APIs, potentially 
    - Active print jobs
    - Job progress and controls
    - History of completed/failed jobs
+
+### Platform-Specific Considerations
+
+- **Mobile App**: Touch-optimized controls, native navigation patterns, offline capabilities
+- **Web App**: Mouse/keyboard optimized, browser-native interface, potentially more advanced features
 
 ## Error Handling and Edge Cases
 
@@ -244,20 +262,22 @@ The mobile app will primarily use existing mesh-organiser web APIs, potentially 
 - Docker installed and running
 - Sufficient storage for model library
 - Adequate CPU/RAM for slicing operations (recommend 4+ cores, 4GB+ RAM)
-- Network accessibility from mobile devices
+- Network accessibility from mobile and web devices
 
-### Mobile App Requirements
+### Client App Requirements
 
-- iOS 13+ or Android 8+
+- **Mobile App**: Android 8+ (iOS may be added if it doesn't cause additional overhead)
+- **Web App**: Any modern browser (Chrome, Firefox, Safari, Edge)
 - Internet connectivity to NAS instance
-- Optional: Biometric authentication support
+- Optional: Biometric authentication support (mobile app only)
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. Should the mobile app include its own minimal 3D model viewer, or rely on thumbnails from the NAS instance?
-2. What level of slicing settings should be exposed in the mobile app vs. requiring use of the full web interface?
-3. Should we implement push notifications for print job completion/failure?
-4. How should we handle authentication - extend existing mesh-organiser auth or implement mobile-specific tokens?
+1. Should the mobile app include its own minimal 3D model viewer, or rely on thumbnails from the NAS instance? -> **Include minimal 3D model viewer**
+2. What level of slicing settings should be exposed in the mobile apps vs. requiring use of the full web interface? -> **Expose as much as possible in mobile app**
+3. Should we implement push notifications for print job completion/failure? -> **No push notifications**
+4. How should we handle authentication - extend existing mesh-organiser auth or implement mobile-specific tokens? -> **Use existing mesh-organiser authentication**
+5. Should we prioritize any specific slicing settings or printer features for the initial mobile release? -> **No specific prioritization needed**
 
 ---
 

@@ -1,0 +1,21 @@
+{
+  "appId": "io.meshorganiser.app",
+  "appName": "Mesh Organiser",
+  "webDir": "build",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 3000,
+      "backgroundColor": "#ffffffff",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showDuration": 2000,
+      "hideDuration": 2000
+    }
+  }
+}
