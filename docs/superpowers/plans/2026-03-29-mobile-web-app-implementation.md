@@ -116,23 +116,23 @@ export interface MeshOrganiserApi {
 - [ ] **Step 2: Implement API client with base URL and endpoints**
 
 ```typescript
-import axios from 'axios';
+import axios from "axios";
 
 // Determine base URL based on environment
 const API_BASE_URL = import.meta.env.DEV
-  ? 'http://localhost:9435'
-  : 'http://your-nas-ip:9435';
+  ? "http://localhost:9435"
+  : "http://your-nas-ip:9435";
 
 export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   private api = axios.create({
     baseURL: API_BASE_URL,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 
   async getModels(): Promise<any[]> {
-    const response = await this.api.get('/api/models');
+    const response = await this.api.get("/api/models");
     return response.data;
   }
 
@@ -142,9 +142,9 @@ export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   }
 
   async importModel(formData: FormData): Promise<any> {
-    const response = await this.api.post('/api/models', formData, {
+    const response = await this.api.post("/api/models", formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
     });
     return response.data;
@@ -159,7 +159,7 @@ export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   }
 
   async getPrinters(): Promise<any[]> {
-    const response = await this.api.get('/api/printers');
+    const response = await this.api.get("/api/printers");
     return response.data;
   }
 
@@ -204,23 +204,23 @@ git commit -m "feat(mobile): implement Mesh Organiser API communication layer"
 - [ ] **Step 2: Implement API client with base URL and endpoints**
 
 ```typescript
-import axios from 'axios';
+import axios from "axios";
 
 // Determine base URL based on environment
 const API_BASE_URL = import.meta.env.DEV
-  ? 'http://localhost:9435'
-  : 'http://your-nas-ip:9435';
+  ? "http://localhost:9435"
+  : "http://your-nas-ip:9435";
 
 export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   private api = axios.create({
     baseURL: API_BASE_URL,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 
   async getModels(): Promise<any[]> {
-    const response = await this.api.get('/api/models');
+    const response = await this.api.get("/api/models");
     return response.data;
   }
 
@@ -230,9 +230,9 @@ export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   }
 
   async importModel(formData: FormData): Promise<any> {
-    const response = await this.api.post('/api/models', formData, {
+    const response = await this.api.post("/api/models", formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
     });
     return response.data;
@@ -247,7 +247,7 @@ export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   }
 
   async getPrinters(): Promise<any[]> {
-    const response = await this.api.get('/api/printers');
+    const response = await this.api.get("/api/printers");
     return response.data;
   }
 
@@ -292,20 +292,22 @@ git commit -m "feat(mobile): implement Mesh Organiser API communication layer"
 - [ ] **Step 2: Implement API client with base URL and endpoints**
 
 ```typescript
-import axios from 'axios';
+import axios from "axios";
 
-const API_BASE_URL = __DEV__ ? 'http://localhost:9435' : 'http://your-nas-ip:9435';
+const API_BASE_URL = __DEV__
+  ? "http://localhost:9435"
+  : "http://your-nas-ip:9435";
 
 export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   private api = axios.create({
     baseURL: API_BASE_URL,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
   });
 
   async getModels(): Promise<any[]> {
-    const response = await this.api.get('/api/models');
+    const response = await this.api.get("/api/models");
     return response.data;
   }
 
@@ -315,9 +317,9 @@ export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   }
 
   async importModel(formData: FormData): Promise<any> {
-    const response = await this.api.post('/api/models', formData, {
+    const response = await this.api.post("/api/models", formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
     });
     return response.data;
@@ -332,7 +334,7 @@ export class MeshOrganiserApiImpl implements MeshOrganiserApi {
   }
 
   async getPrinters(): Promise<any[]> {
-    const response = await this.api.get('/api/printers');
+    const response = await this.api.get("/api/printers");
     return response.data;
   }
 
@@ -490,9 +492,9 @@ git commit -m "feat(mobile): implement authentication context"
 
 ```svelte
 <script>
-  import { onMount } from 'svelte';
-  import { authStore } from '../stores/authStore';
-  import { meshOrganiserApi } from '../lib/api/meshOrganiserApi';
+  import { onMount } from "svelte";
+  import { authStore } from "../stores/authStore";
+  import { meshOrganiserApi } from "../lib/api/meshOrganiserApi";
 
   let models = [];
   let loading = true;
@@ -503,7 +505,7 @@ git commit -m "feat(mobile): implement authentication context"
       const modelsData = await meshOrganiserApi.getModels();
       models = modelsData;
     } catch (error) {
-      console.error('Failed to load models:', error);
+      console.error("Failed to load models:", error);
     } finally {
       loading = false;
     }
@@ -522,11 +524,17 @@ git commit -m "feat(mobile): implement authentication context"
       <div class="model-item" on:click={() => goto(`/models/${model.id}`)}>
         <h3>{model.name}</h3>
         {#if model.thumbnailUrl}
-          <img src={model.thumbnailUrl} alt={model.name} class="model-thumbnail" />
+          <img
+            src={model.thumbnailUrl}
+            alt={model.name}
+            class="model-thumbnail"
+          />
         {:else}
           <div class="placeholder-thumbnail">No preview</div>
         {/if}
-        <p class="model-meta">Added: {new Date(model.added).toLocaleDateString()}</p>
+        <p class="model-meta">
+          Added: {new Date(model.added).toLocaleDateString()}
+        </p>
       </div>
     {/each}
   </div>
@@ -648,11 +656,11 @@ git commit -m "feat(mobile): implement model library screen"
 
 ```svelte
 <script>
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { authStore } from '../stores/authStore';
-  import { meshOrganiserApi } from '../lib/api/meshOrganiserApi';
-  import ModelViewer from '$lib/components/ModelViewer.svelte';
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { authStore } from "../stores/authStore";
+  import { meshOrganiserApi } from "../lib/api/meshOrganiserApi";
+  import ModelViewer from "$lib/components/ModelViewer.svelte";
 
   export let modelId;
 
@@ -668,7 +676,7 @@ git commit -m "feat(mobile): implement model library screen"
       model = modelData;
     } catch (err) {
       error = err;
-      console.error('Failed to load model:', err);
+      console.error("Failed to load model:", err);
     } finally {
       loading = false;
     }
@@ -694,13 +702,15 @@ git commit -m "feat(mobile): implement model library screen"
 {:else if model}
   <div class="model-detail">
     <div class="model-preview">
-      <ModelViewer modelUri={model.thumbnailUrl || ''} />
+      <ModelViewer modelUri={model.thumbnailUrl || ""} />
     </div>
 
     <div class="model-info">
       <h2>{model.name}</h2>
       <p class="model-meta">Size: {model.blob.size} bytes</p>
-      <p class="model-meta">Added: {new Date(model.added).toLocaleDateString()}</p>
+      <p class="model-meta">
+        Added: {new Date(model.added).toLocaleDateString()}
+      </p>
       {#if model.description}
         <p class="model-description">{model.description}</p>
       {/if}
@@ -772,7 +782,7 @@ git commit -m "feat(mobile): implement model library screen"
   }
 
   .model-actions button:nth-child(1) {
-    background-color: #4CAF50;
+    background-color: #4caf50;
     color: white;
   }
 
@@ -781,7 +791,7 @@ git commit -m "feat(mobile): implement model library screen"
   }
 
   .model-actions button:nth-child(2) {
-    background-color: #2196F3;
+    background-color: #2196f3;
     color: white;
   }
 
@@ -864,9 +874,9 @@ git commit -m "feat(mobile): implement model detail and import screens"
 
 ```svelte
 <script>
-  import { onMount } from 'svelte';
-  import { authStore } from '../stores/authStore';
-  import { meshOrganiserApi } from '../lib/api/meshOrganiserApi';
+  import { onMount } from "svelte";
+  import { authStore } from "../stores/authStore";
+  import { meshOrganiserApi } from "../lib/api/meshOrganiserApi";
 
   export let modelId;
 
@@ -874,8 +884,8 @@ git commit -m "feat(mobile): implement model detail and import screens"
   let settings = {
     layerHeight: 0.2, // 0.1, 0.2, 0.3 mm
     infill: 20, // 0-100%
-    supports: 'none', // 'none', 'everywhere', 'touching buildplate'
-    material: 'PLA' // PLA, PETG, ABS, etc.
+    supports: "none", // 'none', 'everywhere', 'touching buildplate'
+    material: "PLA", // PLA, PETG, ABS, etc.
   };
 
   let loading = false;
@@ -889,12 +899,12 @@ git commit -m "feat(mobile): implement model detail and import screens"
       // Call slicing API with model ID and settings
       const result = await meshOrganiserApi.sliceModel(modelId, {
         ...settings,
-        model_id: modelId
+        model_id: modelId,
       });
       slicedUrl = result.slicedFileUrl;
     } catch (err) {
       error = err;
-      console.error('Slicing failed:', err);
+      console.error("Slicing failed:", err);
     } finally {
       loading = false;
     }
@@ -903,14 +913,17 @@ git commit -m "feat(mobile): implement model detail and import screens"
   async function handlePreview() {
     // In a real implementation, this would show a preview of the sliced model
     // For now, we'll just navigate to a preview page or show a modal
-    alert('Preview functionality would be implemented here');
+    alert("Preview functionality would be implemented here");
   }
 
   async function handlePrint() {
     if (slicedUrl) {
       // Navigate to printer selection screen with sliced model info
       // This would typically be handled through routing
-      console.log('Would navigate to printer selection with:', { modelId, slicedUrl });
+      console.log("Would navigate to printer selection with:", {
+        modelId,
+        slicedUrl,
+      });
     }
   }
 </script>
@@ -1027,7 +1040,7 @@ git commit -m "feat(mobile): implement model detail and import screens"
   }
 
   .form-actions button[type="submit"] {
-    background-color: #4CAF50;
+    background-color: #4caf50;
     color: white;
   }
 
@@ -1041,7 +1054,7 @@ git commit -m "feat(mobile): implement model detail and import screens"
   }
 
   .form-actions button:nth-child(2) {
-    background-color: #2196F3;
+    background-color: #2196f3;
     color: white;
   }
 
@@ -1073,10 +1086,10 @@ git commit -m "feat(mobile): implement model detail and import screens"
 
 ```svelte
 <script>
-  import { onMount } from 'svelte';
-  import { authStore } from '$lib/stores/authStore';
-  import { meshOrganiserApi } from '$lib/api/meshOrganiserApi';
-  import SlicingSettings from '$lib/components/SlicingSettings.svelte';
+  import { onMount } from "svelte";
+  import { authStore } from "$lib/stores/authStore";
+  import { meshOrganiserApi } from "$lib/api/meshOrganiserApi";
+  import SlicingSettings from "$lib/components/SlicingSettings.svelte";
 
   export let params;
 
@@ -1088,7 +1101,7 @@ git commit -m "feat(mobile): implement model detail and import screens"
   onMount(() => {
     if (!authStore.isAuthenticated) {
       // In a real app, we'd redirect to login
-      console.warn('User not authenticated');
+      console.warn("User not authenticated");
     }
     loading = false;
   });
@@ -1431,10 +1444,10 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
 
 ```svelte
 <script>
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { authStore } from '$lib/stores/authStore';
-  import { meshOrganiserApi } from '$lib/api/meshOrganiserApi';
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { authStore } from "$lib/stores/authStore";
+  import { meshOrganiserApi } from "$lib/api/meshOrganiserApi";
 
   export let params;
 
@@ -1452,7 +1465,7 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
       printJob = jobData;
     } catch (err) {
       error = err;
-      console.error('Failed to load print job:', err);
+      console.error("Failed to load print job:", err);
     } finally {
       loading = false;
     }
@@ -1472,12 +1485,12 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
 
   function handleCancelPrint() {
     // TODO: Implement cancel print functionality
-    alert('Cancel print functionality would be implemented here');
+    alert("Cancel print functionality would be implemented here");
   }
 
   function handlePauseResumePrint() {
     // TODO: Implement pause/resume print functionality
-    alert('Pause/resume print functionality would be implemented here');
+    alert("Pause/resume print functionality would be implemented here");
   }
 
   onMount(() => {
@@ -1500,23 +1513,31 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
 
     <div class="job-info">
       <p><strong>Job ID:</strong> {printJob.id}</p>
-      <p><strong>Status:</strong> <span class:status={printJob.status.toLowerCase()}>{printJob.status}</span></p>
+      <p>
+        <strong>Status:</strong>
+        <span class:status={printJob.status.toLowerCase()}
+          >{printJob.status}</span
+        >
+      </p>
       <p><strong>Progress:</strong> {printJob.progress}%</p>
       {#if printJob.estimatedTimeRemaining}
-        <p><strong>Time Remaining:</strong> {printJob.estimatedTimeRemaining} minutes</p>
+        <p>
+          <strong>Time Remaining:</strong>
+          {printJob.estimatedTimeRemaining} minutes
+        </p>
       {/if}
     </div>
 
     <div class="job-controls">
       <button on:click={handlePauseResumePrint}>
-        {#if printJob.status === 'Printing'}Pause Print{:else}Resume Print{/if}
+        {#if printJob.status === "Printing"}Pause Print{:else}Resume Print{/if}
       </button>
       <button on:click={handleCancelPrint}>Cancel Print</button>
     </div>
 
     {#if printJob.progress < 100}
       <div class="progress-bar">
-        <div class="progress-fill" style:width={printJob.progress}%></div>
+        <div class="progress-fill" style:width="{printJob.progress}%"></div>
       </div>
     {/if}
   </div>
@@ -1543,17 +1564,17 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
   }
 
   .status.printing {
-    color: #4CAF50;
+    color: #4caf50;
     font-weight: bold;
   }
 
   .status.paused {
-    color: #FF9800;
+    color: #ff9800;
     font-weight: bold;
   }
 
   .status.completed {
-    color: #2196F3;
+    color: #2196f3;
     font-weight: bold;
   }
 
@@ -1579,7 +1600,7 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
   }
 
   .job-controls button:nth-child(1) {
-    background-color: #FF9800;
+    background-color: #ff9800;
     color: white;
   }
 
@@ -1607,7 +1628,7 @@ git commit -m "feat(mobile): implement slicing settings and slicer screen"
 
   .progress-fill {
     height: 100%;
-    background-color: #4CAF50;
+    background-color: #4caf50;
     transition: width 0.3s ease;
   }
 
@@ -2052,7 +2073,7 @@ Configure Jest or similar testing framework for end-to-end tests
 - [ ] **Step 2: Create end-to-end test for model import → slice → print flow**
 
 ```typescript
-describe('Model Import → Slice → Print Flow', () => {
+describe("Model Import → Slice → Print Flow", () => {
   let api: MeshOrganiserApiImpl;
 
   beforeEach(() => {
@@ -2060,10 +2081,10 @@ describe('Model Import → Slice → Print Flow', () => {
     // Mock authentication
   });
 
-  it('should import a model, slice it, and start a print job', async () => {
+  it("should import a model, slice it, and start a print job", async () => {
     // 1. Import model
     const formData = new FormData();
-    formData.append('file', /* test model file */);
+    formData.append("file" /* test model file */);
     const importedModel = await api.importModel(formData);
     expect(importedModel.id).toBeDefined();
 
@@ -2071,10 +2092,13 @@ describe('Model Import → Slice → Print Flow', () => {
     const slicingSettings = {
       layerHeight: 0.2,
       infill: 20,
-      supports: 'none',
-      material: 'PLA'
+      supports: "none",
+      material: "PLA",
     };
-    const slicedResult = await api.sliceModel(importedModel.id, slicingSettings);
+    const slicedResult = await api.sliceModel(
+      importedModel.id,
+      slicingSettings,
+    );
     expect(slicedResult.slicedFileUrl).toBeDefined();
 
     // 3. Start print
@@ -2090,15 +2114,15 @@ describe('Model Import → Slice → Print Flow', () => {
 - [ ] **Step 3: Create authentication flow test**
 
 ```typescript
-describe('Authentication Flow', () => {
+describe("Authentication Flow", () => {
   let authContext: AuthContextType;
 
   beforeEach(() => {
     // Set up fresh auth context
   });
 
-  it('should login user and maintain session', async () => {
-    await authContext.login('testuser', 'testpass');
+  it("should login user and maintain session", async () => {
+    await authContext.login("testuser", "testpass");
     expect(authContext.isAuthenticated).toBe(true);
     expect(authContext.token).toBeDefined();
 
