@@ -195,4 +195,19 @@ Per [§1.2 Non-goals](../superpowers/specs/2026-03-29-remote-client-and-http-api
 
 ---
 
+## Appendix: server-side slicing (OrcaSlicer / Prusa-family CLI)
+
+**Purpose:** `service::slice_service` runs a **console** slicer on the host for `POST /api/v1/slicer/slice` (Task 3). This appendix documents the **environment variable** and the **v1 subprocess shape**; exact flags may need tuning per install.
+
+| Item | Detail |
+|------|--------|
+| **Executable** | Set **`MESH_ORGANISER_ORCA_PATH`** to the full path of **OrcaSlicer** or **PrusaSlicer-family** binary. On Windows, prefer **`orca-slicer-console.exe`** (or equivalent) when available so stdout/stderr are usable. |
+| **v1 invocation** | `{MESH_ORGANISER_ORCA_PATH} --slice 0 --outputdir <dir> <input_model_path>` |
+| **Settings JSON** | Fields such as layer height and infill are modeled in Rust as `SliceOrchestrationSettings` in `service/src/slice_service.rs` for HTTP alignment; **CLI mapping is partial** until flags are verified on a real install (`{binary} --help`). |
+| **Further options (TBD)** | Community docs mention `--load-settings`, `--datadir`, `--export-3mf`, etc.; confirm against your OrcaSlicer version before wiring into production. |
+
+If the variable is unset, empty, or the path does not exist, the service returns a clear **`InternalError`** message (no silent failure).
+
+---
+
 _End of contract note — OpenAPI remains optional per phased plan._
