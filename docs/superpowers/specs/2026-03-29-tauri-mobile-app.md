@@ -1,5 +1,7 @@
 # Tauri Mobile App for Mesh Organiser - Design Specification
 
+> **Superseded for implementation decisions:** Prefer [2026-03-29-remote-client-and-http-api-design.md](./2026-03-29-remote-client-and-http-api-design.md) (consolidated contract, env vars, platform matrix).
+
 ## Overview
 
 This document outlines the design for a Tauri v2 mobile app (Android first, iOS minimal work) that connects to a remote Mesh Organiser server instance. The app shares ~80% of its codebase with the desktop application.

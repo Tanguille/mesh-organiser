@@ -1,5 +1,7 @@
 # Mobile and Web App for Mesh Organiser - Design Specification
 
+> **Superseded for implementation decisions:** Prefer [2026-03-29-remote-client-and-http-api-design.md](./2026-03-29-remote-client-and-http-api-design.md) (printer REST scope, Axum-only API, env/settings matrix).
+
 ## Overview
 
 This document outlines the design for mobile and web companion apps to Mesh Organiser that provide model viewing, importing from supported websites, and basic slicing capabilities. The apps will be desktop-independent by leveraging a NAS-based Mesh Organiser web instance running in a container, which handles slicing via OrcaSlicer and provides the web UI for advanced features. Both mobile and web apps will offer comparable core functionality, with the mobile app focusing on Android initially (iOS may be added if it doesn't cause additional overhead).
