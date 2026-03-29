@@ -62,6 +62,7 @@ use crate::{
 };
 
 mod api;
+mod commands;
 mod error;
 mod tauri_app_state;
 mod tauri_import_state;
@@ -550,6 +551,7 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -765,6 +767,9 @@ pub fn run() {
             api::set_last_sync_time,
             get_platform,
             is_mobile,
+            commands::get_server_url,
+            commands::set_server_url,
+            commands::clear_server_url,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

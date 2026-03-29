@@ -44,6 +44,7 @@ db = { workspace = true }
 service = { workspace = true }
 serde_html_form = { workspace = true }
 tauri-plugin-http = { workspace = true, features = ["multipart"] }
+tauri-plugin-store = { workspace = true }
 async_zip = { workspace = true, features = [
     "deflate",
     "deflate64",
