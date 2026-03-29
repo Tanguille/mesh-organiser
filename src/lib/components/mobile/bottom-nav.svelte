@@ -11,12 +11,13 @@
     { id: "print", label: "Print", href: "/print", icon: List },
   ];
 
+  let currentPath = $derived($page.url.pathname);
+
   function isActive(tab: Tab): boolean {
-    const path = $page.url.pathname;
     if (tab === "library") {
-      return path === "/" || path.startsWith("/models");
+      return currentPath === "/" || currentPath.startsWith("/models");
     }
-    return path.startsWith(`/${tab}`);
+    return currentPath.startsWith(`/${tab}`);
   }
 </script>
 

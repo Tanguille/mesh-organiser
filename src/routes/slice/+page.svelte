@@ -8,6 +8,8 @@
     type Model,
   } from "$lib/api/shared/model_api";
   import Spinner from "$lib/components/view/spinner.svelte";
+  import Button from "$lib/components/ui/button/button.svelte";
+  import { ChevronRight, File } from "lucide-svelte";
 
   let models: Model[] = $state([]);
   let loading = $state(true);
@@ -65,16 +67,16 @@
   {:else if error}
     <div class="py-12 text-center">
       <p class="text-destructive">Error loading models: {error}</p>
-      <button onclick={loadModels} class="btn btn-primary mt-4"> Retry </button>
+      <Button onclick={loadModels} class="mt-4">Retry</Button>
     </div>
   {:else if models.length === 0}
     <div class="py-12 text-center">
       <p class="text-muted-foreground">
         No models found. Import some models to get started.
       </p>
-      <button onclick={() => goto("/import")} class="btn btn-primary mt-4">
+      <Button onclick={() => goto("/import")} class="mt-4">
         Import Models
-      </button>
+      </Button>
     </div>
   {:else}
     <div class="space-y-3">
@@ -86,19 +88,7 @@
           <div
             class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded bg-muted"
           >
-            <svg
-              class="h-6 w-6 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5a2 2 0 012-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
+            <File class="h-6 w-6 text-muted-foreground" />
           </div>
           <div class="min-w-0 flex-1 space-y-1">
             <h3 class="truncate font-medium">{model.name}</h3>
@@ -107,19 +97,7 @@
               {model.blob.filetype?.toUpperCase() || "Unknown"}
             </p>
           </div>
-          <svg
-            class="h-5 w-5 text-muted-foreground"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
+          <ChevronRight class="h-5 w-5 text-muted-foreground" />
         </button>
       {/each}
     </div>

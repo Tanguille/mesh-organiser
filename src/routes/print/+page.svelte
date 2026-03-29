@@ -4,6 +4,8 @@
   import { getContainer } from "$lib/api/dependency_injection";
   import { IModelApi, ModelStreamManager } from "$lib/api/shared/model_api";
   import Spinner from "$lib/components/view/spinner.svelte";
+  import Button from "$lib/components/ui/button/button.svelte";
+  import { ChevronRight } from "lucide-svelte";
 
   let printJobs = $state<
     { id: number; name: string; status: string; progress: number }[]
@@ -57,9 +59,7 @@
   {:else if error}
     <div class="py-12 text-center">
       <p class="text-destructive">Error loading print jobs: {error}</p>
-      <button onclick={loadPrintJobs} class="btn btn-primary mt-4">
-        Retry
-      </button>
+      <Button onclick={loadPrintJobs} class="mt-4">Retry</Button>
     </div>
   {:else if printJobs.length === 0}
     <div class="py-12 text-center">
@@ -67,9 +67,7 @@
       <p class="mt-2 text-sm text-muted-foreground">
         Mark models as printed to track your print history.
       </p>
-      <button onclick={() => goto("/slice")} class="btn btn-primary mt-4">
-        Go to Slicer
-      </button>
+      <Button onclick={() => goto("/slice")} class="mt-4">Go to Slicer</Button>
     </div>
   {:else}
     <div class="space-y-3">
@@ -91,19 +89,7 @@
               </span>
             </div>
           </div>
-          <svg
-            class="ml-2 h-5 w-5 text-muted-foreground"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
+          <ChevronRight class="ml-2 h-5 w-5 text-muted-foreground" />
         </button>
       {/each}
     </div>
