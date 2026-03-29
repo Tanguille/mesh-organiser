@@ -16,7 +16,7 @@ use tauri::{
 };
 
 /// Platform type for the application
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Platform {
     Desktop,
@@ -26,7 +26,7 @@ pub enum Platform {
 
 /// Get the current platform
 #[tauri::command]
-fn get_platform() -> Platform {
+const fn get_platform() -> Platform {
     #[cfg(target_os = "android")]
     return Platform::Android;
     #[cfg(target_os = "ios")]
@@ -37,7 +37,7 @@ fn get_platform() -> Platform {
 
 /// Check if running on mobile
 #[tauri::command]
-fn is_mobile() -> bool {
+const fn is_mobile() -> bool {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     return true;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
