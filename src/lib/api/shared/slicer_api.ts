@@ -10,7 +10,7 @@ export interface SlicerEntry {
 export interface SlicingSettings {
   layerHeight: number; // 0.1, 0.2, 0.3
   infill: number; // 0-100
-  supports: 'none' | 'everywhere' | 'touching buildplate';
+  supports: "none" | "everywhere" | "touching buildplate";
   material: string; // PLA, PETG, ABS, etc.
 }
 
