@@ -1,25 +1,25 @@
-# Mesh Organiser Mobile App Implementation Summary
+# Mesh Organiser Documentation Summary
 
 ## Overview
 
-This document summarizes the implementation of a mobile app for Mesh Organiser that provides comparable functionality to the web UI, focusing on Android devices. The mobile app connects to a NAS-based Mesh Organiser instance running in Docker that handles slicing via OrcaSlicer and printer management.
+This document summarizes the Mesh Organiser project - a SvelteKit + Tauri desktop application for organizing 3D print models.
 
 ## Technology Stack
 
-- **Framework**: SvelteKit with Capacitor for mobile deployment
+- **Desktop**: SvelteKit with Tauri for desktop deployment
+- **Mobile**: SvelteKit with Tauri for Android app
 - **State Management**: Custom stores (authentication)
 - **API Communication**: Axios-based HTTP client with interceptors
 - **UI Components**: Custom components for navigation, model viewing, slicing, and print management
 - **TypeScript**: Strict typing throughout with shared interfaces
-- **Deployment**: Docker configuration for NAS instance
 
 ## Key Features Implemented
 
 ### 1. Project Structure
 
-- Set up mobile app project with SvelteKit + Capacitor
+- SvelteKit application with Tauri for desktop deployment
 - Configured TypeScript paths and module resolution
-- Created shared API interfaces to maintain consistency with web app
+- Created shared API interfaces
 
 ### 2. Authentication System
 
@@ -66,35 +66,15 @@ This document summarizes the implementation of a mobile app for Mesh Organiser t
 - Offline queue utility for handling network interruptions
 - User-friendly error messages and retry mechanisms
 
-### 9. Docker Deployment
-
-- Dockerfile for NAS instance
-- docker-compose.yml for easy deployment
-- Configuration for exposing API on port 9435
-- Volume persistence for data storage
-
 ## File Structure
 
 ```
-mobile/
-├── src/
-│   ├── lib/
-│   │   ├── api/
-│   │   │   ├── meshOrganiserApi.ts          # Main API client
-│   │   │   └── __tests__/                   # API tests
-│   │   ├── components/                      # Reusable UI components
-│   │   ├── shared/                          # Shared TypeScript interfaces
-│   │   ├── stores/                          # State management (auth)
-│   │   └── utils/
-│   ├── routes/                              # SvelteKit pages
-│   │   ├── +layout.svelte                   # App layout
-│   │   ├── +page.svelte                     # Home page
-│   │   ├── import/                          # Model import
-│   │   ├── slice/                           # Slicing interface
-│   │   └── models/                          # Model browsing and details
-├── vite.config.js                           # Vite configuration with path aliases
-├── tsconfig.json                            # TypeScript configuration
-└── capacitor.config.json                    # Capacitor configuration
+src/                    # Frontend source (SvelteKit)
+├── lib/               # Shared libraries (api/, components/)
+├── routes/            # SvelteKit routes
+└── themes/            # CSS themes
+
+src-tauri/             # Tauri desktop app (Rust)
 ```
 
 ## API Implementation Details
@@ -120,11 +100,17 @@ The mobile app communicates with the NAS-based Mesh Organiser instance through a
 
 ## Deployment Instructions
 
-1. Set up NAS with Docker and docker-compose
-2. Configure environment variables (NAS IP, ports)
-3. Build and deploy Docker containers
-4. Install mobile app on Android device via Capacitor
-5. Configure app to connect to NAS instance
+**Desktop App:**
+
+1. Build the Tauri desktop application
+2. Install on desktop (Windows/macOS/Linux)
+3. Configure database and printer settings
+
+**Mobile/Android App:**
+
+1. Build the Tauri Android app
+2. Install APK on Android device
+3. Configure to connect to Mesh Organiser instance
 
 ## Future Enhancements
 
@@ -137,4 +123,4 @@ The mobile app communicates with the NAS-based Mesh Organiser instance through a
 
 ## Conclusion
 
-The mobile app successfully provides core Mesh Organiser functionality on mobile devices, enabling users to browse, import, slice, and monitor 3D prints from anywhere. The implementation maintains consistency with the web app through shared API interfaces and follows mobile development best practices.
+Mesh Organiser is a desktop application for organizing 3D print models, providing model management, slicing via OrcaSlicer, and printer management capabilities.
