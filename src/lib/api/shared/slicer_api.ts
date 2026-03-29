@@ -21,11 +21,24 @@ export interface SliceResult {
   filamentUsed: number; // in grams
 }
 
+/** Response from `POST /api/v1/slicer/slice` (remote / web server). */
+export interface SliceServerResponse {
+  success: boolean;
+  /** Model id of the registered slice output (not a separate blob-only id). */
+  outputBlobId: number;
+  outputBlobSha256: string;
+  message?: string | null;
+}
+
 export const ISlicerApi = Symbol("ISlicerApi");
 
 export interface ISlicerApi {
   openInSlicer(models: Model[]): Promise<void>;
   availableSlicers(): Promise<SlicerEntry[]>;
+  sliceOnServer?(
+    modelId: number,
+    settings: SlicingSettings,
+  ): Promise<SliceServerResponse>;
 }
 
 function slicerNameToDeepLink(slicerName: string): string | null {
