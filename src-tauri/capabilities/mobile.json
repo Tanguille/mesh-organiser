@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "mobile-capability",
-  "description": "Capability for mobile platforms (Android/iOS)",
+  "description": "Capability for mobile platforms (Android/iOS). HTTP client scope: HTTPS to any host/port for remote API; HTTP only loopback (127.0.0.1 / localhost, any port) for local dev. Production operators should use HTTPS; arbitrary LAN HTTP is not allowed in this release scope (widen only in a dev-only capability if Tauri adds profile-specific capabilities).",
   "windows": ["main"],
   "platforms": ["android", "iOS"],
   "permissions": [
@@ -10,10 +10,13 @@
     "dialog:allow-open",
     "dialog:allow-confirm",
     "os:allow-platform",
-    "http:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+      "allow": [
+        { "url": "https://*:*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "http://localhost:*" }
+      ]
     },
     "store:default"
   ]

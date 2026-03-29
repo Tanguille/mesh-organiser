@@ -4,6 +4,12 @@ Contract note for **Tauri mobile** talking to a remotely hosted **`web`** (Axum)
 
 **CORS:** Browsers enforce CORS on cross-origin `fetch` / XHR. The **`web`** server sends `Access-Control-Allow-Origin` for an explicit allowlist (default localhost dev URLs, plus any origins from **`MESH_ORGANISER_CORS_ORIGINS`** — see [commands.md](../commands.md#web-server-web-crate)). **Native** HTTP clients (e.g. **Tauri `tauri-plugin-http`**) are not subject to browser CORS; only browser-based or WebView `fetch` to a different origin needs the server allowlist to include the client origin.
 
+### HTTPS in production
+
+**Prefer HTTPS** for the user-configured remote base URL in production: TLS protects credentials and payloads on the wire, and session cookies that must be cross-site often require **`Secure`** (and thus HTTPS). Plain HTTP to a host on the LAN is useful for local development only.
+
+**Release** mobile builds combine a stricter **Content-Security-Policy** (see [`src-tauri/tauri.release-csp.json`](../../src-tauri/tauri.release-csp.json) and [tauri-sveltekit.md](../tauri-sveltekit.md)): `connect-src` allows **`https:`** for remote API traffic and **loopback HTTP** (`http://127.0.0.1:*`, `http://localhost:*`) for dev; it does **not** allow arbitrary `http://*` origins. The **Tauri HTTP plugin** capability ([`src-tauri/capabilities/mobile.json`](../../src-tauri/capabilities/mobile.json)) is aligned: **`https://*:*`** plus loopback HTTP patterns only—**not** wide open HTTP to every host.
+
 ---
 
 ## Base URL and path construction
