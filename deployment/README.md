@@ -107,6 +107,6 @@ This deployment runs the standard Mesh Organiser web instance, which provides:
 - Website importing (Thingiverse, Printables, etc.)
 - Slicing via OrcaSlicer and other supported slicers
 - Printer management and print job tracking
-- REST API for mobile and web clients
+- REST API for Tauri desktop app
 
-The mobile and web apps connect to this instance via the standard API endpoints.
+The Tauri desktop app connects to this instance via the standard API endpoints.
