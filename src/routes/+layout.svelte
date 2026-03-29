@@ -104,10 +104,6 @@
         await goto(resolve("/login"));
       }
 
-      if (panicState.inPanic) {
-        await goto(resolve("/panic"));
-      }
-
       if (getContainer().optional<ISidebarStateApi>(ISidebarStateApi) == null) {
         hasSidebar = false;
       } else if (isMobile.current) {
