@@ -98,10 +98,10 @@
 
       let userApi = getContainer().optional<IUserApi>(IUserApi);
 
-      if (userApi) {
-        if (!(await userApi.isAuthenticated())) {
-          await goto(resolve("/login"));
-        }
+      if (panicState.inPanic) {
+        await goto(resolve("/panic"));
+      } else if (userApi && !(await userApi.isAuthenticated())) {
+        await goto(resolve("/login"));
       }
 
       if (panicState.inPanic) {
