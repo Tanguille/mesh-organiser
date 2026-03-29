@@ -9,13 +9,18 @@ use db::{
     random_hex_32, time_now,
 };
 
-use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
+use crate::{
+    error::ApplicationError, mobile_guard::require_local_desktop_app,
+    tauri_app_state::TauriAppState,
+};
 
 #[tauri::command]
 pub async fn get_labels(
     include_ungrouped_models: Option<bool>,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<Label>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let labels = label_db::get_labels(
         &state.app_state.db,
         &state.get_current_user(),
@@ -32,6 +37,8 @@ pub async fn add_label(
     label_color: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<LabelMeta, ApplicationError> {
+    require_local_desktop_app()?;
+
     let id = label_db::add_label(
         &state.app_state.db,
         &state.get_current_user(),
@@ -56,6 +63,8 @@ pub async fn set_labels_on_model(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::remove_all_labels_from_models(
         &state.app_state.db,
         &state.get_current_user(),
@@ -81,6 +90,8 @@ pub async fn set_label_on_models(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::remove_labels_from_models(
         &state.app_state.db,
         &state.get_current_user(),
@@ -107,6 +118,8 @@ pub async fn remove_label_from_models(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::remove_labels_from_models(
         &state.app_state.db,
         &state.get_current_user(),
@@ -128,6 +141,8 @@ pub async fn edit_label(
     label_global_id: Option<&str>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::edit_label(
         &state.app_state.db,
         &state.get_current_user(),
@@ -156,6 +171,8 @@ pub async fn delete_label(
     label_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::delete_label(&state.app_state.db, &state.get_current_user(), label_id).await?;
 
     Ok(())
@@ -167,6 +184,8 @@ pub async fn add_childs_to_label(
     child_label_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::add_childs_to_label(
         &state.app_state.db,
         &state.get_current_user(),
@@ -186,6 +205,8 @@ pub async fn remove_childs_from_label(
     child_label_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::remove_childs_from_label(
         &state.app_state.db,
         &state.get_current_user(),
@@ -205,6 +226,8 @@ pub async fn set_childs_on_label(
     child_label_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_db::remove_all_childs_from_label(
         &state.app_state.db,
         &state.get_current_user(),
@@ -235,6 +258,8 @@ pub async fn set_keywords_on_label(
     keywords: Vec<String>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     label_keyword_db::set_keywords_for_label(
         &state.app_state.db,
         &state.get_current_user(),
@@ -253,6 +278,8 @@ pub async fn get_keywords_for_label(
     label_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<LabelKeyword>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let keywords = label_keyword_db::get_keywords_for_label(
         &state.app_state.db,
         &state.get_current_user(),

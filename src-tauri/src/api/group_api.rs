@@ -8,7 +8,10 @@ use db::{
     random_hex_32, time_now,
 };
 
-use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
+use crate::{
+    error::ApplicationError, mobile_guard::require_local_desktop_app,
+    tauri_app_state::TauriAppState,
+};
 
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -23,6 +26,8 @@ pub async fn get_groups(
     include_ungrouped_models: Option<bool>,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let instant = Instant::now();
     let groups = group_db::get_groups(
         &state.app_state.db,
@@ -57,6 +62,8 @@ pub async fn ungroup(
     group_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     group_db::delete_group(&state.app_state.db, &state.get_current_user(), group_id).await?;
 
     Ok(())
@@ -67,6 +74,8 @@ pub async fn add_group(
     group_name: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<ModelGroupMeta, ApplicationError> {
+    require_local_desktop_app()?;
+
     let id = group_db::add_empty_group(
         &state.app_state.db,
         &state.get_current_user(),
@@ -91,6 +100,8 @@ pub async fn add_models_to_group(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     group_db::set_group_id_on_models(
         &state.app_state.db,
         &state.get_current_user(),
@@ -108,6 +119,8 @@ pub async fn remove_models_from_group(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     group_db::set_group_id_on_models(
         &state.app_state.db,
         &state.get_current_user(),
@@ -128,6 +141,8 @@ pub async fn edit_group(
     group_global_id: Option<&str>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     group_db::edit_group(
         &state.app_state.db,
         &state.get_current_user(),
@@ -155,6 +170,8 @@ pub async fn get_group_count(
     include_ungrouped_models: Option<bool>,
     state: State<'_, TauriAppState>,
 ) -> Result<usize, ApplicationError> {
+    require_local_desktop_app()?;
+
     let count = group_db::get_group_count(
         &state.app_state.db,
         &state.get_current_user(),
