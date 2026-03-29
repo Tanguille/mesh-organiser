@@ -11,7 +11,8 @@ use db::{
 use service::{export_service, import_service, import_state::ImportStatus, thumbnail_service};
 
 use crate::{
-    ImportState, TauriAppState, error::ApplicationError, tauri_import_state::import_state_new_tauri,
+    ImportState, TauriAppState, error::ApplicationError, mobile_guard::require_local_desktop_app,
+    tauri_import_state::import_state_new_tauri,
 };
 
 #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -26,6 +27,10 @@ pub async fn add_model(
     state: State<'_, TauriAppState>,
     app_handle: AppHandle,
 ) -> Result<ImportState, ApplicationError> {
+    require_local_desktop_app()?;
+
+    let path_clone = String::from(path);
+    let state_clone = state.clone();
     let mut import_state = import_state_new_tauri(
         origin_url,
         recursive,
@@ -73,6 +78,8 @@ pub async fn get_models(
     page_size: u32,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<db::model::Model>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let models = model_db::get_models(
         &state.app_state.db,
         &state.get_current_user(),
@@ -110,6 +117,8 @@ pub async fn edit_model(
     model_global_id: Option<&str>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     model_db::edit_model(
         &state.app_state.db,
         &state.get_current_user(),
@@ -131,8 +140,23 @@ pub async fn delete_model(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    export_service::delete_models(&state.app_state, &state.get_current_user(), vec![model_id])
-        .await?;
+    require_local_desktop_app()?;
+
+    let model = model_db::get_models_via_ids(
+        &state.app_state.db,
+        &state.get_current_user(),
+        vec![model_id],
+    )
+    .await?;
+
+    if model.len() != 1 {
+        return Err(ApplicationError::InternalError(String::from(
+            "Failed to find model to delete",
+        )));
+    }
+
+    model_db::delete_model(&state.app_state.db, &state.get_current_user(), model_id).await?;
+    export_service::delete_dead_blobs(&state.app_state).await?;
     Ok(())
 }
 
@@ -141,7 +165,24 @@ pub async fn delete_models(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    export_service::delete_models(&state.app_state, &state.get_current_user(), model_ids).await?;
+    require_local_desktop_app()?;
+
+    let model_ids = model_ids.into_iter().unique().collect::<Vec<i64>>();
+    let model_ids_len = model_ids.len();
+    let model =
+        model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
+            .await?;
+
+    if model.len() != model_ids_len {
+        return Err(ApplicationError::InternalError(String::from(
+            "Failed to find model to delete",
+        )));
+    }
+
+    let model_ids = model.into_iter().map(|m| m.id).collect::<Vec<i64>>();
+
+    model_db::delete_models(&state.app_state.db, &state.get_current_user(), &model_ids).await?;
+    export_service::delete_dead_blobs(&state.app_state).await?;
     Ok(())
 }
 
@@ -150,6 +191,8 @@ pub async fn get_model_count(
     flags: Option<ModelFlags>,
     state: State<'_, TauriAppState>,
 ) -> Result<usize, ApplicationError> {
+    require_local_desktop_app()?;
+
     let count =
         model_db::get_model_count(&state.app_state.db, &state.get_current_user(), flags).await?;
 
@@ -166,6 +209,8 @@ pub struct ModelDiskSpaceUsage {
 pub async fn get_model_disk_space_usage(
     state: State<'_, TauriAppState>,
 ) -> Result<ModelDiskSpaceUsage, ApplicationError> {
+    require_local_desktop_app()?;
+
     let data = model_db::get_size_of_models(&state.app_state.db, &state.get_current_user()).await?;
     let local = export_service::get_size_of_blobs(&data.blob_sha256, &state.app_state)?;
 

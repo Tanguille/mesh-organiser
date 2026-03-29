@@ -56,6 +56,7 @@ use service::{
 
 use crate::{
     error::ApplicationError,
+    mobile_guard::require_local_desktop_app,
     tauri_app_state::{AccountLinkEmit, InitialState, TauriAppState},
     tauri_import_state::import_state_new_tauri,
 };
@@ -63,6 +64,7 @@ use crate::{
 mod api;
 mod commands;
 mod error;
+mod mobile_guard;
 mod tauri_app_state;
 mod tauri_import_state;
 
@@ -76,6 +78,8 @@ struct DeepLinkEmit {
 async fn get_configuration(
     state: State<'_, TauriAppState>,
 ) -> Result<Configuration, ApplicationError> {
+    require_local_desktop_app()?;
+
     Ok(state.get_configuration())
 }
 
@@ -85,6 +89,8 @@ async fn set_configuration(
     state: State<'_, TauriAppState>,
     app_handle: AppHandle,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let deep_link_state_changed = state.write_configuration(&configuration);
 
     if deep_link_state_changed {
@@ -102,10 +108,16 @@ pub struct SlicerEntry {
 
 #[tauri::command]
 async fn get_slicers() -> Result<Vec<SlicerEntry>, ApplicationError> {
-    Ok(Slicer::iter()
-        .map(|slicer| SlicerEntry {
-            installed: slicer.is_installed(),
-            slicer,
+    require_local_desktop_app()?;
+
+    Slicer::iter()
+        .map(|f| {
+            let installed = f.is_installed();
+
+            Ok(SlicerEntry {
+                slicer: f,
+                installed,
+            })
         })
         .collect())
 }
@@ -116,6 +128,8 @@ async fn update_images(
     app_handle: AppHandle,
     overwrite: bool,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let _lock = state.app_state.import_mutex.lock().await;
     let import_state = &mut import_state_new_tauri(None, false, false, false, &state, &app_handle);
     thumbnail_service::generate_all_thumbnails(&state.app_state, overwrite, import_state).await?;
@@ -128,6 +142,8 @@ async fn open_in_slicer(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
             .await?;
@@ -154,6 +170,8 @@ async fn get_initial_state(
 async fn download_file(
     url: &str,
 ) -> Result<download_file_service::DownloadResult, ApplicationError> {
+    require_local_desktop_app()?;
+
     let response = download_file_service::download_file(url).await?;
 
     Ok(response)
@@ -165,6 +183,8 @@ async fn open_in_folder(
     as_zip: bool,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
             .await?;
@@ -191,7 +211,14 @@ async fn get_threemf_metadata(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ThreemfMetadata, ApplicationError> {
-    let model = state.require_model(model_id).await?;
+    require_local_desktop_app()?;
+
+    let model = model_db::get_models_via_ids(
+        &state.app_state.db,
+        &state.get_current_user(),
+        vec![model_id],
+    )
+    .await?;
 
     let metadata = threemf_service::extract_metadata(&model, &state.app_state).await?;
 
@@ -203,15 +230,53 @@ async fn extract_threemf_models(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ModelGroupMeta, ApplicationError> {
-    let model = state.require_model(model_id).await?;
+    require_local_desktop_app()?;
 
-    Ok(threemf_service::extract_models_with_thumbnails(
-        &model,
+    let model = model_db::get_models_via_ids(
+        &state.app_state.db,
         &state.get_current_user(),
         &state.app_state,
         None,
     )
-    .await?)
+    .await?;
+
+    let mut import_state =
+        threemf_service::extract_models(&model[0], &state.get_current_user(), &state.app_state)
+            .await?;
+
+    let model_ids: Vec<i64> = import_state
+        .imported_models
+        .iter()
+        .flat_map(|f| f.model_ids.iter().copied())
+        .collect();
+
+    let models =
+        model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
+            .await?;
+    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
+
+    thumbnail_service::generate_thumbnails(&blobs, &state.app_state, false, &mut import_state)
+        .await?;
+
+    Ok(ModelGroupMeta {
+        id: import_state.imported_models[0].group_id.unwrap(),
+        name: import_state.imported_models[0].group_name.clone().unwrap(),
+        created: time_now(),
+        last_modified: time_now(),
+        resource_id: None,
+        unique_global_id: random_hex_32(),
+    })
+}
+
+#[tauri::command]
+async fn compute_model_folder_size(
+    state: State<'_, TauriAppState>,
+) -> Result<u64, ApplicationError> {
+    require_local_desktop_app()?;
+
+    let size = service::get_folder_size(&state.get_model_dir());
+
+    Ok(size)
 }
 
 #[derive(Serialize, Clone)]
@@ -223,6 +288,8 @@ struct DownloadFinishedEvent {
 #[tauri::command]
 #[allow(clippy::too_many_lines)]
 async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let cloned_handle = app_handle.clone();
     if let Some(window) = app_handle.webview_windows().get("secondary") {
         window.set_focus()?;

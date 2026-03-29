@@ -9,12 +9,17 @@ use db::{
 };
 use service::resource_service;
 
-use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
+use crate::{
+    error::ApplicationError, mobile_guard::require_local_desktop_app,
+    tauri_app_state::TauriAppState,
+};
 
 #[tauri::command]
 pub async fn get_resources(
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<ResourceMeta>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let resources =
         resource_db::get_resources(&state.app_state.db, &state.get_current_user()).await?;
 
@@ -26,7 +31,9 @@ pub async fn add_resource(
     resource_name: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<ResourceMeta, ApplicationError> {
-    let resource_meta = resource_db::add_resource(
+    require_local_desktop_app()?;
+
+    let id = resource_db::add_resource(
         &state.app_state.db,
         &state.get_current_user(),
         resource_name,
@@ -46,6 +53,8 @@ pub async fn edit_resource(
     resource_global_id: Option<&str>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     resource_db::edit_resource(
         &state.app_state.db,
         &state.get_current_user(),
@@ -65,7 +74,22 @@ pub async fn remove_resource(
     resource_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    resource_service::delete_resource(resource_id, &state.get_current_user(), &state.app_state)
+    require_local_desktop_app()?;
+
+    let user = state.get_current_user();
+    let resource =
+        resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?;
+
+    if resource.is_none() {
+        return Err(ApplicationError::InternalError(String::from(
+            "Resource not found",
+        )));
+    }
+
+    let resource = resource.unwrap();
+
+    resource_service::delete_resource_folder(&resource, &user, &state.app_state)?;
+    resource_db::delete_resource(&state.app_state.db, &state.get_current_user(), resource.id)
         .await?;
 
     Ok(())
@@ -76,6 +100,8 @@ pub async fn open_resource_folder(
     resource_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let user = state.get_current_user();
     let Some(resource) =
         resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?
@@ -95,6 +121,8 @@ pub async fn set_resource_on_group(
     group_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     resource_db::set_resource_on_group(
         &state.app_state.db,
         &state.get_current_user(),
@@ -112,6 +140,8 @@ pub async fn get_groups_for_resource(
     resource_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let groups = resource_db::get_groups_for_resource(
         &state.app_state.db,
         &state.get_current_user(),
