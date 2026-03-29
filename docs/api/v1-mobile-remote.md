@@ -148,9 +148,19 @@ HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api
 
 **`POST /api/v1/slicer/slice`**
 
-- **Status:** specified here for contract-first delivery; **not yet implemented** in `web` at the time this note was added.
 - **Content-Type:** `application/json`
-- **Body / response:** align TypeScript and future Rust DTOs with:
+- **Auth:** `login_required` (session); unauthenticated requests receive **401** / **403**.
+- **Request:** accepts `modelId` (camelCase) or `model_id` (snake_case). Nested `settings` may use `layerHeight` / `layer_height_mm` and `infill` / `infill_percent` per `web` DTOs (`SliceRequestBody` / `SliceSettingsDto`).
+- **Success (200):** JSON body is camelCase:
+
+| Field | Type | Meaning |
+|-------|------|--------|
+| `success` | `boolean` | `true` when orchestration completed and the output was registered |
+| `outputBlobId` | `number` | **Model id** of the slice output artifact (same value as `SliceOrchestrationResult.output_model_id` in `service`) |
+| `outputBlobSha256` | `string` | Hex SHA-256 of the output blob stored for that model |
+| `message` | `string \| null` | Optional; omitted from JSON when absent |
+
+TypeScript sketch (align clients with the table above):
 
 ```typescript
 export interface SlicingSettings {
@@ -167,12 +177,14 @@ export interface SliceRequest {
 
 export interface SliceResponse {
   success: boolean;
-  outputBlobId: number | null;
-  message: string | null;
+  /** Model id of the registered slice output (not a separate blob-only id). */
+  outputBlobId: number;
+  outputBlobSha256: string;
+  message?: string | null;
 }
 ```
 
-Server behaviour (OrcaSlicer invocation, error mapping, auth) will be defined in implementation; this note fixes the **JSON shapes** for client and server alignment.
+Errors use the normal HTTP error envelope for `web` (not a `SliceResponse` with `success: false`). OrcaSlicer invocation and env requirements are summarized in the appendix below.
 
 ---
 
