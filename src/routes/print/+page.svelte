@@ -2,94 +2,103 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { getContainer } from "$lib/api/dependency_injection";
-  import { IModelApi, ModelStreamManager } from "$lib/api/shared/model_api";
+  import {
+    IModelApi,
+    ModelStreamManager,
+    type Model,
+  } from "$lib/api/shared/model_api";
   import Spinner from "$lib/components/view/spinner.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
-  import { ChevronRight } from "lucide-svelte";
+  import { ChevronRight, File } from "lucide-svelte";
 
-  let printJobs = $state<
-    { id: number; name: string; status: string; progress: number }[]
-  >([]);
+  let printedModels: Model[] = $state([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
 
-  async function loadPrintJobs() {
+  async function loadPrintedModels() {
     try {
       loading = true;
       error = null;
       const modelApi = getContainer().require<IModelApi>(IModelApi);
-      // Get printed models - these act as "print jobs" in the mobile app
       const stream = new ModelStreamManager(modelApi, null, null, null, {
         printed: true,
         favorite: false,
       });
-      const models = await stream.fetch();
-      printJobs = models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        status: "completed",
-        progress: 100,
-      }));
+      printedModels = await stream.fetch();
       loading = false;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       loading = false;
-      console.error("Failed to load print jobs:", err);
+      console.error("Failed to load printed models:", err);
     }
   }
 
-  function viewPrintJob(jobId: number) {
-    goto(`/model?selected=${jobId}`);
+  function openModel(modelId: number) {
+    goto(`/model?selected=${modelId}`);
   }
 
-  onMount(loadPrintJobs);
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1024 / 1024).toFixed(2) + " MB";
+  }
+
+  onMount(loadPrintedModels);
 </script>
 
-<div class="space-y-6 px-4 pt-4">
+<div class="space-y-6 px-4 pt-4 pb-24">
   <div class="flex items-center justify-between">
-    <h2 class="text-xl font-bold">Print Jobs</h2>
-    <p class="text-sm text-muted-foreground">{printJobs.length} completed</p>
+    <h2 class="text-xl font-bold">Printed models</h2>
+    <p class="text-sm text-muted-foreground">
+      {printedModels.length}
+      {printedModels.length === 1 ? "model" : "models"}
+    </p>
   </div>
+
+  <p class="text-sm text-muted-foreground">
+    Models you have marked as printed. If you slice on the server, G-code and
+    slice outputs stay on the server; this list is your library view of finished
+    work.
+  </p>
 
   {#if loading}
     <div class="flex items-center justify-center py-12">
       <Spinner />
-      <p class="ml-4">Loading print jobs...</p>
+      <p class="ml-4">Loading…</p>
     </div>
   {:else if error}
     <div class="py-12 text-center">
-      <p class="text-destructive">Error loading print jobs: {error}</p>
-      <Button onclick={loadPrintJobs} class="mt-4">Retry</Button>
+      <p class="text-destructive">Error loading printed models: {error}</p>
+      <Button onclick={loadPrintedModels} class="mt-4">Retry</Button>
     </div>
-  {:else if printJobs.length === 0}
+  {:else if printedModels.length === 0}
     <div class="py-12 text-center">
-      <p class="text-muted-foreground">No completed prints yet.</p>
+      <p class="text-muted-foreground">No printed models yet.</p>
       <p class="mt-2 text-sm text-muted-foreground">
-        Mark models as printed to track your print history.
+        Mark a model as printed from its detail page to list it here.
       </p>
-      <Button onclick={() => goto("/slice")} class="mt-4">Go to Slicer</Button>
+      <Button onclick={() => goto("/slice")} class="mt-4">Go to Slice</Button>
     </div>
   {:else}
     <div class="space-y-3">
-      {#each printJobs as job (job.id)}
+      {#each printedModels as model (model.id)}
         <button
-          class="flex w-full items-center justify-between rounded-lg border border-border p-4 text-left transition-all hover:border-primary hover:bg-muted"
-          onclick={() => viewPrintJob(job.id)}
+          class="flex w-full items-center space-x-4 rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:bg-muted"
+          onclick={() => openModel(model.id)}
         >
-          <div class="min-w-0 flex-1 space-y-1">
-            <h3 class="truncate font-medium">{job.name}</h3>
-            <div class="flex items-center gap-2">
-              <span
-                class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-100"
-              >
-                {job.status}
-              </span>
-              <span class="text-xs text-muted-foreground">
-                {job.progress}% complete
-              </span>
-            </div>
+          <div
+            class="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-muted"
+          >
+            <File class="h-6 w-6 text-muted-foreground" />
           </div>
-          <ChevronRight class="ml-2 h-5 w-5 text-muted-foreground" />
+          <div class="min-w-0 flex-1 space-y-1">
+            <h3 class="truncate font-medium">{model.name}</h3>
+            <p class="text-sm text-muted-foreground">
+              {formatSize(model.blob.size)} •
+              {model.blob.filetype?.toUpperCase() || "Unknown"}
+            </p>
+          </div>
+          <ChevronRight class="h-5 w-5 text-muted-foreground" />
         </button>
       {/each}
     </div>
