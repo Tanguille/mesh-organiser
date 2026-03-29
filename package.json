@@ -59,6 +59,7 @@
     "eslint-plugin-svelte": "^3.16.0",
     "globals": "^17.4.0",
     "kill-port": "^2.0.1",
+    "lucide-svelte": "^1.0.1",
     "mode-watcher": "^1.1.0",
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^3.5.1",

@@ -64,3 +64,15 @@ jobs:
 
       - name: Build frontend
         run: pnpm run build
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: pnpm install --frozen-lockfile
+
+      - name: Mobile check
+        working-directory: mobile
+        run: pnpm run check
+
+      - name: Mobile lint
+        working-directory: mobile
+        run: pnpm run lint
