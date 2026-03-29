@@ -32,6 +32,7 @@
   let { children } = $props();
   let initializationDone = $state(false);
   let hasSidebar = $state(true);
+  const isMobile = new IsMobile();
 
   /** Vite 8 dev client can race HMR transport `send` before `connect` (see `vite/dist/client/client.mjs`). */
   function isViteDevClientNoise(message: string): boolean {
@@ -105,7 +106,6 @@
         await goto(resolve("/panic"));
       }
 
-      const isMobile = new IsMobile();
       if (getContainer().optional<ISidebarStateApi>(ISidebarStateApi) == null) {
         hasSidebar = false;
       } else if (isMobile.current) {
@@ -123,8 +123,6 @@
       });
     }
   });
-
-  const is_mobile = new IsMobile();
 
   const save_configuration_debounce_ms = 400;
 
@@ -162,7 +160,7 @@
         <AppSidebar />
       {/if}
       <main class="flex h-full flex-1 flex-row" style="min-width: 0;">
-        {#if is_mobile.current && hasSidebar}
+        {#if isMobile.current && hasSidebar}
           <Sidebar.Trigger
             class="absolute z-10 aspect-square h-10 w-10 bg-background"
           />
@@ -171,7 +169,7 @@
           {@render children?.()}
         </div>
       </main>
-      {#if is_mobile.current && !hasSidebar}
+      {#if isMobile.current && !hasSidebar}
         <BottomNav />
       {/if}
       {#if updateState.update}
