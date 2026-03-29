@@ -10,18 +10,17 @@ use std::{
 };
 
 use axum::{
-    Router,
     extract::{DefaultBodyLimit, Request},
+    http::HeaderValue,
     middleware::{self, Next},
     response::Response,
 };
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
-    cors::{AllowHeaders, AllowMethods, CorsLayer},
+    cors::{AllowOrigin, Any, CorsLayer},
     services::{ServeDir, ServeFile},
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
@@ -35,12 +34,7 @@ use db::{
 use service::{AppState, Configuration, import_state::ImportState, thumbnail_service};
 
 use crate::{
-    controller::{
-        auth_controller, blob_controller, group_controller, label_controller, model_controller,
-        page_controller, resource_controller, share_controller, slicer_controller,
-        threemf_controller, user_controller,
-    },
-    session_store::SqliteStore,
+    controller::api_router,
     user::{AuthSession, Backend},
     web_import_state::WebImportStateEmitter,
 };
@@ -57,8 +51,85 @@ pub struct App {
     session_store: SqliteStore,
 }
 
-pub fn parse_port() -> Result<u16, Box<dyn Error>> {
-    env::var(ENV_SERVER_PORT)
+fn expected_env_error_msg(var_name: &str) -> String {
+    format!("Expected environment variable {var_name} to be set")
+}
+
+/// Origins always allowed for local dev; [`merge_cors_origins_from_env`] may add more.
+const DEFAULT_CORS_ORIGINS: &[&str] = &["http://localhost:3000", "http://localhost:5173"];
+
+/// Builds the allowed CORS origin list: defaults plus optional `MESH_ORGANISER_CORS_ORIGINS`
+/// (comma-separated, trimmed). If the variable is set and every non-empty token is invalid,
+/// returns an error so startup fails clearly.
+fn merge_cors_origins_from_env(
+    env_value: Option<&str>,
+) -> Result<Vec<HeaderValue>, Box<dyn std::error::Error>> {
+    let mut origins: Vec<HeaderValue> = DEFAULT_CORS_ORIGINS
+        .iter()
+        .map(|s| {
+            s.parse::<HeaderValue>().map_err(|e| {
+                io::Error::new(
+                    ErrorKind::Other,
+                    format!("internal: invalid default CORS origin {s:?}: {e}"),
+                )
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    let Some(raw) = env_value else {
+        return Ok(origins);
+    };
+
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(origins);
+    }
+
+    let mut saw_nonempty_token = false;
+    let mut saw_valid_token = false;
+    for part in trimmed.split(',') {
+        let t = part.trim();
+        if t.is_empty() {
+            continue;
+        }
+        saw_nonempty_token = true;
+        match t.parse::<HeaderValue>() {
+            Ok(h) => {
+                saw_valid_token = true;
+                if !origins.iter().any(|o| o == &h) {
+                    origins.push(h);
+                }
+            }
+            Err(e) => {
+                eprintln!("MESH_ORGANISER_CORS_ORIGINS: skipping invalid origin {t:?}: {e}");
+            }
+        }
+    }
+
+    if saw_nonempty_token && !saw_valid_token {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "MESH_ORGANISER_CORS_ORIGINS: all entries were invalid after trimming; \
+             fix the value or unset the variable to use defaults only",
+        )
+        .into());
+    }
+
+    Ok(origins)
+}
+
+fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn std::error::Error>> {
+    let extra = env::var("MESH_ORGANISER_CORS_ORIGINS").ok();
+    let origins = merge_cors_origins_from_env(extra.as_deref())?;
+    Ok(CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .allow_credentials(true))
+}
+
+fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
+    env::var("SERVER_PORT")
         .unwrap_or_else(|_| "3000".into())
         .parse::<u16>()
         .map_err(|e| {
@@ -266,42 +337,9 @@ impl App {
         let serve_dir = ServeDir::new("www").not_found_service(ServeFile::new("www/index.html"));
         let db = self.state.db.clone();
 
-        let cors_layer = CorsLayer::new()
-            .allow_origin([
-                "http://localhost:3000".parse().unwrap(),
-                "http://localhost:5173".parse().unwrap(),
-            ])
-            // Wildcards are illegal (and panic in tower-http) together with
-            // allow_credentials; mirroring the request is the permissive-but-legal
-            // equivalent for credentialed CORS.
-            .allow_methods(AllowMethods::mirror_request())
-            .allow_headers(AllowHeaders::mirror_request())
-            .allow_credentials(true);
+        let cors_layer = cors_layer_from_env()?;
 
-        let governor_config = Arc::new(
-            GovernorConfigBuilder::default()
-                .per_second(5)
-                .burst_size(10)
-                .finish()
-                .ok_or_else(|| {
-                    io::Error::new(ErrorKind::InvalidData, "Failed to create governor config")
-                })?,
-        );
-
-        let auth_router = auth_controller::router().layer(GovernorLayer::new(governor_config));
-
-        let app = Router::new()
-            .merge(auth_router)
-            .merge(blob_controller::router())
-            .merge(model_controller::router())
-            .merge(group_controller::router())
-            .merge(label_controller::router())
-            .merge(resource_controller::router())
-            .merge(user_controller::router())
-            .merge(threemf_controller::router())
-            .merge(page_controller::router())
-            .merge(share_controller::router())
-            .merge(slicer_controller::router())
+        let app = api_router::merged_api_router()?
             .with_state(self.app_state)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
@@ -354,4 +392,61 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     }
 
     db.close().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{expected_env_error_msg, merge_cors_origins_from_env};
+
+    #[test]
+    fn expected_env_error_msg_format() {
+        assert_eq!(
+            expected_env_error_msg("FOO"),
+            "Expected environment variable FOO to be set"
+        );
+        assert_eq!(
+            expected_env_error_msg("APP_CONFIG_PATH"),
+            "Expected environment variable APP_CONFIG_PATH to be set"
+        );
+    }
+
+    #[test]
+    fn cors_merge_none_is_defaults_only() {
+        let o = merge_cors_origins_from_env(None).unwrap();
+        assert_eq!(o.len(), 2);
+    }
+
+    #[test]
+    fn cors_merge_whitespace_env_is_defaults_only() {
+        let o = merge_cors_origins_from_env(Some("  \t  ")).unwrap();
+        assert_eq!(o.len(), 2);
+    }
+
+    #[test]
+    fn cors_merge_extends_with_extra_origin() {
+        let o = merge_cors_origins_from_env(Some("http://192.168.1.10:5173")).unwrap();
+        assert_eq!(o.len(), 3);
+        assert!(
+            o.iter()
+                .any(|h| h.as_bytes() == b"http://192.168.1.10:5173")
+        );
+    }
+
+    #[test]
+    fn cors_merge_duplicate_extra_does_not_duplicate_list() {
+        let o = merge_cors_origins_from_env(Some("http://localhost:3000")).unwrap();
+        assert_eq!(o.len(), 2);
+    }
+
+    #[test]
+    fn cors_merge_all_invalid_tokens_errors() {
+        let err = merge_cors_origins_from_env(Some("\u{0}, \n")).unwrap_err();
+        assert!(err.to_string().contains("MESH_ORGANISER_CORS_ORIGINS"));
+    }
+
+    #[test]
+    fn cors_merge_one_valid_among_invalid_succeeds() {
+        let o = merge_cors_origins_from_env(Some("http://10.0.0.1:8080,\u{0}")).unwrap();
+        assert_eq!(o.len(), 3);
+    }
 }
