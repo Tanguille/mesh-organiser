@@ -15,7 +15,7 @@
     { id: "library", label: "Library", href: "/", icon: Home },
     { id: "import", label: "Import", href: "/import", icon: Upload },
     { id: "slice", label: "Slice", href: "/slice", icon: Printer },
-    { id: "print", label: "Print", href: "/print", icon: List },
+    { id: "print", label: "Printed", href: "/print", icon: List },
   ];
 
   let currentPath = $derived(page.url.pathname);
