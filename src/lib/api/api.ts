@@ -1,4 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { initDemoApis } from "./demo/init";
 import { initTauriLocalApis } from "./tauri/init";
 import { initWebApi } from "./web/init";
@@ -24,6 +24,12 @@ export async function initApi(): Promise<void> {
       await initDemoApis();
       return;
     }
-    await initTauriLocalApis();
+    const mobile = await invoke<boolean>("is_mobile");
+    if (mobile) {
+      const { initTauriRemoteApis } = await import("./tauri/init_remote");
+      await initTauriRemoteApis();
+    } else {
+      await initTauriLocalApis();
+    }
   }
 }
