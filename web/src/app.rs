@@ -42,8 +42,8 @@ use service::{
 use crate::{
     controller::{
         auth_controller, blob_controller, group_controller, label_controller, model_controller,
-        page_controller, resource_controller, share_controller, threemf_controller,
-        user_controller,
+        page_controller, resource_controller, share_controller, slicer_controller,
+        threemf_controller, user_controller,
     },
     user::{AuthSession, Backend},
     web_app_state::WebAppState,
@@ -306,6 +306,7 @@ impl App {
             .merge(threemf_controller::router())
             .merge(page_controller::router())
             .merge(share_controller::router())
+            .merge(slicer_controller::router())
             .with_state(self.app_state)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))

@@ -6,5 +6,6 @@ pub mod model_controller;
 pub mod page_controller;
 pub mod resource_controller;
 pub mod share_controller;
+pub mod slicer_controller;
 pub mod threemf_controller;
 pub mod user_controller;
