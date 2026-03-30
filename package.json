@@ -52,7 +52,7 @@
     "@types/node": "^25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
     "autoprefixer": "^10.4.27",
-    "bits-ui": "^2.16.4",
+    "bits-ui": "^2.16.5",
     "clsx": "^2.1.1",
     "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
