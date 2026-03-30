@@ -16,8 +16,6 @@
   <h1 class="mb-2 text-2xl font-bold">Application Error</h1>
   <p class="mb-4 text-center whitespace-pre">{panicState.message}</p>
   {#if showServerSetup}
-    <Button href="/mobile-server" variant="default">
-      Configure server
-    </Button>
+    <Button href="/mobile-server" variant="default">Configure server</Button>
   {/if}
 </div>

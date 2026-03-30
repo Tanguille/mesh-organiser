@@ -88,11 +88,11 @@
   {#if gate === "loading"}
     <Spinner />
   {:else if gate === "web"}
-    <p class="text-muted-foreground text-center text-sm">
+    <p class="text-center text-sm text-muted-foreground">
       Remote server setup is only available in the Mesh Organiser mobile app.
     </p>
   {:else if gate === "desktop"}
-    <p class="text-muted-foreground text-center text-sm">
+    <p class="text-center text-sm text-muted-foreground">
       Remote server setup is only available on mobile builds.
     </p>
   {:else}
@@ -116,7 +116,7 @@
           />
         </div>
         {#if testHint}
-          <p class="text-muted-foreground text-sm">{testHint}</p>
+          <p class="text-sm text-muted-foreground">{testHint}</p>
         {/if}
         <div class="flex flex-wrap gap-2">
           <Button
