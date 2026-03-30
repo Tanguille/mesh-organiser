@@ -206,12 +206,12 @@ Per [§1.2 Non-goals](../superpowers/specs/2026-03-29-remote-client-and-http-api
 
 ## Auth spike outcomes
 
-**TBD until spike.** Fill this in before shipping **Task 7** (remote `initApi` / `ServerRequestApi` and fetch options) in [2026-03-29-remote-client-http-api.md](../superpowers/plans/2026-03-29-remote-client-http-api.md).
+**Implementation (remote mobile):** `initTauriRemoteApis` uses `ServerRequestApi` with **`credentials: "include"`** and **`fetch` from `@tauri-apps/plugin-http`** (`src/lib/api/tauri/init_remote.ts`, `src/lib/api/web/request.ts`). That matches the **intended** cross-origin session-cookie behaviour; it does **not** replace on-device verification.
 
-- **`tauri-plugin-http` and `Set-Cookie`:** whether responses from `POST /api/v1/login/password` / `…/login/token` result in a **stored session cookie** on device, or whether the plugin ignores or drops `Set-Cookie` (**unverified**).
-- **Cross-site cookies:** if cookies are used from the mobile app origin to the server origin, whether the server must emit **`SameSite=None; Secure`** (and HTTPS) for the session cookie to persist (**unverified**).
-- **Token fallback:** if cookies are not viable, document **token-only** auth (`POST /api/v1/login/token` + header or body convention the server accepts) as the supported mobile path (**unverified**).
-- **Client changes:** link outcomes to edits under **`src/lib/api/web/request.ts`** (e.g. configurable `credentials`, or a dedicated remote fetch wrapper used by **Task 7** instead of `same-origin` for mobile).
+- **`tauri-plugin-http` and `Set-Cookie`:** **Verify on Android/iOS** that `POST /api/v1/login/password` (or `…/login/token`) responses that set a session cookie result in **subsequent authenticated** `GET /api/v1/users/me` / model calls without extra client code. If cookies are not retained, switch to **token-only** (`POST /api/v1/login/token`) and document the header/body convention the server expects.
+- **Cross-site cookies:** For cookie-based sessions from the app to a **different origin**, the server likely needs **`SameSite=None; Secure`** on the session cookie and **HTTPS** in production; align with `tower-sessions` / Axum cookie settings on `web`.
+- **Token fallback:** Same endpoints as today; no change required on the server for token login if cookies fail on device.
+- **Client:** Remote path uses **`include`**; browser/web and desktop Tauri local paths keep **`same-origin`** where applicable.
 
 ---
 
