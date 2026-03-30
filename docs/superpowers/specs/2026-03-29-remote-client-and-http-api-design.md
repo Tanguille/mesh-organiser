@@ -85,10 +85,10 @@ flowchart LR
 
 ### 4.3 Environment variables (build-time defaults)
 
-| Variable | Used by | Purpose |
-|----------|---------|---------|
+| Variable                     | Used by       | Purpose                                                                                              |
+| ---------------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
 | **`VITE_MOBILE_SERVER_URL`** | Vite / Svelte | Default **remote base URL** pre-filled for mobile builds (e.g. dev NAS). Document in `.env.example`. |
-| **`VITE_API_PLATFORM`** | Existing | Unchanged (`demo`, `web`, default Tauri). |
+| **`VITE_API_PLATFORM`**      | Existing      | Unchanged (`demo`, `web`, default Tauri).                                                            |
 
 Runtime URL **always** wins over empty default once user saves settings.
 
@@ -102,11 +102,11 @@ Runtime URL **always** wins over empty default once user saves settings.
 
 ## 5. Where the HTTP server runs (platform matrix)
 
-| Platform | Full Axum **`web`** server |
-|----------|----------------------------|
-| **Android / iOS (Tauri)** | **Must not** run the **`web`** server inside the app. |
-| **Desktop Tauri** | **Does not** embed the Axum app today. **Do not** auto-start a full HTTP API inside Tauri without a **follow-up spec**. If ever added: **default off**, **enabled only** via **app settings** persisted in configuration, with optional **env override** for dev/CI (e.g. `MESH_ORGANISER_ENABLE_LOCAL_API=1`). |
-| **NAS / container / dev machine** | Operator **explicitly** runs the **`web`** binary (Docker, systemd, manual). That is the **supported** way to expose `/api/v1`. |
+| Platform                          | Full Axum **`web`** server                                                                                                                                                                                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Android / iOS (Tauri)**         | **Must not** run the **`web`** server inside the app.                                                                                                                                                                                                                                                           |
+| **Desktop Tauri**                 | **Does not** embed the Axum app today. **Do not** auto-start a full HTTP API inside Tauri without a **follow-up spec**. If ever added: **default off**, **enabled only** via **app settings** persisted in configuration, with optional **env override** for dev/CI (e.g. `MESH_ORGANISER_ENABLE_LOCAL_API=1`). |
+| **NAS / container / dev machine** | Operator **explicitly** runs the **`web`** binary (Docker, systemd, manual). That is the **supported** way to expose `/api/v1`.                                                                                                                                                                                 |
 
 **Clarification:** “Disabled unless explicitly enabled in settings” applies to **any future embedded/local API inside Tauri**, not to stopping someone from running the standalone **`web`** process (that remains an explicit ops choice).
 
@@ -116,11 +116,11 @@ Runtime URL **always** wins over empty default once user saves settings.
 
 Document alongside **`docs/commands.md`** (or equivalent) when implementing:
 
-| Variable | Component | Purpose |
-|----------|-----------|---------|
-| **`SERVER_PORT`** | `web` | Listen port (existing; default `3000`). |
-| **`APP_CONFIG_PATH`** | `web` | Path to JSON config (existing). |
-| **`RUST_LOG`** | `web` | Logging (existing). |
+| Variable                        | Component      | Purpose                                                                                                                                   |
+| ------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **`SERVER_PORT`**               | `web`          | Listen port (existing; default `3000`).                                                                                                   |
+| **`APP_CONFIG_PATH`**           | `web`          | Path to JSON config (existing).                                                                                                           |
+| **`RUST_LOG`**                  | `web`          | Logging (existing).                                                                                                                       |
 | Optional **`MESH_ORGANISER_*`** | `web` / future | Only if implementation adds **bind address**, **API enabled gate**, or **CORS** overrides — names to be fixed in the implementation plan. |
 
 ---

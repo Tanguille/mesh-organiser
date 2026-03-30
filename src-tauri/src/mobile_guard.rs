@@ -1,4 +1,4 @@
-//! Reject local-desktop-only Tauri commands on Android/iOS before they touch SQLite, blobs, or the filesystem.
+//! Reject local-desktop-only Tauri commands on Android/iOS before they touch `SQLite`, blobs, or the filesystem.
 
 use crate::error::ApplicationError;
 

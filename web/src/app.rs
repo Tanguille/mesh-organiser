@@ -67,10 +67,7 @@ fn merge_cors_origins_from_env(
         .iter()
         .map(|s| {
             s.parse::<HeaderValue>().map_err(|e| {
-                io::Error::new(
-                    ErrorKind::Other,
-                    format!("internal: invalid default CORS origin {s:?}: {e}"),
-                )
+                io::Error::other(format!("internal: invalid default CORS origin {s:?}: {e}"))
             })
         })
         .collect::<Result<_, _>>()?;
@@ -95,7 +92,7 @@ fn merge_cors_origins_from_env(
         match t.parse::<HeaderValue>() {
             Ok(h) => {
                 saw_valid_token = true;
-                if !origins.iter().any(|o| o == &h) {
+                if !origins.contains(&h) {
                     origins.push(h);
                 }
             }

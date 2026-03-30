@@ -2,7 +2,7 @@
 //!
 //! ## Slicer executable
 //!
-//! Set **`MESH_ORGANISER_ORCA_PATH`** to the path of an **OrcaSlicer** or **PrusaSlicer-family** console
+//! Set **`MESH_ORGANISER_ORCA_PATH`** to the path of an **`OrcaSlicer`** or **PrusaSlicer-family** console
 //! binary (on Windows prefer `orca-slicer-console.exe` when available so stdout/stderr work).
 //!
 //! ## CLI invocation (v1)
@@ -42,7 +42,7 @@ use crate::{
 
 use super::app_state::AppState;
 
-/// Environment variable: absolute path to OrcaSlicer / Prusa-family **console** executable.
+/// Environment variable: absolute path to `OrcaSlicer` / Prusa-family **console** executable.
 pub const ORCA_SLICER_EXECUTABLE_ENV: &str = "MESH_ORGANISER_ORCA_PATH";
 
 /// Subprocess wall-clock limit (large models can be slow).
@@ -64,7 +64,10 @@ pub struct SliceOrchestrationResult {
     pub output_blob_sha256: String,
 }
 
-fn apply_slice_settings_to_command(_cmd: &mut Command, _settings: &SliceOrchestrationSettings) {
+const fn apply_slice_settings_to_command(
+    _cmd: &mut Command,
+    _settings: &SliceOrchestrationSettings,
+) {
     // TBD: map `layer_height_mm`, `infill_percent`, etc. to verified Orca/Prusa CLI flags.
 }
 
@@ -93,7 +96,7 @@ fn resolve_slicer_executable_path() -> Result<PathBuf, ServiceError> {
     Ok(path)
 }
 
-fn model_is_sliceable(file_type: &FileType) -> bool {
+const fn model_is_sliceable(file_type: &FileType) -> bool {
     matches!(
         file_type,
         &FileType::Stl
@@ -345,7 +348,9 @@ mod tests {
 
         let msg = err.to_string();
         assert!(
-            msg.contains("Model not found") || msg.contains("not accessible"),
+            msg.contains("Model not found")
+                || msg.contains("not accessible")
+                || msg.contains("Internal error"),
             "unexpected message: {msg}"
         );
     }

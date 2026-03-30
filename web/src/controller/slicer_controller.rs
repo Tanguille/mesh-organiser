@@ -26,7 +26,7 @@ pub fn router() -> Router<WebAppState> {
     )
 }
 
-/// JSON body for `POST /api/v1/slicer/slice`. Accepts snake_case (Rust) and common camelCase
+/// JSON body for `POST /api/v1/slicer/slice`. Accepts `snake_case` (Rust) and common camelCase
 /// aliases for mobile contract alignment.
 #[derive(Debug, Deserialize)]
 pub struct SliceRequestBody {
