@@ -14,7 +14,9 @@ describe("RemoteHttpSlicerApi", () => {
         outputBlobSha256: "deadbeef",
       }),
     };
-    const api = new RemoteHttpSlicerApi(request as unknown as IServerRequestApi);
+    const api = new RemoteHttpSlicerApi(
+      request as unknown as IServerRequestApi,
+    );
     const settings = {
       layerHeight: 0.2,
       infill: 20,

@@ -60,6 +60,7 @@ fn store_string_value(value: &JsonValue) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::missing_errors_doc)]
 pub async fn get_server_url(app: AppHandle) -> Result<Option<String>, String> {
     let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
 
@@ -71,6 +72,7 @@ pub async fn get_server_url(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::missing_errors_doc)]
 pub async fn set_server_url(app: AppHandle, url: String) -> Result<(), String> {
     let normalized = normalize_remote_server_url(&url)?;
 
@@ -83,6 +85,7 @@ pub async fn set_server_url(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[allow(clippy::missing_errors_doc)]
 pub async fn clear_server_url(app: AppHandle) -> Result<(), String> {
     let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
 

@@ -25,12 +25,12 @@ Contract note for **Tauri mobile** talking to a remotely hosted **`web`** (Axum)
 
 ## Authentication
 
-| Method | Path | Notes |
-|--------|------|--------|
+| Method | Path                     | Notes                                                                                                                             |
+| ------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | `POST` | `/api/v1/login/password` | Body: server’s password credentials shape (`PasswordCredentials`). Success: **`204 No Content`**; session established per server. |
-| `POST` | `/api/v1/login/token` | Body: token credentials (`TokenCredentials`). Success: **`204 No Content`**. |
-| `GET` | `/api/v1/users/me` | Current user JSON when session valid; **`401`** if not authenticated. |
-| `POST` | `/api/v1/logout` | End session. Success: **`204 No Content`**. |
+| `POST` | `/api/v1/login/token`    | Body: token credentials (`TokenCredentials`). Success: **`204 No Content`**.                                                      |
+| `GET`  | `/api/v1/users/me`       | Current user JSON when session valid; **`401`** if not authenticated.                                                             |
+| `POST` | `/api/v1/logout`         | End session. Success: **`204 No Content`**.                                                                                       |
 
 ### Cookies and `fetch` credentials
 
@@ -53,100 +53,100 @@ Sources: `web/src/controller/*_controller.rs`. Path parameters use Axum `{name}`
 
 **Models** (`model_controller`)
 
-| Method | Path |
-|--------|------|
-| `POST` | `/api/v1/models` |
-| `GET` | `/api/v1/models` |
-| `DELETE` | `/api/v1/models` |
-| `GET` | `/api/v1/models/count` |
-| `GET` | `/api/v1/models/disk_usage` |
-| `PUT` | `/api/v1/models/{model_id}` |
-| `DELETE` | `/api/v1/models/{model_id}` |
-| `GET` | `/api/v1/shares/{share_id}/models` |
+| Method   | Path                               |
+| -------- | ---------------------------------- |
+| `POST`   | `/api/v1/models`                   |
+| `GET`    | `/api/v1/models`                   |
+| `DELETE` | `/api/v1/models`                   |
+| `GET`    | `/api/v1/models/count`             |
+| `GET`    | `/api/v1/models/disk_usage`        |
+| `PUT`    | `/api/v1/models/{model_id}`        |
+| `DELETE` | `/api/v1/models/{model_id}`        |
+| `GET`    | `/api/v1/shares/{share_id}/models` |
 
 **Blobs** (`blob_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/models/{model_id}/bytes` |
-| `GET` | `/api/v1/blobs/{sha256}/bytes` |
-| `POST` | `/api/v1/blobs/download` |
-| `GET` | `/api/v1/blobs/{sha256}/thumb` |
-| `GET` | `/api/v1/blobs/{sha256}/download` |
-| `GET` | `/api/v1/blobs/download/{zip_dir}` |
+| Method | Path                               |
+| ------ | ---------------------------------- |
+| `GET`  | `/api/v1/models/{model_id}/bytes`  |
+| `GET`  | `/api/v1/blobs/{sha256}/bytes`     |
+| `POST` | `/api/v1/blobs/download`           |
+| `GET`  | `/api/v1/blobs/{sha256}/thumb`     |
+| `GET`  | `/api/v1/blobs/{sha256}/download`  |
+| `GET`  | `/api/v1/blobs/download/{zip_dir}` |
 
 In the current Axum router, `route_layer(login_required!(Backend))` applies only to routes registered **before** it in this nest; the **thumb**, **single-blob download**, and **`/blobs/download/{zip_dir}`** routes are registered **after** that layer and therefore **do not** use `login_required` in today’s code. Callers should not assume uniform auth on all blob URLs until policy is reviewed.
 
 **Groups** (`group_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/groups` |
-| `GET` | `/api/v1/groups/count` |
-| `POST` | `/api/v1/groups` |
-| `DELETE` | `/api/v1/groups/detach_models` |
-| `PUT` | `/api/v1/groups/{group_id}` |
-| `DELETE` | `/api/v1/groups/{group_id}` |
-| `POST` | `/api/v1/groups/{group_id}/models` |
-| `GET` | `/api/v1/shares/{share_id}/groups` |
+| Method   | Path                               |
+| -------- | ---------------------------------- |
+| `GET`    | `/api/v1/groups`                   |
+| `GET`    | `/api/v1/groups/count`             |
+| `POST`   | `/api/v1/groups`                   |
+| `DELETE` | `/api/v1/groups/detach_models`     |
+| `PUT`    | `/api/v1/groups/{group_id}`        |
+| `DELETE` | `/api/v1/groups/{group_id}`        |
+| `POST`   | `/api/v1/groups/{group_id}/models` |
+| `GET`    | `/api/v1/shares/{share_id}/groups` |
 
 **Labels** (`label_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/labels` |
-| `POST` | `/api/v1/labels` |
-| `PUT` | `/api/v1/labels/{label_id}` |
-| `DELETE` | `/api/v1/labels/{label_id}` |
-| `POST` | `/api/v1/labels/{label_id}/models` |
-| `DELETE` | `/api/v1/labels/{label_id}/models` |
-| `POST` | `/api/v1/labels/{label_id}/childs` |
-| `PUT` | `/api/v1/labels/{label_id}/childs` |
-| `DELETE` | `/api/v1/labels/{label_id}/childs` |
-| `GET` | `/api/v1/labels/{label_id}/keywords` |
-| `PUT` | `/api/v1/labels/{label_id}/keywords` |
-| `PUT` | `/api/v1/models/{model_id}/labels` |
+| Method   | Path                                 |
+| -------- | ------------------------------------ |
+| `GET`    | `/api/v1/labels`                     |
+| `POST`   | `/api/v1/labels`                     |
+| `PUT`    | `/api/v1/labels/{label_id}`          |
+| `DELETE` | `/api/v1/labels/{label_id}`          |
+| `POST`   | `/api/v1/labels/{label_id}/models`   |
+| `DELETE` | `/api/v1/labels/{label_id}/models`   |
+| `POST`   | `/api/v1/labels/{label_id}/childs`   |
+| `PUT`    | `/api/v1/labels/{label_id}/childs`   |
+| `DELETE` | `/api/v1/labels/{label_id}/childs`   |
+| `GET`    | `/api/v1/labels/{label_id}/keywords` |
+| `PUT`    | `/api/v1/labels/{label_id}/keywords` |
+| `PUT`    | `/api/v1/models/{model_id}/labels`   |
 
 **Resources** (`resource_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/resources` |
-| `POST` | `/api/v1/resources` |
-| `PUT` | `/api/v1/resources/{resource_id}` |
-| `DELETE` | `/api/v1/resources/{resource_id}` |
-| `GET` | `/api/v1/resources/{resource_id}/groups` |
-| `PUT` | `/api/v1/groups/{group_id}/resource` |
+| Method   | Path                                     |
+| -------- | ---------------------------------------- |
+| `GET`    | `/api/v1/resources`                      |
+| `POST`   | `/api/v1/resources`                      |
+| `PUT`    | `/api/v1/resources/{resource_id}`        |
+| `DELETE` | `/api/v1/resources/{resource_id}`        |
+| `GET`    | `/api/v1/resources/{resource_id}/groups` |
+| `PUT`    | `/api/v1/groups/{group_id}/resource`     |
 
 **Users (admin-style)** (`user_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/users` |
-| `POST` | `/api/v1/users` |
-| `PUT` | `/api/v1/users/{user_id}` |
-| `DELETE` | `/api/v1/users/{user_id}` |
-| `DELETE` | `/api/v1/users/{user_id}/token` |
-| `PUT` | `/api/v1/users/{user_id}/password` |
-| `PUT` | `/api/v1/users/{user_id}/permissions` |
+| Method   | Path                                  |
+| -------- | ------------------------------------- |
+| `GET`    | `/api/v1/users`                       |
+| `POST`   | `/api/v1/users`                       |
+| `PUT`    | `/api/v1/users/{user_id}`             |
+| `DELETE` | `/api/v1/users/{user_id}`             |
+| `DELETE` | `/api/v1/users/{user_id}/token`       |
+| `PUT`    | `/api/v1/users/{user_id}/password`    |
+| `PUT`    | `/api/v1/users/{user_id}/permissions` |
 
 **3MF** (`threemf_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/models/{model_id}/3mf_metadata` |
-| `POST` | `/api/v1/models/{model_id}/3mf_extract` |
+| Method | Path                                     |
+| ------ | ---------------------------------------- |
+| `GET`  | `/api/v1/models/{model_id}/3mf_metadata` |
+| `POST` | `/api/v1/models/{model_id}/3mf_extract`  |
 
 **Shares** (`share_controller`)
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/v1/shares` |
-| `POST` | `/api/v1/shares` |
-| `PUT` | `/api/v1/shares/{share_id}` |
-| `DELETE` | `/api/v1/shares/{share_id}` |
-| `PUT` | `/api/v1/shares/{share_id}/models` |
-| `GET` | `/api/v1/shares/{share_id}` |
+| Method   | Path                               |
+| -------- | ---------------------------------- |
+| `GET`    | `/api/v1/shares`                   |
+| `POST`   | `/api/v1/shares`                   |
+| `PUT`    | `/api/v1/shares/{share_id}`        |
+| `DELETE` | `/api/v1/shares/{share_id}`        |
+| `PUT`    | `/api/v1/shares/{share_id}/models` |
+| `GET`    | `/api/v1/shares/{share_id}`        |
 
 HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api/v1` and are not part of this JSON contract.
 
@@ -161,12 +161,12 @@ HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api
 - **Request:** accepts `modelId` (camelCase) or `model_id` (snake_case). Nested `settings` may use `layerHeight` / `layer_height_mm` and `infill` / `infill_percent` per `web` DTOs (`SliceRequestBody` / `SliceSettingsDto`).
 - **Success (200):** JSON body is camelCase:
 
-| Field | Type | Meaning |
-|-------|------|--------|
-| `success` | `boolean` | `true` when orchestration completed and the output was registered |
-| `outputBlobId` | `number` | **Model id** of the slice output artifact (same value as `SliceOrchestrationResult.output_model_id` in `service`) |
-| `outputBlobSha256` | `string` | Hex SHA-256 of the output blob stored for that model |
-| `message` | `string \| null` | Optional; omitted from JSON when absent |
+| Field              | Type             | Meaning                                                                                                           |
+| ------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `success`          | `boolean`        | `true` when orchestration completed and the output was registered                                                 |
+| `outputBlobId`     | `number`         | **Model id** of the slice output artifact (same value as `SliceOrchestrationResult.output_model_id` in `service`) |
+| `outputBlobSha256` | `string`         | Hex SHA-256 of the output blob stored for that model                                                              |
+| `message`          | `string \| null` | Optional; omitted from JSON when absent                                                                           |
 
 TypeScript sketch (align clients with the table above):
 
@@ -219,12 +219,12 @@ Per [§1.2 Non-goals](../superpowers/specs/2026-03-29-remote-client-and-http-api
 
 **Purpose:** `service::slice_service` runs a **console** slicer on the host for `POST /api/v1/slicer/slice` (Task 3). This appendix documents the **environment variable** and the **v1 subprocess shape**; exact flags may need tuning per install.
 
-| Item | Detail |
-|------|--------|
-| **Executable** | Set **`MESH_ORGANISER_ORCA_PATH`** to the full path of **OrcaSlicer** or **PrusaSlicer-family** binary. On Windows, prefer **`orca-slicer-console.exe`** (or equivalent) when available so stdout/stderr are usable. |
-| **v1 invocation** | `{MESH_ORGANISER_ORCA_PATH} --slice 0 --outputdir <dir> <input_model_path>` |
-| **Settings JSON** | Fields such as layer height and infill are modeled in Rust as `SliceOrchestrationSettings` in `service/src/slice_service.rs` for HTTP alignment; **CLI mapping is partial** until flags are verified on a real install (`{binary} --help`). |
-| **Further options (TBD)** | Community docs mention `--load-settings`, `--datadir`, `--export-3mf`, etc.; confirm against your OrcaSlicer version before wiring into production. |
+| Item                      | Detail                                                                                                                                                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Executable**            | Set **`MESH_ORGANISER_ORCA_PATH`** to the full path of **OrcaSlicer** or **PrusaSlicer-family** binary. On Windows, prefer **`orca-slicer-console.exe`** (or equivalent) when available so stdout/stderr are usable.                        |
+| **v1 invocation**         | `{MESH_ORGANISER_ORCA_PATH} --slice 0 --outputdir <dir> <input_model_path>`                                                                                                                                                                 |
+| **Settings JSON**         | Fields such as layer height and infill are modeled in Rust as `SliceOrchestrationSettings` in `service/src/slice_service.rs` for HTTP alignment; **CLI mapping is partial** until flags are verified on a real install (`{binary} --help`). |
+| **Further options (TBD)** | Community docs mention `--load-settings`, `--datadir`, `--export-3mf`, etc.; confirm against your OrcaSlicer version before wiring into production.                                                                                         |
 
 If the variable is unset, empty, or the path does not exist, the service returns a clear **`InternalError`** message (no silent failure).
 

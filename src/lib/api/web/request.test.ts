@@ -4,10 +4,16 @@ import { ServerRequestApi } from "./request";
 
 describe("ServerRequestApi", () => {
   it("passes credentials include to fetch for JSON requests", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+    const api = new ServerRequestApi(
+      "https://example.com",
+      fetchImpl,
+      "include",
     );
-    const api = new ServerRequestApi("https://example.com", fetchImpl, "include");
     await api.request("/test", HttpMethod.GET);
 
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -18,7 +24,10 @@ describe("ServerRequestApi", () => {
 
   it("defaults credentials to same-origin", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+      new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
     );
     const api = new ServerRequestApi("https://example.com", fetchImpl);
     await api.request("/x", HttpMethod.GET);
@@ -32,16 +41,22 @@ describe("ServerRequestApi", () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(new Response(new ArrayBuffer(0), { status: 200 }))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({}), { status: 200 }),
-      );
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
 
-    const api = new ServerRequestApi("https://example.com", fetchImpl, "include");
+    const api = new ServerRequestApi(
+      "https://example.com",
+      fetchImpl,
+      "include",
+    );
     await api.requestBinary("/bin", HttpMethod.GET);
     await api.sendBinary("/up", HttpMethod.POST, new File([], "f.stl"));
 
-    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ credentials: "include" });
-    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({ credentials: "include" });
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
+      credentials: "include",
+    });
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      credentials: "include",
+    });
   });
 
   it("rejects on HTTP 500 with JSON body", async () => {
@@ -62,6 +77,8 @@ describe("ServerRequestApi", () => {
       .mockRejectedValue(new TypeError("Failed to fetch"));
     const api = new ServerRequestApi("https://example.com", fetchImpl);
 
-    await expect(api.request("/x", HttpMethod.GET)).rejects.toThrow("Failed to fetch");
+    await expect(api.request("/x", HttpMethod.GET)).rejects.toThrow(
+      "Failed to fetch",
+    );
   });
 });
