@@ -67,7 +67,8 @@ async fn slice_errors_when_slicer_env_unset() {
     let _guard = slice_env_lock();
     let prior = std::env::var(ORCA_SLICER_EXECUTABLE_ENV).ok();
 
-    std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV);
+    // SAFETY: This is test code running in single-threaded context
+    unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) };
 
     let (_dir, app_state, model_id) = app_state_with_stl_model().await;
     let user = User::default();
@@ -84,8 +85,9 @@ async fn slice_errors_when_slicer_env_unset() {
     );
 
     match prior {
-        Some(value) => std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, value),
-        None => std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV),
+        // SAFETY: This is test code running in single-threaded context
+        Some(value) => unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, value) },
+        None => unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) },
     }
 }
 
@@ -94,8 +96,12 @@ async fn slice_errors_when_slicer_path_missing() {
     let _guard = slice_env_lock();
     let prior = std::env::var(ORCA_SLICER_EXECUTABLE_ENV).ok();
 
-    let ghost = tempdir().unwrap().join("nonexistent_orca_binary.exe");
-    std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, ghost.as_os_str());
+    let ghost = tempdir()
+        .unwrap()
+        .path()
+        .join("nonexistent_orca_binary.exe");
+    // SAFETY: This is test code running in single-threaded context
+    unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, ghost.as_os_str()) };
 
     let (_dir, app_state, model_id) = app_state_with_stl_model().await;
     let user = User::default();
@@ -112,7 +118,8 @@ async fn slice_errors_when_slicer_path_missing() {
     );
 
     match prior {
-        Some(value) => std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, value),
-        None => std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV),
+        // SAFETY: This is test code running in single-threaded context
+        Some(value) => unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, value) },
+        None => unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) },
     }
 }
