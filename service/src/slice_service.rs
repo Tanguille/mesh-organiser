@@ -49,7 +49,7 @@ pub const ORCA_SLICER_EXECUTABLE_ENV: &str = "MESH_ORGANISER_ORCA_PATH";
 const SLICE_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Basic slicing options for HTTP / JSON (Orca CLI mapping is partial in v1).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct SliceOrchestrationSettings {
     /// Layer height in millimetres (CLI mapping **TBD**).
     pub layer_height_mm: Option<f64>,
@@ -93,22 +93,22 @@ fn resolve_slicer_executable_path() -> Result<PathBuf, ServiceError> {
     Ok(path)
 }
 
-fn model_is_sliceable(file_type: FileType) -> bool {
+fn model_is_sliceable(file_type: &FileType) -> bool {
     matches!(
         file_type,
-        FileType::Stl
-            | FileType::ZippedStl
-            | FileType::Obj
-            | FileType::ZippedObj
-            | FileType::Threemf
-            | FileType::Step
-            | FileType::ZippedStep
+        &FileType::Stl
+            | &FileType::ZippedStl
+            | &FileType::Obj
+            | &FileType::ZippedObj
+            | &FileType::Threemf
+            | &FileType::Step
+            | &FileType::ZippedStep
     )
 }
 
 fn find_gcode_in_output_dir(dir: &Path) -> Result<PathBuf, ServiceError> {
     let mut candidates: Vec<PathBuf> = std::fs::read_dir(dir)?
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .filter(|e| {
             e.path().extension().is_some_and(|ext| {
                 ext.eq_ignore_ascii_case("gcode") || ext.eq_ignore_ascii_case("g")
@@ -275,7 +275,7 @@ pub async fn slice_model_for_user(
     };
 
     let file_type = model.blob.to_file_type();
-    if !model_is_sliceable(file_type) {
+    if !model_is_sliceable(&file_type) {
         return Err(ServiceError::InternalError(format!(
             "Model file type cannot be sliced: {file_type:?}"
         )));
