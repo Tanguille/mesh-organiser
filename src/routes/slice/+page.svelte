@@ -8,10 +8,7 @@
     ModelOrderBy,
     type Model,
   } from "$lib/api/shared/model_api";
-  import {
-    ISlicerApi,
-    type SlicingSettings,
-  } from "$lib/api/shared/slicer_api";
+  import { ISlicerApi, type SlicingSettings } from "$lib/api/shared/slicer_api";
   import Spinner from "$lib/components/view/spinner.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -153,13 +150,13 @@
   {:else if isMobileRemote}
     <p class="text-sm text-muted-foreground">
       This device is not connected to server slicing yet. Open a model and use
-      <span class="font-medium">Open in slicer</span> from the model page, or
-      configure your server in settings.
+      <span class="font-medium">Open in slicer</span> from the model page, or configure
+      your server in settings.
     </p>
   {:else}
     <p class="text-sm text-muted-foreground">
-      Open a model to use <span class="font-medium">Open in slicer</span> with
-      your desktop app.
+      Open a model to use <span class="font-medium">Open in slicer</span> with your
+      desktop app.
     </p>
   {/if}
 
@@ -186,7 +183,9 @@
     <div class="space-y-4">
       <div class="space-y-2">
         <Label for="slice-model">Model</Label>
-        <div class="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-2">
+        <div
+          class="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-2"
+        >
           {#each models as model (model.id)}
             <button
               type="button"
