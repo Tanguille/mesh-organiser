@@ -55,7 +55,7 @@ fn normalize_remote_server_url(input: &str) -> Result<String, String> {
 fn store_string_value(value: &JsonValue) -> Result<String, String> {
     value
         .as_str()
-        .map(std::string::ToString::to_string)
+        .map(ToString::to_string)
         .ok_or_else(|| String::from("stored value is not a string"))
 }
 
