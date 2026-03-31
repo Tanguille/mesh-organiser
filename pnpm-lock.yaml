@@ -45,8 +45,8 @@ importers:
         specifier: ^8.5.5
         version: 8.5.5(svelte@5.55.1)(three@0.183.2)
       '@threlte/extras':
-        specifier: ^9.13.3
-        version: 9.13.3(@types/three@0.183.1)(svelte@5.55.1)(three@0.183.2)
+        specifier: ^9.14.0
+        version: 9.14.0(@types/three@0.183.1)(svelte@5.55.1)(three@0.183.2)
       '@types/qs':
         specifier: ^6.15.0
         version: 6.15.0
@@ -766,8 +766,8 @@ packages:
       svelte: '>=5'
       three: 0.183.2
 
-  '@threlte/extras@9.13.3':
-    resolution: {integrity: sha512-ElXna1kGuS9b9pCG5swChpwpbrDxoMVxchCG8mXjjcXk9HW8qZDicf2mq0SBll2fLP0Nb8iGlkskSJ04qqWCGg==}
+  '@threlte/extras@9.14.0':
+    resolution: {integrity: sha512-iiNpmdz3aDJlEsp769grQL4UwJeNDQGpVByi19x+nu9uThrCbW6sKSoMfkVWqVsBafpHXRr7lXS0qceMwQoOlw==}
     peerDependencies:
       svelte: '>=5'
       three: 0.183.2
@@ -2479,7 +2479,7 @@ snapshots:
       svelte: 5.55.1
       three: 0.183.2
 
-  '@threlte/extras@9.13.3(@types/three@0.183.1)(svelte@5.55.1)(three@0.183.2)':
+  '@threlte/extras@9.14.0(@types/three@0.183.1)(svelte@5.55.1)(three@0.183.2)':
     dependencies:
       '@threejs-kit/instanced-sprite-mesh': 2.5.1(@types/three@0.183.1)(three@0.183.2)
       camera-controls: 3.1.2(three@0.183.2)
