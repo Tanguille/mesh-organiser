@@ -14,7 +14,9 @@
   import Button from "$lib/components/ui/button/button.svelte";
   import { Label } from "$lib/components/ui/label/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
-  import { ChevronRight, File, LoaderCircle } from "lucide-svelte";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import File from "@lucide/svelte/icons/file";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import { toast } from "svelte-sonner";
 
   const MATERIALS = ["PLA", "PETG", "ABS", "TPU", "ASA"] as const;
