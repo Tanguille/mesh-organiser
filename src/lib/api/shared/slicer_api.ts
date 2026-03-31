@@ -24,8 +24,8 @@ export interface SliceResult {
 /** Response from `POST /api/v1/slicer/slice` (remote / web server). */
 export interface SliceServerResponse {
   success: boolean;
-  /** Model id of the registered slice output (not a separate blob-only id). */
-  outputBlobId: number;
+  /** Model id of the registered slice output. */
+  outputModelId: number;
   outputBlobSha256: string;
   message?: string | null;
 }

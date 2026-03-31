@@ -161,12 +161,12 @@ HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api
 - **Request:** accepts `modelId` (camelCase) or `model_id` (snake_case). Nested `settings` may use `layerHeight` / `layer_height_mm` and `infill` / `infill_percent` per `web` DTOs (`SliceRequestBody` / `SliceSettingsDto`).
 - **Success (200):** JSON body is camelCase:
 
-| Field              | Type             | Meaning                                                                                                           |
-| ------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `success`          | `boolean`        | `true` when orchestration completed and the output was registered                                                 |
-| `outputBlobId`     | `number`         | **Model id** of the slice output artifact (same value as `SliceOrchestrationResult.output_model_id` in `service`) |
-| `outputBlobSha256` | `string`         | Hex SHA-256 of the output blob stored for that model                                                              |
-| `message`          | `string \| null` | Optional; omitted from JSON when absent                                                                           |
+| Field              | Type             | Meaning                                                                                                       |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------- |
+| `success`          | `boolean`        | `true` when orchestration completed and the output was registered                                             |
+| `outputModelId`    | `number`         | Model id of the slice output artifact (same value as `SliceOrchestrationResult.output_model_id` in `service`) |
+| `outputBlobSha256` | `string`         | Hex SHA-256 of the output blob stored for that model                                                          |
+| `message`          | `string \| null` | Optional; omitted from JSON when absent                                                                       |
 
 TypeScript sketch (align clients with the table above):
 
@@ -185,8 +185,8 @@ export interface SliceRequest {
 
 export interface SliceResponse {
   success: boolean;
-  /** Model id of the registered slice output (not a separate blob-only id). */
-  outputBlobId: number;
+  /** Model id of the registered slice output. */
+  outputModelId: number;
   outputBlobSha256: string;
   message?: string | null;
 }

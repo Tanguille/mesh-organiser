@@ -54,12 +54,11 @@ impl From<SliceSettingsDto> for SliceOrchestrationSettings {
 }
 
 /// Success payload for slice orchestration. JSON uses camelCase per `docs/api/v1-mobile-remote.md`.
-/// `output_blob_id` serializes as `outputBlobId` and equals `output_model_id` on [`SliceOrchestrationResult`].
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SliceResponseJson {
     pub success: bool,
-    pub output_blob_id: i64,
+    pub output_model_id: i64,
     pub output_blob_sha256: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -81,7 +80,7 @@ async fn post_slice(
 fn slice_response_from_result(result: SliceOrchestrationResult) -> SliceResponseJson {
     SliceResponseJson {
         success: true,
-        output_blob_id: result.output_model_id,
+        output_model_id: result.output_model_id,
         output_blob_sha256: result.output_blob_sha256,
         message: None,
     }

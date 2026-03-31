@@ -9,6 +9,7 @@
     type Model,
   } from "$lib/api/shared/model_api";
   import { ISlicerApi, type SlicingSettings } from "$lib/api/shared/slicer_api";
+  import { toReadableSize } from "$lib/utils";
   import Spinner from "$lib/components/view/spinner.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -78,12 +79,6 @@
     goto(`/model?selected=${modelId}`);
   }
 
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / 1024 / 1024).toFixed(2) + " MB";
-  }
-
   async function onSliceOnServer() {
     if (selectedModelId === null) {
       toast.error("Select a model to slice.");
@@ -112,7 +107,7 @@
         toast.success("Slice finished on server.", {
           description:
             res.message ??
-            `Output model id ${res.outputBlobId}. G-code stays on the server.`,
+            `Output model id ${res.outputModelId}. G-code stays on the server.`,
         });
       } else {
         toast.error(res.message ?? "Slice failed.");
@@ -205,7 +200,7 @@
               <div class="min-w-0 flex-1">
                 <p class="truncate font-medium">{model.name}</p>
                 <p class="text-xs text-muted-foreground">
-                  {formatSize(model.blob.size)}
+                  {toReadableSize(model.blob.size)}
                 </p>
               </div>
             </button>
@@ -292,7 +287,7 @@
           <div class="min-w-0 flex-1 space-y-1">
             <h3 class="truncate font-medium">{model.name}</h3>
             <p class="text-sm text-muted-foreground">
-              {formatSize(model.blob.size)} •
+              {toReadableSize(model.blob.size)} •
               {model.blob.filetype?.toUpperCase() || "Unknown"}
             </p>
           </div>

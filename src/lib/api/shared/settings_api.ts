@@ -86,7 +86,6 @@ export interface Configuration {
   thumbnail_rotation: [number, number, number];
   watch_downloads_folder: boolean;
   startup_page: StartupPages;
-  remote_server_url: string;
 }
 
 export function convertOrderOptionModelsToEnum(
@@ -181,7 +180,6 @@ export function configurationDefault(): Configuration {
     thumbnail_rotation: [35, 30, 0],
     watch_downloads_folder: false,
     startup_page: "",
-    remote_server_url: "",
   };
 }
 
