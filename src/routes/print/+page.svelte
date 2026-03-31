@@ -10,7 +10,8 @@
   import { toReadableSize } from "$lib/utils";
   import Spinner from "$lib/components/view/spinner.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
-  import { ChevronRight, File } from "lucide-svelte";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import File from "@lucide/svelte/icons/file";
 
   let printedModels: Model[] = $state([]);
   let loading = $state(true);
