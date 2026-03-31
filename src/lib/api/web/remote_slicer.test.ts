@@ -10,7 +10,7 @@ describe("RemoteHttpSlicerApi", () => {
     const request = {
       request: vi.fn().mockResolvedValue({
         success: true,
-        outputBlobId: 42,
+        outputModelId: 42,
         outputBlobSha256: "deadbeef",
       }),
     };

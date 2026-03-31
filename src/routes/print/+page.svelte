@@ -7,6 +7,7 @@
     ModelStreamManager,
     type Model,
   } from "$lib/api/shared/model_api";
+  import { toReadableSize } from "$lib/utils";
   import Spinner from "$lib/components/view/spinner.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
   import { ChevronRight, File } from "lucide-svelte";
@@ -35,12 +36,6 @@
 
   function openModel(modelId: number) {
     goto(`/model?selected=${modelId}`);
-  }
-
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / 1024 / 1024).toFixed(2) + " MB";
   }
 
   onMount(loadPrintedModels);
@@ -94,7 +89,7 @@
           <div class="min-w-0 flex-1 space-y-1">
             <h3 class="truncate font-medium">{model.name}</h3>
             <p class="text-sm text-muted-foreground">
-              {formatSize(model.blob.size)} •
+              {toReadableSize(model.blob.size)} •
               {model.blob.filetype?.toUpperCase() || "Unknown"}
             </p>
           </div>
