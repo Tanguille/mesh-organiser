@@ -135,6 +135,7 @@ Example:
 
 - **Prefer:** `src/api.rs` and `src/api/blob_api.rs`, `src/api/model_api.rs`, …
 - **Avoid:** `src/api/mod.rs` and `src/api/blob_api.rs`, … (same children, but parent is the redundant `mod.rs`).
+- **Tauri:** `src/commands.rs` with `src/commands/server_url.rs` (and further submodules under `commands/`), not `src/commands/mod.rs`.
 
 ## Error Handling
 

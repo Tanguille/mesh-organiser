@@ -7,7 +7,7 @@ use std::{
 };
 
 use arboard::Clipboard;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
@@ -15,6 +15,35 @@ use tauri::{
     webview::{DownloadEvent, PageLoadEvent},
 };
 use urlencoding::decode;
+
+/// Platform type for the application
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Platform {
+    Desktop,
+    Android,
+    Ios,
+}
+
+/// Get the current platform
+#[tauri::command]
+const fn get_platform() -> Platform {
+    #[cfg(target_os = "android")]
+    return Platform::Android;
+    #[cfg(target_os = "ios")]
+    return Platform::Ios;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    return Platform::Desktop;
+}
+
+/// Check if running on mobile
+#[tauri::command]
+const fn is_mobile() -> bool {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return true;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    return false;
+}
 
 use db::{
     group_db, model::blob::Blob, model::model_group::ModelGroupMeta, model::user::User, model_db,
@@ -28,12 +57,15 @@ use service::{
 
 use crate::{
     error::ApplicationError,
+    mobile_guard::require_local_desktop_app,
     tauri_app_state::{AccountLinkEmit, InitialState, TauriAppState},
     tauri_import_state::import_state_new_tauri,
 };
 
 mod api;
+pub mod commands;
 mod error;
+mod mobile_guard;
 mod tauri_app_state;
 mod tauri_import_state;
 
@@ -47,6 +79,8 @@ struct DeepLinkEmit {
 async fn get_configuration(
     state: State<'_, TauriAppState>,
 ) -> Result<Configuration, ApplicationError> {
+    require_local_desktop_app()?;
+
     Ok(state.get_configuration())
 }
 
@@ -56,6 +90,8 @@ async fn set_configuration(
     state: State<'_, TauriAppState>,
     app_handle: AppHandle,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let deep_link_state_changed = state.write_configuration(&configuration);
 
     if deep_link_state_changed {
@@ -73,6 +109,8 @@ pub struct SlicerEntry {
 
 #[tauri::command]
 async fn get_slicers() -> Result<Vec<SlicerEntry>, ApplicationError> {
+    require_local_desktop_app()?;
+
     Slicer::iter()
         .map(|f| {
             let installed = f.is_installed();
@@ -91,6 +129,8 @@ async fn update_images(
     app_handle: AppHandle,
     overwrite: bool,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let _lock = state.app_state.import_mutex.lock().await;
     let import_state = &mut import_state_new_tauri(None, false, false, false, &state, &app_handle);
     thumbnail_service::generate_all_thumbnails(&state.app_state, overwrite, import_state).await?;
@@ -103,6 +143,8 @@ async fn open_in_slicer(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
             .await?;
@@ -134,6 +176,8 @@ async fn get_initial_state(
 async fn download_file(
     url: &str,
 ) -> Result<download_file_service::DownloadResult, ApplicationError> {
+    require_local_desktop_app()?;
+
     let response = download_file_service::download_file(url).await?;
 
     Ok(response)
@@ -145,6 +189,8 @@ async fn open_in_folder(
     as_zip: bool,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
             .await?;
@@ -171,6 +217,8 @@ async fn get_threemf_metadata(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ThreemfMetadata, ApplicationError> {
+    require_local_desktop_app()?;
+
     let model = model_db::get_models_via_ids(
         &state.app_state.db,
         &state.get_current_user(),
@@ -188,6 +236,8 @@ async fn extract_threemf_models(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ModelGroupMeta, ApplicationError> {
+    require_local_desktop_app()?;
+
     let model = model_db::get_models_via_ids(
         &state.app_state.db,
         &state.get_current_user(),
@@ -227,6 +277,8 @@ async fn extract_threemf_models(
 async fn compute_model_folder_size(
     state: State<'_, TauriAppState>,
 ) -> Result<u64, ApplicationError> {
+    require_local_desktop_app()?;
+
     let size = service::get_folder_size(&state.get_model_dir());
 
     Ok(size)
@@ -246,6 +298,8 @@ struct Site {
 #[tauri::command]
 #[allow(clippy::too_many_lines)]
 async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), ApplicationError> {
+    require_local_desktop_app()?;
+
     let cloned_handle = app_handle.clone();
     if let Some(window) = app_handle.webview_windows().get("secondary") {
         window.set_focus()?;
@@ -521,6 +575,7 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -734,6 +789,11 @@ pub fn run() {
             api::upload_models_to_remote_server,
             api::blobs_to_path,
             api::set_last_sync_time,
+            get_platform,
+            is_mobile,
+            commands::server_url::get_server_url,
+            commands::server_url::set_server_url,
+            commands::server_url::clear_server_url,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

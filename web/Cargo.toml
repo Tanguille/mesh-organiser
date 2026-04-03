@@ -40,3 +40,4 @@ htmlescape = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
+tower = { version = "0.5.2", features = ["util", "full"] }

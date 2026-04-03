@@ -7,11 +7,38 @@ export interface SlicerEntry {
   installed: boolean;
 }
 
+export interface SlicingSettings {
+  layerHeight: number; // 0.1, 0.2, 0.3
+  infill: number; // 0-100
+  supports: "none" | "everywhere" | "touching buildplate";
+  material: string; // PLA, PETG, ABS, etc.
+}
+
+export interface SliceResult {
+  success: boolean;
+  slicedFileUrl: string;
+  printTimeEstimate: number; // in minutes
+  filamentUsed: number; // in grams
+}
+
+/** Response from `POST /api/v1/slicer/slice` (remote / web server). */
+export interface SliceServerResponse {
+  success: boolean;
+  /** Model id of the registered slice output. */
+  outputModelId: number;
+  outputBlobSha256: string;
+  message?: string | null;
+}
+
 export const ISlicerApi = Symbol("ISlicerApi");
 
 export interface ISlicerApi {
   openInSlicer(models: Model[]): Promise<void>;
   availableSlicers(): Promise<SlicerEntry[]>;
+  sliceOnServer?(
+    modelId: number,
+    settings: SlicingSettings,
+  ): Promise<SliceServerResponse>;
 }
 
 function slicerNameToDeepLink(slicerName: string): string | null {
