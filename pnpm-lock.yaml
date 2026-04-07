@@ -42,8 +42,8 @@ importers:
         specifier: ~2.10.0
         version: 2.10.0
       '@threlte/core':
-        specifier: ^8.5.5
-        version: 8.5.5(svelte@5.55.1)(three@0.183.2)
+        specifier: ^8.5.6
+        version: 8.5.6(svelte@5.55.1)(three@0.183.2)
       '@threlte/extras':
         specifier: ^9.14.2
         version: 9.14.2(@types/three@0.183.1)(svelte@5.55.1)(three@0.183.2)
@@ -760,8 +760,8 @@ packages:
     peerDependencies:
       three: 0.183.2
 
-  '@threlte/core@8.5.5':
-    resolution: {integrity: sha512-jxKalZ3S/ViAjd83txoRdL6/pQmit48a0wl1ZS8VqBr1Vf6ZlNJq2tAieAieb42ICC/OcVPbuJd1Mmms5AC9pQ==}
+  '@threlte/core@8.5.6':
+    resolution: {integrity: sha512-GYJ0G7kvMqjmC7Aa5dHE45RKFkNhA9k8YQtmExemdTY0FXEW4niPy2rs09HimJkEGDkP8EqZGc0g/GAtsrb0NA==}
     peerDependencies:
       svelte: '>=5'
       three: 0.183.2
@@ -1464,9 +1464,6 @@ packages:
   minimatch@10.2.5:
     resolution: {integrity: sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==}
     engines: {node: 18 || 20 || >=22}
-
-  mitt@3.0.1:
-    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
   mode-watcher@1.1.0:
     resolution: {integrity: sha512-mUT9RRGPDYenk59qJauN1rhsIMKBmWA3xMF+uRwE8MW/tjhaDSCCARqkSuDTq8vr4/2KcAxIGVjACxTjdk5C3g==}
@@ -2472,9 +2469,8 @@ snapshots:
     transitivePeerDependencies:
       - '@types/three'
 
-  '@threlte/core@8.5.5(svelte@5.55.1)(three@0.183.2)':
+  '@threlte/core@8.5.6(svelte@5.55.1)(three@0.183.2)':
     dependencies:
-      mitt: 3.0.1
       svelte: 5.55.1
       three: 0.183.2
 
@@ -3188,8 +3184,6 @@ snapshots:
   minimatch@10.2.5:
     dependencies:
       brace-expansion: 5.0.5
-
-  mitt@3.0.1: {}
 
   mode-watcher@1.1.0(svelte@5.55.1):
     dependencies:
