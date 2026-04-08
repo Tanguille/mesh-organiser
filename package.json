@@ -32,7 +32,7 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "~2.10.1",
     "@threlte/core": "^8.5.7",
-    "@threlte/extras": "^9.14.4",
+    "@threlte/extras": "^9.14.5",
     "@types/qs": "^6.15.0",
     "@types/three": "^0.183.1",
     "base64-js": "^1.5.1",
