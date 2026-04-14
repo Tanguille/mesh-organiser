@@ -48,7 +48,7 @@ image = { version = "0.25.10", default-features = false }
 indexmap = "2.14.0"
 itertools = "0.14.0"
 password-auth = "1.0.0"
-rand = "0.10.0"
+rand = "0.10.1"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", default-features = false }
 serde = "1.0.228"
