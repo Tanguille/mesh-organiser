@@ -1297,7 +1297,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "db"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "bitflags 2.11.1",
  "chrono",
@@ -3172,7 +3172,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libmeshthumbnail"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "base64 0.22.1",
  "euc",
@@ -3359,7 +3359,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-organiser"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "arboard",
  "async_zip",
@@ -5577,7 +5577,7 @@ dependencies = [
 
 [[package]]
 name = "service"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "async_zip",
  "chrono",
@@ -6875,9 +6875,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.51.1"
+version = "1.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c"
+checksum = "a91135f59b1cbf38c91e73cf3386fca9bb77915c45ce2771460c9d92f0f3d776"
 dependencies = [
  "bytes",
  "libc",
@@ -7722,7 +7722,7 @@ checksum = "934504ea79927c25f18e980053b64269490284129b327334fc2591daf1539b9c"
 
 [[package]]
 name = "web"
-version = "2.5.0"
+version = "2.6.0"
 dependencies = [
  "async_zip",
  "axum",
