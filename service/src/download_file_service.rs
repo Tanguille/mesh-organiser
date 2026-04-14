@@ -91,11 +91,11 @@ fn filename_from_response_or_url(response: &Response) -> String {
 
 static MAKERWORLD_MODEL_PAGE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
 
-/// If either URL contains a MakerWorld model page path (`/{locale}/models/{slug}` or `/models/{slug}`),
+/// If either URL contains a `MakerWorld` model page path (`/{locale}/models/{slug}` or `/models/{slug}`),
 /// returns that page URL substring from the haystack. Otherwise returns `None` for caller fallback.
 ///
 /// If the built-in pattern fails to compile, returns `None` on every call so the download path uses
-/// the generic MakerWorld site URL instead of panicking.
+/// the generic `MakerWorld` site URL instead of panicking.
 fn makerworld_model_page_url(original_url: &str, response_url: &str) -> Option<String> {
     let regex = MAKERWORLD_MODEL_PAGE
         .get_or_init(|| {
