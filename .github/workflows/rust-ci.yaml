@@ -44,17 +44,11 @@ jobs:
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             build-essential \
-            curl \
-            wget \
-            file \
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev \
-            pkg-config
-
+            librsvg2-dev
       - run: cargo fmt --all -- --check
-
       - name: Detect unused dependencies
         uses: bnjbvr/cargo-machete@7959c845782fed02ee69303126d4a12d64f1db18 # v0.9.1
 

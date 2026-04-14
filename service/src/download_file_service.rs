@@ -89,6 +89,30 @@ fn filename_from_response_or_url(response: &Response) -> String {
         .unwrap_or_else(|| "model.stl".to_string())
 }
 
+static MAKERWORLD_MODEL_PAGE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+
+/// If either URL contains a `MakerWorld` model page path (`/{locale}/models/{slug}` or `/models/{slug}`),
+/// returns that page URL substring from the haystack. Otherwise returns `None` for caller fallback.
+///
+/// If the built-in pattern fails to compile, returns `None` on every call so the download path uses
+/// the generic `MakerWorld` site URL instead of panicking.
+fn makerworld_model_page_url(original_url: &str, response_url: &str) -> Option<String> {
+    let regex = MAKERWORLD_MODEL_PAGE
+        .get_or_init(|| {
+            Regex::new(concat!(
+                r"(?i)https://(?:www\.)?makerworld\.com(?:\.cn)?",
+                r"(?:/(?:[a-z]{2}(?:-[a-z]{2})?))?/models/[\w-]+",
+            ))
+        })
+        .as_ref()
+        .ok()?;
+
+    regex
+        .find(original_url)
+        .or_else(|| regex.find(response_url))
+        .map(|m| m.as_str().to_string())
+}
+
 /// Downloads the resource at `url` into `dir` (caller-provided; no temp dir created).
 /// Uses Content-Disposition or URL path segment for filename, cleanses it, writes to `dir`.
 /// Returns the file path and the response URL (for callers that need redirect/site logic).
@@ -156,21 +180,24 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     let mut source_uri: Option<String> = None;
     let desired_filename: String = if url.contains("makerworld") {
-        source_uri = Some(String::from("https://makerworld.com"));
+        source_uri = Some(
+            makerworld_model_page_url(url, &response_url)
+                .unwrap_or_else(|| String::from("https://makerworld.com/")),
+        );
         url.split("name=").last().unwrap_or("model.stl").to_string()
     } else if url.contains("thingiverse") {
-        source_uri = Some(String::from("https://www.thingiverse.com/"));
+        source_uri = Some(String::from("https://thingiverse.com/"));
         redirect_url_filename
     } else if let Some(stripped) = url.strip_prefix("https://files.printables.com/media/prints/") {
         let id = String::from(stripped.split('/').next().unwrap());
-        source_uri = Some(format!("https://www.printables.com/model/{id}"));
+        source_uri = Some(format!("https://printables.com/model/{id}"));
         file_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("model.stl")
             .to_string()
     } else if url.contains("nexprint") {
-        source_uri = Some(String::from("https://www.nexprint.com/"));
+        source_uri = Some(String::from("https://nexprint.com/"));
         let re = Regex::new(r#"filename="([^"]+)""#).unwrap();
         let decoded_url = decode(url).unwrap().into_owned();
         re.captures(&decoded_url)
@@ -211,7 +238,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_content_disposition_filename;
+    use super::{makerworld_model_page_url, parse_content_disposition_filename};
 
     #[test]
     fn parse_content_disposition_filename_rfc5987_utf8_percent_encoded() {
@@ -277,6 +304,83 @@ mod tests {
         assert_eq!(
             parse_content_disposition_filename(r"filename*=ISO-8859-1''%20"),
             None
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_extracts_from_request_url() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://makerworld.com/en/models/1866618-wheel-loader-kit-card?download=1",
+                "https://cdn.example.com/redirected",
+            ),
+            Some("https://makerworld.com/en/models/1866618-wheel-loader-kit-card".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_extracts_from_response_when_request_has_no_model_path() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://files.makerworld.com/foo?bar=1",
+                "https://www.makerworld.com/de/models/42-name/stuff",
+            ),
+            Some("https://www.makerworld.com/de/models/42-name".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_none_when_no_model_segment() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://signed.cdn.example.com/file?X-Amz-Signature=abc",
+                "https://other.example.net/model.stl",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_prefers_original_url_when_both_contain_model_path() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://makerworld.com/en/models/original-slug",
+                "https://www.makerworld.com/de/models/other-slug",
+            ),
+            Some("https://makerworld.com/en/models/original-slug".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_extracts_zh_cn_locale() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://makerworld.com/zh-cn/models/123-slug",
+                "https://cdn.example.com/",
+            ),
+            Some("https://makerworld.com/zh-cn/models/123-slug".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_extracts_com_cn_host() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://makerworld.com.cn/en/models/1-slug",
+                "https://x.example/",
+            ),
+            Some("https://makerworld.com.cn/en/models/1-slug".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_case_insensitive_match() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "HTTPS://WWW.MAKERWORLD.COM/EN/models/999-ABC",
+                "https://ignore.example/",
+            ),
+            Some("HTTPS://WWW.MAKERWORLD.COM/EN/models/999-ABC".to_string())
         );
     }
 }
