@@ -100,8 +100,8 @@ importers:
         specifier: ^10.4.27
         version: 10.4.27(postcss@8.5.8)
       bits-ui:
-        specifier: ^2.17.2
-        version: 2.17.2(@internationalized/date@3.11.0)(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.3(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1))(typescript@5.9.3)(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1))
+        specifier: ^2.17.3
+        version: 2.17.3(@internationalized/date@3.11.0)(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.3(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1))(typescript@5.9.3)(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1))
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -995,8 +995,8 @@ packages:
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
 
-  bits-ui@2.17.2:
-    resolution: {integrity: sha512-Xbmrlf3ft/5RtMgUL/uam+rcrWYM4LoIGosklV34iSE6GGsPFWgaivzzX60rnWjWlG5F7ZuXXZ4iag949UekMA==}
+  bits-ui@2.17.3:
+    resolution: {integrity: sha512-Bef41uY9U2jaBJHPhcPvmBNkGec5Wx2z6eioDsTmsaR2vH4QoaOcPi75gzCG3+/2TNr6v/qBwzgWNPYCxNtrEA==}
     engines: {node: '>=20'}
     peerDependencies:
       '@internationalized/date': ^3.8.1
@@ -2746,7 +2746,7 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
-  bits-ui@2.17.2(@internationalized/date@3.11.0)(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.3(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1))(typescript@5.9.3)(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1)):
+  bits-ui@2.17.3(@internationalized/date@3.11.0)(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.3(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1))(typescript@5.9.3)(vite@8.0.7(@types/node@25.5.2)(esbuild@0.27.3)(jiti@2.6.1)))(svelte@5.55.3(@typescript-eslint/types@8.58.1)):
     dependencies:
       '@floating-ui/core': 1.7.5
       '@floating-ui/dom': 1.7.6
