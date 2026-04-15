@@ -1,3 +1,4 @@
+import { displayAppVersion } from "../shared/display_app_version";
 import { IHostApi, Platform } from "../shared/host_api";
 
 export class WebHostApi implements IHostApi {
@@ -6,6 +7,6 @@ export class WebHostApi implements IHostApi {
   }
 
   async getVersion(): Promise<string> {
-    return import.meta.env.VITE_APP_VERSION ?? "";
+    return displayAppVersion(import.meta.env.VITE_APP_VERSION);
   }
 }
