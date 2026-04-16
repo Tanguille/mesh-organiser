@@ -51,7 +51,9 @@ impl<'de> Deserialize<'de> for ModelFlags {
     }
 }
 
-// TODO: Change this model entirely. Discard model_user. Return group id back to model. Back this instead by a blob table.
+// NOTE (2026-04-15): Deferred — a future `Model` row/API shape should drop tight `model_user_id` coupling where the product allows,
+// carry `model_group_id` explicitly again, and load `blob` only via a `blobs` foreign key (single source of truth for file bytes).
+// That is a phased migration across consumers (`service`, `src-tauri`, web), not a drive-by schema change.
 #[derive(Serialize)]
 pub struct Model {
     pub id: i64,

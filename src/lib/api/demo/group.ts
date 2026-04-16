@@ -265,7 +265,10 @@ export class DemoGroupApi implements IGroupApi {
     });
   }
 
-  async addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void> {
+  async addModelsToGroup(
+    group: GroupMeta,
+    models: readonly { id: number }[],
+  ): Promise<void> {
     models.forEach((model) => {
       // Update the model's group reference
       const existingModel = mockModels.get(model.id);

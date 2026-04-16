@@ -163,8 +163,9 @@ pub type AuthSession = axum_login::AuthSession<Backend>;
 
 #[cfg(test)]
 mod tests {
-    use super::AuthUser;
     use db::model::user::UserPermissions;
+
+    use super::AuthUser;
 
     #[test]
     fn to_user_round_trip_id_username_email() {

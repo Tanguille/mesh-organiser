@@ -9,6 +9,7 @@ use async_zip::{
 };
 use chrono::Utc;
 use itertools::Itertools;
+use serde::Serialize;
 use tokio::{
     fs::File,
     io::{AsyncRead, BufReader},
@@ -28,6 +29,22 @@ use crate::{
 };
 
 use super::app_state::AppState;
+
+/// Pretty-printed JSON array of models for `metadata.json` (export folder and zip).
+///
+/// # Errors
+///
+/// Returns an error if JSON serialisation fails.
+fn serialize_models_metadata_json(models: &[Model]) -> Result<Vec<u8>, ServiceError> {
+    #[derive(Serialize)]
+    #[serde(transparent)]
+    struct ModelsJson<'a>(&'a [Model]);
+
+    let mut buf = Vec::new();
+    serde_json::to_writer_pretty(&mut buf, &ModelsJson(models))?;
+
+    Ok(buf)
+}
 
 /// Returns a new temp directory for the given action; panics on I/O or clock failure.
 ///
@@ -104,8 +121,8 @@ pub async fn export_to_temp_folder(
 
     if configuration.export_metadata {
         let metadata_path = temp_dir.join("metadata.json");
-        let metadata_file = std::fs::File::create(&metadata_path)?;
-        serde_json::to_writer_pretty(metadata_file, &models)?;
+        let buffer = serialize_models_metadata_json(&models)?;
+        tokio::fs::write(&metadata_path, buffer).await?;
     }
 
     let mut paths = Vec::with_capacity(models.len());
@@ -189,10 +206,8 @@ pub async fn export_zip_to_temp_folder(
     let mut file = File::create(&filepath).await?;
     let mut writer = ZipFileWriter::with_tokio(&mut file);
 
-    // TODO: Better way to handle metadata
     if configuration.export_metadata {
-        let mut buffer: Vec<u8> = Vec::new();
-        serde_json::to_writer_pretty(&mut buffer, &models)?;
+        let buffer = serialize_models_metadata_json(&models)?;
         let builder = ZipEntryBuilder::new("metadata.json".into(), Compression::Deflate);
         writer.write_entry_whole(builder, &buffer).await?;
     }
@@ -388,15 +403,17 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
+    use fake::{
+        Fake, Faker,
+        rand::{SeedableRng, rngs::StdRng},
+    };
+    use tempfile::tempdir;
+    use tokio::fs::File;
+
     use db::{
         db_context,
         model::{Model, ModelFlags, blob::Blob},
     };
-    use fake::rand::SeedableRng;
-    use fake::rand::rngs::StdRng;
-    use fake::{Fake, Faker};
-    use tempfile::tempdir;
-    use tokio::fs::File;
 
     use crate::{app_state::AppState, configuration::Configuration};
 
@@ -529,6 +546,49 @@ mod tests {
 
         let bytes = get_bytes_from_blob(&blob, &app_state).await.unwrap();
         assert_eq!(bytes.as_slice(), entry_content);
+    }
+
+    #[test]
+    fn serialize_models_metadata_json_writes_json_array() {
+        let bytes = super::serialize_models_metadata_json(&[]).unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        let trimmed = text.trim_start();
+        assert!(
+            trimmed.starts_with('['),
+            "expected a JSON array, got: {trimmed:?}"
+        );
+    }
+
+    #[test]
+    fn serialize_models_metadata_json_round_trips_one_model() {
+        let blob = Blob {
+            id: 42,
+            sha256: "ab".repeat(32),
+            filetype: "stl".to_string(),
+            size: 100,
+            added: String::new(),
+            disk_path: None,
+        };
+        let model = Model {
+            id: 7,
+            name: "ExportName".to_string(),
+            blob,
+            link: None,
+            description: None,
+            added: String::new(),
+            last_modified: String::new(),
+            group: None,
+            labels: Vec::new(),
+            flags: ModelFlags::empty(),
+            unique_global_id: "ug-1".to_string(),
+        };
+
+        let bytes = super::serialize_models_metadata_json(std::slice::from_ref(&model)).unwrap();
+        let parsed: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0]["name"], "ExportName");
+        assert_eq!(parsed[0]["id"], 7);
     }
 
     #[tokio::test]

@@ -85,8 +85,9 @@ impl IntoResponse for ApplicationError {
 
 #[cfg(test)]
 mod tests {
-    use super::ApplicationError;
     use axum::response::IntoResponse;
+
+    use super::ApplicationError;
 
     #[test]
     fn internal_error_display() {

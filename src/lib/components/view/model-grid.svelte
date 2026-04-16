@@ -105,7 +105,7 @@
   }
 
   function onDeleteSelected() {
-    onDelete(selected);
+    removeModelsFromGrid(selected);
     selected = [];
   }
 
@@ -114,13 +114,18 @@
       return;
     }
 
-    onDelete(models.filter((m) => !!m.group));
+    removeModelsFromGrid(models.filter((m) => !!m.group));
   }
 
-  function onDelete(models: Model[]) {
-    loadedModels = loadedModels.filter(
-      (m) => !models.some((s) => s.id === m.id),
-    );
+  /** Updates local lists and notifies parent after child editors have deleted on the server. */
+  function removeModelsFromGrid(models: Model[]) {
+    if (models.length === 0) {
+      return;
+    }
+
+    const idSet = new Set(models.map((m) => m.id));
+    loadedModels = loadedModels.filter((m) => !idSet.has(m.id));
+    allModels = allModels.filter((m) => !idSet.has(m.id));
     props.onDelete?.(models);
 
     if (loadedModels.length === 0) {
@@ -229,7 +234,6 @@
           <Undo2 /> Close model preview
         </Button>
       {/if}
-      <!-- TODO: Implement ondelete for all of these-->
       {#if selected.length >= 2}
         <MultiModelEdit
           models={selected}
@@ -247,16 +251,16 @@
           initialEditMode={props.initialEditMode}
           model={loadedModels[0]}
           onDelete={() => {
-            selected = [loadedModels[0]];
-            onDeleteSelected();
+            removeModelsFromGrid([loadedModels[0]]);
+            selected = [];
           }}
         />
       {:else if props.default_show_multiselect_all}
         <MultiModelEdit
           models={allModelsWithFallback}
           onDelete={() => {
-            selected = [...allModelsWithFallback];
-            onDeleteSelected();
+            removeModelsFromGrid([...allModelsWithFallback]);
+            selected = [];
           }}
           onGroupDelete={() => onGroupDeleteSelected(allModelsWithFallback)}
         />

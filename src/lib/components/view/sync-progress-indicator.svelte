@@ -4,25 +4,15 @@
   import { globalSyncState, SyncStage, SyncStep } from "$lib/sync.svelte";
   import Button from "../ui/button/button.svelte";
   import { currentUser } from "$lib/configuration.svelte";
-  import { timeSinceDate } from "$lib/utils";
+  import { formatLastSyncedLabel } from "$lib/utils";
   import { getContainer } from "$lib/api/dependency_injection";
   import { ISyncApi } from "$lib/api/shared/sync_api";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { onDestroy } from "svelte";
 
+  /** Idle: last-sync line; syncing: step + optional processed/total %. */
   function updateLastSync(): string {
-    if (!currentUser.lastSync) {
-      return "Never synced";
-    }
-
-    let lastSync = timeSinceDate(currentUser.lastSync);
-
-    // This is a bit of a hack: Todo: improve this
-    if (lastSync.includes("second")) {
-      return "Last synced just now";
-    }
-
-    return `Last synced ${timeSinceDate(currentUser.lastSync)}`;
+    return formatLastSyncedLabel(currentUser.lastSync);
   }
 
   let lastSync = $state(updateLastSync());

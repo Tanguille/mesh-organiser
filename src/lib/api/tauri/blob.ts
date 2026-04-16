@@ -42,7 +42,7 @@ export class BlobApi implements IBlobApi {
   }
 
   async getBlobThumbnailUrl(blob: Blob): Promise<string> {
-    // TODO: Don't do this async
+    // `join()` is async in Tauri path APIs; the thumbnail URL still resolves synchronously from the path.
     const filePath = await join(
       this.appDataDir,
       "images",

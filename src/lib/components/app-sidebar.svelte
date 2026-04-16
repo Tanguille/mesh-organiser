@@ -33,6 +33,7 @@
   import PanelLeft from "@lucide/svelte/icons/panel-left";
   import Slice from "@lucide/svelte/icons/slice";
   import { onMount } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import NavUser from "./view/nav-user.svelte";
   import { IHostApi, Platform } from "$lib/api/shared/host_api";
   import DemoMode from "./view/demo-mode.svelte";
@@ -54,15 +55,22 @@
   const thisLabelOnly = $derived.by(() => {
     return page.url.searchParams.get("thisLabelOnly") === "true";
   });
+
+  const labelsById = $derived.by(() => {
+    const map = new SvelteMap<number, (typeof sidebarState.labels)[number]>();
+    for (const labelEntry of sidebarState.labels) {
+      map.set(labelEntry.meta.id, labelEntry);
+    }
+    return map;
+  });
+
   const currentUrlChild = $derived.by(() => {
     if (!current_url.startsWith("/label/")) {
       return null;
     }
 
-    let labelId = parseInt(current_url.substring(7));
-    let label =
-      sidebarState.labels.find((l) => l.meta.id === labelId)?.meta ?? null;
-    return label;
+    const labelId = parseInt(current_url.substring(7));
+    return labelsById.get(labelId)?.meta ?? null;
   });
 
   const main_group_entries = $derived.by(() => {
@@ -335,10 +343,7 @@
   level: number;
   parentId?: number;
 })}
-  <!-- TODO: This find isn't great -->
-  {@const labelWithChildren = sidebarState.labels.find(
-    (l) => l.meta.id === label.id,
-  )}
+  {@const labelWithChildren = labelsById.get(label.id)}
 
   {#if labelWithChildren}
     {#if labelWithChildren.children.length <= 0 || level > 5}

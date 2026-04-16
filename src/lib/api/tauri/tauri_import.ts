@@ -351,7 +351,11 @@ export class TauriImportApi implements ITauriImportApi {
     await this.focusWindow();
   }
 
-  // TODO: Move this interaction to the backend. Use the import-data event to trigger the import.
+  /**
+   * Built-in browser hands us a local path; we queue the same Rust `add_model` path as deep links
+   * via `startImportProcess`. A backend-only `import-data` emit would need new Tauri plumbing
+   * if we ever want import to start without this frontend hop.
+   */
   async handleBuiltInBrowserDownloadFinished(
     event: DownloadFinishedEvent,
   ): Promise<void> {

@@ -456,20 +456,30 @@ async fn import_models_from_zip(
 
         for index in 0..len {
             let file = archive.reader_with_entry(index).await?;
-            let link = import_state.origin_url.clone();
 
             if file.entry().dir()? {
                 continue;
             }
 
             let path = PathBuf::from(file.entry().filename().as_str()?);
-            /* -- TODO: Revist this at some point
-            if path.file_name().take().unwrap() == ".link" {
-                let mut file_contents: Vec<u8> = Vec::new();
+
+            if path.file_name().is_some_and(|n| n == ".link") {
+                let mut file_compat = file.compat();
+                let mut file_contents = Vec::new();
                 file_compat.read_to_end(&mut file_contents).await?;
-                let temp = String::from_utf8(file_contents).unwrap();
-                link.replace(temp);
-            }*/
+                let text = String::from_utf8(file_contents).map_err(|_| {
+                    ServiceError::InternalError(String::from(
+                        "`.link` entry in import zip is not valid UTF-8",
+                    ))
+                })?;
+                let trimmed = text.trim();
+                import_state.origin_url = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+                continue;
+            }
 
             if !is_supported_extension(&path) {
                 continue;
@@ -485,7 +495,7 @@ async fn import_models_from_zip(
                 extension,
                 file_size,
                 &file_name,
-                link.as_deref(),
+                import_state.origin_url.as_deref(),
                 app_state,
                 &import_state.user,
                 None,
@@ -717,11 +727,20 @@ pub async fn expand_paths(
 
 #[cfg(test)]
 mod tests {
-    use db::model::user::User;
+    use std::sync::{Arc, Mutex};
 
-    use crate::{import_state::ImportState, service_error::ServiceError};
+    use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
+    use tempfile::tempdir;
+    use tokio::fs::File;
 
-    use super::get_model_count;
+    use db::{db_context, model::user::User, model_db};
+
+    use crate::{
+        app_state::AppState, configuration::Configuration, import_state::ImportState,
+        service_error::ServiceError,
+    };
+
+    use super::{get_model_count, import_path};
 
     #[tokio::test]
     async fn get_model_count_unsupported_extension_returns_err() {
@@ -753,5 +772,141 @@ mod tests {
         } else {
             panic!("expected InternalError, got: {err:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn zip_import_dotlink_sets_origin_url_for_following_models() {
+        let dir = tempdir().unwrap();
+        let data_path = dir.path().join("data");
+        std::fs::create_dir_all(&data_path).unwrap();
+        let db_path = data_path.join("db.sqlite");
+        let backup_dir = data_path.join("backup");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+
+        let db = db_context::setup_db(&db_path, &backup_dir).await;
+        let config = Configuration {
+            data_path: data_path.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+        let app_state = AppState {
+            db: Arc::new(db),
+            configuration: Mutex::new(config),
+            import_mutex: Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path.to_string_lossy().to_string(),
+        };
+
+        let zip_path = dir.path().join("pack.zip");
+        let mut file = File::create(&zip_path).await.unwrap();
+        let mut writer = ZipFileWriter::with_tokio(&mut file);
+        writer
+            .write_entry_whole(
+                ZipEntryBuilder::new(".link".into(), Compression::Deflate),
+                b"https://example.com/zip-link\n",
+            )
+            .await
+            .unwrap();
+        writer
+            .write_entry_whole(
+                ZipEntryBuilder::new("part.stl".into(), Compression::Deflate),
+                b"solid x\nendsolid\n",
+            )
+            .await
+            .unwrap();
+        writer.close().await.unwrap();
+
+        let user = User::default();
+        let import_state = ImportState::new(None, false, false, false, user.clone());
+        let out = import_path(zip_path.to_str().unwrap(), &app_state, import_state)
+            .await
+            .expect("import should succeed");
+
+        assert_eq!(
+            out.origin_url.as_deref(),
+            Some("https://example.com/zip-link")
+        );
+
+        let ids: Vec<i64> = out
+            .imported_models
+            .iter()
+            .flat_map(|s| s.model_ids.iter().copied())
+            .collect();
+        let models = model_db::get_models_via_ids(&app_state.db, &user, ids)
+            .await
+            .expect("models should load");
+        assert!(
+            models
+                .iter()
+                .any(|m| m.link.as_deref() == Some("https://example.com/zip-link")),
+            "expected a model with link from .link ({} models loaded)",
+            models.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn zip_import_nested_dotlink_sets_origin_url() {
+        let dir = tempdir().unwrap();
+        let data_path = dir.path().join("data");
+        std::fs::create_dir_all(&data_path).unwrap();
+        let db_path = data_path.join("db.sqlite");
+        let backup_dir = data_path.join("backup");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+
+        let db = db_context::setup_db(&db_path, &backup_dir).await;
+        let config = Configuration {
+            data_path: data_path.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+        let app_state = AppState {
+            db: Arc::new(db),
+            configuration: Mutex::new(config),
+            import_mutex: Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path.to_string_lossy().to_string(),
+        };
+
+        let zip_path = dir.path().join("nested-link.zip");
+        let mut file = File::create(&zip_path).await.unwrap();
+        let mut writer = ZipFileWriter::with_tokio(&mut file);
+        writer
+            .write_entry_whole(
+                ZipEntryBuilder::new("folder/.link".into(), Compression::Deflate),
+                b"https://example.com/nested-zip-link\n",
+            )
+            .await
+            .unwrap();
+        writer
+            .write_entry_whole(
+                ZipEntryBuilder::new("piece.stl".into(), Compression::Deflate),
+                b"solid x\nendsolid\n",
+            )
+            .await
+            .unwrap();
+        writer.close().await.unwrap();
+
+        let user = User::default();
+        let import_state = ImportState::new(None, false, false, false, user.clone());
+        let out = import_path(zip_path.to_str().unwrap(), &app_state, import_state)
+            .await
+            .expect("import should succeed");
+
+        assert_eq!(
+            out.origin_url.as_deref(),
+            Some("https://example.com/nested-zip-link")
+        );
+
+        let ids: Vec<i64> = out
+            .imported_models
+            .iter()
+            .flat_map(|s| s.model_ids.iter().copied())
+            .collect();
+        let models = model_db::get_models_via_ids(&app_state.db, &user, ids)
+            .await
+            .expect("models should load");
+        assert!(
+            models
+                .iter()
+                .any(|m| { m.link.as_deref() == Some("https://example.com/nested-zip-link") }),
+            "expected a model with link from nested .link ({} models loaded)",
+            models.len()
+        );
     }
 }

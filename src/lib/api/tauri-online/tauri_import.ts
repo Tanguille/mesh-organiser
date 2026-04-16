@@ -14,9 +14,6 @@ import { updateSidebarState } from "$lib/sidebar_data.svelte";
 import { TauriImportApi } from "../tauri/tauri_import";
 import { invoke } from "@tauri-apps/api/core";
 import type { IGroupApi } from "../shared/group_api";
-import type { Model } from "../shared/model_api";
-import { FileType } from "../shared/blob_api";
-
 export interface DirectoryScanModel {
   path: string;
   group_set: number | null;
@@ -41,32 +38,6 @@ async function uploadModels(
     sourceUrl: sourceUrl,
     openInSlicer: openInSlicer,
   });
-}
-
-// TODO: Just make the api accept either ids or Models
-function fakeModels(modelIds: number[]): Model[] {
-  return modelIds.map((id) => ({
-    id: id,
-    name: "",
-    blob: {
-      id: 0,
-      sha256: "",
-      filetype: FileType.STL,
-      size: 0,
-      added: new Date(),
-    },
-    link: null,
-    description: null,
-    added: new Date(),
-    lastModified: new Date(),
-    group: null,
-    labels: [],
-    flags: {
-      favorite: false,
-      printed: false,
-    },
-    uniqueGlobalId: "",
-  }));
 }
 
 export class TauriWebImportApi extends TauriImportApi {
@@ -126,7 +97,10 @@ export class TauriWebImportApi extends TauriImportApi {
       const modelIds = groups.flatMap((g) => g.model_ids ?? []);
 
       const newGroup = await this.groupApi.addGroup(groupMeta.group_name!);
-      await this.groupApi.addModelsToGroup(newGroup, fakeModels(modelIds));
+      await this.groupApi.addModelsToGroup(
+        newGroup,
+        modelIds.map((id) => ({ id })),
+      );
       importedModelsSet.push({
         group_id: newGroup.id,
         group_name: newGroup.name,

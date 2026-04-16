@@ -105,7 +105,10 @@ export class GroupApi implements IGroupApi {
     return await invoke("ungroup", { groupId: group.id });
   }
 
-  async addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void> {
+  async addModelsToGroup(
+    group: GroupMeta,
+    models: readonly { id: number }[],
+  ): Promise<void> {
     return await invoke("add_models_to_group", {
       groupId: group.id,
       modelIds: models.map((model) => model.id),

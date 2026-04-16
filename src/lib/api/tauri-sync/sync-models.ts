@@ -13,7 +13,11 @@ import type {
   DirectoryScanModel,
 } from "../tauri-online/tauri_import";
 import { importState } from "$lib/import.svelte";
-import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
+import {
+  ImportStatus,
+  ITauriImportApi,
+  type ImportState,
+} from "../shared/tauri_import_api";
 import { IGroupApi } from "../shared/group_api";
 import type { IBlobApi } from "../shared/blob_api";
 import { downloadFile } from "../tauri/tauri_import";
@@ -23,6 +27,20 @@ import { runGeneratorWithLimit } from "../web/web_import";
 interface BlobPath {
   blob_id: number;
   blob_path: string;
+}
+
+/** Resolves the new local model id after a single-file import, or null if import did not yield one. */
+export function localModelIdFromSingleFileImport(
+  state: ImportState,
+): number | null {
+  if (state.status === ImportStatus.Failure) {
+    return null;
+  }
+
+  const firstSet = state.imported_models[0];
+  const id = firstSet?.model_ids?.[0];
+
+  return id ?? null;
 }
 
 async function finalizeSingleModelUpload(
@@ -79,6 +97,8 @@ async function stepUpload(
     }
   }
 
+  // Serialize finalize (detach + edit per uploaded model); parallel calls can reorder remote
+  // updates during bulk sync — same pattern as single-flight download.
   await runGeneratorWithLimit(
     finalizeUploadPromises(
       paths,
@@ -87,7 +107,7 @@ async function stepUpload(
       serverGroupApi,
       toUpload,
     ),
-    4,
+    1,
   );
 }
 
@@ -100,7 +120,7 @@ async function downloadSingleModel(
   const downloadUrl = await serverBlobApi.getBlobDownloadUrl(serverModel.blob);
   const download = await downloadFile(downloadUrl);
 
-  // TODO: This isn't great
+  // Full local import pipeline for one file (thumbnails, DB, etc.); a slimmer “attach blob” API would avoid duplicate work if we add it later.
   const localImportState = await localImportApi.startImportProcess(
     [download.path],
     {
@@ -111,7 +131,13 @@ async function downloadSingleModel(
     },
   );
 
-  const id = localImportState.imported_models[0].model_ids[0];
+  const id = localModelIdFromSingleFileImport(localImportState);
+  if (id === null) {
+    throw new Error(
+      "Sync download: import did not produce a local model id (empty result or import failure).",
+    );
+  }
+
   serverModel.id = id;
   await localModelApi.editModel(serverModel, true, true);
   globalSyncState.processedItems += 1;
@@ -144,9 +170,11 @@ async function stepDownload(
     }
   }
 
+  // Single-flight: each download runs the full Tauri import pipeline, which resets shared
+  // `importState`. Parallel downloads would race that global state (see code review).
   await runGeneratorWithLimit(
     downloadPromises(toDownload, serverBlobApi, localModelApi, localImportApi),
-    4,
+    1,
   );
 }
 
@@ -202,7 +230,7 @@ async function stepDeleteFromRemote(
   globalSyncState.processableItems = toDelete.length;
   globalSyncState.processedItems = 0;
 
-  remoteApi.deleteModels(toDelete);
+  await remoteApi.deleteModels(toDelete);
   globalSyncState.processedItems = toDelete.length;
 }
 

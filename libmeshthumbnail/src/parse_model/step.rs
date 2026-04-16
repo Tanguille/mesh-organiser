@@ -2,7 +2,7 @@ use std::{
     env,
     fs::File,
     io::{self, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use opencascade::{mesh::Mesher, primitives::Shape};
@@ -12,6 +12,7 @@ use zip::ZipArchive;
 use crate::{error::MeshThumbnailError, mesh::Mesh};
 
 const TOLERANCE_DEFAULT: f64 = 0.01;
+const TEMP_STEP_FILENAME: &str = "a.step";
 
 pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
@@ -44,24 +45,32 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let mesher = Mesher::try_new(&shape, tolerance)?;
     let mesh = mesher.mesh()?;
 
-    Ok(Mesh {
-        vertices: mesh
-            .vertices
-            .into_iter()
-            .map(|v| vek::Vec3::new(v.x as f32, v.y as f32, v.z as f32))
-            .collect(),
-        indices: mesh
-            .indices
-            .into_iter()
-            .map(|i| u32::try_from(i).expect("index too large for u32"))
-            .collect(),
-    })
+    let vertices = mesh
+        .vertices
+        .into_iter()
+        .map(|vertex| vek::Vec3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32))
+        .collect();
+    let indices = mesh
+        .indices
+        .into_iter()
+        .map(|i| {
+            u32::try_from(i).map_err(|_| {
+                MeshThumbnailError::InternalError(String::from(
+                    "STEP mesh index out of range for u32",
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Mesh { vertices, indices })
 }
 
 fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+    let temp_dir = tempfile::tempdir().map_err(|e| {
+        MeshThumbnailError::InternalError(format!("Failed to create temporary directory: {e}"))
+    })?;
     let mut temp_path = temp_dir.path().to_path_buf();
-    temp_path.push("a.step");
+    temp_path.push(TEMP_STEP_FILENAME);
     let mut temp_file = File::create(&temp_path)?;
     let handle = File::open(path)?;
     let mut zip = ZipArchive::new(handle)?;
@@ -93,30 +102,43 @@ fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     parse_step(&temp_path)
 }
 
-/// # Panics
+/// Writes `bytes` to `dir`/`TEMP_STEP_FILENAME` and returns the full path.
 ///
-/// Panics if unable to create a temporary directory.
-///
-/// # Errors
-///
-/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
-pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
-    // Todo: This is kinda hacky
-    let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
-    let mut temp_path = temp_dir.path().to_path_buf();
-    temp_path.push("a.step");
-    let mut temp_file = File::create(&temp_path)?;
-    temp_file.write_all(step)?;
-    temp_file.flush()?;
-    drop(temp_file);
+/// Used so tests can verify persistence without involving OpenCascade.
+fn write_step_bytes_to_dir(bytes: &[u8], dir: &Path) -> Result<PathBuf, io::Error> {
+    let mut path = dir.to_path_buf();
+    path.push(TEMP_STEP_FILENAME);
+    let mut file = File::create(&path)?;
+    file.write_all(bytes)?;
+    file.flush()?;
 
-    convert_step_path_to_stl(&temp_path)
+    Ok(path)
 }
 
-/// # Panics
+/// OpenCascade's STEP reader takes a filesystem path, not an in-memory buffer.
+/// Materialize `step` bytes under a fresh temp directory and return `(dir, path)` so the
+/// directory stays alive until the caller finishes reading `path`.
+fn materialize_step_bytes_to_temp_path(
+    step: &[u8],
+) -> Result<(tempfile::TempDir, PathBuf), MeshThumbnailError> {
+    let temp_dir = tempfile::tempdir().map_err(|e| {
+        MeshThumbnailError::InternalError(format!("Failed to create temporary directory: {e}"))
+    })?;
+    let path = write_step_bytes_to_dir(step, temp_dir.path())?;
+
+    Ok((temp_dir, path))
+}
+
+/// # Errors
 ///
-/// Panics if unable to create a temporary directory.
-///
+/// Returns an error if a temporary directory cannot be created, the STEP file cannot be read or
+/// meshed, or writing the STL fails.
+pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
+    let (_temp_dir, path) = materialize_step_bytes_to_temp_path(step)?;
+
+    convert_step_path_to_stl(&path)
+}
+
 /// # Errors
 ///
 /// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
@@ -169,4 +191,28 @@ pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbna
     stl_io::write_stl(&mut data, triangles.iter())?;
 
     Ok(data)
+}
+
+#[cfg(all(test, feature = "step"))]
+mod tests {
+    use std::{fs::File, io::Read};
+
+    use super::{TEMP_STEP_FILENAME, write_step_bytes_to_dir};
+
+    #[test]
+    fn write_step_bytes_to_dir_roundtrip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let payload =
+            b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n".as_slice();
+        let path = write_step_bytes_to_dir(payload, dir.path()).expect("write");
+
+        assert!(path.ends_with(TEMP_STEP_FILENAME));
+
+        let mut buf = Vec::new();
+        File::open(&path)
+            .expect("open")
+            .read_to_end(&mut buf)
+            .expect("read");
+        assert_eq!(buf, payload);
+    }
 }

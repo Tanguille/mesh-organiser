@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_custom_slicer};
 
@@ -10,7 +10,16 @@ impl Slicer {
             return true;
         }
 
-        get_slicer_path(&self).is_some()
+        get_slicer_path(self).is_some()
+    }
+
+    /// Like [`is_installed`](Self::is_installed), but runs detection on the blocking thread pool.
+    pub async fn is_installed_async(&self) -> bool {
+        let slicer = self.clone();
+
+        tokio::task::spawn_blocking(move || slicer.is_installed())
+            .await
+            .unwrap_or(false)
     }
 
     pub async fn open(
@@ -22,23 +31,28 @@ impl Slicer {
             return open_custom_slicer(paths, app_state).await;
         }
 
-        if !self.is_installed() {
-            return Err(ServiceError::InternalError(String::from(
-                "Slicer not installed",
-            )));
-        }
-
-        println!("Opening in slicer: {:?}", paths);
-
-        if paths.len() == 0 {
+        if paths.is_empty() {
             return Err(ServiceError::InternalError(String::from(
                 "No models to open",
             )));
         }
 
-        let slicer_path = get_slicer_path(&self).unwrap();
+        println!("Opening in slicer: {:?}", paths);
 
-        Command::new("open")
+        let slicer = self.clone();
+        let maybe_path = tokio::task::spawn_blocking(move || get_slicer_path(&slicer))
+            .await
+            .map_err(|join_err| {
+                ServiceError::InternalError(format!("Slicer path task failed: {join_err}"))
+            })?;
+
+        let Some(slicer_path) = maybe_path else {
+            return Err(ServiceError::InternalError(String::from(
+                "Slicer not installed",
+            )));
+        };
+
+        let _child = tokio::process::Command::new("open")
             .arg("-a")
             .arg(slicer_path)
             .arg("--args")

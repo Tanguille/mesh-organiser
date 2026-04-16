@@ -346,7 +346,6 @@ pub async fn get_unique_ids_from_model_ids(
     Ok(id_map)
 }
 
-// TODO: Can we make a get model via sha256?
 pub async fn get_model_id_via_sha256(
     db: &DbContext,
     user: &User,
@@ -360,7 +359,30 @@ pub async fn get_model_id_via_sha256(
     .fetch_optional(db)
     .await?;
 
-    row.map_or_else(|| Ok(None), |r| Ok(Some(r.model_id.unwrap())))
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let Some(model_id) = row.model_id else {
+        return Ok(None);
+    };
+
+    Ok(Some(model_id))
+}
+
+/// Full [`Model`] for the given blob SHA256 when it belongs to `user` (same scoping as [`get_model_id_via_sha256`]).
+pub async fn get_model_by_sha256(
+    db: &DbContext,
+    user: &User,
+    sha256: &str,
+) -> Result<Option<Model>, DbError> {
+    let Some(model_id) = get_model_id_via_sha256(db, user, sha256).await? else {
+        return Ok(None);
+    };
+
+    let models = get_models_via_ids(db, user, vec![model_id]).await?;
+
+    Ok(models.into_iter().next())
 }
 
 /// Resolve model IDs for a list of blob SHA256 hashes in one query.
@@ -457,4 +479,109 @@ pub async fn get_size_of_models(db: &DbContext, user: &User) -> Result<ModelSize
             f.split(',').map(ToString::to_string).collect()
         }),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
+    use tempfile::tempdir;
+
+    use crate::{blob_db, db_context::DbContext, user_db};
+
+    use super::*;
+
+    async fn open_migrated_pool() -> (tempfile::TempDir, DbContext) {
+        let dir = tempdir().expect("tempdir");
+        let db_path = dir.path().join("test.sqlite");
+        let opts = SqliteConnectOptions::new()
+            .filename(&db_path)
+            .create_if_missing(true)
+            .busy_timeout(Duration::from_secs(15));
+        let pool = SqlitePool::connect_with(opts).await.expect("connect");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("migrate");
+        (dir, pool)
+    }
+
+    #[tokio::test]
+    async fn get_model_by_sha256_returns_full_model_for_owner() {
+        let (_dir, pool) = open_migrated_pool().await;
+        let user_id = user_db::add_user(&pool, "u1", "u1@t", "pw")
+            .await
+            .expect("add_user");
+        let user = user_db::get_user_by_id(&pool, user_id)
+            .await
+            .expect("get_user")
+            .expect("user exists");
+
+        let sha256 = "ab".repeat(32);
+        let blob_id = blob_db::add_blob(&pool, &sha256, "stl", 100, None)
+            .await
+            .expect("add_blob");
+        let model_id = add_model(&pool, &user, "my-model", blob_id, None, None)
+            .await
+            .expect("add_model");
+
+        let found = get_model_by_sha256(&pool, &user, &sha256)
+            .await
+            .expect("get_model_by_sha256");
+        let model = found.expect("model");
+        assert_eq!(model.id, model_id);
+        assert_eq!(model.name, "my-model");
+        assert_eq!(model.blob.sha256, sha256);
+        assert_eq!(model.blob.id, blob_id);
+    }
+
+    #[tokio::test]
+    async fn get_model_by_sha256_returns_none_for_other_user() {
+        let (_dir, pool) = open_migrated_pool().await;
+        let user1_id = user_db::add_user(&pool, "u1", "u1@t", "pw")
+            .await
+            .expect("add_user");
+        let user1 = user_db::get_user_by_id(&pool, user1_id)
+            .await
+            .expect("get_user")
+            .expect("user exists");
+        let user2_id = user_db::add_user(&pool, "u2", "u2@t", "pw")
+            .await
+            .expect("add_user2");
+        let user2 = user_db::get_user_by_id(&pool, user2_id)
+            .await
+            .expect("get_user2")
+            .expect("user2 exists");
+
+        let sha256 = "cd".repeat(32);
+        let blob_id = blob_db::add_blob(&pool, &sha256, "stl", 50, None)
+            .await
+            .expect("add_blob");
+        add_model(&pool, &user1, "owned-by-u1", blob_id, None, None)
+            .await
+            .expect("add_model");
+
+        let found = get_model_by_sha256(&pool, &user2, &sha256)
+            .await
+            .expect("get_model_by_sha256");
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_model_by_sha256_returns_none_when_no_model() {
+        let (_dir, pool) = open_migrated_pool().await;
+        let user_id = user_db::add_user(&pool, "u1", "u1@t", "pw")
+            .await
+            .expect("add_user");
+        let user = user_db::get_user_by_id(&pool, user_id)
+            .await
+            .expect("get_user")
+            .expect("user exists");
+
+        let found = get_model_by_sha256(&pool, &user, &"ef".repeat(32))
+            .await
+            .expect("get_model_by_sha256");
+        assert!(found.is_none());
+    }
 }

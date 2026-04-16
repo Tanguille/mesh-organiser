@@ -21,7 +21,6 @@
   } from "$lib/components/ui/button/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
-  import { toast } from "svelte-sonner";
   import type { ClassValue } from "svelte/elements";
 
   import { getContainer } from "$lib/api/dependency_injection";
@@ -42,6 +41,8 @@
   import Share2 from "@lucide/svelte/icons/share-2";
   import { configurationMeta } from "$lib/configuration.svelte";
   import ExportModelsButton from "../view/export-models-button.svelte";
+  import { downloadModelsWithToast } from "../view/grid-helpers";
+  import { toast } from "svelte-sonner";
 
   interface Function {
     (): void;
@@ -57,23 +58,36 @@
   const models = $derived(props.models);
   const printed = $derived(models.every((x) => x.flags.printed));
   const favorited = $derived(models.every((x) => x.flags.favorite));
-  const allModelGroups = $derived(
-    models
-      .map((x) => x.group)
-      .filter((g) => !!g)
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i),
-  );
+  const allModelGroups = $derived.by(() => {
+    const seen = new Set<number>();
+    const result: GroupMeta[] = [];
+    for (const m of models) {
+      const g = m.group;
+      if (g && !seen.has(g.id)) {
+        seen.add(g.id);
+        result.push(g);
+      }
+    }
+    return result;
+  });
   const availableGroups = $derived(
     allModelGroups.filter((g) => !models.every((x) => x.group?.id === g.id)),
   );
 
-  let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
-  let appliedLabels = $derived(
-    models
-      .map((x) => x.labels)
-      .flat()
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i),
-  );
+  const availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
+  const appliedLabels = $derived.by(() => {
+    const seen = new Set<number>();
+    const result: LabelMeta[] = [];
+    for (const m of models) {
+      for (const l of m.labels) {
+        if (!seen.has(l.id)) {
+          seen.add(l.id);
+          result.push(l);
+        }
+      }
+    }
+    return result;
+  });
 
   const modelApi = getContainer().require<IModelApi>(IModelApi);
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
@@ -83,19 +97,19 @@
   const shareApi = getContainer().optional<IShareApi>(IShareApi);
 
   async function setLabelOnAllModels(label: LabelMeta) {
-    const affected_models = models;
+    const affectedModels = models;
 
-    affected_models.forEach((x) => x.labels.push(label));
+    affectedModels.forEach((model) => model.labels.push(label));
 
     let promise = labelApi.addLabelToModels(
       label,
-      $state.snapshot(affected_models),
+      $state.snapshot(affectedModels),
     );
 
     toast.promise(promise, {
-      loading: `Adding label ${label.name} to ${countWriter("model", affected_models)}...`,
+      loading: `Adding label ${label.name} to ${countWriter("model", affectedModels)}...`,
       success: (_) => {
-        return `Added label ${label.name} to ${countWriter("model", affected_models)}`;
+        return `Added label ${label.name} to ${countWriter("model", affectedModels)}`;
       },
     });
 
@@ -104,21 +118,22 @@
   }
 
   async function removeLabelFromAllModels(label: LabelMeta) {
-    const affected_models = models;
+    const affectedModels = models;
 
-    affected_models.forEach(
-      (x) => (x.labels = x.labels.filter((l) => l.id !== label.id)),
+    affectedModels.forEach(
+      (model) =>
+        (model.labels = model.labels.filter((entry) => entry.id !== label.id)),
     );
 
     let promise = labelApi.removeLabelFromModels(
       label,
-      $state.snapshot(affected_models),
+      $state.snapshot(affectedModels),
     );
 
     toast.promise(promise, {
-      loading: `Removing label ${label.name} from ${countWriter("model", affected_models)}...`,
+      loading: `Removing label ${label.name} from ${countWriter("model", affectedModels)}...`,
       success: (_) => {
-        return `Removed label ${label.name} from ${countWriter("model", affected_models)}`;
+        return `Removed label ${label.name} from ${countWriter("model", affectedModels)}`;
       },
     });
 
@@ -134,24 +149,22 @@
     await setFlagOnAllModels((x) => (x.flags.favorite = favorite), favorite);
   }
 
-  // TODO: this is terribly inefficient
   async function setFlagOnAllModels(action: (m: Model) => void, set: boolean) {
-    const set_or_unset = set ? "Set" : "Unset";
-    const affected_models = models;
+    const setOrUnset = set ? "Set" : "Unset";
+    const affectedModels = models;
 
-    affected_models.forEach(action);
+    affectedModels.forEach(action);
 
-    let promise = (async () => {
-      for (const model of affected_models) {
-        // TODO: This might not work in the modern architecture
+    const promise = (async () => {
+      for (const model of affectedModels) {
         await modelApi.editModel($state.snapshot(model));
       }
     })();
 
     toast.promise(promise, {
-      loading: `${set_or_unset}ting flag on ${countWriter("model", affected_models)}...`,
+      loading: `${setOrUnset}ting flag on ${countWriter("model", affectedModels)}...`,
       success: (_) => {
-        return `${set_or_unset} flag on ${countWriter("model", affected_models)}`;
+        return `${setOrUnset} flag on ${countWriter("model", affectedModels)}`;
       },
     });
 
@@ -160,13 +173,13 @@
   }
 
   async function onAddModelsToGroup(group: GroupMeta) {
-    const affected_models = models;
+    const affectedModels = models;
 
-    await groupApi.addModelsToGroup(group, $state.snapshot(affected_models));
+    await groupApi.addModelsToGroup(group, $state.snapshot(affectedModels));
     await updateSidebarState();
 
     toast.success(
-      `Added ${countWriter("model", affected_models)} to group '${group.name}'`,
+      `Added ${countWriter("model", affectedModels)} to group '${group.name}'`,
       {
         action: {
           label: "Go to group",
@@ -198,33 +211,16 @@
       return;
     }
 
-    let promise;
-
-    if (models.length <= 0) {
-      return;
-    } else if (models.length === 1) {
-      promise = downloadApi.downloadModel(models[0]);
-    } else {
-      promise = downloadApi.downloadModelsAsZip(models);
-    }
-
-    toast.promise(promise, {
-      loading: `Downloading ${countWriter("model", models)}...`,
-      success: (_) => {
-        return `Downloaded ${countWriter("model", models)}`;
-      },
-    });
-
-    await promise;
+    await downloadModelsWithToast(downloadApi, models);
   }
 
   async function onNewGroup() {
-    const affected_models = models;
+    const affectedModels = models;
 
     const newGroup = await groupApi.addGroup("New group");
-    await groupApi.addModelsToGroup(newGroup, affected_models);
+    await groupApi.addModelsToGroup(newGroup, affectedModels);
 
-    for (const model of affected_models) {
+    for (const model of affectedModels) {
       model.group = newGroup;
     }
 
@@ -236,20 +232,23 @@
   async function onRemoveGroup() {
     const count = models.length;
     await groupApi.removeModelsFromGroup(models);
+    for (const model of models) {
+      model.group = null;
+    }
     await updateSidebarState();
     toast.success(`Ungrouped ${count} model(s)`);
     props.onGroupDelete?.();
   }
 
   async function onDelete() {
-    const affected_models = models;
+    const affectedModels = models;
 
-    let promise = modelApi.deleteModels(affected_models);
+    let promise = modelApi.deleteModels(affectedModels);
 
     toast.promise(promise, {
-      loading: `Deleting ${countWriter("model", affected_models)}...`,
+      loading: `Deleting ${countWriter("model", affectedModels)}...`,
       success: (_) => {
-        return `Deleted ${countWriter("model", affected_models)}`;
+        return `Deleted ${countWriter("model", affectedModels)}`;
       },
     });
 

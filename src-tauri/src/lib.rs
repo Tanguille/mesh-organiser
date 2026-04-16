@@ -456,7 +456,7 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
 }
 
 fn remove_temp_paths() -> Result<(), ApplicationError> {
-    let threshold = std::time::Duration::from_secs(5 * 60);
+    let threshold = std::time::Duration::from_mins(5);
     let now = std::time::SystemTime::now();
     for entry in std::fs::read_dir(std::env::temp_dir())? {
         let entry = entry?;

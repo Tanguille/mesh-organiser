@@ -112,7 +112,7 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
         })
         .collect();
 
-    all_meshes.sort_by(|a, b| a.indices.len().cmp(&b.indices.len()));
+    all_meshes.sort_by_key(|a| a.indices.len());
 
     if all_meshes.is_empty() {
         return Err(MeshThumbnailError::InternalError(String::from(

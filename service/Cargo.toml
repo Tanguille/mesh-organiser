@@ -18,7 +18,10 @@ image = { workspace = true, features = ["jpeg", "png"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true, features = ["rustls"] }
+# TLS: `native-tls` (Schannel on Windows) avoids pulling `aws-lc-sys` / pure-Rust TLS stacks into
+# Windows CI and matches typical desktop proxy setups. Prefer `rustls` only if you standardize on
+# it across the workspace and accept its build graph.
+reqwest = { workspace = true, default-features = false, features = ["json", "native-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -26,7 +29,7 @@ stl_io = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 threemf = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["fs", "io-util", "process", "rt-multi-thread"] }
 tokio-util = { workspace = true, features = ["io"] }
 urlencoding = { workspace = true }
 vek = { workspace = true }
@@ -40,7 +43,7 @@ chrono = { workspace = true }
 [dev-dependencies]
 fake = { workspace = true }
 proptest = { workspace = true }
-reqwest = { workspace = true, features = ["rustls"] }
+reqwest = { workspace = true, default-features = false, features = ["json", "native-tls"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = { workspace = true }

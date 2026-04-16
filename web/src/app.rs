@@ -243,7 +243,7 @@ impl App {
         let deletion_task = tokio::task::spawn(
             session_store
                 .clone()
-                .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+                .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
         );
 
         let signing_key_path = self.app_state.get_signing_key_path();

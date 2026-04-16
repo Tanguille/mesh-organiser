@@ -328,6 +328,11 @@ mod tests {
     }
 
     #[test]
+    fn model_ids_str_client_chunk_budget_fits_server_raw_cap() {
+        assert!(MODEL_IDS_STR_SAFE_CHUNK_CHARS <= MAX_MODEL_IDS_STR_BYTES);
+    }
+
+    #[test]
     fn validate_group_list_query_bounds_includes_model_ids_str() {
         let base = PaginatedListQueryBounds {
             model_ids: &[],

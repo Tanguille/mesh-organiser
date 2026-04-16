@@ -34,4 +34,6 @@ impl ModelGroup {
     }
 }
 
-// TODO: Add impl for ModelGroup to fetch effective labels, etc.
+// NOTE (2026-04-15): Group-level labels are aggregated when building `ModelGroup` in `group_db::convert_model_list_to_groups`
+// (union of member models’ labels). No `ModelGroup` helper is referenced from `service/` or `src-tauri/`; revisit only if product
+// rules need richer “effective” labels (e.g. inherited defaults) on this type.

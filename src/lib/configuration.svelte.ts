@@ -7,26 +7,47 @@ import {
 } from "./api/shared/settings_api";
 import { type User } from "./api/shared/user_api";
 
-// TODO: Change this to use the same structure as useSidebar()
-export const configuration = $state(configurationDefault());
-export const configurationMeta = $state({
-  configurationLoaded: false,
-  applicationReadOnly: false,
-});
-export const currentUser = $state<User>({
-  id: -1,
-  username: "",
-  email: "",
-  created: new SvelteDate(),
-  permissions: {
-    admin: false,
-    sync: false,
-    onlineAccount: false,
-  },
-  syncUrl: null,
-  syncToken: null,
-  lastSync: null,
-});
+/**
+ * App-wide reactive store: one class instance holds rune-backed fields (same pattern as
+ * sidebar `SidebarState`), with module-level re-exports so API init and components can
+ * import state without Svelte context.
+ */
+class AppConfiguration {
+  configuration = $state(configurationDefault());
+  configurationMeta = $state({
+    configurationLoaded: false,
+    applicationReadOnly: false,
+  });
+  currentUser = $state<User>({
+    id: -1,
+    username: "",
+    email: "",
+    created: new SvelteDate(),
+    permissions: {
+      admin: false,
+      sync: false,
+      onlineAccount: false,
+    },
+    syncUrl: null,
+    syncToken: null,
+    lastSync: null,
+  });
+  panicState = $state({
+    inPanic: false,
+    message: "",
+  });
+}
+
+const appConfiguration = new AppConfiguration();
+
+export const configuration = appConfiguration.configuration;
+export const configurationMeta = appConfiguration.configurationMeta;
+export const currentUser = appConfiguration.currentUser;
+export const panicState = appConfiguration.panicState;
+
+export function getAppConfiguration(): AppConfiguration {
+  return appConfiguration;
+}
 
 export async function updateConfiguration(
   config: Configuration,
@@ -54,11 +75,6 @@ export function scheduleConfigurationPersist(
     window.clearTimeout(timeoutId);
   };
 }
-
-export const panicState = $state({
-  inPanic: false,
-  message: "",
-});
 
 /*
 function rgbToHsl(r : number, g : number, b : number) : [number, number, number] {

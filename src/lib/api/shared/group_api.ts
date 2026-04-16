@@ -67,6 +67,29 @@ export enum GroupOrderBy {
   ModifiedDesc = "ModifiedDesc",
 }
 
+/** Stable sort for group lists (matches demo/web ordering). */
+export function sortGroupsByOrderBy(
+  groups: Group[],
+  orderBy: GroupOrderBy,
+): void {
+  groups.sort((a, b) => {
+    switch (orderBy) {
+      case GroupOrderBy.CreatedAsc:
+        return a.meta.created.getTime() - b.meta.created.getTime();
+      case GroupOrderBy.CreatedDesc:
+        return b.meta.created.getTime() - a.meta.created.getTime();
+      case GroupOrderBy.NameAsc:
+        return a.meta.name.localeCompare(b.meta.name);
+      case GroupOrderBy.NameDesc:
+        return b.meta.name.localeCompare(a.meta.name);
+      case GroupOrderBy.ModifiedAsc:
+        return a.meta.lastModified.getTime() - b.meta.lastModified.getTime();
+      case GroupOrderBy.ModifiedDesc:
+        return b.meta.lastModified.getTime() - a.meta.lastModified.getTime();
+    }
+  });
+}
+
 export const IGroupApi = Symbol("IGroupApi");
 
 export interface IGroupApi {
@@ -87,7 +110,11 @@ export interface IGroupApi {
     editGlobalId?: boolean,
   ): Promise<void>;
   deleteGroup(group: GroupMeta): Promise<void>;
-  addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void>;
+  /** Only `model.id` is sent to the server; pass full `Model` or `{ id }`. */
+  addModelsToGroup(
+    group: GroupMeta,
+    models: readonly { id: number }[],
+  ): Promise<void>;
   removeModelsFromGroup(models: Model[]): Promise<void>;
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
 }

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use crate::service_error::ServiceError;
 
@@ -19,14 +19,14 @@ pub use base::*;
 /// # Errors
 ///
 /// Returns an error if paths are empty or spawning the process fails.
-pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
+pub async fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
     if paths.is_empty() {
         return Err(ServiceError::InternalError(String::from(
             "No models to open",
         )));
     }
 
-    Command::new(program).args(paths).spawn()?;
+    let _child = tokio::process::Command::new(program).args(paths).spawn()?;
 
     Ok(())
 }
@@ -51,7 +51,7 @@ pub async fn open_custom_slicer(
     let (executable_path, args) = parse_command_string(&path);
     let pathbuf = PathBuf::from(&executable_path);
 
-    if !pathbuf.exists() {
+    if !tokio::fs::try_exists(&pathbuf).await? {
         return Err(ServiceError::InternalError(format!(
             "Custom slicer executable not found: {executable_path}",
         )));
@@ -75,10 +75,10 @@ fn open_with_args_and_paths(
         )));
     }
 
-    let mut cmd = Command::new(program);
+    let mut cmd = tokio::process::Command::new(program);
     cmd.args(args);
     cmd.args(paths);
-    cmd.spawn()?;
+    let _child = cmd.spawn()?;
 
     Ok(())
 }

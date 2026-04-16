@@ -19,10 +19,10 @@
   import { configuration } from "$lib/configuration.svelte";
   import OpenInSlicerButton from "./open-in-slicer-button.svelte";
   import { IDownloadApi } from "$lib/api/shared/download_api";
-  import { toast } from "svelte-sonner";
-  import { countWriter, handleGridItemKeyDown } from "$lib/utils";
+  import { handleGridItemKeyDown } from "$lib/utils";
   import Download from "@lucide/svelte/icons/download";
   import ExportModelsButton from "./export-models-button.svelte";
+  import { downloadModelsWithToast } from "./grid-helpers";
 
   const props: { resources: ResourceMeta[] } = $props();
   let selected = $state.raw<ResourceMeta | null>(null);
@@ -117,31 +117,12 @@
     await updateSidebarState();
   }
 
-  // TODO: Split these functions off as these are identical to other implementations
   async function onDownloadModel(group: Group) {
     if (!downloadApi) {
       return;
     }
 
-    let promise;
-    let models = group.models;
-
-    if (models.length <= 0) {
-      return;
-    } else if (models.length === 1) {
-      promise = downloadApi.downloadModel(models[0]);
-    } else {
-      promise = downloadApi.downloadModelsAsZip(models);
-    }
-
-    toast.promise(promise, {
-      loading: `Downloading ${countWriter("model", models)}...`,
-      success: (_: unknown) => {
-        return `Downloaded ${countWriter("model", models)}`;
-      },
-    });
-
-    await promise;
+    await downloadModelsWithToast(downloadApi, group.models);
   }
 
   async function deleteResource(resource: ResourceMeta) {

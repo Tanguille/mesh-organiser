@@ -41,7 +41,11 @@ async fn get_blob_bytes_impl(
         )));
     };
 
-    // Todo: This is not a streamed response. Less efficient than the streaming we did before!
+    // One `invoke` returns a single binary `Response`; incremental delivery to the WebView would
+    // need chunked commands/events and frontend changes. We buffer the full blob (disk read is
+    // async in `get_bytes_from_blob`) so callers get one byte slice. Sizes are whatever users
+    // import (`blob.size`); typical print models fit in RAM. For very large artifacts, prefer
+    // `blobs_to_path` and read from disk on the frontend to avoid holding a full IPC copy here.
     let bytes = export_service::get_bytes_from_blob(&blob, &state.app_state).await?;
 
     Ok(Response::new(bytes))

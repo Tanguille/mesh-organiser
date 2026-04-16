@@ -20,15 +20,20 @@ impl Slicer {
         get_slicer_path(self).is_some()
     }
 
+    /// Like [`is_installed`](Self::is_installed), but runs detection on the blocking thread pool.
+    pub async fn is_installed_async(&self) -> bool {
+        let slicer = self.clone();
+
+        tokio::task::spawn_blocking(move || slicer.is_installed())
+            .await
+            .unwrap_or(false)
+    }
+
     /// Opens the slicer with the given model paths.
     ///
     /// # Errors
     ///
     /// Returns an error if the slicer is not installed or spawning the process fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the slicer path cannot be converted to UTF-8.
     pub async fn open(
         &self,
         paths: Vec<PathBuf>,
@@ -38,33 +43,38 @@ impl Slicer {
             return open_custom_slicer(paths, app_state).await;
         }
 
-        if !self.is_installed() {
+        let slicer = self.clone();
+        let maybe_path = tokio::task::spawn_blocking(move || get_slicer_path(&slicer))
+            .await
+            .map_err(|join_err| {
+                ServiceError::InternalError(format!("Slicer path task failed: {join_err}"))
+            })?;
+
+        let Some(slicer_pathbuf) = maybe_path else {
             return Err(ServiceError::InternalError(String::from(
                 "Slicer not installed",
             )));
-        }
+        };
 
-        let slicer_pathbuf = get_slicer_path(self).unwrap();
-        let slicer_path = slicer_pathbuf.to_str().unwrap();
+        let Some(slicer_path) = slicer_pathbuf.to_str() else {
+            return Err(ServiceError::InternalError(String::from(
+                "Slicer path is not valid UTF-8",
+            )));
+        };
 
         println!("Opening in slicer: {paths:?}");
 
-        open_with_paths(slicer_path, paths)
+        open_with_paths(slicer_path, paths).await
     }
 }
 
 fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<String> {
-    let reg_key_result = RegKey::predef(root).open_subkey(subkey);
-
-    if reg_key_result.is_err() {
-        return None;
-    }
-
-    let reg_key = reg_key_result.unwrap();
-
+    let reg_key = RegKey::predef(root).open_subkey(subkey).ok()?;
     let value: Result<OsString, std::io::Error> = reg_key.get_value(field);
 
-    value.map_or(None, |s| Some(s.to_str().unwrap().to_string()))
+    value
+        .ok()
+        .and_then(|os_string| os_string.to_str().map(str::to_owned))
 }
 
 fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
@@ -138,7 +148,7 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
             let program_files = "C:\\Program Files";
             if let Ok(entries) = fs::read_dir(program_files) {
                 for entry in entries.flatten() {
-                    if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                    if entry.file_type().is_ok_and(|ft| ft.is_dir())
                         && let Some(folder_name) = entry.file_name().to_str()
                         && folder_name.starts_with("UltiMaker Cura")
                     {

@@ -159,6 +159,20 @@ export function timeSinceDate(date: Date): string {
   }
 }
 
+/** Footer line for “last sync”: sub-minute times read as “just now” (no string matching). */
+export function formatLastSyncedLabel(lastSync: Date | null): string {
+  if (!lastSync) {
+    return "Never synced";
+  }
+
+  const seconds = Math.floor((Date.now() - lastSync.getTime()) / 1000);
+  if (seconds < 60) {
+    return "Last synced just now";
+  }
+
+  return `Last synced ${timeSinceDate(lastSync)}`;
+}
+
 export function handleGridItemKeyDown<T>(
   item: T,
   event: KeyboardEvent,

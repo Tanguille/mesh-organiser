@@ -65,7 +65,11 @@ export const IBlobApi = Symbol("IBlobApi");
 export interface IBlobApi {
   getBlobBytes(blob: Blob): Promise<Uint8Array>;
   getBlobThumbnailUrl(blob: Blob): Promise<string>;
-  // TODO: Move this to model at some point as it also includes data from the model serverside
+  /**
+   * Signed or capability-scoped download URL from the service. This is kept on `IBlobApi`
+   * (not on `Model`) because URL minting is transport/auth-specific on the server; see web and
+   * Tauri implementations.
+   */
   getBlobDownloadUrl(blob: Blob): Promise<string>;
   getBlobsDownloadUrl(blobs: Blob[]): Promise<string>;
 }

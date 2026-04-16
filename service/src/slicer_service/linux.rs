@@ -23,6 +23,15 @@ impl Slicer {
         }
     }
 
+    /// Like [`is_installed`](Self::is_installed), but runs detection on the blocking thread pool.
+    pub async fn is_installed_async(&self) -> bool {
+        let slicer = self.clone();
+
+        tokio::task::spawn_blocking(move || slicer.is_installed())
+            .await
+            .unwrap_or(false)
+    }
+
     /// Opens the slicer application with the given paths.
     ///
     /// # Errors
@@ -37,7 +46,7 @@ impl Slicer {
             return open_custom_slicer(paths, app_state).await;
         }
 
-        if !self.is_installed() {
+        if !self.is_installed_async().await {
             return Err(ServiceError::InternalError(String::from(
                 "Slicer not installed",
             )));
@@ -51,7 +60,7 @@ impl Slicer {
             )));
         }
 
-        let _ = Command::new("flatpak")
+        let _child = tokio::process::Command::new("flatpak")
             .arg("run")
             .arg("--file-forwarding")
             .arg(get_flatpak_slicer_package(self))

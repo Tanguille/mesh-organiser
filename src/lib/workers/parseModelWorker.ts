@@ -10,20 +10,29 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { FileType } from "$lib/api/shared/blob_api";
 import { isValidWorkerMessage } from "./parseModelWorkerMessage.js";
 
+/** Single decoder avoids per-parse allocation of decoder state (minor; hot path for OBJ). */
+const utf8Decoder = new TextDecoder("utf-8");
+
+/** Binary loaders expect an `ArrayBuffer` of exactly this view (subarrays share a parent buffer). */
+function uint8ViewToArrayBuffer(buffer: Uint8Array): ArrayBuffer {
+  return buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
+}
+
 function convertGeometry(group: Group): BufferGeometry | null {
   const geometries: BufferGeometry[] = [];
   group.updateMatrixWorld(true);
 
-  group.traverse((object: Object3D) => {
-    if (object.type === "Mesh") {
-      const mesh = object as Mesh;
+  group.traverse((child: Object3D) => {
+    if (child.type === "Mesh") {
+      const mesh = child as Mesh;
       const clone = mesh.geometry.clone();
       clone.applyMatrix4(mesh.matrixWorld);
       geometries.push(clone.index ? clone.toNonIndexed() : clone);
     }
   });
-
-  console.log(geometries);
 
   if (geometries.length === 0) {
     return null;
@@ -48,38 +57,51 @@ export function loadModel(
   buffer: Uint8Array,
   fileType: FileType,
 ): BufferGeometry | null {
-  let localResult;
+  let parsedGeometry: BufferGeometry | null = null;
 
   try {
     if (fileType === FileType.STL) {
-      console.log("Loading STL file, buffer length:", buffer.length);
+      if (import.meta.env.DEV) {
+        console.debug("[parseModelWorker] STL buffer length:", buffer.length);
+      }
       const loader = new STLLoader();
-      localResult = loader.parse(buffer.buffer as ArrayBuffer);
-      console.log("STL parsed successfully, result:", localResult);
+      parsedGeometry = loader.parse(uint8ViewToArrayBuffer(buffer));
+      if (import.meta.env.DEV) {
+        console.debug("[parseModelWorker] STL parse done");
+      }
     } else if (fileType === FileType.THREEMF) {
-      console.log("Loading ThreeMF file, buffer length:", buffer.length);
+      if (import.meta.env.DEV) {
+        console.debug(
+          "[parseModelWorker] ThreeMF buffer length:",
+          buffer.length,
+        );
+      }
       const loader = new ThreeMFLoader();
-      const result = loader.parse(buffer.buffer as ArrayBuffer);
-      console.log("ThreeMF loader result:", result);
+      const result = loader.parse(uint8ViewToArrayBuffer(buffer));
 
-      localResult = convertGeometry(result) || new BufferGeometry();
-      console.log("ThreeMF convertGeometry result:", localResult);
+      parsedGeometry = convertGeometry(result) || new BufferGeometry();
     } else if (fileType === FileType.OBJ) {
-      console.log("Loading OBJ file, buffer length:", buffer.length);
+      // OBJ is a text format. Three.js OBJLoader only accepts a string, so we must UTF-8 decode
+      // the whole buffer (O(n) time and memory). Large files are usually dominated by decode +
+      // parse, not postMessage. Use dev timings below to confirm in your environment.
+      const tDecodeStart = performance.now();
+      const text = utf8Decoder.decode(buffer);
+      const tParseStart = performance.now();
       const loader = new OBJLoader();
-      // TODO: This is slow!
-      const text = new TextDecoder("utf-8").decode(buffer);
-      console.log(
-        "OBJ text length:",
-        text.length,
-        "first 100 chars:",
-        text.substring(0, 100),
-      );
       const result = loader.parse(text);
-      console.log("OBJ loader result:", result);
-
-      localResult = convertGeometry(result) || new BufferGeometry();
-      console.log("OBJ convertGeometry result:", localResult);
+      const tConvertStart = performance.now();
+      parsedGeometry = convertGeometry(result) || new BufferGeometry();
+      const tEnd = performance.now();
+      if (import.meta.env.DEV) {
+        console.debug("[parseModelWorker] OBJ ms", {
+          decode: tParseStart - tDecodeStart,
+          parse: tConvertStart - tParseStart,
+          convertGeometry: tEnd - tConvertStart,
+          total: tEnd - tDecodeStart,
+          bufferBytes: buffer.length,
+          textChars: text.length,
+        });
+      }
     } else {
       console.error(
         "Unknown file type:",
@@ -87,18 +109,20 @@ export function loadModel(
         "available types:",
         Object.values(FileType),
       );
-      localResult = null;
+      parsedGeometry = null;
     }
 
-    if (localResult) {
-      localResult = toCreasedNormals(localResult, 0.1);
-      localResult.computeBoundingSphere();
-      localResult.center();
-      localResult.rotateX(Math.PI / -2);
-      console.log("Model processed successfully");
+    if (parsedGeometry) {
+      parsedGeometry = toCreasedNormals(parsedGeometry, 0.1);
+      parsedGeometry.computeBoundingSphere();
+      parsedGeometry.center();
+      parsedGeometry.rotateX(Math.PI / -2);
+      if (import.meta.env.DEV) {
+        console.debug("[parseModelWorker] geometry post-process done");
+      }
     }
 
-    return localResult || null;
+    return parsedGeometry ?? null;
   } catch (error) {
     console.error(
       "Error in loadModel:",
@@ -112,24 +136,22 @@ export function loadModel(
   }
 }
 
-self.onmessage = async (e: MessageEvent<unknown>) => {
-  if (!isValidWorkerMessage(e.data)) {
+self.onmessage = async (event: MessageEvent<unknown>) => {
+  if (!isValidWorkerMessage(event.data)) {
     return;
   }
-  const { buffer, fileType } = e.data;
-  console.log(
-    "Worker received message, fileType:",
-    fileType,
-    "buffer length:",
-    buffer.length,
-  );
+  const { buffer, fileType } = event.data;
+  if (import.meta.env.DEV) {
+    console.debug(
+      "[parseModelWorker] message",
+      fileType,
+      "bytes",
+      buffer.length,
+    );
+  }
 
   try {
     const geometry = loadModel(buffer, fileType);
-    console.log(
-      "loadModel result:",
-      geometry ? "geometry returned" : "null returned",
-    );
 
     if (geometry) {
       // Check if geometry has valid position data
@@ -142,10 +164,12 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
           transferables.push(normal);
         }
 
-        console.log(
-          "Sending successful geometry data, vertices:",
-          geometry.attributes.position.count,
-        );
+        if (import.meta.env.DEV) {
+          console.debug(
+            "[parseModelWorker] vertices",
+            geometry.attributes.position.count,
+          );
+        }
         self.postMessage(
           {
             success: true,
@@ -179,12 +203,11 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
         error: errorMsg,
       });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Worker error:", error, "for fileType:", fileType);
     const errorMsg = `Worker error: ${
       error instanceof Error ? error.message : String(error)
     } (type: ${fileType})`;
     self.postMessage({ success: false, geometry: null, error: errorMsg });
-    throw error;
   }
 };
