@@ -12,7 +12,7 @@ step = ["dep:opencascade"]
 [dependencies]
 base64 = { workspace = true }
 euc = { workspace = true }
-image = { workspace = true, features = ["png"] }
+image = { workspace = true}
 opencascade = { workspace = true, optional = true }
 regex = { workspace = true }
 stl_io = { workspace = true }

@@ -14,35 +14,31 @@ db = { workspace = true }
 libmeshthumbnail = { workspace = true }
 
 futures = { workspace = true }
-image = { workspace = true, features = ["jpeg", "png"] }
+image = { workspace = true}
 indexmap = { workspace = true }
 itertools = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true, features = ["rustls"] }
-serde = { workspace = true, features = ["derive"] }
+reqwest = { workspace = true}
+serde = { workspace = true}
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 stl_io = { workspace = true }
-strum = { workspace = true, features = ["derive"] }
+strum = { workspace = true}
 thiserror = { workspace = true }
 threemf = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-tokio-util = { workspace = true, features = ["io"] }
+tokio = { workspace = true}
+tokio-util = { workspace = true}
 urlencoding = { workspace = true }
 vek = { workspace = true }
-async_zip = { workspace = true, features = [
-    "deflate",
-    "deflate64",
-    "tokio-fs",
-] }
+async_zip = { workspace = true}
 chrono = { workspace = true }
 
 [dev-dependencies]
 fake = { workspace = true }
 proptest = { workspace = true }
-reqwest = { workspace = true, features = ["rustls"] }
+reqwest = { workspace = true}
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true}
 wiremock = { workspace = true }
 zip = { workspace = true }
 
