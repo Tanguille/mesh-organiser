@@ -9,18 +9,12 @@ workspace = true
 
 [dependencies]
 bitflags = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true}
 rand = { workspace = true }
 hex = { workspace = true }
 chrono = { workspace = true }
-sqlx = { workspace = true, features = [
-    "chrono",
-    "macros",
-    "migrate",
-    "runtime-tokio",
-    "sqlite",
-] }
+sqlx = { workspace = true}
 indexmap = { workspace = true }
 itertools = { workspace = true }
-strum = { workspace = true, features = ["derive"] }
+strum = { workspace = true}
 password-auth = { workspace = true }
