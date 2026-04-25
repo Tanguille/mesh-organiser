@@ -99,9 +99,9 @@ export class LabelApi implements ILabelApi {
     return await invoke("delete_label", { labelId: label.id });
   }
 
-  async setLabelsOnModel(Labels: LabelMeta[], model: Model): Promise<void> {
+  async setLabelsOnModel(labels: LabelMeta[], model: Model): Promise<void> {
     return await invoke("set_labels_on_model", {
-      labelIds: Labels.map((label) => label.id),
+      labelIds: labels.map((label) => label.id),
       modelId: model.id,
     });
   }

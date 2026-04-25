@@ -53,6 +53,7 @@ fn parse_stl_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
             let mut cursor = Cursor::new(buffer);
 
             let stl = stl_io::read_stl(&mut cursor)?;
+
             return Ok(parse_stl_inner(&stl));
         }
     }

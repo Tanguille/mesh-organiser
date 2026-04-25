@@ -68,8 +68,7 @@ fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 
 // https://github.com/asny/three-d-asset/blob/main/src/io/obj.rs#L54
 fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
-    let mut all_meshes: Vec<Mesh> = obj
-        .objects
+    obj.objects
         .iter()
         .map(|object| {
             let mut positions = Vec::new();
@@ -110,17 +109,8 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
                 indices,
             }
         })
-        .collect();
-
-    all_meshes.sort_by(|a, b| a.indices.len().cmp(&b.indices.len()));
-
-    if all_meshes.is_empty() {
-        return Err(MeshThumbnailError::InternalError(String::from(
-            "No meshes found in obj model",
-        )));
-    }
-
-    let mesh = all_meshes.pop().unwrap();
-
-    Ok(mesh)
+        .max_by_key(|m| m.indices.len())
+        .ok_or_else(|| {
+            MeshThumbnailError::InternalError(String::from("No meshes found in obj model"))
+        })
 }

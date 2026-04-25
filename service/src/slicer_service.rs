@@ -107,8 +107,7 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
             }
             ' ' | '\t' if !in_quotes => {
                 if !current_arg.is_empty() {
-                    args.push(current_arg.clone());
-                    current_arg.clear();
+                    args.push(std::mem::take(&mut current_arg));
                 }
                 // Skip consecutive whitespace
                 while let Some(&next_char) = chars.peek() {
@@ -144,21 +143,15 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
         }
     }
 
-    first_flag_index.map_or_else(
-        || {
-            if args.is_empty() {
-                (String::new(), Vec::new())
-            } else if args.len() == 1 {
-                (args[0].clone(), Vec::new())
-            } else {
-                (args[0].clone(), args[1..].to_vec())
-            }
-        },
-        |flag_index| {
-            let executable = args[..flag_index].join(" ");
-            let args = args[flag_index..].to_vec();
+    if let Some(flag_index) = first_flag_index {
+        let executable = args[..flag_index].join(" ");
+        let rest = args.split_off(flag_index);
 
-            (executable, args)
-        },
-    )
+        (executable, rest)
+    } else {
+        let mut iter = args.into_iter();
+        let executable = iter.next().unwrap_or_default();
+
+        (executable, iter.collect())
+    }
 }

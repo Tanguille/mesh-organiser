@@ -71,9 +71,10 @@ pub async fn set_model_ids_on_share(
     share_id: &str,
     model_ids: Vec<i64>,
 ) -> Result<(), DbError> {
-    let models = model_db::get_models_via_ids(db, user, model_ids.clone()).await?;
+    let expected = model_ids.len();
+    let models = model_db::get_models_via_ids(db, user, model_ids).await?;
 
-    if models.len() != model_ids.len() {
+    if models.len() != expected {
         return Err(DbError::RowNotFound);
     }
 
@@ -94,7 +95,7 @@ pub async fn set_model_ids_on_share(
         .await?;
 
     let mut query_builder = QueryBuilder::new("INSERT INTO shares_models (share_id, model_id) ");
-    query_builder.push_values(model_ids.iter(), |mut b, model_id| {
+    query_builder.push_values(models.iter().map(|model| model.id), |mut b, model_id| {
         b.push_bind(share_id);
         b.push_bind(model_id);
     });

@@ -8,7 +8,10 @@ use libmeshthumbnail::{extract_image, parse_model, render};
 use tokio::task::JoinSet;
 use vek::{Vec2, Vec3};
 
-use db::{blob_db, model::blob::Blob, model::blob::FileType};
+use db::{
+    blob_db,
+    model::blob::{Blob, FileType},
+};
 
 use crate::{
     AppState, ServiceError,

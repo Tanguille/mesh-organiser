@@ -1,12 +1,14 @@
 use std::{
-    fmt::Write,
     fs::{self, read_dir},
     panic,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use async_zip::{ZipEntryBuilder, tokio::read::seek::ZipFileReader, tokio::write::ZipFileWriter};
+use async_zip::{
+    ZipEntryBuilder,
+    tokio::{read::seek::ZipFileReader, write::ZipFileWriter},
+};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Serialize;
@@ -19,7 +21,11 @@ use tokio::{
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
-use db::{blob_db, label_db, label_keyword_db, model::blob::FileType, model::user::User, model_db};
+use db::{
+    blob_db, label_db, label_keyword_db,
+    model::{blob::FileType, user::User},
+    model_db,
+};
 
 use crate::{
     ASYNC_MULT,
@@ -222,13 +228,12 @@ pub async fn add_labels_by_keywords(
 
     let mut all_keywords_map: IndexMap<String, Vec<i64>> = IndexMap::new();
 
-    for (label_id, keywords) in &all_keywords {
+    for (label_id, keywords) in all_keywords {
         for keyword in keywords {
-            if all_keywords_map.contains_key(&keyword.name) {
-                all_keywords_map[&keyword.name].push(*label_id);
-            } else {
-                all_keywords_map.insert(keyword.name.clone(), vec![*label_id]);
-            }
+            all_keywords_map
+                .entry(keyword.name)
+                .or_default()
+                .push(label_id);
         }
     }
 
@@ -250,13 +255,7 @@ pub async fn add_labels_by_keywords(
 
         let label_ids: Vec<i64> = name_parts
             .iter()
-            .flat_map(|part| {
-                if all_keywords_map.contains_key(part) {
-                    return all_keywords_map[part].clone();
-                }
-
-                vec![]
-            })
+            .flat_map(|part| all_keywords_map.get(part).into_iter().flatten().copied())
             .filter(|l| {
                 !model
                     .labels
@@ -280,7 +279,7 @@ pub async fn add_labels_by_keywords(
 }
 
 async fn import_models_from_dir_recursive(
-    path: &PathBuf,
+    path: &Path,
     app_state: &AppState,
     import_state: Arc<Mutex<ImportState>>,
 ) -> Result<(), ServiceError> {
@@ -518,10 +517,7 @@ async fn import_single_model<W>(
 where
     W: AsyncRead + Unpin,
 {
-    let mut file_contents: Vec<u8> = match file_size {
-        0 => Vec::new(),
-        val => Vec::with_capacity(val),
-    };
+    let mut file_contents: Vec<u8> = Vec::with_capacity(file_size);
 
     reader.read_to_end(&mut file_contents).await?;
 
@@ -529,10 +525,7 @@ where
     hasher.update(&file_contents);
     let bytes = hasher.finalize();
     // First 128 bits of the digest as 32 hex chars (matches `blob_sha256` / `random_hex_32` shape).
-    let mut hash = String::with_capacity(32);
-    for b in bytes.iter().take(16) {
-        let _ = write!(hash, "{b:02x}");
-    }
+    let hash = hex::encode(&bytes[..16]);
 
     let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
 
@@ -646,7 +639,7 @@ pub struct DirectoryScanModel {
 }
 
 async fn traverse_directory(
-    path: &PathBuf,
+    path: &Path,
     recursive: bool,
     set_id: u32,
 ) -> Result<Vec<DirectoryScanModel>, ServiceError> {

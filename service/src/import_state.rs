@@ -177,11 +177,7 @@ impl ImportState {
             .unwrap()
             .model_ids
             .push(model_id);
-        self.imported_model_count = self
-            .imported_models
-            .iter()
-            .map(|set| set.model_ids.len())
-            .sum();
+        self.imported_model_count += 1;
         self.emitter.model_count_event(self);
     }
 

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use actix_cors::Cors;
 use actix_web::{App, HttpResponse, HttpServer, get, middleware, web};
 use async_zip::base::read::seek::ZipFileReader;
@@ -51,7 +49,7 @@ pub async fn download_model(
     }
 
     let model = &model[0];
-    let base_dir = PathBuf::from(app_state.get_model_dir());
+    let base_dir = app_state.get_model_dir();
     let src_file_path = base_dir.join(format!("{}.{}", model.sha256, model.filetype));
 
     let file = match File::open(src_file_path).await {

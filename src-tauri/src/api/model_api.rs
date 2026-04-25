@@ -27,8 +27,6 @@ pub async fn add_model(
     state: State<'_, TauriAppState>,
     app_handle: AppHandle,
 ) -> Result<ImportState, ApplicationError> {
-    let path_clone = String::from(path);
-    let state_clone = state.clone();
     let mut import_state = import_state_new_tauri(
         origin_url,
         recursive,
@@ -37,8 +35,7 @@ pub async fn add_model(
         &state,
         &app_handle,
     );
-    import_state =
-        import_service::import_path(&path_clone, &state_clone.app_state, import_state).await?;
+    import_state = import_service::import_path(path, &state.app_state, import_state).await?;
 
     let model_ids: Vec<i64> = import_state
         .imported_models
