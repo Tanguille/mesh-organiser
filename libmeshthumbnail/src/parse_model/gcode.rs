@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Cursor, Read},
     path::Path,
+    sync::OnceLock,
 };
 
 use regex::Regex;
@@ -9,6 +10,10 @@ use vek::{Mat4, Quaternion, Vec3};
 use zip::ZipArchive;
 
 use crate::{error::MeshThumbnailError, mesh::Mesh};
+
+static REGEX_XY: OnceLock<Regex> = OnceLock::new();
+static REGEX_XY_NO_EXTRUSION: OnceLock<Regex> = OnceLock::new();
+static REGEX_Z: OnceLock<Regex> = OnceLock::new();
 
 pub fn handle_gcode(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     let is_gcode = path
@@ -73,9 +78,10 @@ where
     let mut last_x = 0f32;
     let mut last_y = 0f32;
     let mut last_z = 0f32;
-    let regex_xy = Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap();
-    let regex_xy_no_extrusion = Regex::new(r"X([\d.]+)\s+Y([\d.]+)").unwrap();
-    let regex_z = Regex::new(r"Z([\d.]+)").unwrap();
+    let regex_xy = REGEX_XY.get_or_init(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap());
+    let regex_xy_no_extrusion =
+        REGEX_XY_NO_EXTRUSION.get_or_init(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)").unwrap());
+    let regex_z = REGEX_Z.get_or_init(|| Regex::new(r"Z([\d.]+)").unwrap());
     let mut position_unsafe = false;
 
     for line in reader.lines() {

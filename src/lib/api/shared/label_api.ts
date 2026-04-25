@@ -75,7 +75,7 @@ export interface ILabelApi {
     editGlobalId?: boolean,
   ): Promise<void>;
   deleteLabel(label: LabelMeta): Promise<void>;
-  setLabelsOnModel(Labels: LabelMeta[], model: Model): Promise<void>;
+  setLabelsOnModel(labels: LabelMeta[], model: Model): Promise<void>;
   addLabelToModels(label: LabelMeta, models: Model[]): Promise<void>;
   removeLabelFromModels(label: LabelMeta, models: Model[]): Promise<void>;
   setKeywordsOnLabel(label: LabelMeta, keywords: string[]): Promise<void>;

@@ -39,7 +39,7 @@
   const userTokenApi = getContainer().optional<IUserTokenApi>(IUserTokenApi);
   const userSyncApi = getContainer().optional<IUserSyncApi>(IUserSyncApi);
   const userAdminApi = getContainer().optional<IAdminUserApi>(IAdminUserApi);
-  const userSwtichApi = getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
+  const userSwitchApi = getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
 
   let diskUsage = $state<DiskUsageInfo | null>(null);
   let password = $state<string>("");
@@ -116,7 +116,7 @@
   }
 
   async function clearSyncState() {
-    if (!userSyncApi || !userAdminApi || !userSwtichApi) {
+    if (!userSyncApi || !userAdminApi || !userSwitchApi) {
       return;
     }
 
@@ -125,10 +125,10 @@
     if (currentUser.permissions.onlineAccount) {
       let fakeUser = { ...currentUser };
       fakeUser.id = 1;
-      await userSwtichApi.switchUser(fakeUser);
+      await userSwitchApi.switchUser(fakeUser);
       await userAdminApi.deleteUser(currentUser);
     } else {
-      await userSwtichApi.switchUser(currentUser);
+      await userSwitchApi.switchUser(currentUser);
     }
 
     location.reload();

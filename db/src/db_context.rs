@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 use sqlx::{
     self, Pool, Sqlite,
@@ -8,7 +8,7 @@ use sqlx::{
 
 pub type DbContext = Pool<Sqlite>;
 
-pub async fn setup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) -> DbContext {
+pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext {
     let url = format!(
         "sqlite:{}",
         sqlite_path.to_str().expect("path should be something")
@@ -59,7 +59,7 @@ async fn get_db_migration_count(db: &DbContext) -> usize {
     row.0.try_into().unwrap_or(0)
 }
 
-fn backup_db(sqlite_path: &PathBuf, sqlite_backup_dir: &PathBuf) {
+fn backup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) {
     let timestamp = chrono::Utc::now().timestamp_millis();
 
     if !sqlite_path.exists() {

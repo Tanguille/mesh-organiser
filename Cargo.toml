@@ -13,7 +13,7 @@ style = "warn"
 unnecessary_self_imports = "warn"
 
 [workspace.package]
-version = "2.6.0"
+version = "2.7.0"
 edition = "2024"
 rust-version = "1.94.1"
 
@@ -27,7 +27,7 @@ opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b26
 threemf = { version = "0.8.0" }
 
 arboard = { version = "3.6.1", default-features = false }
-async_zip = "0.0.18"
+async_zip = { version = "0.0.18", features = ["tokio", "deflate"] }
 base64 = { version = "0.22.1", default-features = false }
 fake = { version = "5.1.0", default-features = false }
 proptest = { version = "1.11.0", features = ["std"], default-features = false }
@@ -60,19 +60,19 @@ stl_io = "0.11.0"
 strum = { version = "0.28.0", default-features = false }
 tauri = { version = "2.10.3", features = ["wry"], default-features = false }
 tauri-build = { version = "2.5.6", default-features = false }
-tauri-plugin-deep-link = "2.4.8"
+tauri-plugin-deep-link = "2.4.7"
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"
 tauri-plugin-http = { version = "2.5.8", features = ["cookies"], default-features = false }
 tauri-plugin-opener = "2.5.3"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-process = "2.3.1"
-tauri-plugin-updater = { version = "2.10.1", default-features = false }
+tauri-plugin-updater = { version = "2.10.1", features = ["rustls-tls"], default-features = false }
 tauri-plugin-single-instance = "2.4.1"
 thiserror = { version = "2.0.18", default-features = false }
 time = { version = "0.3.47", default-features = false }
 tokio = "1.51.1"
-tokio-util = "0.7.18"
+tokio-util = { version = "0.7.18", features = ["compat"] }
 tower_governor = { version = "0.8.0", features = ["axum"], default-features = false }
 tower-http = "0.6.8"
 tower-sessions = { version = "0.14.0", default-features = false }

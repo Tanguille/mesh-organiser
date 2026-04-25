@@ -1,15 +1,12 @@
-use std::{
-    ffi::OsStr,
-    io::Read,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{ffi::OsStr, io::Read, path::Path, process::Command, sync::OnceLock};
 
 use regex::Regex;
 
 use db::model::blob::FileType;
 
 use crate::service_error::ServiceError;
+
+static COLLAPSE_WHITESPACE: OnceLock<Regex> = OnceLock::new();
 
 /// Returns a human-friendly file name (no path); strips extension if not a directory.
 ///
@@ -30,7 +27,7 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
         file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
     }
 
-    let remove_whitespace = Regex::new(r" {2,}").unwrap();
+    let remove_whitespace = COLLAPSE_WHITESPACE.get_or_init(|| Regex::new(r" {2,}").unwrap());
 
     file_name = file_name.replace(['_', '-', '+'], " ");
 
@@ -78,7 +75,7 @@ pub fn open_folder_in_explorer(path: &Path) {
 ///
 /// Panics if the directory cannot be read or a metadata call fails.
 #[must_use]
-pub fn get_folder_size(path: &PathBuf) -> u64 {
+pub fn get_folder_size(path: &Path) -> u64 {
     std::fs::read_dir(path)
         .unwrap()
         .map(|f| f.unwrap().metadata().unwrap().len())

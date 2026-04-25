@@ -17,8 +17,9 @@ use tauri::{
 use urlencoding::decode;
 
 use db::{
-    group_db, model::blob::Blob, model::model_group::ModelGroupMeta, model::user::User, model_db,
-    random_hex_32, time_now, user_db,
+    group_db,
+    model::{blob::Blob, model_group::ModelGroupMeta, user::User},
+    model_db, random_hex_32, time_now, user_db,
 };
 use service::{
     AppState, Configuration, StoredConfiguration, ThreemfMetadata, download_file_service,
@@ -456,7 +457,7 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
 }
 
 fn remove_temp_paths() -> Result<(), ApplicationError> {
-    let threshold = std::time::Duration::from_secs(5 * 60);
+    let threshold = std::time::Duration::from_mins(5);
     let now = std::time::SystemTime::now();
     for entry in std::fs::read_dir(std::env::temp_dir())? {
         let entry = entry?;

@@ -3,7 +3,7 @@ use std::{
     fmt::Write,
     fs::File,
     io::{self, ErrorKind},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -72,7 +72,7 @@ fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
         })
 }
 
-fn ensure_config_file_exists(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !config_path.exists() {
         let mut config_file = File::create(config_path)?;
         io::Write::write_all(
@@ -86,7 +86,7 @@ fn ensure_config_file_exists(config_path: &PathBuf) -> Result<(), Box<dyn std::e
 }
 
 async fn load_and_prepare_config(
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> Result<Configuration, Box<dyn std::error::Error>> {
     let json = fs::read_to_string(config_path).await.map_err(|e| {
         io::Error::new(
@@ -202,8 +202,8 @@ impl App {
         let configuration = load_and_prepare_config(&config_path).await?;
 
         let data_dir = PathBuf::from(&configuration.data_path);
-        let sqlite_path = PathBuf::from(&data_dir).join("db.sqlite");
-        let sqlite_backup_dir = PathBuf::from(&data_dir).join("backups");
+        let sqlite_path = data_dir.join("db.sqlite");
+        let sqlite_backup_dir = data_dir.join("backups");
         let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
         let db_clone = db.clone();
 
@@ -243,7 +243,7 @@ impl App {
         let deletion_task = tokio::task::spawn(
             session_store
                 .clone()
-                .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+                .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
         );
 
         let signing_key_path = self.app_state.get_signing_key_path();

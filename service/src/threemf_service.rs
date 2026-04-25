@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File as StdFile},
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use async_zip::tokio::read::seek::ZipFileReader;
@@ -18,6 +19,8 @@ use crate::{
     AppState, ServiceError, cleanse_evil_from_name, export_service, import_service,
     import_state::ImportState,
 };
+
+static MODEL_SETTINGS_PART_NAME: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Deserialize)]
 pub struct ProjectSettingsConfig {
@@ -120,10 +123,12 @@ fn parse_slicer_pe_config(data: &str) -> ThreemfMetadata {
 pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
     let mut names_map = IndexMap::new();
 
-    let re = Regex::new(
-        r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#,
-    )
-    .unwrap();
+    let re = MODEL_SETTINGS_PART_NAME.get_or_init(|| {
+        Regex::new(
+            r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#,
+        )
+        .unwrap()
+    });
 
     for captures in re.captures_iter(data) {
         let part_id = captures[1].parse::<u32>().unwrap_or(u32::MAX);

@@ -84,9 +84,9 @@ export class WebLabelApi implements ILabelApi {
     );
   }
 
-  async setLabelsOnModel(Labels: LabelMeta[], model: Model): Promise<void> {
+  async setLabelsOnModel(labels: LabelMeta[], model: Model): Promise<void> {
     const data = {
-      label_ids: Labels.map((label) => label.id),
+      label_ids: labels.map((label) => label.id),
     };
 
     await this.requestApi.request<void>(
