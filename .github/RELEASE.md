@@ -6,10 +6,12 @@ This repo uses GitHub Actions to build the Tauri desktop app. You can create a p
 
 ### 1. Version in one place
 
-The release **tag and name** use the version from **`src-tauri/tauri.conf.json`** (`version`). The Tauri action replaces `__VERSION__` with that value (e.g. `1.0.0` → tag `v1.0.0`).
+The app version is defined in **`package.json`** (`version`) and **must match** `Cargo.toml` `[workspace.package]` `version`. **`src-tauri/tauri.conf.json`** must keep `"version": "../package.json"` so Tauri uses that same value (the publish workflow replaces `__VERSION__` from this resolved version, e.g. tag `v1.0.0`).
 
-- Before releasing, set the version you want in `src-tauri/tauri.conf.json`.
-- If you use **tag-triggered** releases (see below), the tag you push (e.g. `v1.0.0`) should match that version.
+**CI enforces this:** `node scripts/check-package-cargo-version.mjs` runs on **Svelte CI** and **before every publish matrix build**. It fails if `package.json`, Cargo workspace, or the Tauri `version` pointer are inconsistent.
+
+- Before releasing, bump the version in **`package.json`** and **`Cargo.toml`** `[workspace.package]` together (or run the check after editing).
+- If you use **tag-triggered** releases (see below), the tag you push (e.g. `v2.7.0`) should match the semver in `package.json` (e.g. `2.7.0`).
 
 ### 2. Optional: updater signing (recommended for public releases)
 
@@ -35,9 +37,9 @@ Without these, builds and releases still work; only the updater signature is ski
 
 #### Option B: Tag-triggered
 
-- Set the version in `src-tauri/tauri.conf.json` (e.g. `1.0.0`).
+- Set the version in `package.json` and `Cargo.toml` (e.g. `2.7.0`), with `tauri.conf.json` still pointing at `../package.json`.
 - Commit, push, then create and push a tag that matches:
-  `git tag v1.0.0 && git push origin v1.0.0`
+  `git tag v2.7.0 && git push origin v2.7.0`
 - This creates a **public** release automatically.
 
 ### 4. After the run
