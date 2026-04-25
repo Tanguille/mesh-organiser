@@ -38,7 +38,9 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
 #[allow(clippy::cast_possible_truncation)]
 fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
-        .map_or(TOLERANCE_DEFAULT, |val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT));
+        .map_or(TOLERANCE_DEFAULT, |value| {
+            value.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT)
+        });
     let shape = Shape::read_step(path)?;
     let mesher = Mesher::try_new(&shape, tolerance)?;
     let mesh = mesher.mesh()?;
@@ -124,7 +126,9 @@ pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
 #[allow(clippy::cast_possible_truncation)]
 pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
     let tolerance = env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE")
-        .map_or(TOLERANCE_DEFAULT, |val| val.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT));
+        .map_or(TOLERANCE_DEFAULT, |value| {
+            value.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT)
+        });
     let shape = Shape::read_step(step_path)?;
     let mesher = Mesher::try_new(&shape, tolerance)?;
     let mesh = mesher.mesh()?;
