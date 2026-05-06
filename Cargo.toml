@@ -59,7 +59,7 @@ sqlx = { version = "0.8.6", default-features = false }
 stl_io = "0.11.0"
 strum = { version = "0.28.0", default-features = false }
 tauri = { version = "2.10.3", features = ["wry"], default-features = false }
-tauri-build = { version = "2.5.6", default-features = false }
+tauri-build = { version = "2.6.1", default-features = false }
 tauri-plugin-deep-link = "2.4.7"
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"
