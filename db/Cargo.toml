@@ -13,7 +13,13 @@ serde = { workspace = true}
 rand = { workspace = true }
 hex = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
-sqlx = { workspace = true}
+sqlx = { workspace = true, features = [
+    "chrono",
+    "macros",
+    "migrate",
+    "runtime-tokio",
+    "sqlite",
+] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 strum = { workspace = true, features = ["derive"] }

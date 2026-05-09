@@ -58,17 +58,17 @@ sha2 = { version = "0.11.0", default-features = false }
 sqlx = { version = "0.8.6", default-features = false }
 stl_io = "0.11.0"
 strum = { version = "0.28.0", default-features = false }
-tauri = { version = "2.10.3", features = ["wry"], default-features = false }
-tauri-build = { version = "2.5.6", default-features = false }
-tauri-plugin-deep-link = "2.4.7"
-tauri-plugin-dialog = "2.7.0"
-tauri-plugin-fs = "2.5.0"
-tauri-plugin-http = { version = "2.5.8", features = ["cookies"], default-features = false }
-tauri-plugin-opener = "2.5.3"
+tauri = { version = "2.11.1", features = ["wry"], default-features = false }
+tauri-build = { version = "2.6.1", default-features = false }
+tauri-plugin-deep-link = "2.4.9"
+tauri-plugin-dialog = "2.7.1"
+tauri-plugin-fs = "2.5.1"
+tauri-plugin-http = { version = "2.5.9", features = ["cookies"], default-features = false }
+tauri-plugin-opener = "2.5.4"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = { version = "2.10.1", features = ["rustls-tls"], default-features = false }
-tauri-plugin-single-instance = "2.4.1"
+tauri-plugin-single-instance = "2.4.2"
 thiserror = { version = "2.0.18", default-features = false }
 time = { version = "0.3.47", default-features = false }
 tokio = "1.51.1"

@@ -20,8 +20,8 @@ const devHost = process.env.TAURI_DEV_HOST ?? "127.0.0.1";
 
 const isTauriCliBuild = process.env.TAURI_ENV_PLATFORM != null;
 
-/** @type {false | 'esbuild'} */
-const tauriMinify = process.env.TAURI_ENV_DEBUG ? false : "esbuild";
+/** @type {boolean} */
+const tauriMinify = !process.env.TAURI_ENV_DEBUG;
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
