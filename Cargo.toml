@@ -27,37 +27,37 @@ opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "09b26
 threemf = { version = "0.8.0" }
 
 arboard = { version = "3.6.1", default-features = false }
-async_zip = { version = "0.0.18", features = ["tokio", "deflate"] }
-base64 = { version = "0.22.1", default-features = false }
-fake = { version = "5.1.0", default-features = false }
-proptest = { version = "1.11.0", features = ["std"], default-features = false }
-tempfile = { version = "3.27.0", default-features = false }
-vek = { version = "0.17.2", features = ["rgba"], default-features = false }
+async_zip = "0.0.18"
+base64 = "0.22.1"
+fake = { version = "5.1.0", features = ["derive"] }
+proptest = "1.11.0"
+tempfile = "3.27.0"
+vek = "0.17.2"
 wavefront_obj = "11.0.0"
-zip = { version = "8.5.1", default-features = false }
-axum = { version = "0.8.9", default-features = false }
-axum-extra = { version = "0.12.6", default-features = false }
+zip = "8.5.1"
+axum = "0.8.9"
+axum-extra = "0.12.6"
 axum-login = "0.18.0"
 axum-messages = "0.8.0"
 bitflags = "2.11.1"
-chrono = { version = "0.4.44", default-features = false }
-futures = { version = "0.3.32", features = ["std"], default-features = false }
-hex = { version = "0.4.3", default-features = false }
+chrono = "0.4.44"
+futures = "0.3.32"
+hex = "0.4.3"
 htmlescape = "0.3.1"
 image = { version = "0.25.10", default-features = false }
-indexmap = { version = "2.14.0", default-features = false }
+indexmap = "2.14.0"
 itertools = "0.14.0"
-password-auth = { version = "1.0.0", features = ["argon2"], default-features = false }
+password-auth = "1.0.0"
 rand = "0.10.1"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", default-features = false }
-serde = { version = "1.0.228", default-features = false }
-serde_html_form = { version = "0.4.0", features = ["de", "std"], default-features = false }
+serde = "1.0.228"
+serde_html_form = "0.4.0"
 serde_json = "1.0.149"
-sha2 = { version = "0.11.0", default-features = false }
+sha2 = "0.11.0"
 sqlx = { version = "0.8.6", default-features = false }
 stl_io = "0.11.0"
-strum = { version = "0.28.0", default-features = false }
+strum = "0.28.0"
 tauri = { version = "2.11.1", features = ["wry"], default-features = false }
 tauri-build = { version = "2.6.1", default-features = false }
 tauri-plugin-deep-link = "2.4.9"
@@ -69,15 +69,15 @@ tauri-plugin-os = "2.3.2"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = { version = "2.10.1", features = ["rustls-tls"], default-features = false }
 tauri-plugin-single-instance = "2.4.2"
-thiserror = { version = "2.0.18", default-features = false }
-time = { version = "0.3.47", default-features = false }
+thiserror = "2.0.18"
+time = "0.3.47"
 tokio = "1.51.1"
-tokio-util = { version = "0.7.18", features = ["compat"] }
-tower_governor = { version = "0.8.0", features = ["axum"], default-features = false }
+tokio-util = "0.7.18"
+tower_governor = "0.8.0"
 tower-http = "0.6.8"
 tower-sessions = { version = "0.14.0", default-features = false }
 tower-sessions-sqlx-store = "0.15.0"
-tracing-subscriber = { version = "0.3.23", features = ["fmt"], default-features = false }
+tracing-subscriber = "0.3.23"
 urlencoding = "2.1.3"
 winreg = "0.56.0"
 wiremock = "0.6.5"
