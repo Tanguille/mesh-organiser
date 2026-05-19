@@ -37,7 +37,7 @@
     "@types/three": "^0.184.1",
     "base64-js": "^1.5.1",
     "fflate": "^0.8.2",
-    "qs": "^6.15.1",
+    "qs": "^6.15.2",
     "three": "0.184.0",
     "threejs-webworker-3mf-loader": "github:manyfold3d/threejs-webworker-3mf-loader"
   },
