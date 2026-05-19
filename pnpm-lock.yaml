@@ -42,8 +42,8 @@ importers:
         specifier: ^8.5.14
         version: 8.5.14(svelte@5.55.5(@typescript-eslint/types@8.59.2))(three@0.184.0)
       '@threlte/extras':
-        specifier: ^9.15.1
-        version: 9.15.1(@types/three@0.184.1)(svelte@5.55.5(@typescript-eslint/types@8.59.2))(three@0.184.0)
+        specifier: ^9.19.0
+        version: 9.19.0(@types/three@0.184.1)(svelte@5.55.5(@typescript-eslint/types@8.59.2))(three@0.184.0)
       '@types/qs':
         specifier: ^6.15.1
         version: 6.15.1
@@ -611,8 +611,8 @@ packages:
       svelte: '>=5'
       three: '>=0.160'
 
-  '@threlte/extras@9.15.1':
-    resolution: {integrity: sha512-+AhS+caKH9WIawwSWWYOlbqZzxPNW+kQ3PT9y4NyzzscCcVUPoFpZwd0izy8KEAIKM34J1uMs36cZff6U6LEjQ==}
+  '@threlte/extras@9.19.0':
+    resolution: {integrity: sha512-vj5A2Gh0hIDId86TK26tRhQPEuxQ1oVFGsnyrjWP3pTPSxHCcyqpi7mStlcc+QdUxkuUYyCKG64aD2TZdsmGdA==}
     peerDependencies:
       svelte: '>=5'
       three: '>=0.160'
@@ -1650,8 +1650,8 @@ packages:
     peerDependencies:
       three: '>=0.125.0'
 
-  three-mesh-bvh@0.9.9:
-    resolution: {integrity: sha512-FJKitcjvbALmeQRK+Sc+nLGorCpkrZBrbgJZFzhdyWboak37DZikn46hvQkNqSbJPm227ahYmS6k3N/GXaAyXw==}
+  three-mesh-bvh@0.9.10:
+    resolution: {integrity: sha512-UOlTgPIeqUURcwaG8knxvBaruwZlC4X3/WSHEFO7rYvMVv/YNUrkfFEszvfj36pXV88dCHoHNnIp0PifkirnTQ==}
     peerDependencies:
       three: '>= 0.159.0'
 
@@ -2255,13 +2255,13 @@ snapshots:
       svelte: 5.55.5(@typescript-eslint/types@8.59.2)
       three: 0.184.0
 
-  '@threlte/extras@9.15.1(@types/three@0.184.1)(svelte@5.55.5(@typescript-eslint/types@8.59.2))(three@0.184.0)':
+  '@threlte/extras@9.19.0(@types/three@0.184.1)(svelte@5.55.5(@typescript-eslint/types@8.59.2))(three@0.184.0)':
     dependencies:
       '@threejs-kit/instanced-sprite-mesh': 2.5.1(@types/three@0.184.1)(three@0.184.0)
       camera-controls: 3.1.2(three@0.184.0)
       svelte: 5.55.5(@typescript-eslint/types@8.59.2)
       three: 0.184.0
-      three-mesh-bvh: 0.9.9(three@0.184.0)
+      three-mesh-bvh: 0.9.10(three@0.184.0)
       three-perf: 1.0.11(three@0.184.0)
       three-viewport-gizmo: 2.2.0(three@0.184.0)
       troika-three-text: 0.52.4(three@0.184.0)
@@ -3224,7 +3224,7 @@ snapshots:
       three: 0.184.0
       troika-three-utils: 0.52.4(three@0.184.0)
 
-  three-mesh-bvh@0.9.9(three@0.184.0):
+  three-mesh-bvh@0.9.10(three@0.184.0):
     dependencies:
       three: 0.184.0
 
