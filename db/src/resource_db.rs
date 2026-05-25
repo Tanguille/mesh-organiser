@@ -27,7 +27,7 @@ pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMe
 
     for row in rows {
         resources.push(ResourceMeta {
-            id: row.resource_id.unwrap(),
+            id: row.resource_id,
             name: row.resource_name,
             flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
                 .unwrap_or(ResourceFlags::empty()),
@@ -57,7 +57,7 @@ pub async fn get_groups_for_resource(
         db,
         user,
         GroupFilterOptions {
-            group_ids: Some(rows.iter().map(|r| r.group_id.unwrap()).collect()),
+            group_ids: Some(rows.iter().map(|r| r.group_id).collect()),
             order_by: Some(GroupOrderBy::NameAsc),
             page: 1,
             page_size: MAX_PAGE_SIZE,

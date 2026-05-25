@@ -1,7 +1,6 @@
-use itertools::join;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 
-use crate::{DbError, db_context::DbContext, model::blob::Blob, util::time_now};
+use crate::{DbError, db_context::DbContext, model::blob::Blob, push_in_i64, util::time_now};
 
 pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let rows = sqlx::query!(
@@ -31,12 +30,11 @@ pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob
         return Ok(Vec::new());
     }
 
-    let query = format!(
-        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs WHERE blob_id IN ({})",
-        join(ids.iter(), ",")
+    let mut query_builder = QueryBuilder::new(
+        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs WHERE blob_id IN ",
     );
-
-    let rows = sqlx::query(&query).fetch_all(db).await?;
+    push_in_i64(&mut query_builder, &ids);
+    let rows = query_builder.build().fetch_all(db).await?;
 
     let mut blobs = Vec::with_capacity(rows.len());
 
@@ -130,12 +128,12 @@ pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbEr
         });
     }
 
-    let query = format!(
-        "DELETE FROM blobs WHERE blob_id IN ({})",
-        join(dead_blobs.iter().map(|r| r.id), ",")
-    );
-
-    sqlx::query(&query).execute(db).await?;
+    if !dead_blobs.is_empty() {
+        let dead_ids: Vec<i64> = dead_blobs.iter().map(|blob| blob.id).collect();
+        let mut query_builder = QueryBuilder::new("DELETE FROM blobs WHERE blob_id IN ");
+        push_in_i64(&mut query_builder, &dead_ids);
+        query_builder.build().execute(db).await?;
+    }
 
     Ok(dead_blobs)
 }

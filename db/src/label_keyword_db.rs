@@ -24,7 +24,7 @@ pub async fn get_keywords_for_label(
     let mut result: Vec<LabelKeyword> = Vec::new();
     for row in rows {
         result.push(LabelKeyword {
-            id: row.keyword_id.unwrap(),
+            id: row.keyword_id,
             name: row.keyword_name,
         });
     }
@@ -43,12 +43,12 @@ pub async fn get_all_keywords(
     .fetch_all(db)
     .await?;
 
-    let mut result = IndexMap::new();
+    let mut result: IndexMap<i64, Vec<LabelKeyword>> = IndexMap::new();
 
     for row in rows {
-        let entry = result.entry(row.keyword_label_id).or_insert(Vec::new());
+        let entry = result.entry(row.keyword_label_id).or_default();
         entry.push(LabelKeyword {
-            id: row.keyword_id.unwrap(),
+            id: row.keyword_id,
             name: row.keyword_name,
         });
     }
