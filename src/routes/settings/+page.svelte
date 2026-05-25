@@ -110,13 +110,13 @@
     await loadServerUrl();
   });
 
-  let splitConversions = {
+  const splitConversions = {
     no_split: "No split",
     "split-left-right": "Split left/right",
     "split-top-bottom": "Split top/bottom",
   };
 
-  let startPageOptions = {
+  const startPageOptions = {
     "": "Default",
     import: "Import",
     models: "Models",
