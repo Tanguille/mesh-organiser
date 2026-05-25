@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use indexmap::IndexMap;
-use itertools::{Itertools, join};
-use sqlx::Row;
+use itertools::Itertools;
+use sqlx::{QueryBuilder, Row};
 use strum::EnumString;
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    random_hex_32, resource_db,
+    push_in_i64, random_hex_32, resource_db,
     util::time_now,
 };
 
@@ -210,13 +210,15 @@ async fn get_unique_ids_from_group_ids(
     group_ids: &[i64],
 ) -> Result<IndexMap<i64, String>, DbError> {
     let mut id_map = IndexMap::new();
-    let ids = join(group_ids.iter(), ",");
+    if group_ids.is_empty() {
+        return Ok(id_map);
+    }
 
-    let query = format!(
-        "SELECT group_id, group_unique_global_id FROM models_group WHERE group_id IN ({ids})"
+    let mut query_builder = QueryBuilder::new(
+        "SELECT group_id, group_unique_global_id FROM models_group WHERE group_id IN ",
     );
-
-    let rows = sqlx::query(&query).fetch_all(db).await?;
+    push_in_i64(&mut query_builder, group_ids);
+    let rows = query_builder.build().fetch_all(db).await?;
 
     for row in rows {
         id_map.insert(row.get("group_id"), row.get("group_unique_global_id"));
@@ -252,18 +254,12 @@ pub async fn set_group_id_on_models(
         old_group_ids.push(gid);
     }
 
-    let ids_placeholder = join(models.iter().map(|m| m.id), ",");
-
-    let formatted_query = format!(
-        "UPDATE models
-         SET model_group_id = ?
-         WHERE model_id IN ({ids_placeholder})"
-    );
-
-    sqlx::query(&formatted_query)
-        .bind(group_id)
-        .execute(db)
-        .await?;
+    let model_ids: Vec<i64> = models.iter().map(|m| m.id).collect();
+    let mut query_builder = QueryBuilder::new("UPDATE models SET model_group_id = ");
+    query_builder.push_bind(group_id);
+    query_builder.push(" WHERE model_id IN ");
+    push_in_i64(&mut query_builder, &model_ids);
+    query_builder.build().execute(db).await?;
 
     set_last_updated_on_groups(db, user, &old_group_ids, timestamp).await?;
 
@@ -366,10 +362,10 @@ pub async fn delete_dead_groups(db: &DbContext) -> Result<(), DbError> {
         delete_group(
             db,
             &User {
-                id: row.group_user_id.unwrap(),
+                id: row.group_user_id,
                 ..Default::default()
             },
-            row.group_id.unwrap(),
+            row.group_id,
         )
         .await?;
     }
@@ -459,19 +455,17 @@ pub async fn set_last_updated_on_groups(
     group_ids: &[i64],
     timestamp: &str,
 ) -> Result<(), DbError> {
-    let ids_placeholder = join(group_ids.iter(), ",");
+    if group_ids.is_empty() {
+        return Ok(());
+    }
 
-    let formatted_query = format!(
-        "UPDATE models_group
-         SET group_last_modified = ?
-         WHERE group_id IN ({ids_placeholder}) AND group_user_id = ?"
-    );
-
-    sqlx::query(&formatted_query)
-        .bind(timestamp)
-        .bind(user.id)
-        .execute(db)
-        .await?;
+    let mut query_builder = QueryBuilder::new("UPDATE models_group SET group_last_modified = ");
+    query_builder.push_bind(timestamp);
+    query_builder.push(" WHERE group_id IN ");
+    push_in_i64(&mut query_builder, group_ids);
+    query_builder.push(" AND group_user_id = ");
+    query_builder.push_bind(user.id);
+    query_builder.build().execute(db).await?;
 
     Ok(())
 }

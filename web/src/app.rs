@@ -13,10 +13,7 @@ use axum::{
     middleware::{self, Next},
     response::Response,
 };
-use axum_login::{
-    AuthManagerLayerBuilder,
-    tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key},
-};
+use axum_login::AuthManagerLayerBuilder;
 use axum_messages::MessagesManagerLayer;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
@@ -26,7 +23,11 @@ use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
 };
-use tower_sessions_sqlx_store::SqliteStore;
+use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
+use tower_sessions_sqlx_store::{
+    SqliteStore,
+    sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 use db::{
     db_context::{self, DbContext},
@@ -186,6 +187,23 @@ async fn update_session_middleware(
     next.run(request).await
 }
 
+async fn setup_session_store(
+    sqlite_path: &Path,
+) -> Result<SqliteStore, Box<dyn std::error::Error>> {
+    let connect_options = SqliteConnectOptions::new()
+        .filename(sqlite_path)
+        .create_if_missing(false)
+        .busy_timeout(std::time::Duration::from_secs(15));
+    let pool = SqlitePoolOptions::new()
+        .max_connections(2)
+        .connect_with(connect_options)
+        .await?;
+    let store = SqliteStore::new(pool);
+    store.migrate().await?;
+
+    Ok(store)
+}
+
 impl App {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let port = parse_port()?;
@@ -205,7 +223,6 @@ impl App {
         let sqlite_path = data_dir.join("db.sqlite");
         let sqlite_backup_dir = data_dir.join("backups");
         let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
-        let db_clone = db.clone();
 
         let web_app_state = WebAppState {
             app_state: AppState {
@@ -222,8 +239,7 @@ impl App {
             port,
         };
 
-        let session_store = SqliteStore::new(db_clone);
-        session_store.migrate().await?;
+        let session_store = setup_session_store(&sqlite_path).await?;
 
         apply_local_account_and_thumbnails(&web_app_state).await?;
 

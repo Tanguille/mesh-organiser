@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
-use itertools::{Itertools, join};
-use sqlx::Row;
+use itertools::Itertools;
+use sqlx::{QueryBuilder, Row};
 
 use crate::{
     DbError,
@@ -9,35 +9,9 @@ use crate::{
         label::{Label, LabelMeta},
         user::User,
     },
-    model_db, random_hex_32,
+    model_db, push_in_i64, random_hex_32,
     util::time_now,
 };
-
-/// Builds a batch INSERT query string for N-column values.
-/// Used to efficiently insert multiple rows in a single query.
-fn build_batch_insert_query(
-    table: &str,
-    columns: &[&str],
-    values: &[impl std::fmt::Display],
-) -> String {
-    let columns_joined = columns.join(", ");
-    let values_clause = values
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("INSERT INTO {table} ({columns_joined}) VALUES {values_clause}")
-}
-
-/// Formats a tuple of values for SQL VALUES clause.
-fn sql_tuple(values: &[impl std::fmt::Display]) -> String {
-    let inner = values
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("({inner})")
-}
 
 pub async fn get_labels_min(db: &DbContext) -> Result<Vec<LabelMeta>, DbError> {
     let rows = sqlx::query!("SELECT label_id, label_name, label_color, label_unique_global_id, label_last_modified FROM labels")
@@ -233,13 +207,16 @@ pub async fn get_unique_ids_from_label_ids(
     user: &User,
     label_ids: &[i64],
 ) -> Result<IndexMap<i64, String>, DbError> {
-    let ids_placeholder = join(label_ids.iter(), ",");
+    if label_ids.is_empty() {
+        return Ok(IndexMap::new());
+    }
 
-    let query = format!(
-        "SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ({ids_placeholder}) AND label_user_id = ?"
-    );
-
-    let rows = sqlx::query(&query).bind(user.id).fetch_all(db).await?;
+    let mut query_builder =
+        QueryBuilder::new("SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ");
+    push_in_i64(&mut query_builder, label_ids);
+    query_builder.push(" AND label_user_id = ");
+    query_builder.push_bind(user.id);
+    let rows = query_builder.build().fetch_all(db).await?;
 
     let mut id_map = IndexMap::new();
     for row in rows {
@@ -274,9 +251,16 @@ pub async fn add_labels_on_models(
 
     // Batch insert using a single query with multiple VALUES
     if !values.is_empty() {
-        let tuples: Vec<String> = values.iter().map(|(l, m)| sql_tuple(&[*l, *m])).collect();
-        let query = build_batch_insert_query("models_labels", &["label_id", "model_id"], &tuples);
-        sqlx::query(&query).execute(db).await?;
+        let mut query_builder =
+            QueryBuilder::new("INSERT INTO models_labels (label_id, model_id) ");
+        query_builder.push_values(
+            values.iter().copied(),
+            |mut builder, (label_id, model_id)| {
+                builder.push_bind(label_id);
+                builder.push_bind(model_id);
+            },
+        );
+        query_builder.build().execute(db).await?;
     }
 
     // Batch update timestamps
@@ -305,14 +289,11 @@ pub async fn remove_labels_from_models(
         return Err(DbError::RowNotFound);
     }
 
-    let joined_labels = join(label_ids.iter(), ",");
-    let joined_models = join(model_ids.iter(), ",");
-
-    let formatted_query = format!(
-        "DELETE FROM models_labels WHERE label_id IN ({joined_labels}) AND model_id IN ({joined_models})"
-    );
-
-    sqlx::query(&formatted_query).execute(db).await?;
+    let mut query_builder = QueryBuilder::new("DELETE FROM models_labels WHERE label_id IN ");
+    push_in_i64(&mut query_builder, label_ids);
+    query_builder.push(" AND model_id IN ");
+    push_in_i64(&mut query_builder, model_ids);
+    query_builder.build().execute(db).await?;
 
     set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&time_now()))
         .await?;
@@ -332,11 +313,10 @@ pub async fn remove_all_labels_from_models(
         return Err(DbError::RowNotFound);
     }
 
-    let joined_models = join(models.iter().map(|f| f.id), ",");
-
-    let formatted_query = format!("DELETE FROM models_labels WHERE model_id IN ({joined_models})");
-
-    sqlx::query(&formatted_query).execute(db).await?;
+    let model_ids: Vec<i64> = models.iter().map(|model| model.id).collect();
+    let mut query_builder = QueryBuilder::new("DELETE FROM models_labels WHERE model_id IN ");
+    push_in_i64(&mut query_builder, &model_ids);
+    query_builder.build().execute(db).await?;
 
     let label_ids: Vec<i64> = models
         .iter()
@@ -459,16 +439,13 @@ pub async fn add_childs_to_label(
 
     // Batch insert using a single query with multiple VALUES
     if !child_label_ids.is_empty() {
-        let tuples: Vec<String> = child_label_ids
-            .iter()
-            .map(|child_id| sql_tuple(&[parent_label_id, *child_id]))
-            .collect();
-        let query = build_batch_insert_query(
-            "labels_labels",
-            &["parent_label_id", "child_label_id"],
-            &tuples,
-        );
-        sqlx::query(&query).execute(db).await?;
+        let mut query_builder =
+            QueryBuilder::new("INSERT INTO labels_labels (parent_label_id, child_label_id) ");
+        query_builder.push_values(child_label_ids.iter().copied(), |mut builder, child_id| {
+            builder.push_bind(parent_label_id);
+            builder.push_bind(child_id);
+        });
+        query_builder.build().execute(db).await?;
     }
 
     set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
@@ -494,15 +471,12 @@ pub async fn remove_childs_from_label(
 
     // Batch delete using IN clause
     if !child_label_ids.is_empty() {
-        let child_ids_placeholder = join(child_label_ids.iter(), ",");
-        let query = format!(
-            "DELETE FROM labels_labels WHERE parent_label_id = ? AND child_label_id IN ({child_ids_placeholder})"
-        );
-
-        sqlx::query(&query)
-            .bind(parent_label_id)
-            .execute(db)
-            .await?;
+        let mut query_builder =
+            QueryBuilder::new("DELETE FROM labels_labels WHERE parent_label_id = ");
+        query_builder.push_bind(parent_label_id);
+        query_builder.push(" AND child_label_id IN ");
+        push_in_i64(&mut query_builder, &child_label_ids);
+        query_builder.build().execute(db).await?;
     }
 
     set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
@@ -555,17 +529,17 @@ pub async fn set_last_updated_on_labels(
     label_ids: &[i64],
     timestamp: &str,
 ) -> Result<(), DbError> {
-    let ids_placeholder = join(label_ids.iter(), ",");
+    if label_ids.is_empty() {
+        return Ok(());
+    }
 
-    let query = format!(
-        "UPDATE labels SET label_last_modified = ? WHERE label_id IN ({ids_placeholder}) AND label_user_id = ?"
-    );
-
-    sqlx::query(&query)
-        .bind(timestamp)
-        .bind(user.id)
-        .execute(db)
-        .await?;
+    let mut query_builder = QueryBuilder::new("UPDATE labels SET label_last_modified = ");
+    query_builder.push_bind(timestamp);
+    query_builder.push(" WHERE label_id IN ");
+    push_in_i64(&mut query_builder, label_ids);
+    query_builder.push(" AND label_user_id = ");
+    query_builder.push_bind(user.id);
+    query_builder.build().execute(db).await?;
 
     Ok(())
 }
