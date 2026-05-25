@@ -1,8 +1,6 @@
 //! Integration tests for dynamic SQL query paths (IN clauses, batch inserts).
 
-use db::{
-    blob_db, db_context, group_db, label_db, model::user::User, model_db,
-};
+use db::{blob_db, db_context, group_db, label_db, model::user::User, model_db};
 use tempfile::tempdir;
 
 async fn test_db() -> (tempfile::TempDir, db_context::DbContext) {
@@ -54,7 +52,9 @@ async fn get_models_via_ids_empty_input_returns_empty_even_when_models_exist() {
         .await
         .unwrap();
 
-    let models = model_db::get_models_via_ids(&db, &user, vec![]).await.unwrap();
+    let models = model_db::get_models_via_ids(&db, &user, vec![])
+        .await
+        .unwrap();
 
     assert!(models.is_empty());
 }
@@ -131,7 +131,9 @@ async fn delete_models_removes_only_requested_ids() {
         .await
         .unwrap();
 
-    model_db::delete_models(&db, &user, &[first_id]).await.unwrap();
+    model_db::delete_models(&db, &user, &[first_id])
+        .await
+        .unwrap();
 
     let remaining = model_db::get_models_via_ids(&db, &user, vec![first_id, second_id])
         .await

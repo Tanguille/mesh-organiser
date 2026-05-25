@@ -15,8 +15,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64,
-    random_hex_32, resource_db,
+    push_in_i64, random_hex_32, resource_db,
     util::time_now,
 };
 
@@ -460,9 +459,7 @@ pub async fn set_last_updated_on_groups(
         return Ok(());
     }
 
-    let mut query_builder = QueryBuilder::new(
-        "UPDATE models_group SET group_last_modified = ",
-    );
+    let mut query_builder = QueryBuilder::new("UPDATE models_group SET group_last_modified = ");
     query_builder.push_bind(timestamp);
     query_builder.push(" WHERE group_id IN ");
     push_in_i64(&mut query_builder, group_ids);

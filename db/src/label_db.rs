@@ -211,9 +211,8 @@ pub async fn get_unique_ids_from_label_ids(
         return Ok(IndexMap::new());
     }
 
-    let mut query_builder = QueryBuilder::new(
-        "SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ",
-    );
+    let mut query_builder =
+        QueryBuilder::new("SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ");
     push_in_i64(&mut query_builder, label_ids);
     query_builder.push(" AND label_user_id = ");
     query_builder.push_bind(user.id);
@@ -254,10 +253,13 @@ pub async fn add_labels_on_models(
     if !values.is_empty() {
         let mut query_builder =
             QueryBuilder::new("INSERT INTO models_labels (label_id, model_id) ");
-        query_builder.push_values(values.iter().copied(), |mut builder, (label_id, model_id)| {
-            builder.push_bind(label_id);
-            builder.push_bind(model_id);
-        });
+        query_builder.push_values(
+            values.iter().copied(),
+            |mut builder, (label_id, model_id)| {
+                builder.push_bind(label_id);
+                builder.push_bind(model_id);
+            },
+        );
         query_builder.build().execute(db).await?;
     }
 
@@ -469,9 +471,8 @@ pub async fn remove_childs_from_label(
 
     // Batch delete using IN clause
     if !child_label_ids.is_empty() {
-        let mut query_builder = QueryBuilder::new(
-            "DELETE FROM labels_labels WHERE parent_label_id = ",
-        );
+        let mut query_builder =
+            QueryBuilder::new("DELETE FROM labels_labels WHERE parent_label_id = ");
         query_builder.push_bind(parent_label_id);
         query_builder.push(" AND child_label_id IN ");
         push_in_i64(&mut query_builder, &child_label_ids);

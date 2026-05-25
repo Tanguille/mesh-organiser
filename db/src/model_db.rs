@@ -132,10 +132,7 @@ pub async fn get_models(
     query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));
 
     #[cfg(debug_assertions)]
-    println!(
-        "Generated SQL Query: {}",
-        query_builder.sql().as_str()
-    );
+    println!("Generated SQL Query: {}", query_builder.sql().as_str());
 
     let query = query_builder.build();
     let rows = query.fetch_all(db).await?;
@@ -315,9 +312,7 @@ pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(
         return Ok(());
     }
 
-    let mut query_builder = QueryBuilder::new(
-        "DELETE FROM models WHERE model_user_id = ",
-    );
+    let mut query_builder = QueryBuilder::new("DELETE FROM models WHERE model_user_id = ");
     query_builder.push_bind(user.id);
     query_builder.push(" AND model_id IN ");
     push_in_i64(&mut query_builder, ids);
@@ -345,9 +340,8 @@ pub async fn get_unique_ids_from_model_ids(
         return Ok(IndexMap::new());
     }
 
-    let mut query_builder = QueryBuilder::new(
-        "SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ",
-    );
+    let mut query_builder =
+        QueryBuilder::new("SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ");
     push_in_i64(&mut query_builder, &model_ids);
     let rows = query_builder.build().fetch_all(db).await?;
 
