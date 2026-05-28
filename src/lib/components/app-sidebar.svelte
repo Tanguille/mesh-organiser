@@ -18,7 +18,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import ImportProgressIndicator from "$lib/components/view/tauri-import-progress-indicator.svelte";
 
-  import { resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "$lib/paths";
   import { page } from "$app/state";
   import { getContainer } from "$lib/api/dependency_injection";
   import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
@@ -51,9 +51,7 @@
   }
 
   const current_url = $derived(page.url.pathname);
-  const thisLabelOnly = $derived.by(() => {
-    return page.url.searchParams.get("thisLabelOnly") === "true";
-  });
+  const thisLabelOnly = $derived.by(getThisLabelOnly);
   const currentUrlChild = $derived.by(() => {
     if (!current_url.startsWith("/label/")) {
       return null;

@@ -92,11 +92,7 @@ mod post {
 
         import_state.set_emitter(Box::new(WebImportStateEmitter {}));
 
-        let model_ids: Vec<i64> = import_state
-            .imported_models
-            .iter()
-            .flat_map(|f| f.model_ids.iter().copied())
-            .collect();
+        let model_ids = import_state.all_model_ids();
 
         let models =
             model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await?;

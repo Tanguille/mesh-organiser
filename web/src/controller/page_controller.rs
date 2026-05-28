@@ -7,9 +7,10 @@ use axum::{
 use tokio::fs;
 use tower_http::services::ServeFile;
 
-use db::{share_db, user_db};
-
-use crate::{error::ApplicationError, web_app_state::WebAppState};
+use crate::{
+    controller::share_controller::resolve_share_owner, error::ApplicationError,
+    web_app_state::WebAppState,
+};
 
 pub fn router() -> Router<WebAppState> {
     let index = ServeFile::new("www/index.html");
@@ -39,12 +40,7 @@ async fn serve_share_page(
 ) -> Result<Html<String>, ApplicationError> {
     let mut html = fs::read_to_string("www/group/1.html").await?;
 
-    let Ok(share) = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await else {
-        return Ok(Html(html));
-    };
-
-    let Ok(Some(user)) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await
-    else {
+    let Ok((share, user)) = resolve_share_owner(&app_state, &share_id).await else {
         return Ok(Html(html));
     };
 

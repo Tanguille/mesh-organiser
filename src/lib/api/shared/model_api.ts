@@ -116,19 +116,20 @@ export async function* modelStream(
   let page = 1;
   let prefetchNextTask: Promise<Model[]> | null = null;
 
+  const fetchPage = (pageNumber: number) =>
+    modelApi.getModels(
+      modelIds,
+      groupIds,
+      labelIds,
+      orderBy,
+      textSearch,
+      pageNumber,
+      pageSize,
+      flags,
+    );
+
   while (true) {
-    if (prefetchNextTask === null) {
-      prefetchNextTask = modelApi.getModels(
-        modelIds,
-        groupIds,
-        labelIds,
-        orderBy,
-        textSearch,
-        page,
-        pageSize,
-        flags,
-      );
-    }
+    prefetchNextTask ??= fetchPage(page);
 
     const models = await prefetchNextTask;
     if (models.length === 0) {
@@ -136,16 +137,7 @@ export async function* modelStream(
     }
 
     page += 1;
-    prefetchNextTask = modelApi.getModels(
-      modelIds,
-      groupIds,
-      labelIds,
-      orderBy,
-      textSearch,
-      page,
-      pageSize,
-      flags,
-    );
+    prefetchNextTask = fetchPage(page);
 
     yield models;
   }

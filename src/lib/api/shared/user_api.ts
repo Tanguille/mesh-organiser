@@ -57,6 +57,25 @@ export function createUserInstance(
   };
 }
 
+// Builds a freshly-created User from the id/username/email returned by addUser,
+// with empty permissions and sync fields, shared across backends.
+export function newlyCreatedUser(
+  id: number,
+  username: string,
+  email: string,
+): User {
+  return createUserInstance(
+    id,
+    username,
+    email,
+    new Date().toISOString(),
+    [],
+    null,
+    null,
+    null,
+  );
+}
+
 export function permissionsToStringArray(
   permissions: UserPermissions,
 ): string[] {

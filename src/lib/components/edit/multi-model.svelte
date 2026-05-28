@@ -9,7 +9,7 @@
   import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label";
   import LabelSelect from "$lib/components/view/label-select.svelte";
-  import { countWriter } from "$lib/utils";
+  import { countWriter, uniqueById } from "$lib/utils";
 
   import { goto } from "$app/navigation";
   import { resolve } from "$lib/paths";
@@ -58,22 +58,14 @@
   const printed = $derived(models.every((x) => x.flags.printed));
   const favorited = $derived(models.every((x) => x.flags.favorite));
   const allModelGroups = $derived(
-    models
-      .map((x) => x.group)
-      .filter((g) => !!g)
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i),
+    uniqueById(models.map((x) => x.group).filter((g) => !!g)),
   );
   const availableGroups = $derived(
     allModelGroups.filter((g) => !models.every((x) => x.group?.id === g.id)),
   );
 
   let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
-  let appliedLabels = $derived(
-    models
-      .map((x) => x.labels)
-      .flat()
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i),
-  );
+  let appliedLabels = $derived(uniqueById(models.map((x) => x.labels).flat()));
 
   const modelApi = getContainer().require<IModelApi>(IModelApi);
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);

@@ -2,13 +2,10 @@ use std::path::Path;
 
 use vek::Vec3;
 
-use crate::{error::MeshThumbnailError, mesh::Mesh};
+use crate::{error::MeshThumbnailError, mesh::Mesh, path_ext::matches_ext};
 
 pub fn handle_threemf(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
-    if path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("3mf"))
-    {
+    if matches_ext(path, "3mf") {
         Ok(Some(parse_3mf(path)?))
     } else {
         Ok(None)
@@ -51,7 +48,6 @@ fn parse_3mf(path: &Path) -> Result<Mesh, MeshThumbnailError> {
                 u32::try_from(a.v2).unwrap_or(0),
                 u32::try_from(a.v3).unwrap_or(0),
             ]
-            .into_iter()
         })
         .collect();
 

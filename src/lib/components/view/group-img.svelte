@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Model } from "$lib/api/shared/model_api";
   import { configuration } from "$lib/configuration.svelte";
+  import { representativeModel } from "$lib/utils";
   import ModelImg from "./model-img.svelte";
   import type { ClassValue } from "svelte/elements";
 
@@ -9,12 +10,7 @@
 
 <div class={props.class}>
   {#if configuration.only_show_single_image_in_groups}
-    <ModelImg
-      model={Array.from(props.model).sort(
-        (a, b) => b.blob.size - a.blob.size,
-      )[0]}
-      class="h-full w-full"
-    />
+    <ModelImg model={representativeModel(props.model)} class="h-full w-full" />
   {:else if props.model.length <= 1}
     <ModelImg model={props.model[0]} class="h-full w-full" />
   {:else if props.model.length <= 2}

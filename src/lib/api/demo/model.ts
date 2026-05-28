@@ -7,6 +7,19 @@ import {
 import { mockModels, modelGroupMap, modelLabelsMap } from "./mock_data";
 
 export class DemoModelApi implements IModelApi {
+  private filterByFlags(models: Model[], flags: ModelFlags | null): Model[] {
+    if (flags) {
+      if (flags.printed !== undefined) {
+        models = models.filter((m) => m.flags.printed === flags.printed);
+      }
+      if (flags.favorite !== undefined) {
+        models = models.filter((m) => m.flags.favorite === flags.favorite);
+      }
+    }
+
+    return models;
+  }
+
   async getModels(
     model_ids: number[] | null,
     group_ids: number[] | null,
@@ -51,14 +64,7 @@ export class DemoModelApi implements IModelApi {
     }
 
     // Filter by flags
-    if (flags) {
-      if (flags.printed !== undefined) {
-        models = models.filter((m) => m.flags.printed === flags.printed);
-      }
-      if (flags.favorite !== undefined) {
-        models = models.filter((m) => m.flags.favorite === flags.favorite);
-      }
-    }
+    models = this.filterByFlags(models, flags);
 
     // Sort models
     models.sort((a, b) => {
@@ -114,16 +120,7 @@ export class DemoModelApi implements IModelApi {
   }
 
   async getModelCount(flags: ModelFlags | null): Promise<number> {
-    let models = Array.from(mockModels.values());
-
-    if (flags) {
-      if (flags.printed !== undefined) {
-        models = models.filter((m) => m.flags.printed === flags.printed);
-      }
-      if (flags.favorite !== undefined) {
-        models = models.filter((m) => m.flags.favorite === flags.favorite);
-      }
-    }
+    const models = this.filterByFlags(Array.from(mockModels.values()), flags);
 
     return models.length;
   }

@@ -14,6 +14,29 @@ export class ServerRequestApi implements IServerRequestApi {
     this.fetch = fetchImpl;
   }
 
+  private async throwIfNotOk(
+    response: Response,
+    endpoint: string,
+  ): Promise<void> {
+    if (!response.ok) {
+      let obj = null;
+      try {
+        obj = await response.json();
+        console.log(obj);
+      } catch {
+        // Intentionally ignore JSON parse errors
+      }
+
+      if (obj) {
+        throw new Error(obj);
+      } else {
+        throw new Error(
+          `Request to ${endpoint} failed with status ${response.status}: ${response.statusText}`,
+        );
+      }
+    }
+  }
+
   async request<T>(
     endpoint: string,
     method: HttpMethod,
@@ -45,23 +68,7 @@ export class ServerRequestApi implements IServerRequestApi {
 
     const response = await this.fetch(url, options);
 
-    if (!response.ok) {
-      let obj = null;
-      try {
-        obj = await response.json();
-        console.log(obj);
-      } catch {
-        // Intentionally ignore JSON parse errors
-      }
-
-      if (obj) {
-        throw new Error(obj);
-      } else {
-        throw new Error(
-          `Request to ${endpoint} failed with status ${response.status}: ${response.statusText}`,
-        );
-      }
-    }
+    await this.throwIfNotOk(response, endpoint);
 
     if (response.body == null || response.status === 204) {
       return {} as T;
@@ -90,23 +97,7 @@ export class ServerRequestApi implements IServerRequestApi {
 
     const response = await this.fetch(url, options);
 
-    if (!response.ok) {
-      let obj = null;
-      try {
-        obj = await response.json();
-        console.log(obj);
-      } catch {
-        // Intentionally ignore JSON parse errors
-      }
-
-      if (obj) {
-        throw new Error(obj);
-      } else {
-        throw new Error(
-          `Request to ${endpoint} failed with status ${response.status}: ${response.statusText}`,
-        );
-      }
-    }
+    await this.throwIfNotOk(response, endpoint);
 
     const arrayBuffer = await response.arrayBuffer();
     return new Uint8Array(arrayBuffer);
@@ -135,23 +126,7 @@ export class ServerRequestApi implements IServerRequestApi {
       credentials: "same-origin",
     });
 
-    if (!response.ok) {
-      let obj = null;
-      try {
-        obj = await response.json();
-        console.log(obj);
-      } catch {
-        // Intentionally ignore JSON parse errors
-      }
-
-      if (obj) {
-        throw new Error(obj);
-      } else {
-        throw new Error(
-          `Request to ${endpoint} failed with status ${response.status}: ${response.statusText}`,
-        );
-      }
-    }
+    await this.throwIfNotOk(response, endpoint);
 
     if (response.body == null || response.status === 204) {
       return {} as T;

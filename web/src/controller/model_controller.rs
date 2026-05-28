@@ -91,21 +91,9 @@ mod get {
             &app_state.app_state.db,
             user,
             ModelFilterOptions {
-                model_ids: if params.model_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.model_ids)
-                },
-                group_ids: if params.group_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.group_ids)
-                },
-                label_ids: if params.label_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.label_ids)
-                },
+                model_ids: query_bounds::none_if_empty(params.model_ids),
+                group_ids: query_bounds::none_if_empty(params.group_ids),
+                label_ids: query_bounds::none_if_empty(params.label_ids),
                 order_by: params
                     .order_by
                     .as_deref()

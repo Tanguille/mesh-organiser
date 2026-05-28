@@ -4,7 +4,7 @@ use crate::{
     DbError,
     db_context::DbContext,
     model::{share::Share, user::User},
-    model_db, random_hex_32, time_now,
+    model_db, parse_concat_ids, random_hex_32, time_now,
 };
 
 pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbError> {
@@ -22,11 +22,9 @@ pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbErr
     Ok(shares
         .into_iter()
         .map(|share| {
-            let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids| {
-                ids.split(',')
-                    .filter_map(|s| s.parse::<i64>().ok())
-                    .collect()
-            });
+            let model_ids: Vec<i64> = share
+                .share_model_ids
+                .map_or_else(Vec::new, |ids| parse_concat_ids(&ids));
 
             Share {
                 id: share.share_id,
@@ -50,11 +48,9 @@ pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, D
         .fetch_one(db)
         .await?;
 
-    let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids| {
-        ids.split(',')
-            .filter_map(|s| s.parse::<i64>().ok())
-            .collect()
-    });
+    let model_ids: Vec<i64> = share
+        .share_model_ids
+        .map_or_else(Vec::new, |ids| parse_concat_ids(&ids));
 
     Ok(Share {
         id: share.share_id,

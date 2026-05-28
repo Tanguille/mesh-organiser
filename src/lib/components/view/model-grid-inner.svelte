@@ -7,7 +7,10 @@
   import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
   import DragSelectedModels from "./drag-selected-models.svelte";
   import type { Model } from "$lib/api/shared/model_api";
-  import type { SizeOptionModels } from "$lib/api/shared/settings_api";
+  import {
+    SizeOptionClasses,
+    type SizeOptionModels,
+  } from "$lib/api/shared/settings_api";
   import { configuration } from "$lib/configuration.svelte";
   import { handleGridItemKeyDown } from "$lib/utils";
 
@@ -33,22 +36,9 @@
 
   const interval = setInterval(handleScroll, 1000);
   const selectedSet = $derived(new Set(value.map((x) => x.id)));
-  /*
-    let destroyStateChangeListener: UnlistenFn | null = null;
 
-    onMount(async () => {
-        destroyStateChangeListener = await listen<void>("state-change", (_) => {
-            value = data.entries.filter(x => value.some(y => y.id === x.id));
-            console.log("Filtered out deleted models");
-        });
-    });
-*/
-
-  onDestroy(async () => {
+  onDestroy(() => {
     clearInterval(interval);
-
-    //if (destroyStateChangeListener)
-    //    destroyStateChangeListener();
   });
 
   function handleScroll() {
@@ -133,16 +123,7 @@
     );
   }
 
-  const sizes = {
-    Grid_Small: "w-32 text-sm",
-    Grid_Medium: "w-40",
-    Grid_Large: "w-60",
-    List_Small: "h-10 text-sm hidden-if-small",
-    List_Medium: "h-14",
-    List_Large: "h-20 text-lg",
-  };
-
-  const sizeClasses = $derived(sizes[itemSize]);
+  const sizeClasses = $derived(SizeOptionClasses[itemSize]);
 </script>
 
 <div

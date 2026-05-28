@@ -37,9 +37,6 @@
       if (dragType === "label" && dragParam) {
         const labelId = parseInt(dragParam);
         if (!isNaN(labelId)) {
-          console.log(
-            `Dropped ${dragState.dragging_models.length} models on label ${labelId}`,
-          );
           addModelsToLabelId(labelId);
         }
       }

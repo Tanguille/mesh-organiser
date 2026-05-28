@@ -11,7 +11,7 @@ use crate::{
         model_group::ModelGroupMeta, user::User,
     },
     push_in_i64,
-    util::{random_hex_32, time_now},
+    util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
 };
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
@@ -131,9 +131,6 @@ pub async fn get_models(
 
     query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));
 
-    #[cfg(debug_assertions)]
-    println!("Generated SQL Query: {}", query_builder.sql().as_str());
-
     let query = query_builder.build();
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
@@ -170,11 +167,7 @@ pub async fn get_models(
             labels: row
                 .get::<Option<String>, _>("label_ids")
                 .map_or_else(Vec::new, |label_ids| {
-                    let label_ids = label_ids
-                        .split(',')
-                        .filter_map(|s| s.parse::<i64>().ok())
-                        .collect::<Vec<i64>>();
-                    label_ids
+                    parse_concat_ids(&label_ids)
                         .iter()
                         .filter_map(|id| min_labels_map.get(id).cloned())
                         .collect()
@@ -277,11 +270,7 @@ pub async fn edit_model_global_id(
     id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE models SET model_unique_global_id = ? WHERE model_id = ? AND model_user_id = ?",

@@ -1,8 +1,4 @@
-use std::{
-    panic,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{panic, path::PathBuf, sync::Arc};
 
 use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
 use futures::future::try_join_all;
@@ -21,13 +17,6 @@ use service::{
     import_state::{ImportState, ImportStatus},
 };
 
-async fn download_file(url: &str, dir: &Path) -> Result<PathBuf, ApplicationError> {
-    let result = download_file_service::download_file_to(url, dir)
-        .await
-        .map_err(ApplicationError::from)?;
-    Ok(PathBuf::from(result.path))
-}
-
 async fn download_files_to_temp_dir(
     sha256s: Vec<String>,
     base_url: &str,
@@ -45,9 +34,14 @@ async fn download_files_to_temp_dir(
         .collect();
     let download_futures: Vec<_> = urls
         .iter()
-        .map(|url| download_file(url, &temp_dir))
+        .map(|url| download_file_service::download_file_to(url, &temp_dir))
         .collect();
-    let paths = try_join_all(download_futures).await?;
+    let results = try_join_all(download_futures).await?;
+    let paths = results
+        .into_iter()
+        .map(|result| PathBuf::from(result.path))
+        .collect();
+
     Ok((temp_dir, paths))
 }
 

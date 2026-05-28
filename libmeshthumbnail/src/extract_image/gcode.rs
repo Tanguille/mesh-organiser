@@ -8,23 +8,15 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use image::{DynamicImage, ImageReader};
 use zip::ZipArchive;
 
-use crate::error::MeshThumbnailError;
+use crate::{
+    error::MeshThumbnailError,
+    path_ext::{is_zip_of, matches_ext},
+};
 
 pub fn handle_gcode(input_path: &Path) -> Result<Option<DynamicImage>, MeshThumbnailError> {
-    let is_gcode = input_path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"));
-    let is_gcode_zip = input_path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-        && input_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .is_some_and(|s| s.to_lowercase().ends_with(".gcode"));
-
-    if is_gcode {
+    if matches_ext(input_path, "gcode") {
         Ok(Some(extract_image_from_gcode_file(input_path)?))
-    } else if is_gcode_zip {
+    } else if is_zip_of(input_path, "gcode") {
         Ok(Some(extract_image_from_gcode_zip(input_path)?))
     } else {
         Ok(None)
@@ -112,9 +104,7 @@ where
         }
     }
 
-    gcode_images.sort_by_key(|b| std::cmp::Reverse(b.area()));
-
-    let Some(largest_image) = gcode_images.first() else {
+    let Some(largest_image) = gcode_images.into_iter().max_by_key(GcodeImage::area) else {
         return Err(MeshThumbnailError::InternalError(String::from(
             "No thumbnail found in gcode file",
         )));

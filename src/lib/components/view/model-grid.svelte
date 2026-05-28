@@ -12,7 +12,7 @@
   import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
   import { configuration } from "$lib/configuration.svelte";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
-  import { debounce } from "$lib/utils";
+  import { debounce, wait } from "$lib/utils";
   import { untrack } from "svelte";
   import Button from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -62,7 +62,7 @@
 
   async function resetModelSet() {
     while (busyLoadingNext) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await wait(50);
     }
 
     loadedModels = [];

@@ -67,6 +67,32 @@ export enum GroupOrderBy {
   ModifiedDesc = "ModifiedDesc",
 }
 
+// Builds the shared getGroups request body used by both the web and
+// web-share group endpoints (they differ only in the endpoint path). The
+// model_ids_str field is a hack to bypass the request uri becoming too large.
+export function buildGetGroupsQuery(
+  model_ids: number[] | null,
+  group_ids: number[] | null,
+  label_ids: number[] | null,
+  order_by: GroupOrderBy,
+  text_search: string | null,
+  page: number,
+  page_size: number,
+  include_ungrouped_models: boolean,
+) {
+  return {
+    // Hack to bypass request uri becoming too large
+    model_ids_str: model_ids?.join(","),
+    group_ids: group_ids,
+    label_ids: label_ids,
+    order_by: order_by,
+    text_search: text_search,
+    page: page,
+    page_size: page_size,
+    include_ungrouped_models: include_ungrouped_models,
+  };
+}
+
 export const IGroupApi = Symbol("IGroupApi");
 
 export interface IGroupApi {
@@ -104,19 +130,20 @@ export async function* groupStream(
   let page = 1;
   let prefetchNextTask: Promise<Group[]> | null = null;
 
+  const fetchPage = (pageNumber: number) =>
+    groupApi.getGroups(
+      null,
+      groupIds,
+      labelIds,
+      orderBy,
+      textSearch,
+      pageNumber,
+      pageSize,
+      includeUngroupedModels,
+    );
+
   while (true) {
-    if (prefetchNextTask === null) {
-      prefetchNextTask = groupApi.getGroups(
-        null,
-        groupIds,
-        labelIds,
-        orderBy,
-        textSearch,
-        page,
-        pageSize,
-        includeUngroupedModels,
-      );
-    }
+    prefetchNextTask ??= fetchPage(page);
 
     const groups = await prefetchNextTask;
     if (groups.length === 0) {
@@ -124,16 +151,7 @@ export async function* groupStream(
     }
 
     page += 1;
-    prefetchNextTask = groupApi.getGroups(
-      null,
-      groupIds,
-      labelIds,
-      orderBy,
-      textSearch,
-      page,
-      pageSize,
-      includeUngroupedModels,
-    );
+    prefetchNextTask = fetchPage(page);
 
     yield groups;
   }

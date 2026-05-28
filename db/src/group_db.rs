@@ -16,7 +16,7 @@ use crate::{
     },
     model_db::{self, ModelFilterOptions},
     push_in_i64, random_hex_32, resource_db,
-    util::time_now,
+    util::{time_now, validate_global_id},
 };
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
@@ -181,7 +181,7 @@ pub async fn get_groups(
 
     // Enforce pagination limits to prevent memory exhaustion
     let page_size = options.page_size.min(MAX_PAGE_SIZE);
-    let offset = ((options.page - 1) * page_size) as usize;
+    let offset = (options.page.saturating_sub(1) * page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups
@@ -320,11 +320,7 @@ pub async fn edit_group_global_id(
     group_id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE models_group SET group_unique_global_id = ? WHERE group_id = ? AND group_user_id = ?",
@@ -378,29 +374,31 @@ pub async fn get_group_count(
     user: &User,
     include_ungrouped_models: bool,
 ) -> Result<usize, DbError> {
-    let mut group_count = 0;
-
-    let group_query = sqlx::query!(
+    let base: usize = sqlx::query!(
         "SELECT COUNT(DISTINCT model_group_id) as count FROM models WHERE model_user_id = ?",
         user.id
     )
     .fetch_one(db)
-    .await?;
+    .await?
+    .count
+    .try_into()
+    .unwrap_or(0);
 
-    group_count += group_query.count.try_into().unwrap_or(0);
-
-    if include_ungrouped_models {
-        let ungrouped_query = sqlx::query!(
+    let ungrouped: usize = if include_ungrouped_models {
+        sqlx::query!(
             "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND model_group_id IS NULL",
             user.id
         )
         .fetch_one(db)
-        .await?;
+        .await?
+        .count
+        .try_into()
+        .unwrap_or(0)
+    } else {
+        0
+    };
 
-        group_count += ungrouped_query.count.try_into().unwrap_or(0);
-    }
-
-    Ok(group_count)
+    Ok(base + ungrouped)
 }
 
 pub async fn get_group_via_id(

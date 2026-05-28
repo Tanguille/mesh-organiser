@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use sqlx::QueryBuilder;
 
 use crate::{
     DbError,
@@ -74,14 +75,15 @@ pub async fn set_keywords_for_label(
     .execute(db)
     .await?;
 
-    for keyword in keywords {
-        sqlx::query!(
-            "INSERT INTO label_keywords (keyword_name, keyword_label_id) VALUES (?, ?)",
-            keyword,
-            label_id
-        )
-        .execute(db)
-        .await?;
+    // Batch insert using a single query with multiple VALUES
+    if !keywords.is_empty() {
+        let mut query_builder =
+            QueryBuilder::new("INSERT INTO label_keywords (keyword_name, keyword_label_id) ");
+        query_builder.push_values(keywords.iter(), |mut builder, keyword| {
+            builder.push_bind(keyword);
+            builder.push_bind(label_id);
+        });
+        query_builder.build().execute(db).await?;
     }
 
     set_last_updated_on_label(db, user, label_id, timestamp).await?;

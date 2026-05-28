@@ -19,7 +19,7 @@ mod util;
 
 pub(crate) use query_util::push_in_i64;
 
-pub use util::{random_hex_32, time_now};
+pub use util::{parse_concat_ids, random_hex_32, time_now, validate_global_id};
 
 pub type DbError = sqlx::Error;
 

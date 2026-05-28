@@ -20,15 +20,7 @@ pub use base::*;
 ///
 /// Returns an error if paths are empty or spawning the process fails.
 pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-    if paths.is_empty() {
-        return Err(ServiceError::InternalError(String::from(
-            "No models to open",
-        )));
-    }
-
-    Command::new(program).args(paths).spawn()?;
-
-    Ok(())
+    open_with_args_and_paths(program, &[], paths)
 }
 
 /// Opens the user-configured custom slicer with the given paths.
@@ -135,13 +127,9 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
 
     // Now determine where the executable ends and arguments begin
     // Look for the first argument that starts with '-' or '/'
-    let mut first_flag_index = None;
-    for (i, arg) in args.iter().enumerate() {
-        if arg.starts_with('-') || arg.starts_with('/') {
-            first_flag_index = Some(i);
-            break;
-        }
-    }
+    let first_flag_index = args
+        .iter()
+        .position(|arg| arg.starts_with('-') || arg.starts_with('/'));
 
     if let Some(flag_index) = first_flag_index {
         let executable = args[..flag_index].join(" ");

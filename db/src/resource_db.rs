@@ -9,7 +9,7 @@ use crate::{
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    random_hex_32, time_now,
+    random_hex_32, time_now, validate_global_id,
 };
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
@@ -26,15 +26,14 @@ pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMe
     let mut resources: Vec<ResourceMeta> = Vec::with_capacity(rows.len());
 
     for row in rows {
-        resources.push(ResourceMeta {
-            id: row.resource_id,
-            name: row.resource_name,
-            flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
-                .unwrap_or(ResourceFlags::empty()),
-            created: row.resource_created,
-            unique_global_id: row.resource_unique_global_id,
-            last_modified: row.resource_last_modified,
-        });
+        resources.push(ResourceMeta::from_parts(
+            row.resource_id,
+            row.resource_name,
+            row.resource_flags,
+            row.resource_created,
+            row.resource_unique_global_id,
+            row.resource_last_modified,
+        ));
     }
 
     Ok(resources)
@@ -88,15 +87,14 @@ pub async fn get_group_id_to_resource_map(
     for row in rows {
         map.insert(
             row.group_id,
-            ResourceMeta {
-                id: row.resource_id,
-                name: row.resource_name,
-                flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
-                    .unwrap_or(ResourceFlags::empty()),
-                created: row.resource_created,
-                unique_global_id: row.resource_unique_global_id,
-                last_modified: row.resource_last_modified,
-            },
+            ResourceMeta::from_parts(
+                row.resource_id,
+                row.resource_name,
+                row.resource_flags,
+                row.resource_created,
+                row.resource_unique_global_id,
+                row.resource_last_modified,
+            ),
         );
     }
 
@@ -119,15 +117,14 @@ pub async fn get_resource_meta_by_id(
     .await;
 
     match row {
-        Ok(row) => Ok(Some(ResourceMeta {
-            id: row.resource_id,
-            name: row.resource_name,
-            flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
-                .unwrap_or(ResourceFlags::empty()),
-            created: row.resource_created,
-            unique_global_id: row.resource_unique_global_id,
-            last_modified: row.resource_last_modified,
-        })),
+        Ok(row) => Ok(Some(ResourceMeta::from_parts(
+            row.resource_id,
+            row.resource_name,
+            row.resource_flags,
+            row.resource_created,
+            row.resource_unique_global_id,
+            row.resource_last_modified,
+        ))),
         Err(DbError::RowNotFound) => Ok(None),
         Err(e) => Err(e),
     }
@@ -218,11 +215,7 @@ pub async fn edit_resource_global_id(
     resource_id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE resources SET resource_unique_global_id = ? WHERE resource_id = ? AND resource_user_id = ?",

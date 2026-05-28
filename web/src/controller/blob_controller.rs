@@ -80,17 +80,10 @@ mod get {
     }
 
     async fn extract_user_via_share_id(app_state: &WebAppState, share_id: &str) -> Option<User> {
-        let Ok(share) = db::share_db::get_share_via_id(&app_state.app_state.db, share_id).await
-        else {
-            return None;
-        };
-
-        let Ok(Some(user)) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await
-        else {
-            return None;
-        };
-
-        Some(user)
+        crate::controller::share_controller::resolve_share_owner(app_state, share_id)
+            .await
+            .ok()
+            .map(|(_share, user)| user)
     }
 
     pub async fn download_model(

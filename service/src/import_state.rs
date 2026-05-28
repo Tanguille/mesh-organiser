@@ -79,20 +79,14 @@ impl ImportState {
         import_as_path: bool,
         user: User,
     ) -> Self {
-        Self {
-            imported_models: Vec::new(),
-            imported_model_count: 0,
-            model_count: 0,
-            finished_thumbnails_count: 0,
-            status: ImportStatus::Idle,
-            failure_reason: None,
+        Self::new_with_emitter(
             origin_url,
             recursive,
             delete_after_import,
-            emitter: Box::new(NoneImportStateEmitter {}),
-            user,
             import_as_path,
-        }
+            user,
+            Box::new(NoneImportStateEmitter {}),
+        )
     }
 
     #[must_use]
@@ -188,6 +182,15 @@ impl ImportState {
         }
 
         None
+    }
+
+    /// Collects every imported model id across all import sets.
+    #[must_use]
+    pub fn all_model_ids(&self) -> Vec<i64> {
+        self.imported_models
+            .iter()
+            .flat_map(|set| set.model_ids.iter().copied())
+            .collect()
     }
 
     /// Creates groups from all import sets and assigns model group ids.

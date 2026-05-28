@@ -26,6 +26,27 @@ pub struct Blob {
 }
 
 impl Blob {
+    /// Builds a `Blob` from its raw DB columns, centralizing the field list shared by every
+    /// blob query (both the `query!` macro and `QueryBuilder` paths).
+    #[must_use]
+    pub const fn from_parts(
+        id: i64,
+        sha256: String,
+        filetype: String,
+        size: i64,
+        added: String,
+        disk_path: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            sha256,
+            filetype,
+            size,
+            added,
+            disk_path,
+        }
+    }
+
     #[must_use]
     pub fn to_file_type(&self) -> FileType {
         FileType::from_extension(&self.filetype)

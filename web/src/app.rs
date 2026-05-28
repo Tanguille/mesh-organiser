@@ -35,10 +35,7 @@ use db::{
     model::user::User,
     user_db,
 };
-use service::{
-    AppState, Configuration, StoredConfiguration, import_state::ImportState,
-    stored_to_configuration, thumbnail_service,
-};
+use service::{AppState, Configuration, import_state::ImportState, thumbnail_service};
 
 use crate::{
     controller::{
@@ -95,13 +92,12 @@ async fn load_and_prepare_config(
             format!("Failed to read configuration: {e}"),
         )
     })?;
-    let configuration: StoredConfiguration = serde_json::from_str(&json).map_err(|e| {
+    let mut configuration: Configuration = serde_json::from_str(&json).map_err(|e| {
         io::Error::new(
             ErrorKind::InvalidData,
             format!("Failed to parse configuration: {e}"),
         )
     })?;
-    let mut configuration = stored_to_configuration(configuration);
     if configuration.data_path.is_empty() {
         let default_data_dir = config_path.parent().ok_or_else(|| {
             io::Error::new(

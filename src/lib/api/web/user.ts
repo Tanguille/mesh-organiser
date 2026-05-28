@@ -4,6 +4,7 @@ import {
 } from "../shared/server_request_api";
 import type { IUserApi, IUserTokenApi, User } from "../shared/user_api";
 import { parseTauriRawUser, type TauriRawUser } from "../tauri/user";
+import { triggerDownload } from "$lib/utils";
 
 export class WebUserApi implements IUserApi, IUserTokenApi {
   private requestApi: IServerRequestApi;
@@ -53,9 +54,6 @@ export class WebUserApi implements IUserApi, IUserTokenApi {
 
     const deepLink = `meshorganiser://link_account?base_url=${encodeURIComponent(window.location.origin)}&user_name=${encodeURIComponent(currentUser.username)}&link_token=${encodeURIComponent(token)}`;
 
-    const link = document.createElement("a");
-    link.href = deepLink;
-    link.click();
-    link.remove();
+    triggerDownload(deepLink);
   }
 }

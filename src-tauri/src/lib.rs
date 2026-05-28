@@ -22,9 +22,8 @@ use db::{
     model_db, random_hex_32, time_now, user_db,
 };
 use service::{
-    AppState, Configuration, StoredConfiguration, ThreemfMetadata, download_file_service,
-    export_service, import_state::ImportState, slicer_service::Slicer, stored_to_configuration,
-    threemf_service, thumbnail_service,
+    AppState, Configuration, ThreemfMetadata, download_file_service, export_service,
+    import_state::ImportState, slicer_service::Slicer, threemf_service, thumbnail_service,
 };
 
 use crate::{
@@ -200,11 +199,7 @@ async fn extract_threemf_models(
         threemf_service::extract_models(&model[0], &state.get_current_user(), &state.app_state)
             .await?;
 
-    let model_ids: Vec<i64> = import_state
-        .imported_models
-        .iter()
-        .flat_map(|f| f.model_ids.iter().copied())
-        .collect();
+    let model_ids = import_state.all_model_ids();
 
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
@@ -334,7 +329,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         println!("Navigated to: {url}");
 
         if let Some(deep_link) = extract_deep_link(&url) {
-            println!("Extracted deep link: {:?}", &deep_link);
+            println!("Extracted deep link: {deep_link:?}");
 
             let window = cloned_handle.get_webview_window("secondary");
 
@@ -503,9 +498,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 
     let json = std::fs::read_to_string(path).expect("Failed to read configuration");
 
-    let stored_configuration: StoredConfiguration =
-        serde_json::from_str(&json).expect("Failed to parse configuration");
-    stored_to_configuration(stored_configuration)
+    serde_json::from_str(&json).expect("Failed to parse configuration")
 }
 
 /// Initializes and runs the Tauri application.
@@ -545,7 +538,7 @@ pub fn run() {
                 }
                 else
                 {
-                    println!("Failed to extract deep link {:?}", &argv[1]);
+                    println!("Failed to extract deep link {:?}", argv[1]);
                 }
             }
             else
