@@ -32,27 +32,23 @@ Per the agreed delivery model:
 | `cargo clippy --workspace --all-targets` (stable) | ✅ 0 warnings |
 | `cargo +nightly clippy --workspace --all-targets` | ✅ 0 warnings (after the 2 fixes) |
 | `cargo build --workspace --all-targets` | ✅ |
-| `cargo test --workspace` | ⚠️ all pass **except 1 pre-existing failure** (see below) |
+| `cargo test --workspace` | ✅ all pass (the one pre-existing `get_groups` failure was root-caused and fixed — see below) |
 | `pnpm check` (svelte-check) | ✅ 0 errors / 0 warnings |
 | `pnpm lint` (eslint) | ✅ clean |
 | `prettier --check` (changed files) | ✅ clean |
 | `pnpm test` (vitest) | ✅ 26/26 |
 
-## ⚠️ Pre-existing failing test (not caused by this work)
+## ✅ Pre-existing failing test — root-caused and fixed
 
-`db/tests/sql_queries_integration.rs::get_groups_filtered_by_ungrouped_model_do_not_expand_to_all_models` panics at `db/src/group_db.rs:184` with an **unsigned underflow**:
+`db/tests/sql_queries_integration.rs::get_groups_filtered_by_ungrouped_model_do_not_expand_to_all_models` was failing in the pre-change baseline (so a latent pre-existing bug, not a regression from this work). Systematic debugging found **two distinct pagination defects**, both rooted in `GroupFilterOptions`/`ModelFilterOptions` deriving `Default` with `page = 0, page_size = 0` (an invalid pagination state the test reaches via `..Default::default()`):
 
-```rust
-let offset = ((options.page - 1) * page_size) as usize; // page is u32; panics when page == 0
-```
+1. **Panic:** `let offset = ((options.page - 1) * page_size) as usize;` — `0u32 - 1` underflows in debug builds.
+2. **Silent empty result:** the in-memory `…skip(offset).take(page_size)` with `page_size == 0` is `.take(0)` → 0 groups regardless of what was built. (The grouping logic itself is correct — `convert_model_list_to_groups` builds the ungrouped virtual group with `id = -model.id`.)
 
-The test constructs `GroupFilterOptions { .., ..Default::default() }`, so `page` defaults to `0` and `0u32 - 1` underflows in debug builds. **This was already failing in the pre-change baseline** (`cargo test` log captured before any edits), so it is a latent pre-existing bug, not a regression. Production callers always pass `page ≥ 1`, which is why it only surfaces via the `Default`-using test.
+**Fixes applied** (verified: `db` integration suite 7/7, full workspace 134 tests, 0 failures):
 
-This is a **correctness** issue (outside `/simplify`'s remit), so it was left untouched. Suggested one-line fix:
-
-```rust
-let offset = (options.page.saturating_sub(1) * page_size) as usize;
-```
+- `group_db.rs` pagination now uses `options.page.saturating_sub(1)` (guards an explicit `page = 0`).
+- `GroupFilterOptions` and `ModelFilterOptions` now have a hand-written `Default` of `page = 1, page_size = MAX_PAGE_SIZE` (the codebase's "fetch all" convention) instead of the invalid `0/0`. Blast radius is zero — every production/internal call site sets `page`/`page_size` explicitly; only the test relied on `Default`.
 
 ---
 

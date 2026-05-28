@@ -29,7 +29,6 @@ pub enum GroupOrderBy {
     ModifiedDesc,
 }
 
-#[derive(Default)]
 pub struct GroupFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
@@ -43,6 +42,26 @@ pub struct GroupFilterOptions {
     /// When true and filters are applied, keep groups that only contain matching models
     /// (don't re-fetch full groups). When false, re-fetch so each group shows all its models.
     pub split_incomplete_groups: bool,
+}
+
+impl Default for GroupFilterOptions {
+    // `page`/`page_size` must default to a valid pagination window, not 0: the in-memory
+    // pagination below does `.take(page_size)`, so a derived `page_size == 0` would silently
+    // return no groups. Mirror the codebase's "fetch all" convention (page 1, MAX_PAGE_SIZE).
+    fn default() -> Self {
+        Self {
+            model_ids: None,
+            group_ids: None,
+            label_ids: None,
+            order_by: None,
+            text_search: None,
+            page: 1,
+            page_size: MAX_PAGE_SIZE,
+            include_ungrouped_models: false,
+            allow_incomplete_groups: false,
+            split_incomplete_groups: false,
+        }
+    }
 }
 
 /// Builds group list from a flat model list. Main cost is typically the upstream fetch of all

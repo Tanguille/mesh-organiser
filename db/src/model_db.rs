@@ -42,7 +42,6 @@ impl ModelOrderBy {
     }
 }
 
-#[derive(Default)]
 pub struct ModelFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
@@ -52,6 +51,24 @@ pub struct ModelFilterOptions {
     pub model_flags: Option<ModelFlags>,
     pub page: u32,
     pub page_size: u32,
+}
+
+impl Default for ModelFilterOptions {
+    // `page`/`page_size` must default to a valid pagination window, not 0: the query uses
+    // `LIMIT {page_size}`, so a derived `page_size == 0` would silently return no rows.
+    // Mirror the codebase's "fetch all" convention (page 1, MAX_PAGE_SIZE).
+    fn default() -> Self {
+        Self {
+            model_ids: None,
+            group_ids: None,
+            label_ids: None,
+            order_by: None,
+            text_search: None,
+            model_flags: None,
+            page: 1,
+            page_size: MAX_PAGE_SIZE,
+        }
+    }
 }
 
 #[allow(clippy::too_many_lines)]
