@@ -55,7 +55,7 @@ fn parse_stl_inner(stl: &IndexedMesh) -> Mesh {
     let indices: Vec<u32> = stl
         .faces
         .iter()
-        .flat_map(|face| face.vertices.map(|idx| u32::try_from(idx).unwrap_or(0)))
+        .flat_map(|face| face.vertices.map(|index| u32::try_from(index).unwrap_or(0)))
         .collect();
 
     Mesh { vertices, indices }

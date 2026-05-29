@@ -62,7 +62,7 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
 
                 let mut process = |i: obj::VTNIndex| {
                     let index = *map.entry(i.0).or_insert_with(|| {
-                        let idx = positions.len();
+                        let new_index = positions.len();
                         let position = object.vertices[i.0];
                         // OBJ vertex coordinates are typically in a range that fits in f32; mesh data is not high-precision.
                         #[allow(clippy::cast_possible_truncation)]
@@ -71,7 +71,7 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
                             position.y as f32,
                             position.z as f32,
                         ));
-                        idx
+                        new_index
                     });
 
                     indices.push(u32::try_from(index).unwrap_or(0));
