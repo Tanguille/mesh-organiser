@@ -52,6 +52,9 @@ jobs:
       - name: Detect unused dependencies
         uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
 
-      - run: cargo build --workspace --all-targets --all-features
-      - run: cargo clippy --workspace --all-targets --all-features
-      - run: cargo test --workspace --all-targets --all-features
+      # `step` (opencascade) is intentionally excluded: it pulls in OCCT, which
+      # is not shipped by the apps (neither src-tauri nor web enables `step`) and
+      # needs a heavy native OpenCASCADE build. Keep CI to the features we ship.
+      - run: cargo build --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo test --workspace --all-targets
