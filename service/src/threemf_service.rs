@@ -5,7 +5,6 @@ use std::{
 };
 
 use async_zip::tokio::read::seek::ZipFileReader;
-use chrono::Utc;
 use indexmap::IndexMap;
 use itertools::join;
 use regex::Regex;
@@ -13,12 +12,42 @@ use serde::{Deserialize, Serialize};
 use stl_io::Vector;
 use tokio::{fs::File, io::BufReader};
 
-use db::model::{Model, user::User};
+use db::{
+    model::{Model, model_group::ModelGroupMeta, user::User},
+    random_hex_32, time_now,
+};
 
 use crate::{
     AppState, ServiceError, cleanse_evil_from_name, export_service, import_service,
     import_state::ImportState,
 };
+
+/// Builds the `ModelGroupMeta` for the group produced by a 3MF extraction.
+///
+/// Shared by the Tauri command and the web controller so the (previously
+/// divergent) safe-extraction logic lives in one place.
+///
+/// # Errors
+///
+/// Returns an error if the extraction produced no imported group.
+pub fn group_meta_from_import(import_state: &ImportState) -> Result<ModelGroupMeta, ServiceError> {
+    let (id, name) = import_state
+        .imported_models
+        .first()
+        .and_then(|m| m.group_id.zip(m.group_name.clone()))
+        .ok_or_else(|| {
+            ServiceError::InternalError("3MF extract produced no imported group".to_string())
+        })?;
+
+    Ok(ModelGroupMeta {
+        id,
+        name,
+        created: time_now(),
+        last_modified: time_now(),
+        resource_id: None,
+        unique_global_id: random_hex_32(),
+    })
+}
 
 static MODEL_SETTINGS_PART_NAME: OnceLock<Regex> = OnceLock::new();
 
@@ -315,11 +344,7 @@ pub async fn extract_models(
         ));
     }
 
-    let mut temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_extract_action_{}",
-        Utc::now().timestamp_nanos_opt().unwrap()
-    ));
-    fs::create_dir(&temp_dir)?;
+    let mut temp_dir = export_service::get_temp_dir("extract");
 
     let threemf_path =
         export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;

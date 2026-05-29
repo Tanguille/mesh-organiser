@@ -9,7 +9,7 @@ use crate::{
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    random_hex_32, time_now, validate_global_id,
+    random_hex_32, set_timestamp_column, time_now, validate_global_id,
 };
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
@@ -235,16 +235,17 @@ pub async fn set_last_updated_on_resource(
     resource_id: i64,
     timestamp: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE resources SET resource_last_modified = ? WHERE resource_id = ? AND resource_user_id = ?",
+    set_timestamp_column(
+        db,
+        "resources",
+        "resource_last_modified",
+        "resource_id",
+        "resource_user_id",
+        &[resource_id],
+        user.id,
         timestamp,
-        resource_id,
-        user.id
     )
-    .execute(db)
-    .await?;
-
-    Ok(())
+    .await
 }
 
 pub async fn set_resource_on_group(

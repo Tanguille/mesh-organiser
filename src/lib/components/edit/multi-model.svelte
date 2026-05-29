@@ -126,19 +126,18 @@
     await setFlagOnAllModels((x) => (x.flags.favorite = favorite), favorite);
   }
 
-  // TODO: this is terribly inefficient
   async function setFlagOnAllModels(action: (m: Model) => void, set: boolean) {
     const set_or_unset = set ? "Set" : "Unset";
     const affected_models = models;
 
     affected_models.forEach(action);
 
-    let promise = (async () => {
-      for (const model of affected_models) {
-        // TODO: This might not work in the modern architecture
-        await modelApi.editModel($state.snapshot(model));
-      }
-    })();
+    // Edit all models concurrently rather than awaiting one round-trip per model.
+    let promise = Promise.all(
+      affected_models.map((model) =>
+        modelApi.editModel($state.snapshot(model)),
+      ),
+    );
 
     toast.promise(promise, {
       loading: `${set_or_unset}ting flag on ${countWriter("model", affected_models)}...`,

@@ -5,6 +5,7 @@ import {
   type ModelFlags,
 } from "./model_api";
 import type { ResourceMeta } from "./resource_api";
+import { GeneratorStreamManager } from "./stream_manager";
 
 export interface GroupMeta {
   id: number;
@@ -220,15 +221,15 @@ export class PredefinedGroupStreamManager implements IGroupStreamManager {
   }
 }
 
-export class GroupStreamManager implements IGroupStreamManager {
+export class GroupStreamManager
+  extends GeneratorStreamManager<Group, GroupOrderBy>
+  implements IGroupStreamManager
+{
   private groupApi: IGroupApi;
   private groupIds: number[] | null;
   private labelIds: number[] | null;
-  private orderBy: GroupOrderBy = GroupOrderBy.CreatedDesc;
-  private textSearch: string | null = null;
   private includeUngroupedModels: boolean;
   private pageSize: number;
-  private generator: AsyncGenerator<Group[]> | null = null;
 
   constructor(
     groupApi: IGroupApi,
@@ -237,16 +238,17 @@ export class GroupStreamManager implements IGroupStreamManager {
     includeUngroupedModels: boolean,
     pageSize: number = 50,
   ) {
+    super(GroupOrderBy.CreatedDesc);
     this.groupApi = groupApi;
     this.groupIds = groupIds;
     this.labelIds = labelIds;
     this.includeUngroupedModels = includeUngroupedModels;
     this.pageSize = pageSize;
-    this.generateGenerator();
+    this.regenerate();
   }
 
-  private generateGenerator() {
-    this.generator = groupStream(
+  protected makeGenerator(): AsyncGenerator<Group[]> {
+    return groupStream(
       this.groupApi,
       this.groupIds,
       this.labelIds,
@@ -255,20 +257,6 @@ export class GroupStreamManager implements IGroupStreamManager {
       this.pageSize,
       this.includeUngroupedModels,
     );
-  }
-
-  setSearchText(text: string | null): void {
-    this.textSearch = text;
-    this.generateGenerator();
-  }
-
-  setOrderBy(order_by: GroupOrderBy): void {
-    this.orderBy = order_by;
-    this.generateGenerator();
-  }
-
-  async fetch(): Promise<Group[]> {
-    return (await this.generator!.next()).value ?? [];
   }
 }
 

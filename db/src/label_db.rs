@@ -9,7 +9,7 @@ use crate::{
         label::{Label, LabelMeta},
         user::User,
     },
-    model_db, push_in_i64, random_hex_32,
+    model_db, push_in_i64, random_hex_32, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
@@ -515,16 +515,7 @@ pub async fn set_last_updated_on_label(
     label_id: i64,
     timestamp: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE labels SET label_last_modified = ? WHERE label_id = ? AND label_user_id = ?",
-        timestamp,
-        label_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
+    set_last_updated_on_labels(db, user, &[label_id], timestamp).await
 }
 
 pub async fn set_last_updated_on_labels(
@@ -533,19 +524,17 @@ pub async fn set_last_updated_on_labels(
     label_ids: &[i64],
     timestamp: &str,
 ) -> Result<(), DbError> {
-    if label_ids.is_empty() {
-        return Ok(());
-    }
-
-    let mut query_builder = QueryBuilder::new("UPDATE labels SET label_last_modified = ");
-    query_builder.push_bind(timestamp);
-    query_builder.push(" WHERE label_id IN ");
-    push_in_i64(&mut query_builder, label_ids);
-    query_builder.push(" AND label_user_id = ");
-    query_builder.push_bind(user.id);
-    query_builder.build().execute(db).await?;
-
-    Ok(())
+    set_timestamp_column(
+        db,
+        "labels",
+        "label_last_modified",
+        "label_id",
+        "label_user_id",
+        label_ids,
+        user.id,
+        timestamp,
+    )
+    .await
 }
 
 #[cfg(test)]

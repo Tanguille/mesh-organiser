@@ -7,6 +7,7 @@ import {
   type IGroupApi,
 } from "../shared/group_api";
 import { type Model } from "../shared/model_api";
+import { convertModelFlagsToRaw } from "../shared/raw_model";
 import {
   mockGroups,
   mockModels,
@@ -55,13 +56,13 @@ function collectGroupModels(
       // Collect labels
       modelLabelIds.forEach((lid) => labelIds.add(lid));
 
-      // Collect flags
-      if (model.flags.printed && !flags.includes("Printed")) {
-        flags.push("Printed");
-      }
-      if (model.flags.favorite && !flags.includes("Favorite")) {
-        flags.push("Favorite");
-      }
+      // Collect flags (union across models, deduped) via the shared converter
+      // so the flag-name literals stay centralised in raw_model.ts.
+      convertModelFlagsToRaw(model.flags)?.forEach((flag) => {
+        if (!flags.includes(flag)) {
+          flags.push(flag);
+        }
+      });
     }
   });
 
@@ -146,10 +147,6 @@ export class DemoGroupApi implements IGroupApi {
         const modelLabelIds = modelLabelsMap.get(model.id) || [];
         const labels = resolveLabels(modelLabelIds);
 
-        const flagsArray: string[] = [];
-        if (model.flags.printed) flagsArray.push("Printed");
-        if (model.flags.favorite) flagsArray.push("Favorite");
-
         const group = createGroupInstance(
           createGroupMetaInstance(
             model.id * -1,
@@ -161,7 +158,7 @@ export class DemoGroupApi implements IGroupApi {
           [model],
           labels,
           null,
-          flagsArray,
+          convertModelFlagsToRaw(model.flags) ?? [],
         );
 
         groups.push(group);

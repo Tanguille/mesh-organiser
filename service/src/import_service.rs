@@ -153,35 +153,26 @@ pub async fn import_path_inner(
     } else if is_zip_path(&path_buff) {
         import_models_from_zip(path, app_state, import_state, name.clone()).await?;
     } else if is_supported_extension(&path_buff) {
-        let extension = path_buff.extension().unwrap().to_str().unwrap();
-        let size = usize::try_from(path_buff.metadata()?.len()).unwrap_or(0);
-        let mut import_state = import_state.lock().await;
-
-        {
-            let mut file = File::open(&path_buff).await?;
-            let permanent_disk_path = if import_state.import_as_path {
-                Some(path_buff.clone())
-            } else {
-                None
-            };
-
-            let id = import_single_model(
-                &mut file,
-                extension,
-                size,
-                &name,
-                import_state.origin_url.as_deref(),
-                app_state,
-                &import_state.user,
-                permanent_disk_path,
+        let (user, origin_url, delete_after_import, import_as_path) = {
+            let import_state = import_state.lock().await;
+            (
+                import_state.user.clone(),
+                import_state.origin_url.clone(),
+                import_state.delete_after_import,
+                import_state.import_as_path,
             )
-            .await?;
-            import_state.add_model_id_to_current_set(id);
-        }
+        };
 
-        if import_state.delete_after_import {
-            let _ = fs::remove_file(&path_buff);
-        }
+        import_models_from_dir_inner(
+            app_state,
+            path_buff.clone(),
+            Arc::clone(&import_state),
+            &user,
+            origin_url.as_deref(),
+            delete_after_import,
+            import_as_path,
+        )
+        .await?;
     } else {
         return Err(ServiceError::InternalError(String::from(
             "Unsupported file type",

@@ -15,7 +15,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, resource_db,
+    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
@@ -454,16 +454,7 @@ pub async fn set_last_updated_on_group(
     group_id: i64,
     timestamp: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE models_group SET group_last_modified = ? WHERE group_id = ? AND group_user_id = ?",
-        timestamp,
-        group_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
+    set_last_updated_on_groups(db, user, &[group_id], timestamp).await
 }
 
 pub async fn set_last_updated_on_groups(
@@ -472,17 +463,15 @@ pub async fn set_last_updated_on_groups(
     group_ids: &[i64],
     timestamp: &str,
 ) -> Result<(), DbError> {
-    if group_ids.is_empty() {
-        return Ok(());
-    }
-
-    let mut query_builder = QueryBuilder::new("UPDATE models_group SET group_last_modified = ");
-    query_builder.push_bind(timestamp);
-    query_builder.push(" WHERE group_id IN ");
-    push_in_i64(&mut query_builder, group_ids);
-    query_builder.push(" AND group_user_id = ");
-    query_builder.push_bind(user.id);
-    query_builder.build().execute(db).await?;
-
-    Ok(())
+    set_timestamp_column(
+        db,
+        "models_group",
+        "group_last_modified",
+        "group_id",
+        "group_user_id",
+        group_ids,
+        user.id,
+        timestamp,
+    )
+    .await
 }

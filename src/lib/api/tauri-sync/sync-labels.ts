@@ -30,6 +30,13 @@ async function stepUploadToRemote(
   globalSyncState.processableItems = toUpload.length;
   globalSyncState.processedItems = 0;
 
+  // Fetch the remote labels once instead of per-iteration. `toUpload` is sorted
+  // children-first, so appending each label's final meta (after editLabel pushes
+  // its local global id to the remote) reproduces what a refetch would return.
+  const remoteLabelMetas = (await remoteApi.getLabels(false)).map(
+    (x) => x.meta,
+  );
+
   for (const label of toUpload) {
     const newLabel = await remoteApi.addLabel(
       label.meta.name,
@@ -54,15 +61,14 @@ async function stepUploadToRemote(
     );
     await remoteApi.addLabelToModels(newLabel, relatedRemoteModels);
 
-    const relatedRemoteChildLabels = (await remoteApi.getLabels(false))
-      .map((x) => x.meta)
-      .filter((x) =>
-        label.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
-      );
+    const relatedRemoteChildLabels = remoteLabelMetas.filter((x) =>
+      label.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
+    );
     await remoteApi.setChildrenOnLabel(newLabel, relatedRemoteChildLabels);
 
     label.meta.id = newLabel.id;
     await remoteApi.editLabel(label.meta, true, true);
+    remoteLabelMetas.push({ ...label.meta });
     globalSyncState.processedItems += 1;
   }
 }

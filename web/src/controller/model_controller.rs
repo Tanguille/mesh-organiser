@@ -316,16 +316,14 @@ mod delete {
 }
 
 mod post {
-    use db::{model::blob::Blob, random_hex_32};
-    use service::thumbnail_service;
+    use db::random_hex_32;
     use tokio::io::AsyncWriteExt;
 
-    use crate::web_import_state::WebImportStateEmitter;
+    use crate::web_import_state::{WebImportStateEmitter, generate_thumbnails_for_models};
 
     use super::{
         ApplicationError, AuthSession, ImportState, IntoResponse, Json, Multipart, OffsetDateTime,
         Response, State, StatusCode, WebAppState, cleanse_evil_from_name, fs, import_service,
-        model_db,
     };
 
     pub async fn add_model(
@@ -421,17 +419,7 @@ mod post {
             model_ids.extend(&import_state.imported_models[0].model_ids);
         }
 
-        let models =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids.clone()).await?;
-        let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-        thumbnail_service::generate_thumbnails(
-            &blobs,
-            &app_state.app_state,
-            false,
-            &mut import_state,
-        )
-        .await?;
+        generate_thumbnails_for_models(&app_state, &user, &model_ids, &mut import_state).await?;
 
         Ok(Json(model_ids).into_response())
     }

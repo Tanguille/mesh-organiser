@@ -1,6 +1,7 @@
 import type { Blob } from "./blob_api";
 import type { GroupMeta } from "./group_api";
 import type { LabelMeta } from "./label_api";
+import { GeneratorStreamManager } from "./stream_manager";
 
 export interface ModelFlags {
   printed: boolean;
@@ -156,6 +157,9 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
   private pageSize: number;
   private fetchIndex: number = 0;
+  // Filtered + sorted view, computed lazily and reused across page fetches.
+  // Invalidated whenever the search text or sort order changes.
+  private sortedFiltered: Model[] | null = null;
 
   constructor(models: Model[], pageSize: number = 50) {
     this.models = models;
@@ -165,19 +169,17 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   setSearchText(text: string | null): void {
     this.textSearch = text?.toLowerCase() ?? null;
     this.fetchIndex = 0;
+    this.sortedFiltered = null;
   }
 
   setOrderBy(order_by: ModelOrderBy): void {
     this.orderBy = order_by;
     this.fetchIndex = 0;
+    this.sortedFiltered = null;
   }
 
-  async fetch(): Promise<Model[]> {
-    if (this.fetchIndex >= this.models.length) {
-      return [];
-    }
-
-    const filter = !this.textSearch
+  private computeSortedFiltered(): Model[] {
+    const filtered = !this.textSearch
       ? this.models
       : this.models.filter(
           (model) =>
@@ -186,7 +188,8 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
               false),
         );
 
-    const sort = filter.sort((a, b) => {
+    // Copy before sorting so we never mutate the caller-owned `this.models`.
+    return [...filtered].sort((a, b) => {
       switch (this.orderBy) {
         case ModelOrderBy.AddedAsc:
           return a.added.getTime() - b.added.getTime();
@@ -204,8 +207,21 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
           return 0;
       }
     });
+  }
 
-    const paged = sort.slice(this.fetchIndex, this.fetchIndex + this.pageSize);
+  async fetch(): Promise<Model[]> {
+    if (this.sortedFiltered === null) {
+      this.sortedFiltered = this.computeSortedFiltered();
+    }
+
+    if (this.fetchIndex >= this.sortedFiltered.length) {
+      return [];
+    }
+
+    const paged = this.sortedFiltered.slice(
+      this.fetchIndex,
+      this.fetchIndex + this.pageSize,
+    );
     this.fetchIndex += this.pageSize;
 
     return paged;
@@ -216,16 +232,16 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   }
 }
 
-export class ModelStreamManager implements IModelStreamManager {
+export class ModelStreamManager
+  extends GeneratorStreamManager<Model, ModelOrderBy>
+  implements IModelStreamManager
+{
   private modelApi: IModelApi;
   private modelIds: number[] | null;
   private groupIds: number[] | null;
   private labelIds: number[] | null;
-  private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
-  private textSearch: string | null = null;
   private flags: ModelFlags | null;
   private pageSize: number;
-  private generator: AsyncGenerator<Model[]> | null = null;
 
   constructor(
     modelApi: IModelApi,
@@ -235,17 +251,18 @@ export class ModelStreamManager implements IModelStreamManager {
     flags: ModelFlags | null,
     pageSize: number = 50,
   ) {
+    super(ModelOrderBy.AddedDesc);
     this.modelApi = modelApi;
     this.modelIds = modelIds;
     this.groupIds = groupIds;
     this.labelIds = labelIds;
     this.flags = flags;
     this.pageSize = pageSize;
-    this.generateGenerator();
+    this.regenerate();
   }
 
-  private generateGenerator() {
-    this.generator = modelStream(
+  protected makeGenerator(): AsyncGenerator<Model[]> {
+    return modelStream(
       this.modelApi,
       this.modelIds,
       this.groupIds,
@@ -255,20 +272,6 @@ export class ModelStreamManager implements IModelStreamManager {
       this.flags,
       this.pageSize,
     );
-  }
-
-  setSearchText(text: string | null): void {
-    this.textSearch = text;
-    this.generateGenerator();
-  }
-
-  setOrderBy(order_by: ModelOrderBy): void {
-    this.orderBy = order_by;
-    this.generateGenerator();
-  }
-
-  async fetch(): Promise<Model[]> {
-    return (await this.generator!.next()).value ?? [];
   }
 
   async getAll(): Promise<Model[]> {

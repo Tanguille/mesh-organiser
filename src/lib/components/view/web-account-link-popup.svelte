@@ -63,6 +63,9 @@
         props.data.linkToken,
         false,
       );
+      // Re-switch so the backend reloads the current user from the db, picking up
+      // the sync token/URL that setSyncState just persisted. Not redundant with
+      // the call above: switchUser reloads the user record, not just the id.
       await userSwitchApi.switchUser(currentUser);
 
       await redirectAfterUserSwitch();

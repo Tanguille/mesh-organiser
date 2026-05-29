@@ -70,6 +70,34 @@ Each of the 7 high-severity items below was first analysed for **behaviour-prese
 
 ---
 
+## Round 3 — Medium-severity items: viability + implementation
+
+Each of the 17 medium-severity items was analysed for behaviour preservation against the real code. **13 were implemented** in behaviour-preserving form; the other 4 were deferred because they change behaviour, authorization, or search semantics and need a product/security decision rather than a pure dedup. Verified green: `cargo build`/`clippy`/`fmt`/`test` (124 Rust tests), svelte-check (0/0), eslint, vitest 45/45, prettier.
+
+| # | Item | Applied? | Scope / deferral reason |
+|---|------|----------|--------------------------|
+| 1 | Manual `ModelFlags`→`string[]` (demo) | ✅ `convertModelFlagsToRaw` in both the per-model union and the ungrouped per-model path | flag-name literals now live only in `raw_model.ts` |
+| 2 | `set_last_updated_on_X` pairs | ✅ `query_util::set_timestamp_column`; singulars delegate to plurals, plurals + resource delegate to the helper | one `UPDATE…IN` builder for labels/groups/resources |
+| 3 | Hand-rolled temp dir (3MF) | ✅ `extract_models` → `export_service::get_temp_dir("extract")` | `extract_metadata` left as-is (intentional fixed, non-timestamped dir, per the finding) |
+| 4 | Single-file import dup | ✅ `import_path_inner`'s single-file branch delegates to `import_models_from_dir_inner` | reads user/flags from the locked state first, matching `import_models_from_dir` |
+| 5 | fetch-models + thumbnails tail | ✅ `web_import_state::generate_thumbnails_for_models`, used by both web handlers | — |
+| 6 | `extract_threemf_models` unwrap drift | ✅ `threemf_service::group_meta_from_import` (safe `first()/zip()/ok_or_else`), used by the Tauri command **and** the web controller | the extract+thumbnail tail itself isn't shared across crates (different emitters, `WebAppState`/`TauriAppState`); the diverged meta-construction is |
+| 7 | Single-instance vs setup argv | ✅ `parse_launch_arg(&str)` shared by both blocks | emit-vs-store difference kept at each site |
+| 8 | `stepUploadToRemote` per-label label refetch | ✅ fetch once, append each label's final meta after `editLabel` | **`stepSyncToRemote` left refetching** — `toSync` is unsorted and `editLabel` mutates global ids mid-step, so an in-memory list can't be kept correct safely |
+| 9 | `ModelStreamManager`/`GroupStreamManager` dup | ✅ `shared/stream_manager.ts::GeneratorStreamManager<T,O>` base; both extend it and implement only `makeGenerator()` | — |
+| 10 | `PredefinedModelStreamManager` re-filter/sort per page | ✅ cache filtered+sorted view, invalidate in the setters; sort a copy (no longer mutates `this.models`) | — |
+| 11 | `getShare` full-list scan | ⛔ **deferred (security)** | `GET /shares/{id}` is registered **outside** `login_required` and is **not owner-scoped**; the current scan uses the owner-scoped list. Switching would let an authenticated caller resolve shares they don't own — an authorization change, not a dedup |
+| 12 | `setFlagOnAllModels` sequential edits | ✅ `Promise.all` over `editModel` | — |
+| 13 | `LabelTree` per-node `find` | ✅ `$derived` `labelsById` map, O(1) lookup per node | removed the `TODO: This find isn't great` |
+| 14 | `src-tauri/api/*` mirrors `web/controller/*` | ⛔ **deferred** | high-risk, large multi-entity refactor (promote business logic into `service`); must be scoped incrementally per entity |
+| 15 | `TauriSidebarStateApi` near-copy | ⛔ **deferred (behaviour change)** | using `DefaultSidebarStateApi` would surface a real share count instead of the hardcoded `0` in the proxy-share path — a product decision |
+| 16 | Triple `text_search` (demo) | ⛔ **deferred (search semantics)** | not behaviour-neutral: dropping the per-model filters makes a kept group show **all** its models (and surfaces name-only matches), not just matching ones |
+| 17 | Double `switchUser` around `setSyncState` | ✅ **kept + documented** | verified **not** redundant: `set_current_user_by_id` reloads the user from the db, so the re-switch picks up the sync token/URL `setSyncState` persisted. Added a comment; the report's "delete if redundant" branch was incorrect |
+
+**4 items deferred** (#11 security, #14 large refactor, #15 behaviour change, #16 search semantics) plus the `stepSyncToRemote` half of #8. All require a deliberate decision rather than a pure dedup.
+
+---
+
 ## Reported findings (original review — for reference)
 
 The findings are listed below, **highest value first**. Each notes its location, the cost of leaving it, and a concrete suggested fix.
