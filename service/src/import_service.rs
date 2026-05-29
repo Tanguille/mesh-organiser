@@ -148,10 +148,10 @@ pub async fn import_path_inner(
         if recursive {
             import_models_from_dir_recursive(&path_buff, app_state, import_state).await?;
         } else {
-            import_models_from_dir(path, app_state, import_state, name.clone()).await?;
+            import_models_from_dir(path, app_state, import_state, name).await?;
         }
     } else if is_zip_path(&path_buff) {
-        import_models_from_zip(path, app_state, import_state, name.clone()).await?;
+        import_models_from_zip(path, app_state, import_state, name).await?;
     } else if is_supported_extension(&path_buff) {
         let (user, origin_url, delete_after_import, import_as_path) = {
             let import_state = import_state.lock().await;
@@ -165,7 +165,7 @@ pub async fn import_path_inner(
 
         import_models_from_dir_inner(
             app_state,
-            path_buff.clone(),
+            path_buff,
             Arc::clone(&import_state),
             &user,
             origin_url.as_deref(),
