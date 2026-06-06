@@ -41,7 +41,6 @@ itertools = { workspace = true }
 tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
-service = { workspace = true }
 serde_html_form = { workspace = true }
 tauri-plugin-http = { workspace = true, features = ["multipart"] }
 async_zip = { workspace = true, features = [
@@ -51,7 +50,14 @@ async_zip = { workspace = true, features = [
 ] }
 
 [target.'cfg(windows)'.dependencies]
+service = { workspace = true, features = ["step"] }
 winreg = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+service = { workspace = true, features = ["step"] }
+
+[target.'cfg(not(any(target_os = "linux", target_os = "windows")))'.dependencies]
+service = { workspace = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = { workspace = true }
