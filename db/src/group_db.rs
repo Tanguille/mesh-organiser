@@ -29,20 +29,40 @@ pub enum GroupOrderBy {
     ModifiedDesc,
 }
 
-#[derive(Default)]
 pub struct GroupFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
     pub label_ids: Option<Vec<i64>>,
     pub order_by: Option<GroupOrderBy>,
     pub text_search: Option<String>,
+    /// 1-based page number. `Default` returns 1; values of 0 are treated as 1 by `get_groups`
+    /// to keep the function panic-free even if a caller forgets to override the field.
     pub page: u32,
+    /// Items per page. `Default` returns `MAX_PAGE_SIZE`; values of 0 are treated as
+    /// `MAX_PAGE_SIZE` by `get_groups` for the same reason.
     pub page_size: u32,
     pub include_ungrouped_models: bool,
     pub allow_incomplete_groups: bool,
-    /// When true and filters are applied, keep groups that only contain matching models
-    /// (don't re-fetch full groups). When false, re-fetch so each group shows all its models.
     pub split_incomplete_groups: bool,
+}
+
+// Manual `Default` is required because `u32::default()` is `0`, which would underflow in
+// `get_groups` when computing `page - 1`. The other fields are unchanged from a derived impl.
+impl Default for GroupFilterOptions {
+    fn default() -> Self {
+        Self {
+            model_ids: None,
+            group_ids: None,
+            label_ids: None,
+            order_by: None,
+            text_search: None,
+            page: 1,
+            page_size: MAX_PAGE_SIZE,
+            include_ungrouped_models: false,
+            allow_incomplete_groups: false,
+            split_incomplete_groups: false,
+        }
+    }
 }
 
 /// Builds group list from a flat model list. Main cost is typically the upstream fetch of all
@@ -180,8 +200,12 @@ pub async fn get_groups(
     }
 
     // Enforce pagination limits to prevent memory exhaustion
-    let page_size = options.page_size.min(MAX_PAGE_SIZE);
-    let offset = ((options.page - 1) * page_size) as usize;
+    // Normalize 0/underflow inputs. `page` is 1-based, so 0 must be treated as 1; the
+    // `u32::default()` of `page_size` would make `.take(0)` silently return an empty list,
+    // which is even worse than panicking. Clamp both to their intended minimums.
+    let page_size = options.page_size.clamp(1, MAX_PAGE_SIZE);
+    let page = options.page.max(1);
+    let offset = ((page - 1) * page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups
