@@ -78,13 +78,13 @@ export function buildGetModelsQuery(
   flags: ModelFlags | null,
 ) {
   return {
-    model_ids: model_ids,
-    group_ids: group_ids,
-    label_ids: label_ids,
-    order_by: order_by,
-    text_search: text_search,
-    page: page,
-    page_size: page_size,
+    model_ids,
+    group_ids,
+    label_ids,
+    order_by,
+    text_search,
+    page,
+    page_size,
     model_flags: convertModelFlagsToRaw(flags),
   };
 }

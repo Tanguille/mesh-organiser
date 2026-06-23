@@ -39,11 +39,12 @@ pub fn group_meta_from_import(import_state: &ImportState) -> Result<ModelGroupMe
             ServiceError::InternalError("3MF extract produced no imported group".to_string())
         })?;
 
+    let now = time_now();
     Ok(ModelGroupMeta {
         id,
         name,
-        created: time_now(),
-        last_modified: time_now(),
+        created: now.clone(),
+        last_modified: now,
         resource_id: None,
         unique_global_id: random_hex_32(),
     })

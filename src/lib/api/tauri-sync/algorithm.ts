@@ -1,6 +1,10 @@
 import { GroupOrderBy, type Group, type IGroupApi } from "../shared/group_api";
 import { ModelOrderBy, type IModelApi, type Model } from "../shared/model_api";
 
+// Sentinel page size used when a sync step needs the full item list.
+// No real dataset is expected to reach this count.
+export const ALL_ITEMS_PAGE_SIZE = 9_999_999;
+
 export interface DiffableItem {
   uniqueGlobalId: string;
   lastModified: Date;
@@ -55,7 +59,7 @@ export function getAllModels(api: IModelApi): Promise<Model[]> {
     ModelOrderBy.ModifiedDesc,
     null,
     1,
-    9999999,
+    ALL_ITEMS_PAGE_SIZE,
     null,
   );
 }
@@ -70,7 +74,7 @@ export function getAllGroups(api: IGroupApi): Promise<Group[]> {
     GroupOrderBy.ModifiedDesc,
     null,
     1,
-    9999999,
+    ALL_ITEMS_PAGE_SIZE,
     false,
   );
 }

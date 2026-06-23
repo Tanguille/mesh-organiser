@@ -15,5 +15,9 @@ pub fn is_zip_of(path: &Path, ext: &str) -> bool {
         && path
             .file_stem()
             .and_then(|s| s.to_str())
-            .is_some_and(|s| s.to_lowercase().ends_with(&format!(".{ext}")))
+            .is_some_and(|s| {
+                s.len() > ext.len()
+                    && s.as_bytes()[s.len() - ext.len() - 1] == b'.'
+                    && s[s.len() - ext.len()..].eq_ignore_ascii_case(ext)
+            })
 }

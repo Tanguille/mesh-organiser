@@ -84,13 +84,13 @@ export function buildGetGroupsQuery(
   return {
     // Hack to bypass request uri becoming too large
     model_ids_str: model_ids?.join(","),
-    group_ids: group_ids,
-    label_ids: label_ids,
-    order_by: order_by,
-    text_search: text_search,
-    page: page,
-    page_size: page_size,
-    include_ungrouped_models: include_ungrouped_models,
+    group_ids,
+    label_ids,
+    order_by,
+    text_search,
+    page,
+    page_size,
+    include_ungrouped_models,
   };
 }
 

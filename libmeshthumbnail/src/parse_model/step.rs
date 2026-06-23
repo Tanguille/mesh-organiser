@@ -8,11 +8,11 @@ use std::{
 use opencascade::{mesh::Mesher, primitives::Shape};
 use stl_io::{Triangle, Vector, Vertex};
 use tempfile::TempDir;
-use zip::ZipArchive;
 
 use crate::{
     error::MeshThumbnailError,
     mesh::Mesh,
+    parse_model::find_zip_entry_bytes,
     path_ext::{is_zip_of, matches_ext},
 };
 
@@ -41,7 +41,7 @@ fn step_tolerance() -> f64 {
 /// [`TempDir`] must be kept alive for as long as the path is used, since the
 /// directory (and file) are removed when it is dropped.
 fn stage_step_bytes(reader: &mut impl Read) -> Result<(TempDir, PathBuf), MeshThumbnailError> {
-    let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+    let temp_dir = tempfile::tempdir()?;
     let mut temp_path = temp_dir.path().to_path_buf();
     temp_path.push("a.step");
     let mut temp_file = File::create(&temp_path)?;
@@ -75,25 +75,18 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 }
 
 fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let handle = File::open(path)?;
-    let mut zip = ZipArchive::new(handle)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        let file_name = file.name();
-        let ext_matches = Path::new(file_name)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("step") || ext.eq_ignore_ascii_case("stp"));
-        if ext_matches {
-            // Keep `_temp_dir` alive until after parsing; dropping it removes the staged file.
-            let (_temp_dir, temp_path) = stage_step_bytes(&mut file)?;
-            return parse_step(&temp_path);
-        }
-    }
-
-    Err(MeshThumbnailError::InternalError(String::from(
+    let buffer = find_zip_entry_bytes(
+        path,
+        |name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("step") || e.eq_ignore_ascii_case("stp"))
+        },
         "Failed to find .step model in zip",
-    )))
+    )?;
+    // Keep `_temp_dir` alive until after parsing; dropping it removes the staged file.
+    let (_temp_dir, temp_path) = stage_step_bytes(&mut buffer.as_slice())?;
+    parse_step(&temp_path)
 }
 
 /// # Panics

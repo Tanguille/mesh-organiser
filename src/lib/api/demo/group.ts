@@ -28,7 +28,7 @@ function collectGroupModels(
 ): { models: Model[]; labelIds: Set<number>; flags: string[] } {
   const models: Model[] = [];
   const labelIds = new Set<number>();
-  const flags: string[] = [];
+  const flagsSet = new Set<string>();
 
   mockModels.forEach((model, modelId) => {
     if (predicate(modelId)) {
@@ -58,15 +58,11 @@ function collectGroupModels(
 
       // Collect flags (union across models, deduped) via the shared converter
       // so the flag-name literals stay centralised in raw_model.ts.
-      convertModelFlagsToRaw(model.flags)?.forEach((flag) => {
-        if (!flags.includes(flag)) {
-          flags.push(flag);
-        }
-      });
+      convertModelFlagsToRaw(model.flags)?.forEach((flag) => flagsSet.add(flag));
     }
   });
 
-  return { models, labelIds, flags };
+  return { models, labelIds, flags: [...flagsSet] };
 }
 
 export class DemoGroupApi implements IGroupApi {

@@ -155,15 +155,13 @@ where
 {
     let mut futures: JoinSet<T> = JoinSet::new();
     let mut results: Vec<T> = Vec::new();
-    let mut active = 0;
 
     while !items.is_empty() {
         let Some(item) = items.pop() else { continue };
-        active += 1;
 
         futures.spawn(make_future(item));
 
-        if active >= max
+        if futures.len() >= max
             && let Some(res) = futures.join_next().await
         {
             match res {
@@ -171,7 +169,6 @@ where
                 Err(err) => panic!("{err}"),
                 Ok(output) => {
                     results.push(output);
-                    active -= 1;
                 }
             }
         }
