@@ -168,3 +168,30 @@ async fn add_labels_on_models_batch_insert_links_rows() {
     assert_eq!(models[0].labels.len(), 1);
     assert_eq!(models[0].labels[0].id, label_id);
 }
+
+#[tokio::test]
+async fn get_groups_default_filter_options_does_not_panic() {
+    // Regression: `GroupFilterOptions::default()` used to produce `page: 0`, which made
+    // `get_groups` underflow on `page - 1` and panic. The fix gives `Default` sensible
+    // pagination values (`page: 1`, `page_size: MAX_PAGE_SIZE`) and clamps zeros inside
+    // the function, so a caller that builds the struct manually with `0` is also safe.
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+
+    let default_opts = group_db::GroupFilterOptions::default();
+    assert_eq!(default_opts.page, 1, "Default page must be 1-based");
+    assert!(default_opts.page_size > 0, "Default page_size must be > 0");
+
+    let _ = group_db::get_groups(&db, &user, group_db::GroupFilterOptions::default())
+        .await
+        .expect("default filter options should not panic");
+
+    let zero_opts = group_db::GroupFilterOptions {
+        page: 0,
+        page_size: 0,
+        ..group_db::GroupFilterOptions::default()
+    };
+    let _ = group_db::get_groups(&db, &user, zero_opts)
+        .await
+        .expect("zero page/page_size must be clamped, not panic");
+}

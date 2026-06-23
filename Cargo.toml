@@ -23,7 +23,7 @@ libmeshthumbnail = { path = "libmeshthumbnail" }
 service = { path = "service" }
 
 euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d", default-features = false }
-opencascade = { git = "https://github.com/bschwind/opencascade-rs", rev = "7e8d78a55121c067d7c3283c13b9185197065c74", default-features = false }
+cadrum = { version = "0.8", default-features = false }
 threemf = { version = "0.8.0" }
 
 arboard = { version = "3.6.1", default-features = false }

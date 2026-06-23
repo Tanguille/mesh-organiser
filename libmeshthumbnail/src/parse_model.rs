@@ -2,13 +2,13 @@ use std::path::Path;
 
 mod gcode;
 mod obj;
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 mod step;
 mod stl;
 mod threemf;
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 pub use step::convert_step_path_to_stl;
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 pub use step::convert_step_to_stl;
 
 /// Parses a mesh from the given path (STL, OBJ, 3MF, G-code, etc.).
@@ -34,7 +34,7 @@ pub fn handle_parse(
         return Ok(Some(mesh));
     }
 
-    #[cfg(feature = "step")]
+    #[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
     if let Some(mesh) = step::handle_step(path)? {
         return Ok(Some(mesh));
     }

@@ -7,13 +7,12 @@ edition.workspace = true
 workspace = true
 
 [features]
-step = ["dep:opencascade"]
+step = ["dep:cadrum"]
 
 [dependencies]
 base64 = { workspace = true }
 euc = { workspace = true }
 image = { workspace = true, features = ["png"] }
-opencascade = { workspace = true, optional = true }
 regex = { workspace = true }
 stl_io = { workspace = true }
 tempfile = { workspace = true }
@@ -22,3 +21,6 @@ thiserror = { workspace = true }
 vek = { workspace = true }
 wavefront_obj = { workspace = true }
 zip = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+cadrum = { workspace = true, optional = true }
