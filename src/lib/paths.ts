@@ -25,11 +25,11 @@ export function getThisLabelOnly(): boolean {
  * previous user's data, so navigate away from them before reloading.
  */
 export async function redirectAfterUserSwitch(): Promise<void> {
-  if (location.href.includes("/group/")) {
+  if (page.url.pathname.includes("/group/")) {
     await goto(resolve("/group"));
   }
 
-  if (location.href.includes("/label/")) {
+  if (page.url.pathname.includes("/label/")) {
     await goto(resolve("/"));
   }
 }

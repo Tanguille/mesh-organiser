@@ -15,7 +15,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
+    TimestampSchema, push_in_i64, random_hex_32, resource_db, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
@@ -465,10 +465,12 @@ pub async fn set_last_updated_on_groups(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        "models_group",
-        "group_last_modified",
-        "group_id",
-        "group_user_id",
+        TimestampSchema {
+            table: "models_group",
+            ts_col: "group_last_modified",
+            id_col: "group_id",
+            user_col: "group_user_id",
+        },
         group_ids,
         user.id,
         timestamp,

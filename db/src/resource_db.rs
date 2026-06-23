@@ -9,7 +9,7 @@ use crate::{
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    random_hex_32, set_timestamp_column, time_now, validate_global_id,
+    TimestampSchema, random_hex_32, set_timestamp_column, time_now, validate_global_id,
 };
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
@@ -237,10 +237,12 @@ pub async fn set_last_updated_on_resource(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        "resources",
-        "resource_last_modified",
-        "resource_id",
-        "resource_user_id",
+        TimestampSchema {
+            table: "resources",
+            ts_col: "resource_last_modified",
+            id_col: "resource_id",
+            user_col: "resource_user_id",
+        },
         &[resource_id],
         user.id,
         timestamp,
