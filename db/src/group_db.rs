@@ -6,7 +6,7 @@ use sqlx::{QueryBuilder, Row};
 use strum::EnumString;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse, TimestampSchema,
     db_context::DbContext,
     model::{
         Model, ModelFlags,
@@ -15,7 +15,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    TimestampSchema, push_in_i64, random_hex_32, resource_db, set_timestamp_column,
+    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 

@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE,
+    DbError, MAX_PAGE_SIZE, TimestampSchema,
     db_context::DbContext,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
@@ -9,7 +9,7 @@ use crate::{
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    TimestampSchema, random_hex_32, set_timestamp_column, time_now, validate_global_id,
+    random_hex_32, set_timestamp_column, time_now, validate_global_id,
 };
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {

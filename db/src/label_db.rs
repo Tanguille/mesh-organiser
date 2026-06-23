@@ -3,13 +3,13 @@ use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError,
+    DbError, TimestampSchema,
     db_context::DbContext,
     model::{
         label::{Label, LabelMeta},
         user::User,
     },
-    TimestampSchema, model_db, push_in_i64, random_hex_32, set_timestamp_column,
+    model_db, push_in_i64, random_hex_32, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
