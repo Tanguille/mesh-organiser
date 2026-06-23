@@ -1,3 +1,10 @@
+import { GroupOrderBy, type Group, type IGroupApi } from "../shared/group_api";
+import { ModelOrderBy, type IModelApi, type Model } from "../shared/model_api";
+
+// Sentinel page size used when a sync step needs the full item list.
+// No real dataset is expected to reach this count.
+export const ALL_ITEMS_PAGE_SIZE = 9_999_999;
+
 export interface DiffableItem {
   uniqueGlobalId: string;
   lastModified: Date;
@@ -6,6 +13,70 @@ export interface DiffableItem {
 export interface ResourceSet<T> {
   local: T;
   server: T;
+}
+
+// Resolves which side of a ResourceSet is the remote vs local target for the
+// current sync direction, so each step doesn't re-derive the swap by hand.
+export function resolveDirection<T>(
+  set: ResourceSet<T>,
+  isServerToLocal: boolean,
+): { remote: T; local: T } {
+  return {
+    remote: isServerToLocal ? set.local : set.server,
+    local: isServerToLocal ? set.server : set.local,
+  };
+}
+
+// Shared DiffableExtractor for items that carry their sync fields on `.meta`
+// (groups and labels), replacing the per-file fieldExtractor copies.
+export function metaFieldExtractor<T extends { meta: DiffableItem }>(
+  item: T,
+): DiffableItem {
+  return {
+    uniqueGlobalId: item.meta.uniqueGlobalId,
+    lastModified: item.meta.lastModified,
+  };
+}
+
+// Wraps an array into a generator of per-item tasks, removing the inline
+// `function*` boilerplate needed to feed runGeneratorWithLimit.
+export function* mapToTasks<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+): Generator<Promise<void>> {
+  for (const item of items) {
+    yield fn(item);
+  }
+}
+
+// Fetches the full model list using the unbounded page size shared across the
+// sync steps, replacing the repeated 8-positional-arg calls.
+export function getAllModels(api: IModelApi): Promise<Model[]> {
+  return api.getModels(
+    null,
+    null,
+    null,
+    ModelOrderBy.ModifiedDesc,
+    null,
+    1,
+    ALL_ITEMS_PAGE_SIZE,
+    null,
+  );
+}
+
+// Fetches the full group list using the unbounded page size shared across the
+// sync steps, replacing the repeated positional getGroups calls.
+export function getAllGroups(api: IGroupApi): Promise<Group[]> {
+  return api.getGroups(
+    null,
+    null,
+    null,
+    GroupOrderBy.ModifiedDesc,
+    null,
+    1,
+    ALL_ITEMS_PAGE_SIZE,
+    false,
+  );
 }
 
 export interface SyncResult<T> {
@@ -26,6 +97,51 @@ export function defaultSyncResult<T>(): SyncResult<T> {
     syncToServer: [],
     syncToLocal: [],
   };
+}
+
+// Per-branch handlers for the six sync steps, each receiving the matching
+// SyncResult bucket. Files bind their own local/remote api arg-swapping inside
+// these closures so the runner stays direction-agnostic.
+export interface SyncResultHandlers<T> {
+  upload: (toUpload: T[]) => Promise<void>;
+  download: (toDownload: T[]) => Promise<void>;
+  syncToServer: (toSync: ResourceSet<T>[]) => Promise<void>;
+  syncToLocal: (toSync: ResourceSet<T>[]) => Promise<void>;
+  deleteServer: (toDelete: T[]) => Promise<void>;
+  deleteLocal: (toDelete: T[]) => Promise<void>;
+}
+
+// Runs the six conditional sync steps in the exact order the three identical
+// sync files used inline (groups, labels, resources), each gated by its
+// `.length > 0` guard. sync-models stays inline because it interleaves extra
+// steps between toDownload and syncToServer.
+export async function applySyncResult<T>(
+  syncState: SyncResult<T>,
+  handlers: SyncResultHandlers<T>,
+): Promise<void> {
+  if (syncState.toUpload.length > 0) {
+    await handlers.upload(syncState.toUpload);
+  }
+
+  if (syncState.toDownload.length > 0) {
+    await handlers.download(syncState.toDownload);
+  }
+
+  if (syncState.syncToServer.length > 0) {
+    await handlers.syncToServer(syncState.syncToServer);
+  }
+
+  if (syncState.syncToLocal.length > 0) {
+    await handlers.syncToLocal(syncState.syncToLocal);
+  }
+
+  if (syncState.toDeleteServer.length > 0) {
+    await handlers.deleteServer(syncState.toDeleteServer);
+  }
+
+  if (syncState.toDeleteLocal.length > 0) {
+    await handlers.deleteLocal(syncState.toDeleteLocal);
+  }
 }
 
 interface DiffableExtractor<T> {

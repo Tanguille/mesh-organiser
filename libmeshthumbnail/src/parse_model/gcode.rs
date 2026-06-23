@@ -7,29 +7,22 @@ use std::{
 
 use regex::Regex;
 use vek::{Mat4, Quaternion, Vec3};
-use zip::ZipArchive;
 
-use crate::{error::MeshThumbnailError, mesh::Mesh};
+use crate::{
+    error::MeshThumbnailError,
+    mesh::Mesh,
+    parse_model::find_zip_entry_bytes,
+    path_ext::{is_zip_of, matches_ext},
+};
 
 static REGEX_XY: OnceLock<Regex> = OnceLock::new();
 static REGEX_XY_NO_EXTRUSION: OnceLock<Regex> = OnceLock::new();
 static REGEX_Z: OnceLock<Regex> = OnceLock::new();
 
 pub fn handle_gcode(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
-    let is_gcode = path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"));
-    let is_gcode_zip = path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-        && path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .is_some_and(|s| s.to_lowercase().ends_with(".gcode"));
-
-    if is_gcode {
+    if matches_ext(path, "gcode") {
         Ok(Some(parse_gcode(path)?))
-    } else if is_gcode_zip {
+    } else if is_zip_of(path, "gcode") {
         Ok(Some(parse_gcode_zip(path)?))
     } else {
         Ok(None)
@@ -48,26 +41,18 @@ fn parse_gcode(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 }
 
 fn parse_gcode_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let handle = File::open(path)?;
-    let mut zip = ZipArchive::new(handle)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        if Path::new(file.name())
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
-        {
-            let mut buffer = Vec::with_capacity(usize::try_from(file.size()).unwrap_or(0));
-            file.read_to_end(&mut buffer)?;
-            let mut cursor = Cursor::new(buffer);
-
-            return parse_gcode_inner(&mut cursor);
-        }
-    }
-
-    Err(MeshThumbnailError::InternalError(String::from(
+    let buffer = find_zip_entry_bytes(
+        path,
+        |name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
+        },
         "Failed to find .gcode file in zip",
-    )))
+    )?;
+    let mut cursor = Cursor::new(buffer);
+
+    parse_gcode_inner(&mut cursor)
 }
 fn parse_gcode_inner<W>(reader: &mut W) -> Result<Mesh, MeshThumbnailError>
 where
@@ -128,6 +113,11 @@ where
         Vec::with_capacity(estimated_entries * (angle_subdivisions as usize + 1) * 2);
     let mut indices = Vec::with_capacity(estimated_entries * angle_subdivisions as usize * 6);
 
+    // The cylinder topology is identical for every edge, so build it once and
+    // reuse it: each edge only needs the per-edge transform applied to the base
+    // vertices, avoiding a fresh Mesh allocation per move instruction.
+    let base_cylinder = cylinder(angle_subdivisions);
+
     for i in 0..entries.len() - 1 {
         if !entries[i + 1].use_line {
             continue;
@@ -142,34 +132,24 @@ where
             continue;
         }
 
-        let mut cylinder = cylinder(angle_subdivisions);
-        transform_mesh(&mut cylinder, edge_transform(p1, p2));
+        let transform = edge_transform(p1, p2, length);
 
         let vertex_offset = u32::try_from(vertices.len()).unwrap_or(0);
 
-        vertices.extend(cylinder.vertices);
-        indices.extend(cylinder.indices.iter().map(|i| *i + vertex_offset));
+        vertices.extend(base_cylinder.vertices.iter().map(|vertex| {
+            let v4 = transform * vertex.with_w(1.0);
+            v4.xyz()
+        }));
+        indices.extend(base_cylinder.indices.iter().map(|i| *i + vertex_offset));
     }
 
     Ok(Mesh { vertices, indices })
 }
 
-fn transform_mesh(mesh: &mut Mesh, transform: Mat4<f32>) {
-    for vertex in &mut mesh.vertices {
-        let v4 = transform * vertex.with_w(1.0);
-        *vertex = v4.xyz();
-    }
-}
-
-fn edge_transform(p1: Vec3<f32>, p2: Vec3<f32>) -> Mat4<f32> {
+// The caller guarantees a finite, non-degenerate `length` (it filters edges
+// before calling), so `diff / length` is safe here.
+fn edge_transform(p1: Vec3<f32>, p2: Vec3<f32>, length: f32) -> Mat4<f32> {
     let diff = p2 - p1;
-    let length = diff.magnitude();
-
-    // Safety check - should be prevented by caller, but defend anyway
-    if length < 0.001 || !length.is_finite() {
-        return Mat4::<f32>::identity();
-    }
-
     let direction = diff / length; // Manual normalization to avoid potential issues
 
     let x_axis = Vec3::<f32>::new(1.0, 0.0, 0.0);

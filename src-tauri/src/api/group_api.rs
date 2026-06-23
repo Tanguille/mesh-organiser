@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Instant};
+use std::str::FromStr;
 
 use tauri::State;
 
@@ -23,7 +23,6 @@ pub async fn get_groups(
     include_ungrouped_models: Option<bool>,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
-    let instant = Instant::now();
     let groups = group_db::get_groups(
         &state.app_state.db,
         &state.get_current_user(),
@@ -46,8 +45,6 @@ pub async fn get_groups(
         },
     )
     .await?;
-
-    println!("get_groups took {:?}", instant.elapsed());
 
     Ok(groups.items)
 }

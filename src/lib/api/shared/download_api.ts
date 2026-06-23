@@ -1,7 +1,7 @@
 import { zipSync, type Zippable } from "fflate";
 import { fileTypeToPlainFileExtension, type IBlobApi } from "./blob_api";
 import type { Model } from "./model_api";
-import { nameCollectionOfModels } from "$lib/utils";
+import { nameCollectionOfModels, triggerBlobDownload } from "$lib/utils";
 
 export const IDownloadApi = Symbol("IDownloadApi");
 
@@ -20,14 +20,11 @@ export class DefaultDownloadApi implements IDownloadApi {
   async downloadModel(model: Model): Promise<void> {
     const data = await this.blobApi.getBlobBytes(model.blob);
 
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([data as BlobPart], { type: "application/octet-stream" }),
+    triggerBlobDownload(
+      data as BlobPart,
+      "application/octet-stream",
+      model.name + fileTypeToPlainFileExtension(model.blob.filetype),
     );
-    link.download =
-      model.name + fileTypeToPlainFileExtension(model.blob.filetype);
-    link.click();
-    link.remove();
   }
 
   makeStringSafeFilename(name: string): string {
@@ -49,26 +46,14 @@ export class DefaultDownloadApi implements IDownloadApi {
         this.makeStringSafeFilename(model.name) +
           fileTypeToPlainFileExtension(model.blob.filetype)
       ] = data;
-      /*
-            if (model.link) {
-                files[this.makeStringSafeFilename(model.name) + fileTypeToPlainFileExtension(model.blob.filetype) + ".link"] = textEncoder.encode(model.link);
-            }
-
-            if (model.description) {
-                files[this.makeStringSafeFilename(model.name) + fileTypeToPlainFileExtension(model.blob.filetype) + ".description"] = textEncoder.encode(model.description);
-            }
-            */
     }
 
     const zipped = zipSync(files);
 
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([zipped as BlobPart], { type: "application/zip" }),
+    triggerBlobDownload(
+      zipped as BlobPart,
+      "application/zip",
+      this.makeStringSafeFilename(nameCollectionOfModels(models)) + ".zip",
     );
-    link.download =
-      this.makeStringSafeFilename(nameCollectionOfModels(models)) + ".zip";
-    link.click();
-    link.remove();
   }
 }

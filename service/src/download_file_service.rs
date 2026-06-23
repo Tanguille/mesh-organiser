@@ -19,6 +19,7 @@ use crate::{
 
 static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
 static FILENAME_UNQUOTED: OnceLock<Regex> = OnceLock::new();
+static NEXPRINT_FILENAME: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Serialize)]
 pub struct DownloadResult {
@@ -58,35 +59,31 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
 }
 
 pub fn get_content_disposition_filename(response: &Response) -> Option<String> {
-    response.headers().get(CONTENT_DISPOSITION).map_or_else(
-        || {
-            response
-                .url()
-                .path()
-                .split('/')
-                .next_back()
-                .map(String::from)
-        },
-        |header_value| {
+    // Last path segment of the response URL, used as a fallback when the header is
+    // absent or present-but-unparseable.
+    let url_path_filename = || {
+        response
+            .url()
+            .path()
+            .split('/')
+            .next_back()
+            .map(String::from)
+    };
+
+    response
+        .headers()
+        .get(CONTENT_DISPOSITION)
+        .map_or_else(url_path_filename, |header_value| {
             header_value
                 .to_str()
                 .ok()
                 .and_then(parse_content_disposition_filename)
-        },
-    )
+                .or_else(url_path_filename)
+        })
 }
 
 fn filename_from_response_or_url(response: &Response) -> String {
-    get_content_disposition_filename(response)
-        .or_else(|| {
-            response
-                .url()
-                .path()
-                .split('/')
-                .next_back()
-                .map(String::from)
-        })
-        .unwrap_or_else(|| "model.stl".to_string())
+    get_content_disposition_filename(response).unwrap_or_else(|| "model.stl".to_string())
 }
 
 static MAKERWORLD_MODEL_PAGE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
@@ -178,6 +175,14 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         |seg| decode(seg).unwrap_or_default().into_owned(),
     );
 
+    // Filename of the file we just downloaded; used as the default in branches that
+    // don't derive a site-specific name.
+    let current_filename = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("model.stl")
+        .to_string();
+
     let mut source_uri: Option<String> = None;
     let desired_filename: String = if url.contains("makerworld") {
         source_uri = Some(
@@ -191,33 +196,16 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     } else if let Some(stripped) = url.strip_prefix("https://files.printables.com/media/prints/") {
         let id = String::from(stripped.split('/').next().unwrap());
         source_uri = Some(format!("https://printables.com/model/{id}"));
-        file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("model.stl")
-            .to_string()
+        current_filename
     } else if url.contains("nexprint") {
         source_uri = Some(String::from("https://nexprint.com/"));
-        let re = Regex::new(r#"filename="([^"]+)""#).unwrap();
+        let re = NEXPRINT_FILENAME.get_or_init(|| Regex::new(r#"filename="([^"]+)""#).unwrap());
         let decoded_url = decode(url).unwrap().into_owned();
         re.captures(&decoded_url)
-            .and_then(|c| c.get(1))
-            .map_or_else(
-                || {
-                    file_path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("model.stl")
-                        .to_string()
-                },
-                |m| m.as_str().to_string(),
-            )
+            .and_then(|captures| captures.get(1))
+            .map_or_else(|| current_filename.clone(), |m| m.as_str().to_string())
     } else {
-        file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("model.stl")
-            .to_string()
+        current_filename
     };
 
     let cleansed_desired = cleanse_evil_from_name(&desired_filename);

@@ -9,6 +9,7 @@
   import type { Model } from "$lib/api/shared/model_api";
   import {
     convertOrderOptionGroupsToEnum,
+    SizeOptionClasses,
     type OrderOptionGroups,
   } from "$lib/api/shared/settings_api";
   import EditGroup from "$lib/components/edit/group.svelte";
@@ -26,7 +27,12 @@
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
-  import { debounce, handleGridItemKeyDown } from "$lib/utils";
+  import {
+    debounce,
+    handleGridItemKeyDown,
+    wait,
+    uniqueById,
+  } from "$lib/utils";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -84,7 +90,7 @@
 
   async function resetGroupSet() {
     while (busyLoadingNext) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await wait(50);
     }
 
     loadedGroups = [];
@@ -109,13 +115,13 @@
     }
   }
 
+  // Reuse the shared item size classes, layering on the image-strip widths the
+  // list view needs for its `.imglist` container.
   const sizes = {
-    Grid_Small: "w-32 text-sm",
-    Grid_Medium: "w-40",
-    Grid_Large: "w-60",
-    List_Small: "h-10 text-sm [&_.imglist]:w-[115px] hidden-if-small",
-    List_Medium: "h-14 [&_.imglist]:w-[165px]",
-    List_Large: "h-20 text-lg [&_.imglist]:w-[235px]",
+    ...SizeOptionClasses,
+    List_Small: `${SizeOptionClasses.List_Small} [&_.imglist]:w-[115px]`,
+    List_Medium: `${SizeOptionClasses.List_Medium} [&_.imglist]:w-[165px]`,
+    List_Large: `${SizeOptionClasses.List_Large} [&_.imglist]:w-[235px]`,
   };
 
   const size = $derived(sizes[configuration.size_option_groups]);
@@ -314,9 +320,7 @@
     let groupMetas = models
       .map((m) => m.group)
       .filter((g) => g !== null && g.id >= 0) as GroupMeta[];
-    let uniqueGroupMetas = groupMetas.filter(
-      (v, i, a) => a.findIndex((t) => t.id === v.id) === i,
-    );
+    let uniqueGroupMetas = uniqueById(groupMetas);
     let affectedGroups = loadedGroups.filter((g) =>
       uniqueGroupMetas.some((ug) => ug.id === g.meta.id),
     );
@@ -403,44 +407,17 @@
       {#if effectiveSplitSetting === "no_split"}
         {@render GroupGrid()}
       {:else if effectiveSplitSetting === "split-left-right"}
-        <span
-          class="grid h-full grid-cols-[1fr_auto_1fr] gap-3 overflow-hidden"
-        >
-          {@render GroupGrid()}
-          <div class="border-l border-dashed"></div>
-          {#if selected.length >= 1}
-            <ModelGridInner
-              bind:value={splitViewSelectedModels}
-              itemSize={configuration.size_option_groups}
-              availableModels={selected.map((x) => x.models).flat()}
-            />
-          {:else}
-            <div
-              class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-            >
-              <span class="text-xl">No models in group to display</span>
-            </div>
-          {/if}
-        </span>
+        {@render SplitView(
+          "grid h-full grid-cols-[1fr_auto_1fr] gap-3 overflow-hidden",
+          "border-l border-dashed",
+          undefined,
+        )}
       {:else if effectiveSplitSetting === "split-top-bottom"}
-        <span class="flex h-full flex-col gap-3 overflow-hidden">
-          {@render GroupGrid()}
-          <div class="border-t border-dashed"></div>
-          {#if selected.length >= 1}
-            <ModelGridInner
-              bind:value={splitViewSelectedModels}
-              itemSize={configuration.size_option_groups}
-              availableModels={selected.map((x) => x.models).flat()}
-              clazz="h-full"
-            />
-          {:else}
-            <div
-              class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-            >
-              <span class="text-xl">No models in group to display</span>
-            </div>
-          {/if}
-        </span>
+        {@render SplitView(
+          "flex h-full flex-col gap-3 overflow-hidden",
+          "border-t border-dashed",
+          "h-full",
+        )}
       {/if}
     </div>
   {/if}
@@ -519,6 +496,31 @@
     </div>
   {/if}
 </div>
+
+{#snippet SplitView(
+  wrapperClass: ClassValue,
+  dividerClass: ClassValue,
+  innerClazz: ClassValue | undefined,
+)}
+  <span class={wrapperClass}>
+    {@render GroupGrid()}
+    <div class={dividerClass}></div>
+    {#if selected.length >= 1}
+      <ModelGridInner
+        bind:value={splitViewSelectedModels}
+        itemSize={configuration.size_option_groups}
+        availableModels={selected.map((x) => x.models).flat()}
+        clazz={innerClazz}
+      />
+    {:else}
+      <div
+        class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
+      >
+        <span class="text-xl">No models in group to display</span>
+      </div>
+    {/if}
+  </span>
+{/snippet}
 
 {#snippet GroupGrid()}
   <div

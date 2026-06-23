@@ -1,4 +1,31 @@
-use service::import_state::{ImportState, ImportStateEmitter, ImportStatus};
+use db::{
+    model::{Model, blob::Blob, user::User},
+    model_db,
+};
+use service::{
+    import_state::{ImportState, ImportStateEmitter, ImportStatus},
+    thumbnail_service,
+};
+
+use crate::{error::ApplicationError, web_app_state::WebAppState};
+
+/// Fetches the given models and generates their thumbnails into `import_state`.
+/// Shared by the model-upload and 3MF-extract handlers, which both run this same tail.
+pub async fn generate_thumbnails_for_models(
+    app_state: &WebAppState,
+    user: &User,
+    model_ids: &[i64],
+    import_state: &mut ImportState,
+) -> Result<Vec<Model>, ApplicationError> {
+    let models =
+        model_db::get_models_via_ids(&app_state.app_state.db, user, model_ids.to_vec()).await?;
+    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
+
+    thumbnail_service::generate_thumbnails(&blobs, &app_state.app_state, false, import_state)
+        .await?;
+
+    Ok(models)
+}
 
 pub struct WebImportStateEmitter;
 

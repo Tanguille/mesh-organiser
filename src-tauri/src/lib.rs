@@ -19,12 +19,11 @@ use urlencoding::decode;
 use db::{
     group_db,
     model::{blob::Blob, model_group::ModelGroupMeta, user::User},
-    model_db, random_hex_32, time_now, user_db,
+    model_db, user_db,
 };
 use service::{
-    AppState, Configuration, StoredConfiguration, ThreemfMetadata, download_file_service,
-    export_service, import_state::ImportState, slicer_service::Slicer, stored_to_configuration,
-    threemf_service, thumbnail_service,
+    AppState, Configuration, ThreemfMetadata, download_file_service, export_service,
+    import_state::ImportState, slicer_service::Slicer, threemf_service, thumbnail_service,
 };
 
 use crate::{
@@ -200,11 +199,7 @@ async fn extract_threemf_models(
         threemf_service::extract_models(&model[0], &state.get_current_user(), &state.app_state)
             .await?;
 
-    let model_ids: Vec<i64> = import_state
-        .imported_models
-        .iter()
-        .flat_map(|f| f.model_ids.iter().copied())
-        .collect();
+    let model_ids = import_state.all_model_ids();
 
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
@@ -214,14 +209,7 @@ async fn extract_threemf_models(
     thumbnail_service::generate_thumbnails(&blobs, &state.app_state, false, &mut import_state)
         .await?;
 
-    Ok(ModelGroupMeta {
-        id: import_state.imported_models[0].group_id.unwrap(),
-        name: import_state.imported_models[0].group_name.clone().unwrap(),
-        created: time_now(),
-        last_modified: time_now(),
-        resource_id: None,
-        unique_global_id: random_hex_32(),
-    })
+    Ok(threemf_service::group_meta_from_import(&import_state)?)
 }
 
 #[tauri::command]
@@ -334,7 +322,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         println!("Navigated to: {url}");
 
         if let Some(deep_link) = extract_deep_link(&url) {
-            println!("Extracted deep link: {:?}", &deep_link);
+            println!("Extracted deep link: {deep_link:?}");
 
             let window = cloned_handle.get_webview_window("secondary");
 
@@ -456,6 +444,16 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
     None
 }
 
+/// Parses a single launch argument into its deep-link / account-link payloads.
+/// Shared by the single-instance handler and `setup`, which differ only in what
+/// they do with the parsed values (emit events vs. seed `InitialState`).
+fn parse_launch_arg(arg: &str) -> (Option<String>, Option<AccountLinkEmit>) {
+    (
+        extract_deep_link(arg),
+        extract_account_link_via_deep_link(arg),
+    )
+}
+
 fn remove_temp_paths() -> Result<(), ApplicationError> {
     let threshold = std::time::Duration::from_mins(5);
     let now = std::time::SystemTime::now();
@@ -503,9 +501,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 
     let json = std::fs::read_to_string(path).expect("Failed to read configuration");
 
-    let stored_configuration: StoredConfiguration =
-        serde_json::from_str(&json).expect("Failed to parse configuration");
-    stored_to_configuration(stored_configuration)
+    serde_json::from_str(&json).expect("Failed to parse configuration")
 }
 
 /// Initializes and runs the Tauri application.
@@ -530,8 +526,7 @@ pub fn run() {
 
             if argv.len() == 2
             {
-                let deep_link = extract_deep_link(&argv[1]);
-                let account_link = extract_account_link_via_deep_link(&argv[1]);
+                let (deep_link, account_link) = parse_launch_arg(&argv[1]);
 
                 if let Some(deep_link) = deep_link
                 {
@@ -545,7 +540,7 @@ pub fn run() {
                 }
                 else
                 {
-                    println!("Failed to extract deep link {:?}", &argv[1]);
+                    println!("Failed to extract deep link {:?}", argv[1]);
                 }
             }
             else
@@ -627,8 +622,7 @@ pub fn run() {
                 if argv.len() == 2
                 {
                     let arg = argv.nth(1).unwrap();
-                    let deep_link = extract_deep_link(&arg);
-                    let account_link = extract_account_link_via_deep_link(&arg);
+                    let (deep_link, account_link) = parse_launch_arg(&arg);
 
                     if let Some(deep_link) = deep_link
                     {

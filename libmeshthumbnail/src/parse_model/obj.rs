@@ -2,27 +2,18 @@ use std::{collections::HashMap, fs::File, io::Read, path::Path};
 
 use vek::Vec3;
 use wavefront_obj::obj::{self, ObjSet};
-use zip::ZipArchive;
 
-use crate::{error::MeshThumbnailError, mesh::Mesh};
+use crate::{
+    error::MeshThumbnailError,
+    mesh::Mesh,
+    parse_model::find_zip_entry_bytes,
+    path_ext::{is_zip_of, matches_ext},
+};
 
 pub fn handle(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
-    let stem = path.file_stem().and_then(|s| s.to_str());
-    let is_obj = path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"));
-    let is_obj_zip = path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-        && stem.is_some_and(|s| {
-            Path::new(s)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
-        });
-
-    if is_obj_zip {
+    if is_zip_of(path, "obj") {
         Ok(Some(parse_zip(path)?))
-    } else if is_obj {
+    } else if matches_ext(path, "obj") {
         Ok(Some(parse(path)?))
     } else {
         Ok(None)
@@ -42,28 +33,21 @@ fn parse(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 }
 
 fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let handle = File::open(path)?;
-    let mut zip = ZipArchive::new(handle)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        if Path::new(file.name())
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
-        {
-            let mut buffer = Vec::with_capacity(usize::try_from(file.size()).unwrap_or(0));
-            file.read_to_end(&mut buffer)?;
-
-            let utf8 = std::str::from_utf8(&buffer).map_err(|e| {
-                MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
-            })?;
-            return parse_inner(&obj::parse(utf8)?);
-        }
-    }
-
-    Err(MeshThumbnailError::InternalError(String::from(
+    let buffer = find_zip_entry_bytes(
+        path,
+        |name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
+        },
         "Failed to find .obj model in zip",
-    )))
+    )?;
+
+    let utf8 = std::str::from_utf8(&buffer).map_err(|e| {
+        MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
+    })?;
+
+    parse_inner(&obj::parse(utf8)?)
 }
 
 // https://github.com/asny/three-d-asset/blob/main/src/io/obj.rs#L54
@@ -77,11 +61,8 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
                 let mut map: HashMap<usize, usize> = HashMap::new();
 
                 let mut process = |i: obj::VTNIndex| {
-                    let mut index = map.get(&i.0).copied();
-
-                    if index.is_none() {
-                        index = Some(positions.len());
-                        map.insert(i.0, index.unwrap());
+                    let index = *map.entry(i.0).or_insert_with(|| {
+                        let new_index = positions.len();
                         let position = object.vertices[i.0];
                         // OBJ vertex coordinates are typically in a range that fits in f32; mesh data is not high-precision.
                         #[allow(clippy::cast_possible_truncation)]
@@ -90,9 +71,10 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
                             position.y as f32,
                             position.z as f32,
                         ));
-                    }
+                        new_index
+                    });
 
-                    indices.push(u32::try_from(index.unwrap()).unwrap_or(0));
+                    indices.push(u32::try_from(index).unwrap_or(0));
                 };
                 for shape in &mesh.shapes {
                     // All triangles with same material

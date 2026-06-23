@@ -3,14 +3,14 @@ use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError,
+    DbError, TimestampSchema,
     db_context::DbContext,
     model::{
         label::{Label, LabelMeta},
         user::User,
     },
-    model_db, push_in_i64, random_hex_32,
-    util::time_now,
+    model_db, push_in_i64, random_hex_32, set_timestamp_column,
+    util::{time_now, validate_global_id},
 };
 
 pub async fn get_labels_min(db: &DbContext) -> Result<Vec<LabelMeta>, DbError> {
@@ -391,11 +391,7 @@ pub async fn edit_label_global_id(
     label_id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE labels SET label_unique_global_id = ? WHERE label_id = ? AND label_user_id = ?",
@@ -421,6 +417,26 @@ pub async fn delete_label(db: &DbContext, user: &User, label_id: i64) -> Result<
     Ok(())
 }
 
+/// Verifies the caller owns the parent label and every child label before mutating the
+/// parent/child relationship. Shared by `add_childs_to_label` and `remove_childs_from_label`.
+async fn check_parent_and_children_access(
+    db: &DbContext,
+    user: &User,
+    parent_label_id: i64,
+    child_label_ids: &[i64],
+) -> Result<(), DbError> {
+    let (_, access_check) = tokio::try_join!(
+        get_unique_id_from_label_id(db, user, parent_label_id),
+        get_unique_ids_from_label_ids(db, user, child_label_ids),
+    )?;
+
+    if access_check.len() != child_label_ids.len() {
+        return Err(DbError::RowNotFound);
+    }
+
+    Ok(())
+}
+
 pub async fn add_childs_to_label(
     db: &DbContext,
     user: &User,
@@ -430,12 +446,7 @@ pub async fn add_childs_to_label(
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
-    let _parent_hex = get_unique_id_from_label_id(db, user, parent_label_id).await?;
-    let access_check = get_unique_ids_from_label_ids(db, user, &child_label_ids).await?;
-
-    if access_check.len() != child_label_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
+    check_parent_and_children_access(db, user, parent_label_id, &child_label_ids).await?;
 
     // Batch insert using a single query with multiple VALUES
     if !child_label_ids.is_empty() {
@@ -462,12 +473,7 @@ pub async fn remove_childs_from_label(
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
-    let _parent_hex = get_unique_id_from_label_id(db, user, parent_label_id).await?;
-    let access_check = get_unique_ids_from_label_ids(db, user, &child_label_ids).await?;
-
-    if access_check.len() != child_label_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
+    check_parent_and_children_access(db, user, parent_label_id, &child_label_ids).await?;
 
     // Batch delete using IN clause
     if !child_label_ids.is_empty() {
@@ -511,16 +517,7 @@ pub async fn set_last_updated_on_label(
     label_id: i64,
     timestamp: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE labels SET label_last_modified = ? WHERE label_id = ? AND label_user_id = ?",
-        timestamp,
-        label_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
+    set_last_updated_on_labels(db, user, &[label_id], timestamp).await
 }
 
 pub async fn set_last_updated_on_labels(
@@ -529,19 +526,19 @@ pub async fn set_last_updated_on_labels(
     label_ids: &[i64],
     timestamp: &str,
 ) -> Result<(), DbError> {
-    if label_ids.is_empty() {
-        return Ok(());
-    }
-
-    let mut query_builder = QueryBuilder::new("UPDATE labels SET label_last_modified = ");
-    query_builder.push_bind(timestamp);
-    query_builder.push(" WHERE label_id IN ");
-    push_in_i64(&mut query_builder, label_ids);
-    query_builder.push(" AND label_user_id = ");
-    query_builder.push_bind(user.id);
-    query_builder.build().execute(db).await?;
-
-    Ok(())
+    set_timestamp_column(
+        db,
+        TimestampSchema {
+            table: "labels",
+            ts_col: "label_last_modified",
+            id_col: "label_id",
+            user_col: "label_user_id",
+        },
+        label_ids,
+        user.id,
+        timestamp,
+    )
+    .await
 }
 
 #[cfg(test)]

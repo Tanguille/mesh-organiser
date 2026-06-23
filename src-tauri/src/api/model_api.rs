@@ -37,11 +37,7 @@ pub async fn add_model(
     );
     import_state = import_service::import_path(path, &state.app_state, import_state).await?;
 
-    let model_ids: Vec<i64> = import_state
-        .imported_models
-        .iter()
-        .flat_map(|f| f.model_ids.iter().copied())
-        .collect();
+    let model_ids = import_state.all_model_ids();
 
     let models =
         model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)

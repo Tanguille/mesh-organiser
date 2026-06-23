@@ -8,11 +8,12 @@
   import Link from "@lucide/svelte/icons/link";
   import { onMount } from "svelte";
   import { buttonVariants } from "../ui/button/button.svelte";
+  import { wait } from "$lib/utils";
 
   let visible = $state(false);
 
   onMount(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await wait(200);
     visible = true;
   });
 </script>

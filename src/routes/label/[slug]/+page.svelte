@@ -1,6 +1,7 @@
 <script lang="ts">
   import GroupGrid from "$lib/components/view/group-grid.svelte";
   import { page } from "$app/state";
+  import { getThisLabelOnly } from "$lib/paths";
   import EditLabel from "$lib/components/edit/label.svelte";
   import type { Label } from "$lib/api/shared/label_api";
   import { sidebarState } from "$lib/sidebar_data.svelte";
@@ -9,9 +10,7 @@
 
   let groupApi = getContainer().require<IGroupApi>(IGroupApi);
 
-  let thisLabelOnly = $derived.by(() => {
-    return page.url.searchParams.get("thisLabelOnly") === "true";
-  });
+  let thisLabelOnly = $derived.by(getThisLabelOnly);
 
   let label: Label | null = $derived.by(() => {
     let slug = parseInt(page.params.slug!);

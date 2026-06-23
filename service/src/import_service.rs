@@ -1,6 +1,5 @@
 use std::{
     fs::{self, read_dir},
-    panic,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -17,7 +16,6 @@ use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     sync::Mutex,
-    task::JoinSet,
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
@@ -107,10 +105,7 @@ pub async fn get_model_count(
         } else {
             get_model_count_from_dir(path)
         }
-    } else if path_buff
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-    {
+    } else if is_zip_path(&path_buff) {
         if import_state.import_as_path {
             return Err(ServiceError::InternalError(String::from(
                 "Cannot import a zip as path",
@@ -153,43 +148,31 @@ pub async fn import_path_inner(
         if recursive {
             import_models_from_dir_recursive(&path_buff, app_state, import_state).await?;
         } else {
-            import_models_from_dir(path, app_state, import_state, name.clone()).await?;
+            import_models_from_dir(path, app_state, import_state, name).await?;
         }
-    } else if path_buff
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-    {
-        import_models_from_zip(path, app_state, import_state, name.clone()).await?;
+    } else if is_zip_path(&path_buff) {
+        import_models_from_zip(path, app_state, import_state, name).await?;
     } else if is_supported_extension(&path_buff) {
-        let extension = path_buff.extension().unwrap().to_str().unwrap();
-        let size = usize::try_from(path_buff.metadata()?.len()).unwrap_or(0);
-        let mut import_state = import_state.lock().await;
-
-        {
-            let mut file = File::open(&path_buff).await?;
-            let permanent_disk_path = if import_state.import_as_path {
-                Some(path_buff.clone())
-            } else {
-                None
-            };
-
-            let id = import_single_model(
-                &mut file,
-                extension,
-                size,
-                &name,
-                import_state.origin_url.as_deref(),
-                app_state,
-                &import_state.user,
-                permanent_disk_path,
+        let (user, origin_url, delete_after_import, import_as_path) = {
+            let import_state = import_state.lock().await;
+            (
+                import_state.user.clone(),
+                import_state.origin_url.clone(),
+                import_state.delete_after_import,
+                import_state.import_as_path,
             )
-            .await?;
-            import_state.add_model_id_to_current_set(id);
-        }
+        };
 
-        if import_state.delete_after_import {
-            let _ = fs::remove_file(&path_buff);
-        }
+        import_models_from_dir_inner(
+            app_state,
+            path_buff,
+            Arc::clone(&import_state),
+            &user,
+            origin_url.as_deref(),
+            delete_after_import,
+            import_as_path,
+        )
+        .await?;
     } else {
         return Err(ServiceError::InternalError(String::from(
             "Unsupported file type",
@@ -384,25 +367,21 @@ async fn import_models_from_dir(
         import_as_path = import_state.import_as_path;
     }
 
-    let mut entries: Vec<PathBuf> = read_dir(path)?
+    let entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file())
         .collect();
 
-    let mut futures = JoinSet::new();
-
     let max = configuration.core_parallelism * ASYNC_MULT;
-    let mut active = 0;
 
-    while !entries.is_empty() {
-        let Some(entry) = entries.pop() else { continue };
+    // Task outputs are discarded, matching the previous loop which ignored task results.
+    let _ = util::run_bounded(entries, max, |entry| {
         let app_state = app_state.clone();
         let import_state_mutex = Arc::clone(&import_state);
         let user = user.clone();
         let origin_url = origin_url.clone();
-        active += 1;
 
-        futures.spawn(async move {
+        async move {
             import_models_from_dir_inner(
                 &app_state,
                 entry,
@@ -413,20 +392,9 @@ async fn import_models_from_dir(
                 import_as_path,
             )
             .await
-        });
-
-        if active >= max
-            && let Some(res) = futures.join_next().await
-        {
-            match res {
-                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
-                Err(err) => panic!("{err}"),
-                _ => active -= 1,
-            }
         }
-    }
-
-    futures.join_all().await;
+    })
+    .await;
 
     Ok(())
 }
@@ -589,6 +557,12 @@ where
 pub fn is_supported_extension(path: &Path) -> bool {
     let file_type = FileType::from_pathbuf(path);
     file_type.is_importable()
+}
+
+/// Returns `true` if the path has a case-insensitive `.zip` extension.
+fn is_zip_path(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
 }
 
 fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError> {

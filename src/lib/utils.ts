@@ -133,6 +133,45 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Dedupe by id, preserving first occurrence. O(n) via a Set instead of the
+// O(n^2) `.filter((v, i, a) => a.findIndex(...) === i)` idiom it replaces.
+export function uniqueById<T extends { id: number }>(items: T[]): T[] {
+  const seen = new Set<number>();
+  return items.filter((item) =>
+    seen.has(item.id) ? false : (seen.add(item.id), true),
+  );
+}
+
+// Pick the model with the largest blob as the single representative image
+// for a group/collection.
+export function representativeModel(models: Model[]): Model {
+  return Array.from(models).sort((a, b) => b.blob.size - a.blob.size)[0];
+}
+
+// Trigger a browser download/navigation via a transient anchor element.
+// Setting `filename` adds a `download` attribute; omit it for deep-link hrefs.
+export function triggerDownload(url: string, filename?: string): void {
+  const link = document.createElement("a");
+  link.href = url;
+  if (filename !== undefined) {
+    link.download = filename;
+  }
+  link.click();
+  link.remove();
+}
+
+// Wrap blob data in an object URL and trigger a download with the given filename.
+export function triggerBlobDownload(
+  data: BlobPart,
+  mime: string,
+  filename: string,
+): void {
+  triggerDownload(
+    URL.createObjectURL(new Blob([data], { type: mime })),
+    filename,
+  );
+}
+
 export function dateToString(date: Date): string {
   const isoString = date.toISOString();
   if (isoString.includes(".")) {

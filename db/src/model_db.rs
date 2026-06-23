@@ -11,7 +11,7 @@ use crate::{
         model_group::ModelGroupMeta, user::User,
     },
     push_in_i64,
-    util::{random_hex_32, time_now},
+    util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
 };
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
@@ -42,7 +42,6 @@ impl ModelOrderBy {
     }
 }
 
-#[derive(Default)]
 pub struct ModelFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
@@ -52,6 +51,24 @@ pub struct ModelFilterOptions {
     pub model_flags: Option<ModelFlags>,
     pub page: u32,
     pub page_size: u32,
+}
+
+impl Default for ModelFilterOptions {
+    // `page`/`page_size` must default to a valid pagination window, not 0: the query uses
+    // `LIMIT {page_size}`, so a derived `page_size == 0` would silently return no rows.
+    // Mirror the codebase's "fetch all" convention (page 1, MAX_PAGE_SIZE).
+    fn default() -> Self {
+        Self {
+            model_ids: None,
+            group_ids: None,
+            label_ids: None,
+            order_by: None,
+            text_search: None,
+            model_flags: None,
+            page: 1,
+            page_size: MAX_PAGE_SIZE,
+        }
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -131,9 +148,6 @@ pub async fn get_models(
 
     query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));
 
-    #[cfg(debug_assertions)]
-    println!("Generated SQL Query: {}", query_builder.sql().as_str());
-
     let query = query_builder.build();
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
@@ -170,11 +184,7 @@ pub async fn get_models(
             labels: row
                 .get::<Option<String>, _>("label_ids")
                 .map_or_else(Vec::new, |label_ids| {
-                    let label_ids = label_ids
-                        .split(',')
-                        .filter_map(|s| s.parse::<i64>().ok())
-                        .collect::<Vec<i64>>();
-                    label_ids
+                    parse_concat_ids(&label_ids)
                         .iter()
                         .filter_map(|id| min_labels_map.get(id).cloned())
                         .collect()
@@ -277,11 +287,7 @@ pub async fn edit_model_global_id(
     id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE models SET model_unique_global_id = ? WHERE model_id = ? AND model_user_id = ?",

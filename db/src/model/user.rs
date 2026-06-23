@@ -3,7 +3,7 @@ use password_auth::generate_hash;
 use serde::{Deserialize, Serialize};
 
 bitflags! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct UserPermissions: u32 {
         const Admin = 0b0000_0001;
         const Sync  = 0b0000_0010;
@@ -49,7 +49,7 @@ impl<'de> Deserialize<'de> for UserPermissions {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct User {
     pub id: i64,
     pub username: String,
@@ -61,24 +61,6 @@ pub struct User {
     pub permissions: UserPermissions,
     #[serde(skip_serializing)]
     pub password_hash: String,
-}
-
-impl Clone for User {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            username: self.username.clone(),
-            email: self.email.clone(),
-            created_at: self.created_at.clone(),
-            sync_url: self.sync_url.clone(),
-            sync_token: self.sync_token.clone(),
-            last_sync: self.last_sync.clone(),
-            password_hash: self.password_hash.clone(),
-            permissions: unsafe {
-                UserPermissions::from_bits(self.permissions.bits()).unwrap_unchecked()
-            },
-        }
-    }
 }
 
 impl Default for User {

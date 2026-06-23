@@ -1,12 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ILocalApi } from "../shared/local_api";
 import type { Model } from "../shared/model_api";
-import { open } from "@tauri-apps/plugin-dialog";
+import { LocalApi } from "../tauri/local";
 
 // TODO: Split this off into chunks. We don't need the data picker, appdatadir or max parallelism here!
-export class OnlineLocalApi implements ILocalApi {
-  appDataDir: string;
-  maxParallelism: number;
+export class OnlineLocalApi extends LocalApi {
   private baseUrl: string;
   private userId: number;
   private userHash: string;
@@ -18,8 +15,7 @@ export class OnlineLocalApi implements ILocalApi {
     userId: number,
     userHash: string,
   ) {
-    this.appDataDir = appDataDir;
-    this.maxParallelism = maxParallelism;
+    super(appDataDir, maxParallelism);
     this.baseUrl = baseUrl;
     this.userId = userId;
     this.userHash = userHash;
@@ -33,27 +29,5 @@ export class OnlineLocalApi implements ILocalApi {
       userHash: this.userHash,
       asZip: asZip,
     });
-  }
-
-  async getAppDataDir(): Promise<string> {
-    return this.appDataDir;
-  }
-
-  async openDataDirPicker(): Promise<string | null> {
-    return await open({
-      multiple: false,
-      directory: true,
-    });
-  }
-
-  async openCustomSlicerPicker(): Promise<string | null> {
-    return await open({
-      multiple: false,
-      directory: false,
-    });
-  }
-
-  async getMaxParallelism(): Promise<number> {
-    return this.maxParallelism;
   }
 }

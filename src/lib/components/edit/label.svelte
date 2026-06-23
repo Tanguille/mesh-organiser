@@ -9,7 +9,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Input } from "$lib/components/ui/input";
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "$lib/paths";
   import { page } from "$app/state";
 
   import { debounce } from "$lib/utils";
@@ -44,9 +44,7 @@
 
   let labelApi = getContainer().require<ILabelApi>(ILabelApi);
 
-  const thisLabelOnly = $derived.by(() => {
-    return page.url.searchParams.get("thisLabelOnly") === "true";
-  });
+  const thisLabelOnly = $derived.by(getThisLabelOnly);
 
   let keywords = $state<string[]>([]);
 

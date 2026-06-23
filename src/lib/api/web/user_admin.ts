@@ -3,8 +3,8 @@ import {
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import {
-  createUserInstance,
   IUserManageSelfApi,
+  newlyCreatedUser,
   permissionsToStringArray,
   type IAdminUserApi,
   type User,
@@ -46,16 +46,7 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
         data,
       )
     ).id;
-    return createUserInstance(
-      userId,
-      username,
-      email,
-      new Date().toISOString(),
-      [],
-      null,
-      null,
-      null,
-    );
+    return newlyCreatedUser(userId, username, email);
   }
 
   async deleteUser(user: User): Promise<void> {

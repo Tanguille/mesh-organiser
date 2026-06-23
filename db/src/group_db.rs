@@ -6,7 +6,7 @@ use sqlx::{QueryBuilder, Row};
 use strum::EnumString;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse, TimestampSchema,
     db_context::DbContext,
     model::{
         Model, ModelFlags,
@@ -15,8 +15,8 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, resource_db,
-    util::time_now,
+    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
+    util::{time_now, validate_global_id},
 };
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
@@ -29,7 +29,6 @@ pub enum GroupOrderBy {
     ModifiedDesc,
 }
 
-#[derive(Default)]
 pub struct GroupFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
@@ -43,6 +42,26 @@ pub struct GroupFilterOptions {
     /// When true and filters are applied, keep groups that only contain matching models
     /// (don't re-fetch full groups). When false, re-fetch so each group shows all its models.
     pub split_incomplete_groups: bool,
+}
+
+impl Default for GroupFilterOptions {
+    // `page`/`page_size` must default to a valid pagination window, not 0: the in-memory
+    // pagination below does `.take(page_size)`, so a derived `page_size == 0` would silently
+    // return no groups. Mirror the codebase's "fetch all" convention (page 1, MAX_PAGE_SIZE).
+    fn default() -> Self {
+        Self {
+            model_ids: None,
+            group_ids: None,
+            label_ids: None,
+            order_by: None,
+            text_search: None,
+            page: 1,
+            page_size: MAX_PAGE_SIZE,
+            include_ungrouped_models: false,
+            allow_incomplete_groups: false,
+            split_incomplete_groups: false,
+        }
+    }
 }
 
 /// Builds group list from a flat model list. Main cost is typically the upstream fetch of all
@@ -181,7 +200,7 @@ pub async fn get_groups(
 
     // Enforce pagination limits to prevent memory exhaustion
     let page_size = options.page_size.min(MAX_PAGE_SIZE);
-    let offset = ((options.page - 1) * page_size) as usize;
+    let offset = (options.page.saturating_sub(1) * page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups
@@ -320,11 +339,7 @@ pub async fn edit_group_global_id(
     group_id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE models_group SET group_unique_global_id = ? WHERE group_id = ? AND group_user_id = ?",
@@ -378,29 +393,31 @@ pub async fn get_group_count(
     user: &User,
     include_ungrouped_models: bool,
 ) -> Result<usize, DbError> {
-    let mut group_count = 0;
-
-    let group_query = sqlx::query!(
+    let base: usize = sqlx::query!(
         "SELECT COUNT(DISTINCT model_group_id) as count FROM models WHERE model_user_id = ?",
         user.id
     )
     .fetch_one(db)
-    .await?;
+    .await?
+    .count
+    .try_into()
+    .unwrap_or(0);
 
-    group_count += group_query.count.try_into().unwrap_or(0);
-
-    if include_ungrouped_models {
-        let ungrouped_query = sqlx::query!(
+    let ungrouped: usize = if include_ungrouped_models {
+        sqlx::query!(
             "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND model_group_id IS NULL",
             user.id
         )
         .fetch_one(db)
-        .await?;
+        .await?
+        .count
+        .try_into()
+        .unwrap_or(0)
+    } else {
+        0
+    };
 
-        group_count += ungrouped_query.count.try_into().unwrap_or(0);
-    }
-
-    Ok(group_count)
+    Ok(base + ungrouped)
 }
 
 pub async fn get_group_via_id(
@@ -437,16 +454,7 @@ pub async fn set_last_updated_on_group(
     group_id: i64,
     timestamp: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE models_group SET group_last_modified = ? WHERE group_id = ? AND group_user_id = ?",
-        timestamp,
-        group_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
+    set_last_updated_on_groups(db, user, &[group_id], timestamp).await
 }
 
 pub async fn set_last_updated_on_groups(
@@ -455,17 +463,17 @@ pub async fn set_last_updated_on_groups(
     group_ids: &[i64],
     timestamp: &str,
 ) -> Result<(), DbError> {
-    if group_ids.is_empty() {
-        return Ok(());
-    }
-
-    let mut query_builder = QueryBuilder::new("UPDATE models_group SET group_last_modified = ");
-    query_builder.push_bind(timestamp);
-    query_builder.push(" WHERE group_id IN ");
-    push_in_i64(&mut query_builder, group_ids);
-    query_builder.push(" AND group_user_id = ");
-    query_builder.push_bind(user.id);
-    query_builder.build().execute(db).await?;
-
-    Ok(())
+    set_timestamp_column(
+        db,
+        TimestampSchema {
+            table: "models_group",
+            ts_col: "group_last_modified",
+            id_col: "group_id",
+            user_col: "group_user_id",
+        },
+        group_ids,
+        user.id,
+        timestamp,
+    )
+    .await
 }

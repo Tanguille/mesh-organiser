@@ -42,7 +42,7 @@ pub enum QueryBoundsError {
 }
 
 /// Rejects `ids` if it contains more than [`MAX_ID_LIST_ITEMS`] elements.
-pub const fn validate_id_list(field: &'static str, ids: &[i64]) -> Result<(), QueryBoundsError> {
+const fn validate_id_list(field: &'static str, ids: &[i64]) -> Result<(), QueryBoundsError> {
     if ids.len() > MAX_ID_LIST_ITEMS {
         return Err(QueryBoundsError::TooManyIds {
             field,
@@ -54,7 +54,7 @@ pub const fn validate_id_list(field: &'static str, ids: &[i64]) -> Result<(), Qu
 }
 
 /// Validates `model_ids`, `group_ids`, and `label_ids` list lengths.
-pub fn validate_three_id_lists(
+fn validate_three_id_lists(
     model_ids: &[i64],
     group_ids: &[i64],
     label_ids: &[i64],
@@ -62,19 +62,6 @@ pub fn validate_three_id_lists(
     validate_id_list("model_ids", model_ids)?;
     validate_id_list("group_ids", group_ids)?;
     validate_id_list("label_ids", label_ids)?;
-
-    Ok(())
-}
-
-fn validate_id_lists_and_list_strings(
-    model_ids: &[i64],
-    group_ids: &[i64],
-    label_ids: &[i64],
-    text_search: Option<&str>,
-    order_by: Option<&str>,
-) -> Result<(), QueryBoundsError> {
-    validate_three_id_lists(model_ids, group_ids, label_ids)?;
-    validate_list_query_strings(text_search, order_by)?;
 
     Ok(())
 }
@@ -95,13 +82,12 @@ pub struct PaginatedListQueryBounds<'a> {
 pub fn validate_model_list_query_bounds(
     query_bounds: PaginatedListQueryBounds<'_>,
 ) -> Result<(), QueryBoundsError> {
-    validate_id_lists_and_list_strings(
+    validate_three_id_lists(
         query_bounds.model_ids,
         query_bounds.group_ids,
         query_bounds.label_ids,
-        query_bounds.text_search,
-        query_bounds.order_by,
     )?;
+    validate_list_query_strings(query_bounds.text_search, query_bounds.order_by)?;
     validate_pagination(query_bounds.page, query_bounds.page_size)?;
 
     Ok(())
@@ -112,13 +98,12 @@ pub fn validate_group_list_query_bounds(
     query_bounds: PaginatedListQueryBounds<'_>,
     model_ids_str: Option<&str>,
 ) -> Result<(), QueryBoundsError> {
-    validate_id_lists_and_list_strings(
+    validate_three_id_lists(
         query_bounds.model_ids,
         query_bounds.group_ids,
         query_bounds.label_ids,
-        query_bounds.text_search,
-        query_bounds.order_by,
     )?;
+    validate_list_query_strings(query_bounds.text_search, query_bounds.order_by)?;
     validate_model_ids_str_raw(model_ids_str)?;
     validate_pagination(query_bounds.page, query_bounds.page_size)?;
 
@@ -132,7 +117,7 @@ pub fn bad_request(e: &QueryBoundsError) -> Response {
 }
 
 /// Rejects `opt` if `Some` and UTF-8 byte length exceeds `max_bytes`.
-pub const fn validate_optional_str(
+const fn validate_optional_str(
     str: Option<&str>,
     field: &'static str,
     max_bytes: usize,
@@ -169,6 +154,12 @@ pub fn parse_comma_separated_i64(str: &str, max: usize) -> Result<Vec<i64>, Quer
     Ok(out)
 }
 
+/// Converts a request-param `Vec<i64>` into `Option<Vec<i64>>`, treating an empty list as absent.
+#[must_use]
+pub fn none_if_empty(ids: Vec<i64>) -> Option<Vec<i64>> {
+    if ids.is_empty() { None } else { Some(ids) }
+}
+
 /// Parses comma-separated `model_ids_str` when present; [`None`] when the query param is absent.
 pub fn optional_comma_separated_model_ids(
     str: Option<&str>,
@@ -179,12 +170,12 @@ pub fn optional_comma_separated_model_ids(
 }
 
 /// Validates optional raw `model_ids_str` byte length.
-pub const fn validate_model_ids_str_raw(str: Option<&str>) -> Result<(), QueryBoundsError> {
+const fn validate_model_ids_str_raw(str: Option<&str>) -> Result<(), QueryBoundsError> {
     validate_optional_str(str, "model_ids_str", MAX_MODEL_IDS_STR_BYTES)
 }
 
 /// Validates shared list + string fields for model and group list endpoints.
-pub fn validate_list_query_strings(
+fn validate_list_query_strings(
     text_search: Option<&str>,
     order_by: Option<&str>,
 ) -> Result<(), QueryBoundsError> {

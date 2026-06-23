@@ -235,11 +235,22 @@ const benchmarkingLabel = createLabelMetaInstance(
 );
 mockLabels.set(benchmarkingLabel.id, benchmarkingLabel);
 
+// Track model-to-group and model-to-label relationships
+export const modelGroupMap: Map<number, number> = new Map();
+export const modelLabelsMap: Map<number, number[]> = new Map();
+
 // Assign models to groups and labels
 const modelsByName: Map<string, Model> = new Map();
 mockModels.forEach((model) => {
   modelsByName.set(model.name.toLowerCase(), model);
 });
+
+// Resolves label ids to their LabelMeta, dropping ids without a known label.
+export function resolveLabels(ids: number[]): LabelMeta[] {
+  return ids
+    .map((id) => mockLabels.get(id))
+    .filter((label): label is LabelMeta => label !== undefined);
+}
 
 // Add primitives to group
 const primitiveNames = ["sphere", "cone", "cube", "cylinder", "disc", "torus"];
@@ -247,6 +258,7 @@ primitiveNames.forEach((name) => {
   const model = modelsByName.get(name);
   if (model) {
     model.group = primitivesGroup;
+    modelGroupMap.set(model.id, primitivesGroup.id);
   }
 });
 
@@ -256,18 +268,6 @@ benchmarkNames.forEach((name) => {
   const model = modelsByName.get(name);
   if (model) {
     model.labels = [benchmarkingLabel];
-  }
-});
-
-// Track model-to-group and model-to-label relationships
-export const modelGroupMap: Map<number, number> = new Map();
-export const modelLabelsMap: Map<number, number[]> = new Map();
-
-mockModels.forEach((model) => {
-  if (model.group) {
-    modelGroupMap.set(model.id, model.group.id);
-  }
-  if (model.labels.length > 0) {
     modelLabelsMap.set(
       model.id,
       model.labels.map((l) => l.id),

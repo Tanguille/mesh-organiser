@@ -49,6 +49,30 @@ pub struct ResourceMeta {
     pub unique_global_id: String,
 }
 
+impl ResourceMeta {
+    /// Builds a `ResourceMeta` from raw DB columns, centralizing the `resource_flags`
+    /// (stored as i64) -> `ResourceFlags` conversion shared by every resource query.
+    #[must_use]
+    pub fn from_parts(
+        id: i64,
+        name: String,
+        flags: i64,
+        created: String,
+        unique_global_id: String,
+        last_modified: String,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            flags: ResourceFlags::from_bits(u32::try_from(flags).unwrap_or(0))
+                .unwrap_or(ResourceFlags::empty()),
+            created,
+            unique_global_id,
+            last_modified,
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct Resource {
     pub meta: ResourceMeta,
