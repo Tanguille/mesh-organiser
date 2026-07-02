@@ -3,6 +3,7 @@ use std::{
     fmt::Write,
     fs::File,
     io::{self, ErrorKind},
+    net::SocketAddr,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -20,7 +21,7 @@ use tokio::{fs, signal, task::AbortHandle};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
-    cors::{Any, CorsLayer},
+    cors::{AllowHeaders, AllowMethods, CorsLayer},
     services::{ServeDir, ServeFile},
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
@@ -290,8 +291,11 @@ impl App {
                 "http://localhost:3000".parse().unwrap(),
                 "http://localhost:5173".parse().unwrap(),
             ])
-            .allow_methods(Any)
-            .allow_headers(Any)
+            // Wildcards are illegal (and panic in tower-http) together with
+            // allow_credentials; mirroring the request is the permissive-but-legal
+            // equivalent for credentialed CORS.
+            .allow_methods(AllowMethods::mirror_request())
+            .allow_headers(AllowHeaders::mirror_request())
             .allow_credentials(true);
 
         // Configure rate limiting for auth endpoints
@@ -332,7 +336,12 @@ impl App {
         println!("Server running on port {port}");
 
         // Ensure we use a shutdown signal to abort the deletion task.
-        axum::serve(listener, app.into_make_service())
+        // Connect info is required by the auth rate limiter: tower_governor's
+        // default PeerIpKeyExtractor 500s every request without a peer address.
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
             .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
             .await?;
 
