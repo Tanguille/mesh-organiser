@@ -604,6 +604,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28520fe97b1962778c76e41979864ff71ecf564c98b4777cd4187790ae494919"
 dependencies = [
  "cc",
+ "cmake",
  "cxx",
  "cxx-build",
  "glam",
@@ -3209,6 +3210,7 @@ dependencies = [
  "db",
  "futures",
  "itertools",
+ "libmeshthumbnail",
  "serde",
  "serde_html_form 0.4.1",
  "serde_json",

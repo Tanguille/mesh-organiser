@@ -52,11 +52,10 @@ jobs:
       - name: Detect unused dependencies
         uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
 
-      # `step` is excluded from the workspace-wide runs: the apps don't ship it
-      # (cadrum's prebuilt OCCT segfaults next to GTK/WebKit — see src-tauri/Cargo.toml).
+      # src-tauri ships `step`, so feature unification builds and tests the STEP
+      # path in these workspace runs. On Linux this compiles OCCT from source via
+      # cadrum (~30 min uncached; cached in the cargo target dir afterwards) — see
+      # libmeshthumbnail/Cargo.toml for why Linux cannot use the prebuilt tarball.
       - run: cargo build --workspace --all-targets
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace --all-targets
-      # The STEP path itself stays tested via cadrum (prebuilt OCCT, no system install).
-      - run: cargo clippy -p libmeshthumbnail --all-targets --features step
-      - run: cargo test -p libmeshthumbnail --features step
