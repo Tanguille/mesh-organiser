@@ -38,7 +38,7 @@ Before claiming work complete or ready for review, run verification and only the
 - **Frontend (Svelte):** After editing `.svelte` or `.svelte.ts` files, run **svelte-autofixer** (Svelte MCP) on the changed files, fix any reported issues, and run it again to confirm clean. If the Svelte MCP is unavailable, skip this step.
 - Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, and tests (e.g. `cargo test -p service`)
 - Do not state that tests or checks pass without having run them
-- **STEP/OCCT**: Full build compiles OCCT from source. To avoid freezing, limit parallelism (e.g. `CARGO_BUILD_JOBS=2`, Windows: `CL=/MP2`); see [docs/commands.md](docs/commands.md).
+- **STEP/OCCT**: Handled by cadrum — Windows downloads a prebuilt OCCT, Linux builds it from source once (cached afterwards); see [docs/commands.md](docs/commands.md).
 
 ### Guardrails
 
