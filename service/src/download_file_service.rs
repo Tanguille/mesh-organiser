@@ -26,6 +26,16 @@ pub struct DownloadResult {
     pub source_uri: Option<String>,
 }
 
+/// Extracts a quoted `filename="..."` value. Shared by the header parser and the
+/// nexprint URL branch, which must stay quoted-only (the unquoted fallback would
+/// capture trailing query params from a URL).
+fn quoted_filename(value: &str) -> Option<String> {
+    let re = FILENAME_QUOTED.get_or_init(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).unwrap());
+    re.captures(value)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().to_string())
+}
+
 /// Parses a Content-Disposition header value and returns the filename if present.
 /// Supports `filename*=UTF-8''<percent-encoded>` (RFC 5987) and `filename="..."` / `filename=value`.
 fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
@@ -41,11 +51,8 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
         }
     }
     // Fallback: filename="..." or filename=value
-    let re = FILENAME_QUOTED.get_or_init(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).unwrap());
-    if let Some(cap) = re.captures(header_value)
-        && let Some(m) = cap.get(1)
-    {
-        return Some(m.as_str().to_string());
+    if let Some(name) = quoted_filename(header_value) {
+        return Some(name);
     }
     let re2 = FILENAME_UNQUOTED.get_or_init(|| Regex::new(r"filename\s*=\s*([^;\s]+)").unwrap());
     if let Some(cap) = re2.captures(header_value)
@@ -199,9 +206,9 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     } else if url.contains("nexprint") {
         source_uri = Some(String::from("https://nexprint.com/"));
         // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
-        // reuse the header parser instead of a third filename regex.
+        // quoted-only on purpose — see quoted_filename.
         let decoded_url = decode(url).unwrap().into_owned();
-        parse_content_disposition_filename(&decoded_url)
+        quoted_filename(&decoded_url)
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| current_filename.clone())
     } else {

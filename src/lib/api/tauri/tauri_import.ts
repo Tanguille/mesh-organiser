@@ -269,12 +269,10 @@ export class TauriImportApi implements ITauriImportApi {
     }
 
     const evType = event.type as Record<string, { kind?: string } | undefined>;
-    if (
-      !(
-        (Object.hasOwn(evType, "create") && evType.create?.kind === "any") ||
-        (Object.hasOwn(evType, "modify") && evType.modify?.kind === "any")
-      )
-    ) {
+    if (!(
+      (Object.hasOwn(evType, "create") && evType.create?.kind === "any") ||
+      (Object.hasOwn(evType, "modify") && evType.modify?.kind === "any")
+    )) {
       return;
     }
 

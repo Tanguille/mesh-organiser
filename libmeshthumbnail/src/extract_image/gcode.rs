@@ -104,7 +104,13 @@ where
         }
     }
 
-    let Some(largest_image) = gcode_images.into_iter().max_by_key(GcodeImage::area) else {
+    // min_by_key over Reverse(area) keeps the FIRST of equal-area images (matching
+    // the old stable sort); max_by_key would return the last and silently switch
+    // which embedded thumbnail wins on ties.
+    let Some(largest_image) = gcode_images
+        .into_iter()
+        .min_by_key(|image| std::cmp::Reverse(image.area()))
+    else {
         return Err(MeshThumbnailError::InternalError(String::from(
             "No thumbnail found in gcode file",
         )));

@@ -181,9 +181,20 @@ export async function runWithLimit<T>(
           break;
         }
 
+        // A synchronous throw from fn must reject the run, not escape a
+        // .finally() callback as an unhandled rejection that hangs the await.
+        let task: Promise<void>;
+        try {
+          task = fn(items[index++]);
+        } catch (err) {
+          failed = true;
+          reject(err);
+          return;
+        }
+
         active++;
 
-        fn(items[index++])
+        task
           .catch((err) => {
             failed = true;
             reject(err);

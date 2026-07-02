@@ -27,7 +27,7 @@ impl AppState {
 
         if !path_buff.exists() {
             fs::create_dir_all(&path_buff)
-                .unwrap_or_else(|_| panic!("Failed to create {name} directory"));
+                .unwrap_or_else(|e| panic!("Failed to create {name} directory: {e}"));
         }
 
         path_buff

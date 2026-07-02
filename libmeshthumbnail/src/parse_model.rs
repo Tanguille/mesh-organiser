@@ -16,18 +16,18 @@ pub use step::convert_step_path_to_stl;
 pub use step::convert_step_to_stl;
 
 /// Opens `path` as a zip, finds the first entry whose name satisfies `matches`,
-/// and streams its decompressed bytes into `out`.
+/// and hands its reported decompressed size plus reader to `read_entry`.
 ///
 /// Returns `InternalError(not_found)` when no entry matches.
 ///
 /// # Errors
 /// Returns an error when the file cannot be opened as a zip, when an entry
 /// cannot be read, or when no entry matches the predicate.
-pub(crate) fn copy_zip_entry_to(
+fn with_zip_entry(
     path: &Path,
     matches: impl Fn(&str) -> bool,
     not_found: &str,
-    out: &mut impl io::Write,
+    read_entry: impl FnOnce(u64, &mut dyn io::Read) -> Result<(), MeshThumbnailError>,
 ) -> Result<(), MeshThumbnailError> {
     let handle = File::open(path)?;
     let mut zip = ZipArchive::new(handle)?;
@@ -35,27 +35,47 @@ pub(crate) fn copy_zip_entry_to(
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
         if matches(file.name()) {
-            io::copy(&mut file, out)?;
-
-            return Ok(());
+            return read_entry(file.size(), &mut file);
         }
     }
 
     Err(MeshThumbnailError::InternalError(String::from(not_found)))
 }
 
-/// Buffered variant of [`copy_zip_entry_to`] for the small mesh formats that
-/// are parsed from memory; large formats (STEP) should stream to disk instead.
+/// Streams the matching entry's decompressed bytes into `out`, for large
+/// formats (STEP) that should not be buffered fully in memory.
 ///
 /// # Errors
-/// Same as [`copy_zip_entry_to`].
+/// Same as [`with_zip_entry`].
+#[cfg(feature = "step")]
+pub(crate) fn copy_zip_entry_to(
+    path: &Path,
+    matches: impl Fn(&str) -> bool,
+    not_found: &str,
+    out: &mut impl io::Write,
+) -> Result<(), MeshThumbnailError> {
+    with_zip_entry(path, matches, not_found, |_size, reader| {
+        io::copy(reader, out)?;
+        Ok(())
+    })
+}
+
+/// Buffered variant for the small mesh formats that are parsed from memory,
+/// pre-sized to the entry's reported size.
+///
+/// # Errors
+/// Same as [`with_zip_entry`].
 pub(crate) fn find_zip_entry_bytes(
     path: &Path,
     matches: impl Fn(&str) -> bool,
     not_found: &str,
 ) -> Result<Vec<u8>, MeshThumbnailError> {
     let mut buffer = Vec::new();
-    copy_zip_entry_to(path, matches, not_found, &mut buffer)?;
+    with_zip_entry(path, matches, not_found, |size, reader| {
+        buffer.reserve_exact(usize::try_from(size).unwrap_or(0));
+        io::copy(reader, &mut buffer)?;
+        Ok(())
+    })?;
 
     Ok(buffer)
 }

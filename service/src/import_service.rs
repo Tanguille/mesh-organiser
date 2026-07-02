@@ -311,9 +311,10 @@ async fn import_models_from_dir_inner(
     }
 
     let file_name = util::prettify_file_name(&path, false);
+    // Extension unwraps are guarded by the is_supported_extension check above;
+    // metadata can still fail at runtime (file removed/unreadable), so propagate.
     let extension = path.extension().unwrap().to_str().unwrap();
-    let file_size = path.metadata().unwrap().len();
-    let file_size = usize::try_from(file_size).unwrap_or(0);
+    let file_size = usize::try_from(path.metadata()?.len()).unwrap_or(0);
 
     let mut file = File::open(&path).await?;
     let permanent_disk_path = if import_as_path {
