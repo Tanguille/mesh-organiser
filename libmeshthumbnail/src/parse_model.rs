@@ -16,32 +16,48 @@ pub use step::convert_step_path_to_stl;
 pub use step::convert_step_to_stl;
 
 /// Opens `path` as a zip, finds the first entry whose name satisfies `matches`,
-/// and reads it fully into a `Vec<u8>` (pre-sized to the entry's reported size).
+/// and streams its decompressed bytes into `out`.
 ///
 /// Returns `InternalError(not_found)` when no entry matches.
 ///
 /// # Errors
 /// Returns an error when the file cannot be opened as a zip, when an entry
 /// cannot be read, or when no entry matches the predicate.
-pub(crate) fn find_zip_entry_bytes(
+pub(crate) fn copy_zip_entry_to(
     path: &Path,
     matches: impl Fn(&str) -> bool,
     not_found: &str,
-) -> Result<Vec<u8>, MeshThumbnailError> {
+    out: &mut impl io::Write,
+) -> Result<(), MeshThumbnailError> {
     let handle = File::open(path)?;
     let mut zip = ZipArchive::new(handle)?;
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
         if matches(file.name()) {
-            let mut buffer = Vec::with_capacity(usize::try_from(file.size()).unwrap_or(0));
-            io::copy(&mut file, &mut buffer)?;
+            io::copy(&mut file, out)?;
 
-            return Ok(buffer);
+            return Ok(());
         }
     }
 
     Err(MeshThumbnailError::InternalError(String::from(not_found)))
+}
+
+/// Buffered variant of [`copy_zip_entry_to`] for the small mesh formats that
+/// are parsed from memory; large formats (STEP) should stream to disk instead.
+///
+/// # Errors
+/// Same as [`copy_zip_entry_to`].
+pub(crate) fn find_zip_entry_bytes(
+    path: &Path,
+    matches: impl Fn(&str) -> bool,
+    not_found: &str,
+) -> Result<Vec<u8>, MeshThumbnailError> {
+    let mut buffer = Vec::new();
+    copy_zip_entry_to(path, matches, not_found, &mut buffer)?;
+
+    Ok(buffer)
 }
 
 /// Parses a mesh from the given path (STL, OBJ, 3MF, G-code, etc.).

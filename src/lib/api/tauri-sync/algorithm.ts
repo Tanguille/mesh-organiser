@@ -1,10 +1,3 @@
-import { GroupOrderBy, type Group, type IGroupApi } from "../shared/group_api";
-import { ModelOrderBy, type IModelApi, type Model } from "../shared/model_api";
-
-// Sentinel page size used when a sync step needs the full item list.
-// No real dataset is expected to reach this count.
-export const ALL_ITEMS_PAGE_SIZE = 9_999_999;
-
 export interface DiffableItem {
   uniqueGlobalId: string;
   lastModified: Date;
@@ -36,47 +29,6 @@ export function metaFieldExtractor<T extends { meta: DiffableItem }>(
     uniqueGlobalId: item.meta.uniqueGlobalId,
     lastModified: item.meta.lastModified,
   };
-}
-
-// Wraps an array into a generator of per-item tasks, removing the inline
-// `function*` boilerplate needed to feed runGeneratorWithLimit.
-export function* mapToTasks<T>(
-  items: T[],
-  fn: (item: T) => Promise<void>,
-): Generator<Promise<void>> {
-  for (const item of items) {
-    yield fn(item);
-  }
-}
-
-// Fetches the full model list using the unbounded page size shared across the
-// sync steps, replacing the repeated 8-positional-arg calls.
-export function getAllModels(api: IModelApi): Promise<Model[]> {
-  return api.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    ALL_ITEMS_PAGE_SIZE,
-    null,
-  );
-}
-
-// Fetches the full group list using the unbounded page size shared across the
-// sync steps, replacing the repeated positional getGroups calls.
-export function getAllGroups(api: IGroupApi): Promise<Group[]> {
-  return api.getGroups(
-    null,
-    null,
-    null,
-    GroupOrderBy.ModifiedDesc,
-    null,
-    1,
-    ALL_ITEMS_PAGE_SIZE,
-    false,
-  );
 }
 
 export interface SyncResult<T> {

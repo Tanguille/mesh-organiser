@@ -35,11 +35,7 @@ fn parse(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let buffer = find_zip_entry_bytes(
         path,
-        |name| {
-            Path::new(name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
-        },
+        |name| matches_ext(Path::new(name), "obj"),
         "Failed to find .obj model in zip",
     )?;
 

@@ -9,9 +9,9 @@
   import type { Model } from "$lib/api/shared/model_api";
   import {
     convertOrderOptionGroupsToEnum,
-    SizeOptionClasses,
     type OrderOptionGroups,
   } from "$lib/api/shared/settings_api";
+  import { SizeOptionClasses } from "$lib/components/view/size-classes";
   import EditGroup from "$lib/components/edit/group.svelte";
   import ModelEdit from "$lib/components/edit/model.svelte";
   import EditMultiModel from "$lib/components/edit/multi-model.svelte";

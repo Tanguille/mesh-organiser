@@ -30,11 +30,7 @@ fn parse_stl(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 fn parse_stl_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let buffer = find_zip_entry_bytes(
         path,
-        |name| {
-            Path::new(name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("stl"))
-        },
+        |name| matches_ext(Path::new(name), "stl"),
         "Failed to find .stl model in zip",
     )?;
     let mut cursor = Cursor::new(buffer);

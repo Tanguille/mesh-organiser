@@ -5,7 +5,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use db::{
-    model::{ModelFlags, blob::Blob},
+    model::ModelFlags,
     model_db,
     model_db::{ModelFilterOptions, ModelOrderBy},
 };
@@ -39,13 +39,13 @@ pub async fn add_model(
 
     let model_ids = import_state.all_model_ids();
 
-    let models =
-        model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
-            .await?;
-    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-    thumbnail_service::generate_thumbnails(&blobs, &state.app_state, false, &mut import_state)
-        .await?;
+    let models = thumbnail_service::generate_thumbnails_for_model_ids(
+        &state.app_state,
+        &state.get_current_user(),
+        model_ids,
+        &mut import_state,
+    )
+    .await?;
 
     let models_len = models.len();
     let (_, paths) =

@@ -7,10 +7,8 @@
   import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
   import DragSelectedModels from "./drag-selected-models.svelte";
   import type { Model } from "$lib/api/shared/model_api";
-  import {
-    SizeOptionClasses,
-    type SizeOptionModels,
-  } from "$lib/api/shared/settings_api";
+  import type { SizeOptionModels } from "$lib/api/shared/settings_api";
+  import { SizeOptionClasses } from "$lib/components/view/size-classes";
   import { configuration } from "$lib/configuration.svelte";
   import { handleGridItemKeyDown } from "$lib/utils";
 

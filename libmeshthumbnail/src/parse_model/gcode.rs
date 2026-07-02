@@ -43,11 +43,7 @@ fn parse_gcode(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 fn parse_gcode_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
     let buffer = find_zip_entry_bytes(
         path,
-        |name| {
-            Path::new(name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
-        },
+        |name| matches_ext(Path::new(name), "gcode"),
         "Failed to find .gcode file in zip",
     )?;
     let mut cursor = Cursor::new(buffer);

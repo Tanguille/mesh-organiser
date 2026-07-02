@@ -5,17 +5,14 @@ import {
   SyncStage,
   SyncStep,
 } from "$lib/sync.svelte";
+import { runWithLimit } from "$lib/utils";
 import { getContainer } from "../dependency_injection";
-import { IGroupApi, type Group } from "../shared/group_api";
-import { IModelApi, type Model } from "../shared/model_api";
-import { runGeneratorWithLimit } from "../web/web_import";
+import { getAllGroups, IGroupApi, type Group } from "../shared/group_api";
+import { getAllModels, IModelApi, type Model } from "../shared/model_api";
 import {
   applySyncResult,
   computeDifferences,
   forceApplyFieldToObject,
-  getAllGroups,
-  getAllModels,
-  mapToTasks,
   metaFieldExtractor,
   resolveDirection,
   type ResourceSet,
@@ -46,11 +43,8 @@ async function stepUploadToRemote(
   globalSyncState.processableItems = toUpload.length;
   globalSyncState.processedItems = 0;
 
-  await runGeneratorWithLimit(
-    mapToTasks(toUpload, (group) =>
-      finalizeSingleGroupUpload(group, remoteApi, remoteModels),
-    ),
-    4,
+  await runWithLimit(toUpload, (group) =>
+    finalizeSingleGroupUpload(group, remoteApi, remoteModels),
   );
 }
 
@@ -90,11 +84,8 @@ async function stepSyncToRemote(
   globalSyncState.processableItems = toSync.length;
   globalSyncState.processedItems = 0;
 
-  await runGeneratorWithLimit(
-    mapToTasks(toSync, (groupSet) =>
-      finalizeSyncToRemote(groupSet, remoteApi, remoteModels, isServerToLocal),
-    ),
-    4,
+  await runWithLimit(toSync, (groupSet) =>
+    finalizeSyncToRemote(groupSet, remoteApi, remoteModels, isServerToLocal),
   );
 }
 
@@ -122,11 +113,14 @@ export async function syncGroups(
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
 
-  const serverModels = await getAllModels(serverModelApi);
-  const localModels = await getAllModels(localModelApi);
-
-  const serverGroups = await getAllGroups(serverGroupApi);
-  const localGroups = await getAllGroups(localGroupApi);
+  // The four full-list fetches are independent; run them concurrently.
+  const [serverModels, localModels, serverGroups, localGroups] =
+    await Promise.all([
+      getAllModels(serverModelApi),
+      getAllModels(localModelApi),
+      getAllGroups(serverGroupApi),
+      getAllGroups(localGroupApi),
+    ]);
 
   const modifiedServerGroups = forceApplyFieldToObject(
     serverGroups,

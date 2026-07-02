@@ -156,9 +156,7 @@ where
     let mut futures: JoinSet<T> = JoinSet::new();
     let mut results: Vec<T> = Vec::new();
 
-    while !items.is_empty() {
-        let Some(item) = items.pop() else { continue };
-
+    while let Some(item) = items.pop() {
         futures.spawn(make_future(item));
 
         if futures.len() >= max

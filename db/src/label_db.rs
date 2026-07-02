@@ -425,10 +425,10 @@ async fn check_parent_and_children_access(
     parent_label_id: i64,
     child_label_ids: &[i64],
 ) -> Result<(), DbError> {
-    let (_, access_check) = tokio::try_join!(
-        get_unique_id_from_label_id(db, user, parent_label_id),
-        get_unique_ids_from_label_ids(db, user, child_label_ids),
-    )?;
+    // Sequential on purpose: SQLite serializes on the connection anyway, and this
+    // keeps the db crate free of a direct tokio dependency.
+    get_unique_id_from_label_id(db, user, parent_label_id).await?;
+    let access_check = get_unique_ids_from_label_ids(db, user, child_label_ids).await?;
 
     if access_check.len() != child_label_ids.len() {
         return Err(DbError::RowNotFound);

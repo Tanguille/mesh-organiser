@@ -319,7 +319,9 @@ mod post {
     use db::random_hex_32;
     use tokio::io::AsyncWriteExt;
 
-    use crate::web_import_state::{WebImportStateEmitter, generate_thumbnails_for_models};
+    use service::thumbnail_service;
+
+    use crate::web_import_state::WebImportStateEmitter;
 
     use super::{
         ApplicationError, AuthSession, ImportState, IntoResponse, Json, Multipart, OffsetDateTime,
@@ -419,7 +421,13 @@ mod post {
             model_ids.extend(&import_state.imported_models[0].model_ids);
         }
 
-        generate_thumbnails_for_models(&app_state, &user, &model_ids, &mut import_state).await?;
+        thumbnail_service::generate_thumbnails_for_model_ids(
+            &app_state.app_state,
+            &user,
+            model_ids.clone(),
+            &mut import_state,
+        )
+        .await?;
 
         Ok(Json(model_ids).into_response())
     }

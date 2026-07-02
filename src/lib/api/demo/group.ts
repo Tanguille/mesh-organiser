@@ -58,7 +58,9 @@ function collectGroupModels(
 
       // Collect flags (union across models, deduped) via the shared converter
       // so the flag-name literals stay centralised in raw_model.ts.
-      convertModelFlagsToRaw(model.flags)?.forEach((flag) => flagsSet.add(flag));
+      convertModelFlagsToRaw(model.flags)?.forEach((flag) =>
+        flagsSet.add(flag),
+      );
     }
   });
 

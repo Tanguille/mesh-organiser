@@ -145,7 +145,58 @@ export function uniqueById<T extends { id: number }>(items: T[]): T[] {
 // Pick the model with the largest blob as the single representative image
 // for a group/collection.
 export function representativeModel(models: Model[]): Model {
-  return Array.from(models).sort((a, b) => b.blob.size - a.blob.size)[0];
+  // Single-pass max; this runs per group thumbnail in scrolling grid views,
+  // so avoid the copy + O(n log n) sort. Like the sort it replaces, an empty
+  // list yields undefined.
+  let best = models[0];
+  for (const model of models) {
+    if (model.blob.size > best.blob.size) {
+      best = model;
+    }
+  }
+  return best;
+}
+
+// Runs `fn` over `items` with at most `limit` tasks in flight, starting tasks
+// lazily as slots free up and rejecting on the first failure without starting
+// more. Shared by the web file importer and the sync steps.
+export async function runWithLimit<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  limit: number = 4,
+): Promise<void> {
+  let index = 0;
+  let active = 0;
+  let failed = false;
+
+  return new Promise((resolve, reject) => {
+    const launchNext = () => {
+      while (active < limit) {
+        if (failed) {
+          return;
+        }
+
+        if (index >= items.length) {
+          if (active === 0) resolve();
+          break;
+        }
+
+        active++;
+
+        fn(items[index++])
+          .catch((err) => {
+            failed = true;
+            reject(err);
+          })
+          .finally(() => {
+            active--;
+            launchNext();
+          });
+      }
+    };
+
+    launchNext();
+  });
 }
 
 // Trigger a browser download/navigation via a transient anchor element.

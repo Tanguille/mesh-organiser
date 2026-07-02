@@ -104,6 +104,25 @@ export interface IModelApi {
   getModelCount(flags: ModelFlags | null): Promise<number>;
 }
 
+// Sentinel page size used when a caller needs the full item list from a paged
+// API. No real dataset is expected to reach this count.
+export const ALL_ITEMS_PAGE_SIZE = 9_999_999;
+
+// Fetches the full model list using the unbounded page size, replacing
+// repeated 8-positional-arg getModels calls.
+export function getAllModels(api: IModelApi): Promise<Model[]> {
+  return api.getModels(
+    null,
+    null,
+    null,
+    ModelOrderBy.ModifiedDesc,
+    null,
+    1,
+    ALL_ITEMS_PAGE_SIZE,
+    null,
+  );
+}
+
 export async function* modelStream(
   modelApi: IModelApi,
   modelIds: number[] | null,

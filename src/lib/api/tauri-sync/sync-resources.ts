@@ -6,12 +6,11 @@ import {
   SyncStep,
 } from "$lib/sync.svelte";
 import { getContainer } from "../dependency_injection";
-import { IGroupApi, type GroupMeta } from "../shared/group_api";
+import { getAllGroups, IGroupApi, type GroupMeta } from "../shared/group_api";
 import { IResourceApi, type ResourceMeta } from "../shared/resource_api";
 import {
   applySyncResult,
   computeDifferences,
-  getAllGroups,
   resolveDirection,
   type ResourceSet,
 } from "./algorithm";
@@ -122,11 +121,16 @@ export async function syncResources(
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
   const localResourceApi = getContainer().require<IResourceApi>(IResourceApi);
 
-  const serverGroups = (await getAllGroups(serverGroupApi)).map((x) => x.meta);
-  const localGroups = (await getAllGroups(localGroupApi)).map((x) => x.meta);
-
-  const serverResources = await serverResourceApi.getResources();
-  const localResources = await localResourceApi.getResources();
+  // The four full-list fetches are independent; run them concurrently.
+  const [serverGroupList, localGroupList, serverResources, localResources] =
+    await Promise.all([
+      getAllGroups(serverGroupApi),
+      getAllGroups(localGroupApi),
+      serverResourceApi.getResources(),
+      localResourceApi.getResources(),
+    ]);
+  const serverGroups = serverGroupList.map((x) => x.meta);
+  const localGroups = localGroupList.map((x) => x.meta);
 
   const syncState = computeDifferences(
     localResources,

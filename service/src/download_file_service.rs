@@ -19,7 +19,6 @@ use crate::{
 
 static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
 static FILENAME_UNQUOTED: OnceLock<Regex> = OnceLock::new();
-static NEXPRINT_FILENAME: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Serialize)]
 pub struct DownloadResult {
@@ -199,11 +198,12 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         current_filename
     } else if url.contains("nexprint") {
         source_uri = Some(String::from("https://nexprint.com/"));
-        let re = NEXPRINT_FILENAME.get_or_init(|| Regex::new(r#"filename="([^"]+)""#).unwrap());
+        // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
+        // reuse the header parser instead of a third filename regex.
         let decoded_url = decode(url).unwrap().into_owned();
-        re.captures(&decoded_url)
-            .and_then(|captures| captures.get(1))
-            .map_or_else(|| current_filename.clone(), |m| m.as_str().to_string())
+        parse_content_disposition_filename(&decoded_url)
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| current_filename.clone())
     } else {
         current_filename
     };

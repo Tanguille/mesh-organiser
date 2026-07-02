@@ -7,12 +7,17 @@ import {
 } from "$lib/sync.svelte";
 import { getContainer } from "../dependency_injection";
 import { ILabelApi, type Label } from "../shared/label_api";
-import { IModelApi, ModelOrderBy, type Model } from "../shared/model_api";
+import {
+  ALL_ITEMS_PAGE_SIZE,
+  getAllModels,
+  IModelApi,
+  ModelOrderBy,
+  type Model,
+} from "../shared/model_api";
 import {
   applySyncResult,
   computeDifferences,
   forceApplyFieldToObject,
-  getAllModels,
   metaFieldExtractor,
   resolveDirection,
   type ResourceSet,
@@ -53,7 +58,7 @@ async function stepUploadToRemote(
       ModelOrderBy.ModifiedDesc,
       null,
       1,
-      9999999,
+      ALL_ITEMS_PAGE_SIZE,
       null,
     );
     const relatedRemoteModels = remoteModels.filter((x) =>
@@ -102,7 +107,7 @@ async function stepSyncToRemote(
       ModelOrderBy.ModifiedDesc,
       null,
       1,
-      9999999,
+      ALL_ITEMS_PAGE_SIZE,
       null,
     );
     const remoteModelsForLabel = await remoteModelApi.getModels(
@@ -112,7 +117,7 @@ async function stepSyncToRemote(
       ModelOrderBy.ModifiedDesc,
       null,
       1,
-      9999999,
+      ALL_ITEMS_PAGE_SIZE,
       null,
     );
     await remoteApi.removeLabelFromModels(
@@ -169,11 +174,14 @@ export async function syncLabels(
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localLabelApi = getContainer().require<ILabelApi>(ILabelApi);
 
-  const serverModels = await getAllModels(serverModelApi);
-  const localModels = await getAllModels(localModelApi);
-
-  const serverLabels = await serverLabelApi.getLabels(false);
-  const localLabels = await localLabelApi.getLabels(false);
+  // The four full-list fetches are independent; run them concurrently.
+  const [serverModels, localModels, serverLabels, localLabels] =
+    await Promise.all([
+      getAllModels(serverModelApi),
+      getAllModels(localModelApi),
+      serverLabelApi.getLabels(false),
+      localLabelApi.getLabels(false),
+    ]);
 
   const modifiedServerLabels = forceApplyFieldToObject(
     serverLabels,

@@ -12,7 +12,7 @@ use tempfile::TempDir;
 use crate::{
     error::MeshThumbnailError,
     mesh::Mesh,
-    parse_model::find_zip_entry_bytes,
+    parse_model::copy_zip_entry_to,
     path_ext::{is_zip_of, matches_ext},
 };
 
@@ -75,17 +75,23 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 }
 
 fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let buffer = find_zip_entry_bytes(
+    // Stream the entry straight to disk: decompressed STEP files can be large,
+    // so avoid buffering them fully in memory.
+    let temp_dir = tempfile::tempdir()?;
+    let temp_path = temp_dir.path().join("a.step");
+    let mut temp_file = File::create(&temp_path)?;
+    copy_zip_entry_to(
         path,
         |name| {
-            Path::new(name)
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("step") || e.eq_ignore_ascii_case("stp"))
+            let name = Path::new(name);
+            matches_ext(name, "step") || matches_ext(name, "stp")
         },
         "Failed to find .step model in zip",
+        &mut temp_file,
     )?;
-    // Keep `_temp_dir` alive until after parsing; dropping it removes the staged file.
-    let (_temp_dir, temp_path) = stage_step_bytes(&mut buffer.as_slice())?;
+    temp_file.flush()?;
+    drop(temp_file);
+    // `temp_dir` stays alive until after parsing; dropping it removes the staged file.
     parse_step(&temp_path)
 }
 

@@ -1,7 +1,6 @@
-import { ModelOrderBy, type IModelApi, type Model } from "../shared/model_api";
+import { getAllModels, type IModelApi, type Model } from "../shared/model_api";
 import type { IServerRequestApi } from "../shared/server_request_api";
 import type { Share } from "../shared/share_api";
-import { ALL_ITEMS_PAGE_SIZE } from "../tauri-sync/algorithm";
 import { WebShareApi } from "../web/share";
 
 export class TauriProxyShareApi extends WebShareApi {
@@ -24,16 +23,7 @@ export class TauriProxyShareApi extends WebShareApi {
     models: Model[],
     context: string,
   ): Promise<Model[]> {
-    const allRemoteModels = await this.remoteModelApi.getModels(
-      null,
-      null,
-      null,
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      ALL_ITEMS_PAGE_SIZE,
-      null,
-    );
+    const allRemoteModels = await getAllModels(this.remoteModelApi);
     const remoteModels = allRemoteModels.filter((remoteModel) =>
       models.some(
         (localModel) =>
@@ -55,26 +45,8 @@ export class TauriProxyShareApi extends WebShareApi {
     if (shares.length === 0) return shares;
 
     const [localModels, remoteModels] = await Promise.all([
-      this.localModelApi.getModels(
-        null,
-        null,
-        null,
-        ModelOrderBy.ModifiedDesc,
-        null,
-        1,
-        ALL_ITEMS_PAGE_SIZE,
-        null,
-      ),
-      this.remoteModelApi.getModels(
-        null,
-        null,
-        null,
-        ModelOrderBy.ModifiedDesc,
-        null,
-        1,
-        ALL_ITEMS_PAGE_SIZE,
-        null,
-      ),
+      getAllModels(this.localModelApi),
+      getAllModels(this.remoteModelApi),
     ]);
 
     for (const share of shares) {

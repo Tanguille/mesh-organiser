@@ -10,7 +10,12 @@ use vek::{Vec2, Vec3};
 
 use db::{
     blob_db,
-    model::blob::{Blob, FileType},
+    model::{
+        Model,
+        blob::{Blob, FileType},
+        user::User,
+    },
+    model_db,
 };
 
 use crate::{
@@ -132,6 +137,27 @@ pub async fn generate_all_thumbnails(
     let blob_refs: Vec<&Blob> = blobs.iter().collect();
 
     generate_thumbnails(&blob_refs, app_state, overwrite, import_state).await
+}
+
+/// Fetches the given models and generates their (missing) thumbnails into
+/// `import_state`, returning the fetched models. Shared post-import tail of the
+/// web and Tauri upload/extract handlers.
+///
+/// # Errors
+///
+/// Returns an error if the model lookup or thumbnail generation fails.
+pub async fn generate_thumbnails_for_model_ids(
+    app_state: &AppState,
+    user: &User,
+    model_ids: Vec<i64>,
+    import_state: &mut ImportState,
+) -> Result<Vec<Model>, ServiceError> {
+    let models = model_db::get_models_via_ids(&app_state.db, user, model_ids).await?;
+    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
+
+    generate_thumbnails(&blobs, app_state, false, import_state).await?;
+
+    Ok(models)
 }
 
 /// Generates thumbnails for the given blobs.

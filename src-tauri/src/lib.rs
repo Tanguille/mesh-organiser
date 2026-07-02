@@ -18,7 +18,7 @@ use urlencoding::decode;
 
 use db::{
     group_db,
-    model::{blob::Blob, model_group::ModelGroupMeta, user::User},
+    model::{model_group::ModelGroupMeta, user::User},
     model_db, user_db,
 };
 use service::{
@@ -201,13 +201,13 @@ async fn extract_threemf_models(
 
     let model_ids = import_state.all_model_ids();
 
-    let models =
-        model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
-            .await?;
-    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-    thumbnail_service::generate_thumbnails(&blobs, &state.app_state, false, &mut import_state)
-        .await?;
+    thumbnail_service::generate_thumbnails_for_model_ids(
+        &state.app_state,
+        &state.get_current_user(),
+        model_ids,
+        &mut import_state,
+    )
+    .await?;
 
     Ok(threemf_service::group_meta_from_import(&import_state)?)
 }
@@ -444,16 +444,6 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
     None
 }
 
-/// Parses a single launch argument into its deep-link / account-link payloads.
-/// Shared by the single-instance handler and `setup`, which differ only in what
-/// they do with the parsed values (emit events vs. seed `InitialState`).
-fn parse_launch_arg(arg: &str) -> (Option<String>, Option<AccountLinkEmit>) {
-    (
-        extract_deep_link(arg),
-        extract_account_link_via_deep_link(arg),
-    )
-}
-
 fn remove_temp_paths() -> Result<(), ApplicationError> {
     let threshold = std::time::Duration::from_mins(5);
     let now = std::time::SystemTime::now();
@@ -526,7 +516,8 @@ pub fn run() {
 
             if argv.len() == 2
             {
-                let (deep_link, account_link) = parse_launch_arg(&argv[1]);
+                let deep_link = extract_deep_link(&argv[1]);
+                let account_link = extract_account_link_via_deep_link(&argv[1]);
 
                 if let Some(deep_link) = deep_link
                 {
@@ -622,17 +613,8 @@ pub fn run() {
                 if argv.len() == 2
                 {
                     let arg = argv.nth(1).unwrap();
-                    let (deep_link, account_link) = parse_launch_arg(&arg);
-
-                    if let Some(deep_link) = deep_link
-                    {
-                        initial_state.deep_link_url = Some(deep_link);
-                    }
-
-                    if let Some(account_link) = account_link
-                    {
-                        initial_state.account_link = Some(account_link);
-                    }
+                    initial_state.deep_link_url = extract_deep_link(&arg);
+                    initial_state.account_link = extract_account_link_via_deep_link(&arg);
                 }
 
                 let user = user_db::get_user_by_id(&db, config.last_user_id)

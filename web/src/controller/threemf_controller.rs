@@ -60,7 +60,9 @@ mod get {
 }
 
 mod post {
-    use crate::web_import_state::{WebImportStateEmitter, generate_thumbnails_for_models};
+    use service::thumbnail_service;
+
+    use crate::web_import_state::WebImportStateEmitter;
 
     use super::{
         ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, StatusCode,
@@ -88,7 +90,13 @@ mod post {
 
         let model_ids = import_state.all_model_ids();
 
-        generate_thumbnails_for_models(&app_state, &user, &model_ids, &mut import_state).await?;
+        thumbnail_service::generate_thumbnails_for_model_ids(
+            &app_state.app_state,
+            &user,
+            model_ids,
+            &mut import_state,
+        )
+        .await?;
 
         let group_meta = threemf_service::group_meta_from_import(&import_state)?;
 

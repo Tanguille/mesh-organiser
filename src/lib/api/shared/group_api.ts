@@ -1,5 +1,6 @@
 import type { LabelMeta } from "./label_api";
 import {
+  ALL_ITEMS_PAGE_SIZE,
   stringArrayToModelFlags,
   type Model,
   type ModelFlags,
@@ -117,6 +118,21 @@ export interface IGroupApi {
   addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void>;
   removeModelsFromGroup(models: Model[]): Promise<void>;
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
+}
+
+// Fetches the full group list using the unbounded page size, replacing
+// repeated positional getGroups calls.
+export function getAllGroups(api: IGroupApi): Promise<Group[]> {
+  return api.getGroups(
+    null,
+    null,
+    null,
+    GroupOrderBy.ModifiedDesc,
+    null,
+    1,
+    ALL_ITEMS_PAGE_SIZE,
+    false,
+  );
 }
 
 export async function* groupStream(

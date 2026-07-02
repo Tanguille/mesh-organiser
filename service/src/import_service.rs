@@ -561,8 +561,7 @@ pub fn is_supported_extension(path: &Path) -> bool {
 
 /// Returns `true` if the path has a case-insensitive `.zip` extension.
 fn is_zip_path(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+    libmeshthumbnail::path_ext::matches_ext(path, "zip")
 }
 
 fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError> {

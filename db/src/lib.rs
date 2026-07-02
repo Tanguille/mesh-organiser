@@ -19,7 +19,8 @@ mod util;
 
 pub(crate) use query_util::{TimestampSchema, push_in_i64, set_timestamp_column};
 
-pub use util::{parse_concat_ids, random_hex_32, time_now, validate_global_id};
+pub(crate) use util::{parse_concat_ids, validate_global_id};
+pub use util::{random_hex_32, time_now};
 
 pub type DbError = sqlx::Error;
 

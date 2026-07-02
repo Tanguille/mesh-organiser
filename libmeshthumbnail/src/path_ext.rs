@@ -12,9 +12,7 @@ pub fn matches_ext(path: &Path, ext: &str) -> bool {
 #[must_use]
 pub fn is_zip_of(path: &Path, ext: &str) -> bool {
     matches_ext(path, "zip")
-        && path.file_stem().and_then(|s| s.to_str()).is_some_and(|s| {
-            s.len() > ext.len()
-                && s.as_bytes()[s.len() - ext.len() - 1] == b'.'
-                && s[s.len() - ext.len()..].eq_ignore_ascii_case(ext)
-        })
+        && path
+            .file_stem()
+            .is_some_and(|stem| matches_ext(Path::new(stem), ext))
 }
