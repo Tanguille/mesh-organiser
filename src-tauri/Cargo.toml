@@ -41,6 +41,10 @@ itertools = { workspace = true }
 tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
+# `step` is deliberately NOT enabled: cadrum's prebuilt OCCT bundles a C++ runtime
+# that collides with the system libstdc++ loaded by the GTK/WebKit stack — the app
+# then segfaults at startup on some distros (reproduced on CachyOS: crash in
+# std::ios_base::Init during _dl_init). Revisit when cadrum links cleanly here.
 service = { workspace = true }
 serde_html_form = { workspace = true }
 tauri-plugin-http = { workspace = true, features = ["multipart"] }

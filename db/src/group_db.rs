@@ -35,7 +35,11 @@ pub struct GroupFilterOptions {
     pub label_ids: Option<Vec<i64>>,
     pub order_by: Option<GroupOrderBy>,
     pub text_search: Option<String>,
+    /// 1-based page number. `Default` returns 1; values of 0 are treated as 1 by `get_groups`
+    /// to keep the function panic-free even if a caller forgets to override the field.
     pub page: u32,
+    /// Items per page. `Default` returns `MAX_PAGE_SIZE`; values of 0 are treated as
+    /// `MAX_PAGE_SIZE` by `get_groups` for the same reason.
     pub page_size: u32,
     pub include_ungrouped_models: bool,
     pub allow_incomplete_groups: bool,
@@ -198,9 +202,11 @@ pub async fn get_groups(
         }
     }
 
-    // Enforce pagination limits to prevent memory exhaustion
-    let page_size = options.page_size.min(MAX_PAGE_SIZE);
-    let offset = (options.page.saturating_sub(1) * page_size) as usize;
+    // Enforce pagination limits to prevent memory exhaustion.
+    // Normalize 0 inputs: `page` is 1-based, so 0 must be treated as 1; a
+    // `page_size` of 0 would make `.take(0)` silently return an empty list.
+    let page_size = options.page_size.clamp(1, MAX_PAGE_SIZE);
+    let offset = ((options.page.max(1) - 1) * page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups

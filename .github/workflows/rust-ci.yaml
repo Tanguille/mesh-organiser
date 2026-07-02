@@ -52,9 +52,11 @@ jobs:
       - name: Detect unused dependencies
         uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
 
-      # `step` (opencascade) is intentionally excluded: it pulls in OCCT, which
-      # is not shipped by the apps (neither src-tauri nor web enables `step`) and
-      # needs a heavy native OpenCASCADE build. Keep CI to the features we ship.
+      # `step` is excluded from the workspace-wide runs: the apps don't ship it
+      # (cadrum's prebuilt OCCT segfaults next to GTK/WebKit — see src-tauri/Cargo.toml).
       - run: cargo build --workspace --all-targets
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace --all-targets
+      # The STEP path itself stays tested via cadrum (prebuilt OCCT, no system install).
+      - run: cargo clippy -p libmeshthumbnail --all-targets --features step
+      - run: cargo test -p libmeshthumbnail --features step

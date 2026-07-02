@@ -6,13 +6,13 @@ use crate::error::MeshThumbnailError;
 
 mod gcode;
 mod obj;
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 mod step;
 mod stl;
 mod threemf;
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 pub use step::convert_step_path_to_stl;
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 pub use step::convert_step_to_stl;
 
 /// Opens `path` as a zip, finds the first entry whose name satisfies `matches`,
@@ -47,7 +47,7 @@ fn with_zip_entry(
 ///
 /// # Errors
 /// Same as [`with_zip_entry`].
-#[cfg(feature = "step")]
+#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
 pub(crate) fn copy_zip_entry_to(
     path: &Path,
     matches: impl Fn(&str) -> bool,
@@ -101,7 +101,7 @@ pub fn handle_parse(path: &Path) -> Result<Option<crate::mesh::Mesh>, MeshThumbn
         return Ok(Some(mesh));
     }
 
-    #[cfg(feature = "step")]
+    #[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
     if let Some(mesh) = step::handle_step(path)? {
         return Ok(Some(mesh));
     }
