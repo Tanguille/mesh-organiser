@@ -86,7 +86,7 @@ fn convert_model_list_to_groups(
                 name: model.name.clone(),
                 created: model.added.clone(),
                 resource_id: None,
-                unique_global_id: String::new(),
+                unique_global_id: String::default(),
                 last_modified: model.last_modified.clone(),
             }
         };

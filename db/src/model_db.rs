@@ -192,7 +192,7 @@ pub async fn get_models(
             flags: ModelFlags::from_bits(
                 u32::try_from(row.get::<i64, _>("model_flags")).unwrap_or(0),
             )
-            .unwrap_or(ModelFlags::empty()),
+            .unwrap_or_else(ModelFlags::empty),
             unique_global_id: row.get("model_unique_global_id"),
         });
     }

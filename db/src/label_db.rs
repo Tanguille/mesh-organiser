@@ -168,7 +168,7 @@ pub async fn get_labels(
                 name: child_label_name.unwrap(),
                 color: child_label_color.unwrap(),
                 unique_global_id: child_label_unique_global_id.unwrap(),
-                last_modified: String::new(),
+                last_modified: String::default(),
             });
 
             has_parents.push(child_id);
@@ -264,8 +264,8 @@ pub async fn add_labels_on_models(
     }
 
     // Batch update timestamps
-    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&time_now()))
-        .await?;
+    let now = time_now();
+    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&now)).await?;
 
     Ok(())
 }
@@ -295,8 +295,8 @@ pub async fn remove_labels_from_models(
     push_in_i64(&mut query_builder, model_ids);
     query_builder.build().execute(db).await?;
 
-    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&time_now()))
-        .await?;
+    let now = time_now();
+    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&now)).await?;
 
     Ok(())
 }
@@ -323,13 +323,8 @@ pub async fn remove_all_labels_from_models(
         .flat_map(|m| m.labels.iter().map(|l| l.id))
         .unique()
         .collect();
-    set_last_updated_on_labels(
-        db,
-        user,
-        &label_ids,
-        update_timestamp.unwrap_or(&time_now()),
-    )
-    .await?;
+    let now = time_now();
+    set_last_updated_on_labels(db, user, &label_ids, update_timestamp.unwrap_or(&now)).await?;
 
     Ok(())
 }
@@ -560,7 +555,7 @@ mod tests {
             name: name.to_string(),
             color: 0,
             unique_global_id: format!("{id:032x}"),
-            last_modified: String::new(),
+            last_modified: String::default(),
         }
     }
 

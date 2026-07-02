@@ -65,7 +65,7 @@ impl ResourceMeta {
             id,
             name,
             flags: ResourceFlags::from_bits(u32::try_from(flags).unwrap_or(0))
-                .unwrap_or(ResourceFlags::empty()),
+                .unwrap_or_else(ResourceFlags::empty),
             created,
             unique_global_id,
             last_modified,

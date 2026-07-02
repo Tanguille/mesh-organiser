@@ -67,13 +67,13 @@ impl Default for User {
     fn default() -> Self {
         Self {
             id: 1,
-            username: String::new(),
-            email: String::new(),
-            created_at: String::new(),
+            username: String::default(),
+            email: String::default(),
+            created_at: String::default(),
             sync_url: None,
             sync_token: None,
             last_sync: None,
-            password_hash: String::new(),
+            password_hash: String::default(),
             permissions: UserPermissions::empty(),
         }
     }
