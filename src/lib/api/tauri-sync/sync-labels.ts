@@ -7,11 +7,13 @@ import {
 } from "$lib/sync.svelte";
 import { getContainer } from "../dependency_injection";
 import { ILabelApi, type Label } from "../shared/label_api";
-import { IModelApi, ModelOrderBy, type Model } from "../shared/model_api";
+import { getAllModels, IModelApi, type Model } from "../shared/model_api";
 import {
+  applySyncResult,
   computeDifferences,
   forceApplyFieldToObject,
-  type DiffableItem,
+  metaFieldExtractor,
+  resolveDirection,
   type ResourceSet,
 } from "./algorithm";
 
@@ -27,6 +29,13 @@ async function stepUploadToRemote(
   globalSyncState.processableItems = toUpload.length;
   globalSyncState.processedItems = 0;
 
+  // Fetch the remote labels once instead of per-iteration. `toUpload` is sorted
+  // children-first, so appending each label's final meta (after editLabel pushes
+  // its local global id to the remote) reproduces what a refetch would return.
+  const remoteLabelMetas = (await remoteApi.getLabels(false)).map(
+    (x) => x.meta,
+  );
+
   for (const label of toUpload) {
     const newLabel = await remoteApi.addLabel(
       label.meta.name,
@@ -36,30 +45,22 @@ async function stepUploadToRemote(
     const keywords = await localApi.getKeywordsForLabel(label.meta);
     remoteApi.setKeywordsOnLabel(newLabel, keywords);
 
-    const localModelsForLabel = await localModelApi.getModels(
-      null,
-      null,
-      [label.meta.id],
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      9999999,
-      null,
-    );
+    const localModelsForLabel = await getAllModels(localModelApi, [
+      label.meta.id,
+    ]);
     const relatedRemoteModels = remoteModels.filter((x) =>
       localModelsForLabel.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
     );
     await remoteApi.addLabelToModels(newLabel, relatedRemoteModels);
 
-    const relatedRemoteChildLabels = (await remoteApi.getLabels(false))
-      .map((x) => x.meta)
-      .filter((x) =>
-        label.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
-      );
+    const relatedRemoteChildLabels = remoteLabelMetas.filter((x) =>
+      label.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
+    );
     await remoteApi.setChildrenOnLabel(newLabel, relatedRemoteChildLabels);
 
     label.meta.id = newLabel.id;
     await remoteApi.editLabel(label.meta, true, true);
+    remoteLabelMetas.push({ ...label.meta });
     globalSyncState.processedItems += 1;
   }
 }
@@ -78,32 +79,18 @@ async function stepSyncToRemote(
   globalSyncState.processedItems = 0;
 
   for (const labelSet of toSync) {
-    const remoteLabel = isServerToLocal ? labelSet.local : labelSet.server;
-    const localLabel = isServerToLocal ? labelSet.server : labelSet.local;
+    const { remote: remoteLabel, local: localLabel } = resolveDirection(
+      labelSet,
+      isServerToLocal,
+    );
 
     const keywords = await localApi.getKeywordsForLabel(localLabel.meta);
     await remoteApi.setKeywordsOnLabel(remoteLabel.meta, keywords);
 
-    const localModelsForLabel = await localModelApi.getModels(
-      null,
-      null,
-      [localLabel.meta.id],
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      9999999,
-      null,
-    );
-    const remoteModelsForLabel = await remoteModelApi.getModels(
-      null,
-      null,
-      [remoteLabel.meta.id],
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      9999999,
-      null,
-    );
+    const [localModelsForLabel, remoteModelsForLabel] = await Promise.all([
+      getAllModels(localModelApi, [localLabel.meta.id]),
+      getAllModels(remoteModelApi, [remoteLabel.meta.id]),
+    ]);
     await remoteApi.removeLabelFromModels(
       remoteLabel.meta,
       remoteModelsForLabel,
@@ -148,13 +135,6 @@ async function deleteFromRemote(
   }
 }
 
-function fieldExtractor(label: Label): DiffableItem {
-  return {
-    uniqueGlobalId: label.meta.uniqueGlobalId,
-    lastModified: label.meta.lastModified,
-  };
-}
-
 export async function syncLabels(
   serverModelApi: IModelApi,
   serverLabelApi: ILabelApi,
@@ -165,37 +145,22 @@ export async function syncLabels(
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localLabelApi = getContainer().require<ILabelApi>(ILabelApi);
 
-  const serverModels = await serverModelApi.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    null,
-  );
-  const localModels = await localModelApi.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    null,
-  );
-
-  const serverLabels = await serverLabelApi.getLabels(false);
-  const localLabels = await localLabelApi.getLabels(false);
+  // The four full-list fetches are independent; run them concurrently.
+  const [serverModels, localModels, serverLabels, localLabels] =
+    await Promise.all([
+      getAllModels(serverModelApi),
+      getAllModels(localModelApi),
+      serverLabelApi.getLabels(false),
+      localLabelApi.getLabels(false),
+    ]);
 
   const modifiedServerLabels = forceApplyFieldToObject(
     serverLabels,
-    fieldExtractor,
+    metaFieldExtractor,
   );
   const modifiedLocalLabels = forceApplyFieldToObject(
     localLabels,
-    fieldExtractor,
+    metaFieldExtractor,
   );
 
   const syncState = computeDifferences(
@@ -221,57 +186,46 @@ export async function syncLabels(
   syncState.toUpload.sort(sortFunction);
   syncState.toDownload.sort(sortFunction);
 
-  if (syncState.toUpload.length > 0) {
-    await stepUploadToRemote(
-      syncState.toUpload,
-      localLabelApi,
-      serverLabelApi,
-      localModelApi,
-      serverModels,
-      false,
-    );
-  }
-
-  if (syncState.toDownload.length > 0) {
-    await stepUploadToRemote(
-      syncState.toDownload,
-      serverLabelApi,
-      localLabelApi,
-      serverModelApi,
-      localModels,
-      true,
-    );
-  }
-
-  if (syncState.syncToServer.length > 0) {
-    await stepSyncToRemote(
-      syncState.syncToServer,
-      localLabelApi,
-      serverLabelApi,
-      localModelApi,
-      serverModelApi,
-      serverModels,
-      false,
-    );
-  }
-
-  if (syncState.syncToLocal.length > 0) {
-    await stepSyncToRemote(
-      syncState.syncToLocal,
-      serverLabelApi,
-      localLabelApi,
-      serverModelApi,
-      localModelApi,
-      localModels,
-      true,
-    );
-  }
-
-  if (syncState.toDeleteServer.length > 0) {
-    await deleteFromRemote(syncState.toDeleteServer, serverLabelApi);
-  }
-
-  if (syncState.toDeleteLocal.length > 0) {
-    await deleteFromRemote(syncState.toDeleteLocal, localLabelApi);
-  }
+  await applySyncResult(syncState, {
+    upload: (toUpload) =>
+      stepUploadToRemote(
+        toUpload,
+        localLabelApi,
+        serverLabelApi,
+        localModelApi,
+        serverModels,
+        false,
+      ),
+    download: (toDownload) =>
+      stepUploadToRemote(
+        toDownload,
+        serverLabelApi,
+        localLabelApi,
+        serverModelApi,
+        localModels,
+        true,
+      ),
+    syncToServer: (toSync) =>
+      stepSyncToRemote(
+        toSync,
+        localLabelApi,
+        serverLabelApi,
+        localModelApi,
+        serverModelApi,
+        serverModels,
+        false,
+      ),
+    syncToLocal: (toSync) =>
+      stepSyncToRemote(
+        toSync,
+        serverLabelApi,
+        localLabelApi,
+        serverModelApi,
+        localModelApi,
+        localModels,
+        true,
+      ),
+    deleteServer: (toDelete) => deleteFromRemote(toDelete, serverLabelApi),
+    deleteLocal: (toDelete) => deleteFromRemote(toDelete, localLabelApi),
+  });
 }

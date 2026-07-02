@@ -16,6 +16,7 @@ export const SizeOptionModelsAsList = [
   "List_Medium",
   "List_Large",
 ] as SizeOptionModels[];
+
 export type OrderOptionModels =
   | "date-asc"
   | "date-desc"

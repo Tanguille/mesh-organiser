@@ -4,6 +4,7 @@ import {
   IAdminUserApi,
   ISwitchUserApi,
   IUserManageSelfApi,
+  newlyCreatedUser,
   type IUserApi,
   type User,
 } from "../shared/user_api";
@@ -69,16 +70,7 @@ export class UserApi
       userPassword: password,
     });
 
-    return createUserInstance(
-      id,
-      username,
-      email,
-      new Date().toISOString(),
-      [],
-      null,
-      null,
-      null,
-    );
+    return newlyCreatedUser(id, username, email);
   }
 
   async deleteUser(user: User): Promise<void> {

@@ -16,7 +16,7 @@ pub enum MeshThumbnailError {
     GcodeNumberParseError(#[from] std::num::ParseFloatError),
     #[error("Image processing error: {0}")]
     ImageError(#[from] image::ImageError),
-    #[cfg(feature = "step")]
+    #[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
     #[error("STEP parsing error: {0}")]
-    StepParseError(#[from] opencascade::Error),
+    StepParseError(#[from] cadrum::Error),
 }

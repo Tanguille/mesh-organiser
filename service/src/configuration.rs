@@ -5,58 +5,20 @@ use strum::IntoEnumIterator;
 
 use crate::slicer_service::Slicer;
 
-#[derive(Clone, Deserialize)]
-pub struct StoredConfiguration {
-    pub data_path: Option<String>,
-    pub prusa_deep_link: Option<bool>,
-    pub cura_deep_link: Option<bool>,
-    pub bambu_deep_link: Option<bool>,
-    pub orca_deep_link: Option<bool>,
-    pub open_slicer_on_remote_model_import: Option<bool>,
-    pub show_ungrouped_models_in_groups: Option<bool>,
-    pub slicer: Option<Slicer>,
-    pub focus_after_link_import: Option<bool>,
-    pub thumbnail_color: Option<String>,
-    pub size_option_models: Option<String>,
-    pub size_option_groups: Option<String>,
-    pub show_grouped_count_on_labels: Option<bool>,
-    pub fallback_3mf_thumbnail: Option<bool>,
-    pub prefer_3mf_thumbnail: Option<bool>,
-    pub core_parallelism: Option<usize>,
-    pub collapse_sidebar: Option<bool>,
-    pub zoom_level: Option<u32>,
-    pub export_metadata: Option<bool>,
-    pub show_date_on_list_view: Option<bool>,
-    pub default_enabled_recursive_import: Option<bool>,
-    pub default_enabled_delete_after_import: Option<bool>,
-    pub open_links_in_external_browser: Option<bool>,
-    pub max_size_model_3mf_preview: Option<u32>,
-    pub max_size_model_stl_preview: Option<u32>,
-    pub max_size_model_obj_preview: Option<u32>,
-    pub max_size_model_step_preview: Option<u32>,
-    pub only_show_single_image_in_groups: Option<bool>,
-    pub custom_slicer_path: Option<String>,
-    pub elegoo_deep_link: Option<bool>,
-    pub group_split_view: Option<String>,
-    pub label_exported_model_as_printed: Option<bool>,
-    pub theme: Option<String>,
-    pub order_option_models: Option<String>,
-    pub order_option_groups: Option<String>,
-    pub ignore_update: Option<String>,
-    pub show_multiselect_checkboxes: Option<bool>,
-    pub use_worker_for_model_parsing: Option<bool>,
-    pub prefer_gcode_thumbnail: Option<bool>,
-    pub last_user_id: Option<i64>,
-    pub custom_css: Option<String>,
-    pub default_enabled_import_as_path: Option<bool>,
-    pub thumbnail_rotation: Option<[i16; 3]>,
-    pub watch_downloads_folder: Option<bool>,
-    pub startup_page: Option<String>,
+/// Returns `None` for the `slicer` field when it is absent from a settings file.
+///
+/// The container-level `#[serde(default)]` would otherwise fall back to
+/// `Configuration::default().slicer`, which runs the side-effecting
+/// `is_installed()` / flatpak auto-detect. A settings file missing the slicer
+/// key must stay `None` (the historical behaviour), so we override the default.
+const fn default_slicer() -> Option<Slicer> {
+    Option::<Slicer>::None
 }
 
 /// Application configuration. Many boolean flags for UI/slicer behaviour.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Configuration {
     pub data_path: String,
     pub prusa_deep_link: bool,
@@ -65,6 +27,7 @@ pub struct Configuration {
     pub orca_deep_link: bool,
     pub open_slicer_on_remote_model_import: bool,
     pub show_ungrouped_models_in_groups: bool,
+    #[serde(default = "default_slicer")]
     pub slicer: Option<Slicer>,
     pub focus_after_link_import: bool,
     pub thumbnail_color: String,
@@ -103,134 +66,6 @@ pub struct Configuration {
     pub thumbnail_rotation: [i16; 3],
     pub watch_downloads_folder: bool,
     pub startup_page: String,
-}
-
-#[must_use]
-#[allow(clippy::too_many_lines)] // Mechanical mapping from optional fields to required; splitting would not help readability.
-pub fn stored_to_configuration(configuration: StoredConfiguration) -> Configuration {
-    let default = Configuration::default();
-
-    Configuration {
-        data_path: configuration.data_path.unwrap_or(default.data_path),
-        prusa_deep_link: configuration
-            .prusa_deep_link
-            .unwrap_or(default.prusa_deep_link),
-        cura_deep_link: configuration
-            .cura_deep_link
-            .unwrap_or(default.cura_deep_link),
-        bambu_deep_link: configuration
-            .bambu_deep_link
-            .unwrap_or(default.bambu_deep_link),
-        orca_deep_link: configuration
-            .orca_deep_link
-            .unwrap_or(default.orca_deep_link),
-        open_slicer_on_remote_model_import: configuration
-            .open_slicer_on_remote_model_import
-            .unwrap_or(default.open_slicer_on_remote_model_import),
-        show_ungrouped_models_in_groups: configuration
-            .show_ungrouped_models_in_groups
-            .unwrap_or(default.show_ungrouped_models_in_groups),
-        slicer: configuration.slicer,
-        focus_after_link_import: configuration
-            .focus_after_link_import
-            .unwrap_or(default.focus_after_link_import),
-        thumbnail_color: configuration
-            .thumbnail_color
-            .unwrap_or(default.thumbnail_color),
-        size_option_models: configuration
-            .size_option_models
-            .unwrap_or(default.size_option_models),
-        size_option_groups: configuration
-            .size_option_groups
-            .unwrap_or(default.size_option_groups),
-        show_grouped_count_on_labels: configuration
-            .show_grouped_count_on_labels
-            .unwrap_or(default.show_grouped_count_on_labels),
-        fallback_3mf_thumbnail: configuration
-            .fallback_3mf_thumbnail
-            .unwrap_or(default.fallback_3mf_thumbnail),
-        prefer_3mf_thumbnail: configuration
-            .prefer_3mf_thumbnail
-            .unwrap_or(default.prefer_3mf_thumbnail),
-        collapse_sidebar: configuration
-            .collapse_sidebar
-            .unwrap_or(default.collapse_sidebar),
-        zoom_level: configuration.zoom_level.unwrap_or(default.zoom_level),
-        export_metadata: configuration
-            .export_metadata
-            .unwrap_or(default.export_metadata),
-        show_date_on_list_view: configuration
-            .show_date_on_list_view
-            .unwrap_or(default.show_date_on_list_view),
-        core_parallelism: configuration
-            .core_parallelism
-            .unwrap_or(default.core_parallelism),
-        default_enabled_recursive_import: configuration
-            .default_enabled_recursive_import
-            .unwrap_or(default.default_enabled_recursive_import),
-        default_enabled_delete_after_import: configuration
-            .default_enabled_delete_after_import
-            .unwrap_or(default.default_enabled_delete_after_import),
-        open_links_in_external_browser: configuration
-            .open_links_in_external_browser
-            .unwrap_or(default.open_links_in_external_browser),
-        max_size_model_3mf_preview: configuration
-            .max_size_model_3mf_preview
-            .unwrap_or(default.max_size_model_3mf_preview),
-        max_size_model_stl_preview: configuration
-            .max_size_model_stl_preview
-            .unwrap_or(default.max_size_model_stl_preview),
-        max_size_model_obj_preview: configuration
-            .max_size_model_obj_preview
-            .unwrap_or(default.max_size_model_obj_preview),
-        max_size_model_step_preview: configuration
-            .max_size_model_step_preview
-            .unwrap_or(default.max_size_model_step_preview),
-        only_show_single_image_in_groups: configuration
-            .only_show_single_image_in_groups
-            .unwrap_or(default.only_show_single_image_in_groups),
-        custom_slicer_path: configuration
-            .custom_slicer_path
-            .unwrap_or(default.custom_slicer_path),
-        elegoo_deep_link: configuration
-            .elegoo_deep_link
-            .unwrap_or(default.elegoo_deep_link),
-        group_split_view: configuration
-            .group_split_view
-            .unwrap_or(default.group_split_view),
-        label_exported_model_as_printed: configuration
-            .label_exported_model_as_printed
-            .unwrap_or(default.label_exported_model_as_printed),
-        theme: configuration.theme.unwrap_or(default.theme),
-        order_option_models: configuration
-            .order_option_models
-            .unwrap_or(default.order_option_models),
-        order_option_groups: configuration
-            .order_option_groups
-            .unwrap_or(default.order_option_groups),
-        ignore_update: configuration.ignore_update.unwrap_or(default.ignore_update),
-        show_multiselect_checkboxes: configuration
-            .show_multiselect_checkboxes
-            .unwrap_or(default.show_multiselect_checkboxes),
-        use_worker_for_model_parsing: configuration
-            .use_worker_for_model_parsing
-            .unwrap_or(default.use_worker_for_model_parsing),
-        prefer_gcode_thumbnail: configuration
-            .prefer_gcode_thumbnail
-            .unwrap_or(default.prefer_gcode_thumbnail),
-        last_user_id: configuration.last_user_id.unwrap_or(default.last_user_id),
-        custom_css: configuration.custom_css.unwrap_or(default.custom_css),
-        default_enabled_import_as_path: configuration
-            .default_enabled_import_as_path
-            .unwrap_or(default.default_enabled_import_as_path),
-        thumbnail_rotation: configuration
-            .thumbnail_rotation
-            .unwrap_or(default.thumbnail_rotation),
-        watch_downloads_folder: configuration
-            .watch_downloads_folder
-            .unwrap_or(default.watch_downloads_folder),
-        startup_page: configuration.startup_page.unwrap_or(default.startup_page),
-    }
 }
 
 impl Default for Configuration {
@@ -296,8 +131,9 @@ impl Default for Configuration {
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests: lock in Configuration::default() and stored_to_configuration
-// after clippy-driven refactors so defaults and Option/Result behaviour don't regress.
+// Regression tests: lock in Configuration::default() and the serde deserialization
+// path that replaced stored_to_configuration, so defaults and the slicer-stays-None
+// behaviour for missing/null keys don't regress.
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -320,112 +156,73 @@ mod tests {
         assert!(config.prefer_3mf_thumbnail);
     }
 
+    // (a) A settings file with no slicer key must stay None, not run the
+    // side-effecting is_installed() auto-detect from Configuration::default().
     #[test]
-    fn stored_to_configuration_empty_uses_defaults() {
-        let stored = StoredConfiguration {
-            data_path: None,
-            prusa_deep_link: None,
-            cura_deep_link: None,
-            bambu_deep_link: None,
-            orca_deep_link: None,
-            open_slicer_on_remote_model_import: None,
-            show_ungrouped_models_in_groups: None,
-            slicer: None,
-            focus_after_link_import: None,
-            thumbnail_color: None,
-            size_option_models: None,
-            size_option_groups: None,
-            show_grouped_count_on_labels: None,
-            fallback_3mf_thumbnail: None,
-            prefer_3mf_thumbnail: None,
-            core_parallelism: None,
-            collapse_sidebar: None,
-            zoom_level: None,
-            export_metadata: None,
-            show_date_on_list_view: None,
-            default_enabled_recursive_import: None,
-            default_enabled_delete_after_import: None,
-            open_links_in_external_browser: None,
-            max_size_model_3mf_preview: None,
-            max_size_model_stl_preview: None,
-            max_size_model_obj_preview: None,
-            max_size_model_step_preview: None,
-            only_show_single_image_in_groups: None,
-            custom_slicer_path: None,
-            elegoo_deep_link: None,
-            group_split_view: None,
-            label_exported_model_as_printed: None,
-            theme: None,
-            order_option_models: None,
-            order_option_groups: None,
-            ignore_update: None,
-            show_multiselect_checkboxes: None,
-            use_worker_for_model_parsing: None,
-            prefer_gcode_thumbnail: None,
-            last_user_id: None,
-            custom_css: None,
-            default_enabled_import_as_path: None,
-            thumbnail_rotation: None,
-            watch_downloads_folder: None,
-            startup_page: None,
-        };
-        let config = stored_to_configuration(stored);
+    fn deserialize_missing_slicer_key_is_none() {
+        let json = r#"{ "data_path": "/custom/data" }"#;
+        let config: Configuration = serde_json::from_str(json).expect("deserialize");
+        assert!(config.slicer.is_none());
+    }
+
+    // (b) An explicit null slicer also stays None.
+    #[test]
+    fn deserialize_null_slicer_is_none() {
+        let json = r#"{ "slicer": null }"#;
+        let config: Configuration = serde_json::from_str(json).expect("deserialize");
+        assert!(config.slicer.is_none());
+    }
+
+    // (c) A present slicer deserializes to that variant.
+    #[test]
+    fn deserialize_present_slicer_is_some_variant() {
+        let json = r#"{ "slicer": "PrusaSlicer" }"#;
+        let config: Configuration = serde_json::from_str(json).expect("deserialize");
+        assert!(matches!(config.slicer, Some(Slicer::PrusaSlicer)));
+    }
+
+    // (d) An empty object falls back to Configuration::default() for every
+    // non-slicer field (the old stored_to_configuration unwrap_or(default) path).
+    #[test]
+    fn deserialize_empty_object_uses_defaults() {
+        let config: Configuration = serde_json::from_str("{}").expect("deserialize");
+        let default = Configuration::default();
+        assert_eq!(config.data_path, default.data_path);
+        assert_eq!(config.theme, default.theme);
+        assert_eq!(config.thumbnail_rotation, default.thumbnail_rotation);
+        assert_eq!(config.core_parallelism, default.core_parallelism);
+        assert_eq!(config.last_user_id, default.last_user_id);
+        assert_eq!(config.zoom_level, default.zoom_level);
+        assert_eq!(config.export_metadata, default.export_metadata);
+        assert_eq!(
+            config.fallback_3mf_thumbnail,
+            default.fallback_3mf_thumbnail
+        );
+        assert_eq!(config.prefer_3mf_thumbnail, default.prefer_3mf_thumbnail);
+        assert_eq!(
+            config.show_ungrouped_models_in_groups,
+            default.show_ungrouped_models_in_groups
+        );
+        assert_eq!(config.group_split_view, default.group_split_view);
+    }
+
+    // Rewritten from the former stored_to_configuration_empty_uses_defaults:
+    // deserialize JSON straight into Configuration instead of building a literal.
+    #[test]
+    fn deserialize_empty_uses_defaults() {
+        let config: Configuration = serde_json::from_str("{}").expect("deserialize");
         assert_eq!(config.data_path, Configuration::default().data_path);
         assert_eq!(config.theme, "default");
         assert_eq!(config.thumbnail_rotation, [35, 30, 0]);
     }
 
+    // Rewritten from the former stored_to_configuration_overrides_single_field:
+    // a single overridden field wins; everything else falls back to default.
     #[test]
-    fn stored_to_configuration_overrides_single_field() {
+    fn deserialize_overrides_single_field() {
         let default = Configuration::default();
-        let stored = StoredConfiguration {
-            data_path: Some("/custom/data".to_string()),
-            prusa_deep_link: None,
-            cura_deep_link: None,
-            bambu_deep_link: None,
-            orca_deep_link: None,
-            open_slicer_on_remote_model_import: None,
-            show_ungrouped_models_in_groups: None,
-            slicer: None,
-            focus_after_link_import: None,
-            thumbnail_color: None,
-            size_option_models: None,
-            size_option_groups: None,
-            show_grouped_count_on_labels: None,
-            fallback_3mf_thumbnail: None,
-            prefer_3mf_thumbnail: None,
-            core_parallelism: None,
-            collapse_sidebar: None,
-            zoom_level: None,
-            export_metadata: None,
-            show_date_on_list_view: None,
-            default_enabled_recursive_import: None,
-            default_enabled_delete_after_import: None,
-            open_links_in_external_browser: None,
-            max_size_model_3mf_preview: None,
-            max_size_model_stl_preview: None,
-            max_size_model_obj_preview: None,
-            max_size_model_step_preview: None,
-            only_show_single_image_in_groups: None,
-            custom_slicer_path: None,
-            elegoo_deep_link: None,
-            group_split_view: None,
-            label_exported_model_as_printed: None,
-            theme: None,
-            order_option_models: None,
-            order_option_groups: None,
-            ignore_update: None,
-            show_multiselect_checkboxes: None,
-            use_worker_for_model_parsing: None,
-            prefer_gcode_thumbnail: None,
-            last_user_id: None,
-            custom_css: None,
-            default_enabled_import_as_path: None,
-            thumbnail_rotation: None,
-            watch_downloads_folder: None,
-            startup_page: None,
-        };
-        let config = stored_to_configuration(stored);
+        let json = r#"{ "data_path": "/custom/data" }"#;
+        let config: Configuration = serde_json::from_str(json).expect("deserialize");
         assert_eq!(config.data_path, "/custom/data");
         assert_eq!(config.theme, default.theme);
     }

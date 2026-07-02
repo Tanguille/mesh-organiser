@@ -14,7 +14,7 @@
   let newLabelColor = $state(generateRandomColor());
   let open = $state(false);
 
-  async function setRandomColor() {
+  function setRandomColor() {
     newLabelColor = generateRandomColor();
   }
 

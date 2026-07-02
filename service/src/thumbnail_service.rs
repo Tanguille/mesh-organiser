@@ -10,7 +10,12 @@ use vek::{Vec2, Vec3};
 
 use db::{
     blob_db,
-    model::blob::{Blob, FileType},
+    model::{
+        Model,
+        blob::{Blob, FileType},
+        user::User,
+    },
+    model_db,
 };
 
 use crate::{
@@ -69,14 +74,9 @@ fn render(
 /// Used by `process` and by tests (via `.to_extension()`) to lock in extension behaviour.
 fn thumbnail_extension_for_path(path: &Path) -> Result<FileType, ServiceError> {
     let file_type = FileType::from_pathbuf(path);
-    if file_type.is_unsupported() {
-        return Err(ServiceError::InternalError(format!(
-            "Unsupported file extension for thumbnail generation: {}",
-            path.display()
-        )));
-    }
-    // Reject Step (thumbnail render does not support it); allow Stl, Obj, Gcode, Threemf and their zips
-    if file_type.is_step() {
+    // Reject unsupported types and Step (thumbnail render does not support it);
+    // allow Stl, Obj, Gcode, Threemf and their zips
+    if file_type.is_unsupported() || file_type.is_step() {
         return Err(ServiceError::InternalError(format!(
             "Unsupported file extension for thumbnail generation: {}",
             path.display()
@@ -139,6 +139,27 @@ pub async fn generate_all_thumbnails(
     generate_thumbnails(&blob_refs, app_state, overwrite, import_state).await
 }
 
+/// Fetches the given models and generates their (missing) thumbnails into
+/// `import_state`, returning the fetched models. Shared post-import tail of the
+/// web and Tauri upload/extract handlers.
+///
+/// # Errors
+///
+/// Returns an error if the model lookup or thumbnail generation fails.
+pub async fn generate_thumbnails_for_model_ids(
+    app_state: &AppState,
+    user: &User,
+    model_ids: Vec<i64>,
+    import_state: &mut ImportState,
+) -> Result<Vec<Model>, ServiceError> {
+    let models = model_db::get_models_via_ids(&app_state.db, user, model_ids).await?;
+    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
+
+    generate_thumbnails(&blobs, app_state, false, import_state).await?;
+
+    Ok(models)
+}
+
 /// Generates thumbnails for the given blobs.
 ///
 /// # Errors
@@ -155,22 +176,19 @@ pub async fn generate_thumbnails(
     import_state: &mut ImportState,
 ) -> Result<(), ServiceError> {
     import_state.update_status(ImportStatus::ProcessingThumbnails);
-    let fallback_3mf_thumbnail = app_state.get_configuration().fallback_3mf_thumbnail;
-    let prefer_3mf_thumbnail = app_state.get_configuration().prefer_3mf_thumbnail;
-    let prefer_gcode_thumbnail = app_state.get_configuration().prefer_gcode_thumbnail;
-    let max_concurrent = app_state.get_configuration().core_parallelism;
-    let rotation_setting = app_state.get_configuration().thumbnail_rotation;
+    let config = app_state.get_configuration();
+    let fallback_3mf_thumbnail = config.fallback_3mf_thumbnail;
+    let prefer_3mf_thumbnail = config.prefer_3mf_thumbnail;
+    let prefer_gcode_thumbnail = config.prefer_gcode_thumbnail;
+    let max_concurrent = config.core_parallelism;
+    let rotation_setting = config.thumbnail_rotation;
     let rotation = Vec3::new(
         f32::from(rotation_setting[0]),
         f32::from(rotation_setting[1]),
         f32::from(rotation_setting[2]),
     );
 
-    let color = app_state
-        .get_configuration()
-        .thumbnail_color
-        .replace('#', "")
-        .to_uppercase();
+    let color = config.thumbnail_color.replace('#', "").to_uppercase();
 
     let color = u32::from_str_radix(&color, 16).unwrap_or(0xEE_EE_EE);
 

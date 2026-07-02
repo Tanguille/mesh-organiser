@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    panic,
     path::{Path, PathBuf},
 };
 
@@ -12,7 +11,6 @@ use itertools::Itertools;
 use tokio::{
     fs::File,
     io::{AsyncRead, BufReader},
-    task::JoinSet,
 };
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
@@ -24,7 +22,7 @@ use db::{
 use crate::{
     ASYNC_MULT,
     service_error::ServiceError,
-    util::{cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension},
+    util::{self, cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension},
 };
 
 use super::app_state::AppState;
@@ -92,15 +90,13 @@ pub async fn open_blob_content_reader(
 ///
 /// Panics if a spawned export task panics (e.g. during `get_path_from_model`).
 pub async fn export_to_temp_folder(
-    mut models: Vec<Model>,
+    models: Vec<Model>,
     app_state: &AppState,
     lazy: bool,
     action: &str,
 ) -> Result<(PathBuf, Vec<PathBuf>), ServiceError> {
     let configuration = app_state.get_configuration();
     let temp_dir = get_temp_dir(action);
-
-    let mut futures = JoinSet::new();
 
     if configuration.export_metadata {
         let metadata_path = temp_dir.join("metadata.json");
@@ -110,36 +106,20 @@ pub async fn export_to_temp_folder(
 
     let mut paths = Vec::with_capacity(models.len());
     let max = configuration.core_parallelism * ASYNC_MULT;
-    let mut active = 0;
 
-    while !models.is_empty() {
-        let Some(model) = models.pop() else { continue };
+    let results = util::run_bounded(models, max, |model| {
         let temp_dir = temp_dir.clone();
         let app_state = app_state.clone();
-        active += 1;
 
-        futures.spawn(async move {
+        async move {
             let model = model;
             get_path_from_model(&temp_dir, &model, &app_state, lazy).await
-        });
-
-        if active >= max
-            && let Some(res) = futures.join_next().await
-        {
-            match res {
-                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
-                Err(err) => panic!("{err}"),
-                Ok(res) => {
-                    if let Ok(res) = res {
-                        paths.push(res);
-                    }
-                    active -= 1;
-                }
-            }
         }
-    }
+    })
+    .await;
 
-    paths.extend(futures.join_all().await.into_iter().flatten());
+    // Keep only the Ok(PathBuf) outputs, matching the previous loop.
+    paths.extend(results.into_iter().flatten());
 
     Ok((temp_dir, paths))
 }

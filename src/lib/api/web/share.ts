@@ -18,15 +18,13 @@ export interface RawShare {
 }
 
 export function parseRawShare(raw: RawShare): Share {
-  return {
-    ...createShareInstance(
-      raw.id,
-      raw.created_at,
-      raw.share_name,
-      raw.user_name,
-      raw.model_ids,
-    ),
-  };
+  return createShareInstance(
+    raw.id,
+    raw.created_at,
+    raw.share_name,
+    raw.user_name,
+    raw.model_ids,
+  );
 }
 
 export class WebShareApi implements IShareApi {
@@ -70,15 +68,9 @@ export class WebShareApi implements IShareApi {
     return parseRawShare(rawShare);
   }
 
-  async addModelsToShare(share: Share, models: Model[]): Promise<void> {
-    const currentModelIds = new Set<number>(share.modelIds);
-
-    for (const model of models) {
-      currentModelIds.add(model.id);
-    }
-
+  private async putModelIds(share: Share, modelIds: number[]): Promise<void> {
     const data = {
-      model_ids: Array.from(currentModelIds),
+      model_ids: modelIds,
     };
 
     await this.requestApi.request<void>(
@@ -88,15 +80,20 @@ export class WebShareApi implements IShareApi {
     );
   }
 
-  async setModelsOnShare(share: Share, models: Model[]): Promise<void> {
-    const data = {
-      model_ids: models.map((m) => m.id),
-    };
+  async addModelsToShare(share: Share, models: Model[]): Promise<void> {
+    const currentModelIds = new Set<number>(share.modelIds);
 
-    await this.requestApi.request<void>(
-      `/shares/${share.id}/models`,
-      HttpMethod.PUT,
-      data,
+    for (const model of models) {
+      currentModelIds.add(model.id);
+    }
+
+    await this.putModelIds(share, Array.from(currentModelIds));
+  }
+
+  async setModelsOnShare(share: Share, models: Model[]): Promise<void> {
+    await this.putModelIds(
+      share,
+      models.map((m) => m.id),
     );
   }
 

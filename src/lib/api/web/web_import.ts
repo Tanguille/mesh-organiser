@@ -1,52 +1,12 @@
 import { importState, resetImportState } from "$lib/import.svelte";
 import { updateSidebarState } from "$lib/sidebar_data.svelte";
+import { runWithLimit } from "$lib/utils";
 import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import { ImportStatus, type ImportState } from "../shared/tauri_import_api";
 import type { IWebImportApi } from "../shared/web_import_api";
-
-const CONCURRENT_FILES = 4;
-
-export async function runGeneratorWithLimit(
-  gen: Generator<Promise<void>>,
-  limit: number = CONCURRENT_FILES,
-): Promise<void> {
-  let active = 0;
-  let failed = false;
-
-  return new Promise((resolve, reject) => {
-    const launchNext = () => {
-      while (active < limit) {
-        if (failed) {
-          return;
-        }
-
-        const { value: task, done } = gen.next();
-
-        if (done) {
-          if (active === 0) resolve();
-          break;
-        }
-
-        active++;
-
-        task
-          .catch((err) => {
-            failed = true;
-            reject(err);
-          })
-          .finally(() => {
-            active--;
-            launchNext();
-          });
-      }
-    };
-
-    launchNext();
-  });
-}
 
 export function handleResponse(data: number[]) {
   if (importState.imported_models.length === 0) {
@@ -75,18 +35,11 @@ export class WebImportApi implements IWebImportApi {
     importState.status = ImportStatus.ProcessingModels;
     importState.model_count = files.length;
 
-    function* filePromises(
-      files: File[],
-      requestApi: IServerRequestApi,
-    ): Generator<Promise<void>> {
-      for (const file of files) {
-        yield requestApi
-          .sendBinary<number[]>("/models", HttpMethod.POST, file)
-          .then((x) => handleResponse(x));
-      }
-    }
-
-    await runGeneratorWithLimit(filePromises(files, this.requestApi));
+    await runWithLimit(files, (file) =>
+      this.requestApi
+        .sendBinary<number[]>("/models", HttpMethod.POST, file)
+        .then((x) => handleResponse(x)),
+    );
 
     await updateSidebarState();
     console.log(importState);

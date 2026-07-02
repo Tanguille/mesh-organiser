@@ -4,7 +4,7 @@
   import GroupImg from "$lib/components/view/group-img.svelte";
   import type { ClassValue } from "svelte/elements";
   import { Badge } from "$lib/components/ui/badge/index.js";
-  import { flagsToGlyphObjects } from "$lib/glyph";
+  import FlagBadges from "$lib/components/view/flag-badges.svelte";
   import type { Group } from "$lib/api/shared/group_api";
 
   const props: { group: Group; class?: ClassValue } = $props();
@@ -27,11 +27,7 @@
     {/if}
 
     <div class="absolute bottom-2 left-2 flex flex-col gap-2">
-      {#each flagsToGlyphObjects(props.group.flags) as glyph (glyph.id)}
-        <Badge class={glyph.badgeClasses}
-          ><glyph.glyph size="16" class={glyph.glyphClasses} /></Badge
-        >
-      {/each}
+      <FlagBadges flags={props.group.flags} />
     </div>
   </CardContent>
 </Card>

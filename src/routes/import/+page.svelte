@@ -168,7 +168,7 @@
           Imported {countWriter(
             "group",
             importedGroups.filter((g) => g.meta.id >= 0),
-          )}, {countWriter("model", importedGroups.map((g) => g.models).flat())}
+          )}, {countWriter("model", importedModels)}
         </div>
       </div>
       {#if importedGroups.length === 1 && importedGroups[0].meta.id >= 0}

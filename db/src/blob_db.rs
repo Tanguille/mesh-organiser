@@ -12,14 +12,14 @@ pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let mut blobs = Vec::with_capacity(rows.len());
 
     for row in rows {
-        blobs.push(Blob {
-            id: row.blob_id,
-            sha256: row.blob_sha256,
-            filetype: row.blob_filetype,
-            size: row.blob_size,
-            added: row.blob_added,
-            disk_path: row.blob_path,
-        });
+        blobs.push(Blob::from_parts(
+            row.blob_id,
+            row.blob_sha256,
+            row.blob_filetype,
+            row.blob_size,
+            row.blob_added,
+            row.blob_path,
+        ));
     }
 
     Ok(blobs)
@@ -39,14 +39,14 @@ pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob
     let mut blobs = Vec::with_capacity(rows.len());
 
     for row in rows {
-        blobs.push(Blob {
-            id: row.get("blob_id"),
-            sha256: row.get("blob_sha256"),
-            filetype: row.get("blob_filetype"),
-            size: row.get("blob_size"),
-            added: row.get("blob_added"),
-            disk_path: row.get("blob_path"),
-        });
+        blobs.push(Blob::from_parts(
+            row.get("blob_id"),
+            row.get("blob_sha256"),
+            row.get("blob_filetype"),
+            row.get("blob_size"),
+            row.get("blob_added"),
+            row.get("blob_path"),
+        ));
     }
 
     Ok(blobs)
@@ -61,14 +61,14 @@ pub async fn get_blob_via_sha256(db: &DbContext, sha256: &str) -> Result<Option<
     .await?;
 
     match row {
-        Some(record) => Ok(Some(Blob {
-            id: record.blob_id,
-            sha256: record.blob_sha256,
-            filetype: record.blob_filetype,
-            size: record.blob_size,
-            disk_path: record.blob_path,
-            added: record.blob_added,
-        })),
+        Some(record) => Ok(Some(Blob::from_parts(
+            record.blob_id,
+            record.blob_sha256,
+            record.blob_filetype,
+            record.blob_size,
+            record.blob_added,
+            record.blob_path,
+        ))),
         None => Ok(None),
     }
 }
@@ -118,14 +118,14 @@ pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbEr
     let mut dead_blobs = Vec::with_capacity(dead_blob_rows.len());
 
     for row in dead_blob_rows {
-        dead_blobs.push(Blob {
-            id: row.blob_id,
-            sha256: row.blob_sha256,
-            filetype: row.blob_filetype,
-            size: row.blob_size,
-            added: row.blob_added,
-            disk_path: row.blob_path,
-        });
+        dead_blobs.push(Blob::from_parts(
+            row.blob_id,
+            row.blob_sha256,
+            row.blob_filetype,
+            row.blob_size,
+            row.blob_added,
+            row.blob_path,
+        ));
     }
 
     if !dead_blobs.is_empty() {

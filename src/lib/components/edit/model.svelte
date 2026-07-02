@@ -68,7 +68,7 @@
     initialEditMode?: boolean;
     onDelete?: Function;
   } = $props();
-  let deleted = $derived({ deleted: !props.model });
+  let deleted = $state(false);
 
   let model: Model = $derived(props.model);
   let load3dPreview = $derived(
@@ -144,7 +144,7 @@
   async function onDelete() {
     await modelApi.deleteModel(model);
     await updateSidebarState();
-    deleted.deleted = true;
+    deleted = true;
     props.onDelete?.();
   }
 
@@ -207,7 +207,7 @@
   }
 </script>
 
-{#if deleted.deleted}
+{#if deleted}
   <div class="flex h-64 items-center justify-center">
     <span class="text-2xl">Model Deleted</span>
   </div>

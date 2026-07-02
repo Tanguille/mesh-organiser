@@ -9,7 +9,7 @@
   import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label";
   import LabelSelect from "$lib/components/view/label-select.svelte";
-  import { countWriter } from "$lib/utils";
+  import { countWriter, uniqueById } from "$lib/utils";
 
   import { goto } from "$app/navigation";
   import { resolve } from "$lib/paths";
@@ -58,22 +58,14 @@
   const printed = $derived(models.every((x) => x.flags.printed));
   const favorited = $derived(models.every((x) => x.flags.favorite));
   const allModelGroups = $derived(
-    models
-      .map((x) => x.group)
-      .filter((g) => !!g)
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i),
+    uniqueById(models.map((x) => x.group).filter((g) => !!g)),
   );
   const availableGroups = $derived(
     allModelGroups.filter((g) => !models.every((x) => x.group?.id === g.id)),
   );
 
   let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
-  let appliedLabels = $derived(
-    models
-      .map((x) => x.labels)
-      .flat()
-      .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i),
-  );
+  let appliedLabels = $derived(uniqueById(models.map((x) => x.labels).flat()));
 
   const modelApi = getContainer().require<IModelApi>(IModelApi);
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
@@ -134,19 +126,18 @@
     await setFlagOnAllModels((x) => (x.flags.favorite = favorite), favorite);
   }
 
-  // TODO: this is terribly inefficient
   async function setFlagOnAllModels(action: (m: Model) => void, set: boolean) {
     const set_or_unset = set ? "Set" : "Unset";
     const affected_models = models;
 
     affected_models.forEach(action);
 
-    let promise = (async () => {
-      for (const model of affected_models) {
-        // TODO: This might not work in the modern architecture
-        await modelApi.editModel($state.snapshot(model));
-      }
-    })();
+    // Edit all models concurrently rather than awaiting one round-trip per model.
+    let promise = Promise.all(
+      affected_models.map((model) =>
+        modelApi.editModel($state.snapshot(model)),
+      ),
+    );
 
     toast.promise(promise, {
       loading: `${set_or_unset}ting flag on ${countWriter("model", affected_models)}...`,

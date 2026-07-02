@@ -60,10 +60,6 @@ mod get {
 }
 
 mod post {
-    use db::{
-        model::{blob::Blob, model_group::ModelGroupMeta},
-        random_hex_32, time_now,
-    };
     use service::thumbnail_service;
 
     use crate::web_import_state::WebImportStateEmitter;
@@ -92,40 +88,18 @@ mod post {
 
         import_state.set_emitter(Box::new(WebImportStateEmitter {}));
 
-        let model_ids: Vec<i64> = import_state
-            .imported_models
-            .iter()
-            .flat_map(|f| f.model_ids.iter().copied())
-            .collect();
+        let model_ids = import_state.all_model_ids();
 
-        let models =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await?;
-        let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-        thumbnail_service::generate_thumbnails(
-            &blobs,
+        thumbnail_service::generate_thumbnails_for_model_ids(
             &app_state.app_state,
-            false,
+            &user,
+            model_ids,
             &mut import_state,
         )
         .await?;
 
-        let first = import_state
-            .imported_models
-            .first()
-            .and_then(|m| m.group_id.zip(m.group_name.clone()));
-        let (id, name) = first.ok_or_else(|| {
-            ApplicationError::InternalError("3MF extract produced no imported group".to_string())
-        })?;
+        let group_meta = threemf_service::group_meta_from_import(&import_state)?;
 
-        Ok(Json(ModelGroupMeta {
-            id,
-            name,
-            created: time_now(),
-            last_modified: time_now(),
-            resource_id: None,
-            unique_global_id: random_hex_32(),
-        })
-        .into_response())
+        Ok(Json(group_meta).into_response())
     }
 }

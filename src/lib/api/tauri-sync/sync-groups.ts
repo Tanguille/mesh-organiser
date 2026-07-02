@@ -5,14 +5,16 @@ import {
   SyncStage,
   SyncStep,
 } from "$lib/sync.svelte";
+import { runWithLimit } from "$lib/utils";
 import { getContainer } from "../dependency_injection";
-import { GroupOrderBy, IGroupApi, type Group } from "../shared/group_api";
-import { IModelApi, ModelOrderBy, type Model } from "../shared/model_api";
-import { runGeneratorWithLimit } from "../web/web_import";
+import { getAllGroups, IGroupApi, type Group } from "../shared/group_api";
+import { getAllModels, IModelApi, type Model } from "../shared/model_api";
 import {
+  applySyncResult,
   computeDifferences,
   forceApplyFieldToObject,
-  type DiffableItem,
+  metaFieldExtractor,
+  resolveDirection,
   type ResourceSet,
 } from "./algorithm";
 
@@ -41,19 +43,8 @@ async function stepUploadToRemote(
   globalSyncState.processableItems = toUpload.length;
   globalSyncState.processedItems = 0;
 
-  function* finalizeUploadPromises(
-    toUpload: Group[],
-    remoteApi: IGroupApi,
-    remoteModels: Model[],
-  ) {
-    for (const group of toUpload) {
-      yield finalizeSingleGroupUpload(group, remoteApi, remoteModels);
-    }
-  }
-
-  await runGeneratorWithLimit(
-    finalizeUploadPromises(toUpload, remoteApi, remoteModels),
-    4,
+  await runWithLimit(toUpload, (group) =>
+    finalizeSingleGroupUpload(group, remoteApi, remoteModels),
   );
 }
 
@@ -63,8 +54,10 @@ async function finalizeSyncToRemote(
   remoteModels: Model[],
   isServerToLocal: boolean,
 ): Promise<void> {
-  const remoteGroup = isServerToLocal ? groupSet.local : groupSet.server;
-  const localGroup = isServerToLocal ? groupSet.server : groupSet.local;
+  const { remote: remoteGroup, local: localGroup } = resolveDirection(
+    groupSet,
+    isServerToLocal,
+  );
 
   const relatedModels = remoteModels.filter((x) =>
     localGroup.models.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
@@ -91,25 +84,8 @@ async function stepSyncToRemote(
   globalSyncState.processableItems = toSync.length;
   globalSyncState.processedItems = 0;
 
-  function* finalizeSyncPromises(
-    toSync: ResourceSet<Group>[],
-    remoteApi: IGroupApi,
-    remoteModels: Model[],
-    isServerToLocal: boolean,
-  ) {
-    for (const groupSet of toSync) {
-      yield finalizeSyncToRemote(
-        groupSet,
-        remoteApi,
-        remoteModels,
-        isServerToLocal,
-      );
-    }
-  }
-
-  await runGeneratorWithLimit(
-    finalizeSyncPromises(toSync, remoteApi, remoteModels, isServerToLocal),
-    4,
+  await runWithLimit(toSync, (groupSet) =>
+    finalizeSyncToRemote(groupSet, remoteApi, remoteModels, isServerToLocal),
   );
 }
 
@@ -127,13 +103,6 @@ async function deleteFromRemote(
   }
 }
 
-function fieldExtractor(group: Group): DiffableItem {
-  return {
-    uniqueGlobalId: group.meta.uniqueGlobalId,
-    lastModified: group.meta.lastModified,
-  };
-}
-
 export async function syncGroups(
   serverModelApi: IModelApi,
   serverGroupApi: IGroupApi,
@@ -144,55 +113,22 @@ export async function syncGroups(
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
 
-  const serverModels = await serverModelApi.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    null,
-  );
-  const localModels = await localModelApi.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    null,
-  );
-
-  const serverGroups = await serverGroupApi.getGroups(
-    null,
-    null,
-    null,
-    GroupOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    false,
-  );
-  const localGroups = await localGroupApi.getGroups(
-    null,
-    null,
-    null,
-    GroupOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    false,
-  );
+  // The four full-list fetches are independent; run them concurrently.
+  const [serverModels, localModels, serverGroups, localGroups] =
+    await Promise.all([
+      getAllModels(serverModelApi),
+      getAllModels(localModelApi),
+      getAllGroups(serverGroupApi),
+      getAllGroups(localGroupApi),
+    ]);
 
   const modifiedServerGroups = forceApplyFieldToObject(
     serverGroups,
-    fieldExtractor,
+    metaFieldExtractor,
   );
   const modifiedLocalGroups = forceApplyFieldToObject(
     localGroups,
-    fieldExtractor,
+    metaFieldExtractor,
   );
 
   const syncState = computeDifferences(
@@ -201,47 +137,16 @@ export async function syncGroups(
     lastSynced,
   );
 
-  if (syncState.toUpload.length > 0) {
-    await stepUploadToRemote(
-      syncState.toUpload,
-      serverGroupApi,
-      serverModels,
-      false,
-    );
-  }
-
-  if (syncState.toDownload.length > 0) {
-    await stepUploadToRemote(
-      syncState.toDownload,
-      localGroupApi,
-      localModels,
-      true,
-    );
-  }
-
-  if (syncState.syncToServer.length > 0) {
-    await stepSyncToRemote(
-      syncState.syncToServer,
-      serverGroupApi,
-      serverModels,
-      false,
-    );
-  }
-
-  if (syncState.syncToLocal.length > 0) {
-    await stepSyncToRemote(
-      syncState.syncToLocal,
-      localGroupApi,
-      localModels,
-      true,
-    );
-  }
-
-  if (syncState.toDeleteServer.length > 0) {
-    await deleteFromRemote(syncState.toDeleteServer, serverGroupApi);
-  }
-
-  if (syncState.toDeleteLocal.length > 0) {
-    await deleteFromRemote(syncState.toDeleteLocal, localGroupApi);
-  }
+  await applySyncResult(syncState, {
+    upload: (toUpload) =>
+      stepUploadToRemote(toUpload, serverGroupApi, serverModels, false),
+    download: (toDownload) =>
+      stepUploadToRemote(toDownload, localGroupApi, localModels, true),
+    syncToServer: (toSync) =>
+      stepSyncToRemote(toSync, serverGroupApi, serverModels, false),
+    syncToLocal: (toSync) =>
+      stepSyncToRemote(toSync, localGroupApi, localModels, true),
+    deleteServer: (toDelete) => deleteFromRemote(toDelete, serverGroupApi),
+    deleteLocal: (toDelete) => deleteFromRemote(toDelete, localGroupApi),
+  });
 }

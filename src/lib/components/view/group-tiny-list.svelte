@@ -2,9 +2,10 @@
   import ModelImg from "$lib/components/view/model-img.svelte";
   import type { ClassValue } from "svelte/elements";
   import { Badge } from "$lib/components/ui/badge/index.js";
-  import { flagsToGlyphObjects } from "$lib/glyph";
+  import FlagBadges from "$lib/components/view/flag-badges.svelte";
   import type { Group } from "$lib/api/shared/group_api";
   import { configuration } from "$lib/configuration.svelte";
+  import { representativeModel } from "$lib/utils";
 
   const props: { group: Group; class?: ClassValue } = $props();
 </script>
@@ -14,9 +15,7 @@
 >
   {#if configuration.only_show_single_image_in_groups}
     <ModelImg
-      model={Array.from(props.group.models).sort(
-        (a, b) => b.blob.size - a.blob.size,
-      )[0]}
+      model={representativeModel(props.group.models)}
       class="aspect-square h-full"
     />
   {:else}
@@ -40,10 +39,6 @@
   {/if}
 
   <div class="my-auto flex h-fit flex-row gap-2 empty:hidden">
-    {#each flagsToGlyphObjects(props.group.flags) as glyph (glyph.id)}
-      <Badge class={glyph.badgeClasses}
-        ><glyph.glyph size="16" class={glyph.glyphClasses} /></Badge
-      >
-    {/each}
+    <FlagBadges flags={props.group.flags} />
   </div>
 </div>

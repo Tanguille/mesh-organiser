@@ -21,19 +21,19 @@ struct UserDbQuery {
 }
 
 impl UserDbQuery {
-    fn to_user(&self) -> User {
+    fn into_user(self) -> User {
         User {
             id: self.user_id,
-            username: self.user_name.clone(),
-            email: self.user_email.clone(),
-            created_at: self.user_created_at.clone(),
-            last_sync: self.user_last_sync.clone(),
-            sync_token: self.user_sync_token.clone(),
-            sync_url: self.user_sync_url.clone(),
+            username: self.user_name,
+            email: self.user_email,
+            created_at: self.user_created_at,
+            last_sync: self.user_last_sync,
+            sync_token: self.user_sync_token,
+            sync_url: self.user_sync_url,
             permissions: UserPermissions::from_bits_truncate(
                 u32::try_from(self.user_permissions).unwrap_or(0),
             ),
-            password_hash: self.user_password_hash.clone(),
+            password_hash: self.user_password_hash,
         }
     }
 }
@@ -54,7 +54,7 @@ pub async fn get_users(db: &DbContext) -> Result<Vec<User>, DbError> {
     .fetch_all(db)
     .await?;
 
-    Ok(rows.into_iter().map(|r| r.to_user()).collect())
+    Ok(rows.into_iter().map(UserDbQuery::into_user).collect())
 }
 
 pub async fn get_user_by_id(db: &DbContext, user_id: i64) -> Result<Option<User>, DbError> {
@@ -74,7 +74,7 @@ pub async fn get_user_by_id(db: &DbContext, user_id: i64) -> Result<Option<User>
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| r.to_user()))
+    Ok(row.map(UserDbQuery::into_user))
 }
 
 pub async fn add_user(
@@ -290,7 +290,7 @@ pub async fn get_user_by_email(db: &DbContext, email: &str) -> Result<Option<Use
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| r.to_user()))
+    Ok(row.map(UserDbQuery::into_user))
 }
 
 pub async fn get_user_by_sync_token(
@@ -313,5 +313,5 @@ pub async fn get_user_by_sync_token(
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| r.to_user()))
+    Ok(row.map(UserDbQuery::into_user))
 }

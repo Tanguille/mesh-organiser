@@ -98,15 +98,26 @@ impl TauriAppState {
         std::fs::write(path, json).expect("Failed to write configuration");
 
         let mut configuration = self.app_state.configuration.lock().unwrap();
-        let deep_link_setting_changed = (configuration.prusa_deep_link
-            != new_configuration.prusa_deep_link
-            && new_configuration.prusa_deep_link)
-            || (configuration.cura_deep_link != new_configuration.cura_deep_link
-                && new_configuration.cura_deep_link)
-            || (configuration.bambu_deep_link != new_configuration.bambu_deep_link
-                && new_configuration.bambu_deep_link)
-            || (configuration.orca_deep_link != new_configuration.orca_deep_link
-                && new_configuration.orca_deep_link);
+        // A deep link was newly enabled: it is on now and was off before.
+        let deep_link_pairs = [
+            (
+                configuration.prusa_deep_link,
+                new_configuration.prusa_deep_link,
+            ),
+            (
+                configuration.cura_deep_link,
+                new_configuration.cura_deep_link,
+            ),
+            (
+                configuration.bambu_deep_link,
+                new_configuration.bambu_deep_link,
+            ),
+            (
+                configuration.orca_deep_link,
+                new_configuration.orca_deep_link,
+            ),
+        ];
+        let deep_link_setting_changed = deep_link_pairs.iter().any(|(old, new)| *new && !*old);
         *configuration = new_configuration;
 
         deep_link_setting_changed

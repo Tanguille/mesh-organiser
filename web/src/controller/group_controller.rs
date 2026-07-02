@@ -40,9 +40,8 @@ pub fn router() -> Router<WebAppState> {
 
 mod get {
     use axum_extra::extract::Query;
-    use db::{share_db, user_db};
 
-    use crate::query_bounds;
+    use crate::{controller::share_controller::resolve_share_owner, query_bounds};
 
     use super::{
         ApplicationError, AuthSession, Deserialize, GroupFilterOptions, IntoResponse, Json, Path,
@@ -109,16 +108,8 @@ mod get {
                 } else {
                     Some(params.model_ids)
                 },
-                group_ids: if params.group_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.group_ids)
-                },
-                label_ids: if params.label_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.label_ids)
-                },
+                group_ids: query_bounds::none_if_empty(params.group_ids),
+                label_ids: query_bounds::none_if_empty(params.label_ids),
                 order_by: params
                     .order_by
                     .as_deref()
@@ -141,13 +132,7 @@ mod get {
         State(app_state): State<WebAppState>,
         Query(params): Query<GetGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
-        let Some(user) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await?
-        else {
-            return Err(ApplicationError::InternalError(
-                "Share owner user not found.".into(),
-            ));
-        };
+        let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
 
         if let Err(e) = query_bounds::validate_group_list_query_bounds(
             params.paginated_bounds(),
@@ -161,11 +146,7 @@ mod get {
             &user,
             GroupFilterOptions {
                 model_ids: share.model_ids.into(),
-                group_ids: if params.group_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.group_ids)
-                },
+                group_ids: query_bounds::none_if_empty(params.group_ids),
                 label_ids: None,
                 order_by: params
                     .order_by

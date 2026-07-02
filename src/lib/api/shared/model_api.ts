@@ -1,6 +1,7 @@
 import type { Blob } from "./blob_api";
 import type { GroupMeta } from "./group_api";
 import type { LabelMeta } from "./label_api";
+import { GeneratorStreamManager } from "./stream_manager";
 
 export interface ModelFlags {
   printed: boolean;
@@ -103,6 +104,33 @@ export interface IModelApi {
   getModelCount(flags: ModelFlags | null): Promise<number>;
 }
 
+// Largest page size the backends accept (mirrors db::MAX_PAGE_SIZE; the web
+// server rejects anything larger with a 400).
+export const MAX_PAGE_SIZE = 1000;
+
+// Fetches the full model list (optionally filtered by labels) by draining the
+// paged stream. A single oversized request is not an option: the server caps
+// page_size at MAX_PAGE_SIZE, so anything past the first page would be lost.
+export async function getAllModels(
+  api: IModelApi,
+  labelIds: number[] | null = null,
+): Promise<Model[]> {
+  const all: Model[] = [];
+  for await (const page of modelStream(
+    api,
+    null,
+    null,
+    labelIds,
+    ModelOrderBy.ModifiedDesc,
+    null,
+    null,
+    MAX_PAGE_SIZE,
+  )) {
+    all.push(...page);
+  }
+  return all;
+}
+
 export async function* modelStream(
   modelApi: IModelApi,
   modelIds: number[] | null,
@@ -116,19 +144,20 @@ export async function* modelStream(
   let page = 1;
   let prefetchNextTask: Promise<Model[]> | null = null;
 
+  const fetchPage = (pageNumber: number) =>
+    modelApi.getModels(
+      modelIds,
+      groupIds,
+      labelIds,
+      orderBy,
+      textSearch,
+      pageNumber,
+      pageSize,
+      flags,
+    );
+
   while (true) {
-    if (prefetchNextTask === null) {
-      prefetchNextTask = modelApi.getModels(
-        modelIds,
-        groupIds,
-        labelIds,
-        orderBy,
-        textSearch,
-        page,
-        pageSize,
-        flags,
-      );
-    }
+    prefetchNextTask ??= fetchPage(page);
 
     const models = await prefetchNextTask;
     if (models.length === 0) {
@@ -136,16 +165,7 @@ export async function* modelStream(
     }
 
     page += 1;
-    prefetchNextTask = modelApi.getModels(
-      modelIds,
-      groupIds,
-      labelIds,
-      orderBy,
-      textSearch,
-      page,
-      pageSize,
-      flags,
-    );
+    prefetchNextTask = fetchPage(page);
 
     yield models;
   }
@@ -164,6 +184,9 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
   private pageSize: number;
   private fetchIndex: number = 0;
+  // Filtered + sorted view, computed lazily and reused across page fetches.
+  // Invalidated whenever the search text or sort order changes.
+  private sortedFiltered: Model[] | null = null;
 
   constructor(models: Model[], pageSize: number = 50) {
     this.models = models;
@@ -173,19 +196,17 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   setSearchText(text: string | null): void {
     this.textSearch = text?.toLowerCase() ?? null;
     this.fetchIndex = 0;
+    this.sortedFiltered = null;
   }
 
   setOrderBy(order_by: ModelOrderBy): void {
     this.orderBy = order_by;
     this.fetchIndex = 0;
+    this.sortedFiltered = null;
   }
 
-  async fetch(): Promise<Model[]> {
-    if (this.fetchIndex >= this.models.length) {
-      return [];
-    }
-
-    const filter = !this.textSearch
+  private computeSortedFiltered(): Model[] {
+    const filtered = !this.textSearch
       ? this.models
       : this.models.filter(
           (model) =>
@@ -194,7 +215,8 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
               false),
         );
 
-    const sort = filter.sort((a, b) => {
+    // Copy before sorting so we never mutate the caller-owned `this.models`.
+    return [...filtered].sort((a, b) => {
       switch (this.orderBy) {
         case ModelOrderBy.AddedAsc:
           return a.added.getTime() - b.added.getTime();
@@ -212,8 +234,21 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
           return 0;
       }
     });
+  }
 
-    const paged = sort.slice(this.fetchIndex, this.fetchIndex + this.pageSize);
+  async fetch(): Promise<Model[]> {
+    if (this.sortedFiltered === null) {
+      this.sortedFiltered = this.computeSortedFiltered();
+    }
+
+    if (this.fetchIndex >= this.sortedFiltered.length) {
+      return [];
+    }
+
+    const paged = this.sortedFiltered.slice(
+      this.fetchIndex,
+      this.fetchIndex + this.pageSize,
+    );
     this.fetchIndex += this.pageSize;
 
     return paged;
@@ -224,16 +259,16 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   }
 }
 
-export class ModelStreamManager implements IModelStreamManager {
+export class ModelStreamManager
+  extends GeneratorStreamManager<Model, ModelOrderBy>
+  implements IModelStreamManager
+{
   private modelApi: IModelApi;
   private modelIds: number[] | null;
   private groupIds: number[] | null;
   private labelIds: number[] | null;
-  private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
-  private textSearch: string | null = null;
   private flags: ModelFlags | null;
   private pageSize: number;
-  private generator: AsyncGenerator<Model[]> | null = null;
 
   constructor(
     modelApi: IModelApi,
@@ -243,17 +278,18 @@ export class ModelStreamManager implements IModelStreamManager {
     flags: ModelFlags | null,
     pageSize: number = 50,
   ) {
+    super(ModelOrderBy.AddedDesc);
     this.modelApi = modelApi;
     this.modelIds = modelIds;
     this.groupIds = groupIds;
     this.labelIds = labelIds;
     this.flags = flags;
     this.pageSize = pageSize;
-    this.generateGenerator();
+    this.regenerate();
   }
 
-  private generateGenerator() {
-    this.generator = modelStream(
+  protected makeGenerator(): AsyncGenerator<Model[]> {
+    return modelStream(
       this.modelApi,
       this.modelIds,
       this.groupIds,
@@ -263,20 +299,6 @@ export class ModelStreamManager implements IModelStreamManager {
       this.flags,
       this.pageSize,
     );
-  }
-
-  setSearchText(text: string | null): void {
-    this.textSearch = text;
-    this.generateGenerator();
-  }
-
-  setOrderBy(order_by: ModelOrderBy): void {
-    this.orderBy = order_by;
-    this.generateGenerator();
-  }
-
-  async fetch(): Promise<Model[]> {
-    return (await this.generator!.next()).value ?? [];
   }
 
   async getAll(): Promise<Model[]> {

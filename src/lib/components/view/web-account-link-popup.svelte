@@ -30,6 +30,7 @@
   import { IUserSyncApi } from "$lib/api/shared/user_sync_api";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
+  import { redirectAfterUserSwitch } from "$lib/paths";
 
   let props: { data: AccountLinkData; onDismiss?: Function } = $props();
   const userApi = getContainer().optional<IUserApi>(IUserApi);
@@ -62,15 +63,12 @@
         props.data.linkToken,
         false,
       );
+      // Re-switch so the backend reloads the current user from the db, picking up
+      // the sync token/URL that setSyncState just persisted. Not redundant with
+      // the call above: switchUser reloads the user record, not just the id.
       await userSwitchApi.switchUser(currentUser);
 
-      if (location.href.includes("/group/")) {
-        await goto(resolve("/group"));
-      }
-
-      if (location.href.includes("/label/")) {
-        await goto(resolve("/"));
-      }
+      await redirectAfterUserSwitch();
 
       dismiss();
       location.reload();

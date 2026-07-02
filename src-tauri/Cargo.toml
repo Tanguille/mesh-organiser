@@ -41,7 +41,9 @@ itertools = { workspace = true }
 tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
-service = { workspace = true }
+# STEP support ships on linux/windows; other targets compile it out — see the
+# cadrum target notes in libmeshthumbnail/Cargo.toml (linux builds OCCT from source).
+service = { workspace = true, features = ["step"] }
 serde_html_form = { workspace = true }
 tauri-plugin-http = { workspace = true, features = ["multipart"] }
 async_zip = { workspace = true, features = [
@@ -55,3 +57,6 @@ winreg = { workspace = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = { workspace = true }
+
+[dev-dependencies]
+libmeshthumbnail = { workspace = true, features = ["step"] }

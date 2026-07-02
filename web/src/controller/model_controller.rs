@@ -91,21 +91,9 @@ mod get {
             &app_state.app_state.db,
             user,
             ModelFilterOptions {
-                model_ids: if params.model_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.model_ids)
-                },
-                group_ids: if params.group_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.group_ids)
-                },
-                label_ids: if params.label_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.label_ids)
-                },
+                model_ids: query_bounds::none_if_empty(params.model_ids),
+                group_ids: query_bounds::none_if_empty(params.group_ids),
+                label_ids: query_bounds::none_if_empty(params.label_ids),
                 order_by: params
                     .order_by
                     .as_deref()
@@ -328,16 +316,16 @@ mod delete {
 }
 
 mod post {
-    use db::{model::blob::Blob, random_hex_32};
-    use service::thumbnail_service;
+    use db::random_hex_32;
     use tokio::io::AsyncWriteExt;
+
+    use service::thumbnail_service;
 
     use crate::web_import_state::WebImportStateEmitter;
 
     use super::{
         ApplicationError, AuthSession, ImportState, IntoResponse, Json, Multipart, OffsetDateTime,
         Response, State, StatusCode, WebAppState, cleanse_evil_from_name, fs, import_service,
-        model_db,
     };
 
     pub async fn add_model(
@@ -433,14 +421,10 @@ mod post {
             model_ids.extend(&import_state.imported_models[0].model_ids);
         }
 
-        let models =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids.clone()).await?;
-        let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-        thumbnail_service::generate_thumbnails(
-            &blobs,
+        thumbnail_service::generate_thumbnails_for_model_ids(
             &app_state.app_state,
-            false,
+            &user,
+            model_ids.clone(),
             &mut import_state,
         )
         .await?;

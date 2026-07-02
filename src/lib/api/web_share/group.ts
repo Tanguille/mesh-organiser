@@ -1,4 +1,9 @@
-import type { GroupOrderBy, Group, GroupMeta } from "../shared/group_api";
+import {
+  buildGetGroupsQuery,
+  type GroupOrderBy,
+  type Group,
+  type GroupMeta,
+} from "../shared/group_api";
 import type { Model } from "../shared/model_api";
 import {
   HttpMethod,
@@ -26,17 +31,16 @@ export class WebShareGroupApi implements GroupApi {
     page_size: number,
     include_ungrouped_models: boolean,
   ): Promise<Group[]> {
-    const data = {
-      // Hack to bypass request uri becoming too large
-      model_ids_str: model_ids?.join(","),
-      group_ids: group_ids,
-      label_ids: label_ids,
-      order_by: order_by,
-      text_search: text_search,
-      page: page,
-      page_size: page_size,
-      include_ungrouped_models: include_ungrouped_models,
-    };
+    const data = buildGetGroupsQuery(
+      model_ids,
+      group_ids,
+      label_ids,
+      order_by,
+      text_search,
+      page,
+      page_size,
+      include_ungrouped_models,
+    );
 
     const response = await this.requestApi.request<RawGroup[]>(
       `/shares/${this.share.id}/groups`,

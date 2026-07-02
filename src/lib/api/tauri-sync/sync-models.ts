@@ -7,7 +7,7 @@ import {
 } from "$lib/sync.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { getContainer } from "../dependency_injection";
-import { IModelApi, ModelOrderBy, type Model } from "../shared/model_api";
+import { IModelApi, type Model } from "../shared/model_api";
 import type {
   UploadResult,
   DirectoryScanModel,
@@ -17,8 +17,13 @@ import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
 import { IGroupApi } from "../shared/group_api";
 import type { IBlobApi } from "../shared/blob_api";
 import { downloadFile } from "../tauri/tauri_import";
-import { computeDifferences, type ResourceSet } from "./algorithm";
-import { runGeneratorWithLimit } from "../web/web_import";
+import {
+  computeDifferences,
+  resolveDirection,
+  type ResourceSet,
+} from "./algorithm";
+import { getAllModels } from "../shared/model_api";
+import { runWithLimit } from "$lib/utils";
 
 interface BlobPath {
   blob_id: number;
@@ -61,33 +66,14 @@ async function stepUpload(
   });
   importState.status = ImportStatus.Idle;
 
-  function* finalizeUploadPromises(
-    paths: BlobPath[],
-    uploads: UploadResult,
-    serverModelApi: IModelApi,
-    serverGroupApi: IGroupApi,
-    toUpload: Model[],
-  ) {
-    for (const upload of uploads.uploaded_models) {
-      yield finalizeSingleModelUpload(
-        paths,
-        upload,
-        serverModelApi,
-        serverGroupApi,
-        toUpload,
-      );
-    }
-  }
-
-  await runGeneratorWithLimit(
-    finalizeUploadPromises(
+  await runWithLimit(uploads.uploaded_models, (upload) =>
+    finalizeSingleModelUpload(
       paths,
-      uploads,
+      upload,
       serverModelApi,
       serverGroupApi,
       toUpload,
     ),
-    4,
   );
 }
 
@@ -128,25 +114,13 @@ async function stepDownload(
   globalSyncState.processableItems = toDownload.length;
   globalSyncState.processedItems = 0;
 
-  function* downloadPromises(
-    toDownload: Model[],
-    serverBlobApi: IBlobApi,
-    localModelApi: IModelApi,
-    localImportApi: ITauriImportApi,
-  ) {
-    for (const serverModel of toDownload) {
-      yield downloadSingleModel(
-        serverModel,
-        serverBlobApi,
-        localModelApi,
-        localImportApi,
-      );
-    }
-  }
-
-  await runGeneratorWithLimit(
-    downloadPromises(toDownload, serverBlobApi, localModelApi, localImportApi),
-    4,
+  await runWithLimit(toDownload, (serverModel) =>
+    downloadSingleModel(
+      serverModel,
+      serverBlobApi,
+      localModelApi,
+      localImportApi,
+    ),
   );
 }
 
@@ -155,10 +129,10 @@ async function syncSingleModelToServer(
   serverModelApi: IModelApi,
   isServerToLocal: boolean,
 ): Promise<void> {
-  const serverModel = isServerToLocal
-    ? syncToServer.local
-    : syncToServer.server;
-  const localModel = isServerToLocal ? syncToServer.server : syncToServer.local;
+  const { remote: serverModel, local: localModel } = resolveDirection(
+    syncToServer,
+    isServerToLocal,
+  );
 
   localModel.id = serverModel.id;
   await serverModelApi.editModel(
@@ -178,19 +152,8 @@ async function stepSyncToRemote(
   globalSyncState.processableItems = syncToServer.length;
   globalSyncState.processedItems = 0;
 
-  function* syncToServerPromises(
-    syncToServer: ResourceSet<Model>[],
-    serverModelApi: IModelApi,
-    isServerToLocal: boolean,
-  ) {
-    for (const modelSet of syncToServer) {
-      yield syncSingleModelToServer(modelSet, serverModelApi, isServerToLocal);
-    }
-  }
-
-  await runGeneratorWithLimit(
-    syncToServerPromises(syncToServer, serverModelApi, isServerToLocal),
-    4,
+  await runWithLimit(syncToServer, (modelSet) =>
+    syncSingleModelToServer(modelSet, serverModelApi, isServerToLocal),
   );
 }
 
@@ -202,7 +165,7 @@ async function stepDeleteFromRemote(
   globalSyncState.processableItems = toDelete.length;
   globalSyncState.processedItems = 0;
 
-  remoteApi.deleteModels(toDelete);
+  await remoteApi.deleteModels(toDelete);
   globalSyncState.processedItems = toDelete.length;
 }
 
@@ -219,26 +182,10 @@ export async function syncModels(
   const localImportApi =
     getContainer().require<ITauriImportApi>(ITauriImportApi);
 
-  const serverModels = await serverModelApi.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    null,
-  );
-  const localModels = await localModelApi.getModels(
-    null,
-    null,
-    null,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    1,
-    9999999,
-    null,
-  );
+  const [serverModels, localModels] = await Promise.all([
+    getAllModels(serverModelApi),
+    getAllModels(localModelApi),
+  ]);
 
   const syncState = computeDifferences(localModels, serverModels, lastSynced);
   const removeGroupFromModelsLocal = [];
