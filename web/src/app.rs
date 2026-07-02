@@ -342,8 +342,8 @@ impl App {
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
-            .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
-            .await?;
+        .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
+        .await?;
 
         deletion_task.await??;
 
