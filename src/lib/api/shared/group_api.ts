@@ -1,6 +1,6 @@
 import type { LabelMeta } from "./label_api";
 import {
-  ALL_ITEMS_PAGE_SIZE,
+  MAX_PAGE_SIZE,
   stringArrayToModelFlags,
   type Model,
   type ModelFlags,
@@ -120,19 +120,23 @@ export interface IGroupApi {
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
 }
 
-// Fetches the full group list using the unbounded page size, replacing
-// repeated positional getGroups calls.
-export function getAllGroups(api: IGroupApi): Promise<Group[]> {
-  return api.getGroups(
-    null,
+// Fetches the full group list by draining the paged stream. A single oversized
+// request is not an option: the server caps page_size at MAX_PAGE_SIZE, so
+// anything past the first page would be lost.
+export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
+  const all: Group[] = [];
+  for await (const page of groupStream(
+    api,
     null,
     null,
     GroupOrderBy.ModifiedDesc,
     null,
-    1,
-    ALL_ITEMS_PAGE_SIZE,
+    MAX_PAGE_SIZE,
     false,
-  );
+  )) {
+    all.push(...page);
+  }
+  return all;
 }
 
 export async function* groupStream(

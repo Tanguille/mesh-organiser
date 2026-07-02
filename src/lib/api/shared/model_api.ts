@@ -104,23 +104,31 @@ export interface IModelApi {
   getModelCount(flags: ModelFlags | null): Promise<number>;
 }
 
-// Sentinel page size used when a caller needs the full item list from a paged
-// API. No real dataset is expected to reach this count.
-export const ALL_ITEMS_PAGE_SIZE = 9_999_999;
+// Largest page size the backends accept (mirrors db::MAX_PAGE_SIZE; the web
+// server rejects anything larger with a 400).
+export const MAX_PAGE_SIZE = 1000;
 
-// Fetches the full model list using the unbounded page size, replacing
-// repeated 8-positional-arg getModels calls.
-export function getAllModels(api: IModelApi): Promise<Model[]> {
-  return api.getModels(
+// Fetches the full model list (optionally filtered by labels) by draining the
+// paged stream. A single oversized request is not an option: the server caps
+// page_size at MAX_PAGE_SIZE, so anything past the first page would be lost.
+export async function getAllModels(
+  api: IModelApi,
+  labelIds: number[] | null = null,
+): Promise<Model[]> {
+  const all: Model[] = [];
+  for await (const page of modelStream(
+    api,
     null,
     null,
-    null,
+    labelIds,
     ModelOrderBy.ModifiedDesc,
     null,
-    1,
-    ALL_ITEMS_PAGE_SIZE,
     null,
-  );
+    MAX_PAGE_SIZE,
+  )) {
+    all.push(...page);
+  }
+  return all;
 }
 
 export async function* modelStream(

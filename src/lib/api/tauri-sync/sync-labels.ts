@@ -7,13 +7,7 @@ import {
 } from "$lib/sync.svelte";
 import { getContainer } from "../dependency_injection";
 import { ILabelApi, type Label } from "../shared/label_api";
-import {
-  ALL_ITEMS_PAGE_SIZE,
-  getAllModels,
-  IModelApi,
-  ModelOrderBy,
-  type Model,
-} from "../shared/model_api";
+import { getAllModels, IModelApi, type Model } from "../shared/model_api";
 import {
   applySyncResult,
   computeDifferences,
@@ -51,16 +45,9 @@ async function stepUploadToRemote(
     const keywords = await localApi.getKeywordsForLabel(label.meta);
     remoteApi.setKeywordsOnLabel(newLabel, keywords);
 
-    const localModelsForLabel = await localModelApi.getModels(
-      null,
-      null,
-      [label.meta.id],
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      ALL_ITEMS_PAGE_SIZE,
-      null,
-    );
+    const localModelsForLabel = await getAllModels(localModelApi, [
+      label.meta.id,
+    ]);
     const relatedRemoteModels = remoteModels.filter((x) =>
       localModelsForLabel.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
     );
@@ -100,26 +87,10 @@ async function stepSyncToRemote(
     const keywords = await localApi.getKeywordsForLabel(localLabel.meta);
     await remoteApi.setKeywordsOnLabel(remoteLabel.meta, keywords);
 
-    const localModelsForLabel = await localModelApi.getModels(
-      null,
-      null,
-      [localLabel.meta.id],
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      ALL_ITEMS_PAGE_SIZE,
-      null,
-    );
-    const remoteModelsForLabel = await remoteModelApi.getModels(
-      null,
-      null,
-      [remoteLabel.meta.id],
-      ModelOrderBy.ModifiedDesc,
-      null,
-      1,
-      ALL_ITEMS_PAGE_SIZE,
-      null,
-    );
+    const [localModelsForLabel, remoteModelsForLabel] = await Promise.all([
+      getAllModels(localModelApi, [localLabel.meta.id]),
+      getAllModels(remoteModelApi, [remoteLabel.meta.id]),
+    ]);
     await remoteApi.removeLabelFromModels(
       remoteLabel.meta,
       remoteModelsForLabel,
