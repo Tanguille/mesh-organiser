@@ -50,7 +50,7 @@
     "@tailwindcss/vite": "^4.3.2",
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^25.9.4",
-    "@typescript/native-preview": "7.0.0-dev.20260527.2",
+    "@typescript/native-preview": "7.0.0-dev.20260703.1",
     "autoprefixer": "^10.5.2",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
