@@ -137,8 +137,8 @@ pub async fn add_resource(
     update_timestamp: Option<&str>,
 ) -> Result<ResourceMeta, DbError> {
     let now = time_now();
-    let hex = random_hex_32();
-    let updated = update_timestamp.unwrap_or(&now);
+    let unique_global_id = random_hex_32();
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
 
     let result = sqlx::query!(
         "INSERT INTO resources (resource_name, resource_created, resource_user_id, resource_unique_global_id, resource_last_modified)
@@ -146,22 +146,20 @@ pub async fn add_resource(
         name,
         now,
         user.id,
-        hex,
-        updated
+        unique_global_id,
+        last_modified
     )
     .execute(db)
     .await?;
 
-    // Return the exact values just persisted so callers don't fabricate their own.
     // Flags match the schema's DEFAULT 0.
-    let last_modified = updated.to_string();
     Ok(ResourceMeta {
         id: result.last_insert_rowid(),
         name: name.to_string(),
         flags: ResourceFlags::empty(),
         created: now,
         last_modified,
-        unique_global_id: hex,
+        unique_global_id,
     })
 }
 

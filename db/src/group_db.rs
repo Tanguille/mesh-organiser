@@ -298,7 +298,7 @@ pub async fn add_empty_group(
     update_timestamp: Option<&str>,
 ) -> Result<ModelGroupMeta, DbError> {
     let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
     let unique_global_id = random_hex_32();
 
     let result = sqlx::query!(
@@ -306,14 +306,12 @@ pub async fn add_empty_group(
         group_name,
         now,
         user.id,
-        timestamp,
+        last_modified,
         unique_global_id
     )
     .execute(db)
     .await?;
 
-    // Return the exact values just persisted so callers don't fabricate their own.
-    let last_modified = timestamp.to_string();
     Ok(ModelGroupMeta {
         id: result.last_insert_rowid(),
         name: group_name.to_string(),

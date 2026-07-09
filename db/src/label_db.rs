@@ -341,7 +341,7 @@ pub async fn add_label(
 ) -> Result<LabelMeta, DbError> {
     let unique_global_id = random_hex_32();
     let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
 
     let result = sqlx::query!(
         "INSERT INTO labels (label_name, label_color, label_user_id, label_unique_global_id, label_last_modified) VALUES (?, ?, ?, ?, ?)",
@@ -349,18 +349,17 @@ pub async fn add_label(
         color,
         user.id,
         unique_global_id,
-        timestamp
+        last_modified
     )
     .execute(db)
     .await?;
 
-    // Return the exact values just persisted so callers don't fabricate their own.
     Ok(LabelMeta {
         id: result.last_insert_rowid(),
         name: name.to_string(),
         color,
         unique_global_id,
-        last_modified: timestamp.to_string(),
+        last_modified,
     })
 }
 
