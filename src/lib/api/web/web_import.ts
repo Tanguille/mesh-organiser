@@ -8,7 +8,7 @@ import {
 import { ImportStatus, type ImportState } from "../shared/tauri_import_api";
 import type { IWebImportApi } from "../shared/web_import_api";
 
-export function handleResponse(data: number[]) {
+function handleResponse(data: number[]) {
   if (importState.imported_models.length === 0) {
     importState.imported_models.push({
       group_id: null,

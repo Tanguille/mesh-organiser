@@ -10,14 +10,10 @@
   import { configuration } from "$lib/configuration.svelte";
   import type { ClassValue } from "svelte/elements";
 
-  interface Function {
-    (): void;
-  }
-
   const componentProps: {
     models: Model | Model[];
     class?: ClassValue;
-    onOpen?: Function;
+    onOpen?: () => void;
   } = $props();
   const slicerApi = getContainer().require<ISlicerApi>(ISlicerApi);
   const sidebarApi =

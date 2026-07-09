@@ -15,7 +15,7 @@ use db::{
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -56,15 +56,14 @@ mod get {
     use db::model::share::ShareDto;
 
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, WebAppState,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, WebAppState,
         resolve_share_owner, share_db,
     };
 
     pub async fn get_shares(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let shares = share_db::get_shares(&app_state.app_state.db, &user).await?;
 
         let shares: Vec<ShareDto> = shares
@@ -91,7 +90,7 @@ mod post {
     use db::{model::share::ShareDto, time_now};
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Response, State,
         WebAppState, share_db,
     };
 
@@ -101,11 +100,10 @@ mod post {
     }
 
     pub async fn create_share(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<CreateShareParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let share_id =
             share_db::create_share(&app_state.app_state.db, &user, &params.share_name).await?;
 
@@ -122,7 +120,7 @@ mod post {
 
 mod put {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         StatusCode, WebAppState, share_db,
     };
 
@@ -132,12 +130,11 @@ mod put {
     }
 
     pub async fn edit_share(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(share_id): Path<String>,
         State(app_state): State<WebAppState>,
         Json(params): Json<EditShareParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         share_db::rename_share(
             &app_state.app_state.db,
             &user,
@@ -155,12 +152,11 @@ mod put {
     }
 
     pub async fn set_model_ids_on_share(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(share_id): Path<String>,
         State(app_state): State<WebAppState>,
         Json(params): Json<SetModelIdsOnShareParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         share_db::set_model_ids_on_share(
             &app_state.app_state.db,
             &user,
@@ -175,16 +171,15 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Path, Response, State, StatusCode,
+        ApplicationError, CurrentUser, IntoResponse, Path, Response, State, StatusCode,
         WebAppState, share_db,
     };
 
     pub async fn delete_share(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(share_id): Path<String>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         share_db::delete_share(&app_state.app_state.db, &user, &share_id).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())

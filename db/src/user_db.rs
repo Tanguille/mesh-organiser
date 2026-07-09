@@ -121,30 +121,6 @@ pub async fn edit_user_min(
     Ok(())
 }
 
-pub async fn edit_user(
-    db: &DbContext,
-    user_id: i64,
-    username: &str,
-    email: &str,
-    user_last_sync: Option<String>,
-    user_sync_token: Option<String>,
-    user_sync_url: Option<String>,
-) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE users SET user_name = ?, user_email = ?, user_last_sync = ?, user_sync_token = ?, user_sync_url = ? WHERE user_id = ?",
-        username,
-        email,
-        user_last_sync,
-        user_sync_token,
-        user_sync_url,
-        user_id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
-}
-
 pub async fn edit_user_last_sync_time(
     db: &DbContext,
     user_id: i64,

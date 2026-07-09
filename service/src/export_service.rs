@@ -16,7 +16,8 @@ use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use db::{
     blob_db,
-    model::{Model, blob::Blob},
+    model::{Model, blob::Blob, user::User},
+    model_db,
 };
 
 use crate::{
@@ -69,12 +70,11 @@ pub async fn open_blob_content_reader(
     let path = get_model_path_for_blob(blob, app_state);
     let file = File::open(path).await?;
     if is_zipped_file_extension(&blob.filetype) {
-        let mut br = BufReader::new(file);
-        let mut zip = ZipFileReader::with_tokio(&mut br).await?;
-        let entry_reader = zip.reader_with_entry(0).await?;
-        let mut buf = Vec::new();
-        tokio::io::copy(&mut entry_reader.compat(), &mut buf).await?;
-        Ok(Box::new(futures::io::Cursor::new(buf).compat()) as Box<dyn AsyncRead + Unpin + Send>)
+        // Owning the reader lets into_entry return a streaming entry reader,
+        // so callers never buffer the whole decompressed file in memory.
+        let zip = ZipFileReader::with_tokio(BufReader::new(file)).await?;
+        let entry_reader = zip.into_entry(0).await?;
+        Ok(Box::new(entry_reader.compat()) as Box<dyn AsyncRead + Unpin + Send>)
     } else {
         Ok(Box::new(file) as Box<dyn AsyncRead + Unpin + Send>)
     }
@@ -200,18 +200,6 @@ pub async fn export_zip_to_temp_folder(
     })
 }
 
-/// Reads the full blob bytes for a model.
-///
-/// # Errors
-///
-/// Returns an error if the blob file cannot be read.
-pub async fn get_bytes_from_model(
-    model: &Model,
-    app_state: &AppState,
-) -> Result<Vec<u8>, ServiceError> {
-    get_bytes_from_blob(&model.blob, app_state).await
-}
-
 /// Reads the full blob bytes.
 ///
 /// # Errors
@@ -324,6 +312,37 @@ pub fn get_size_of_blobs(
     }
 
     Ok(total_size)
+}
+
+/// Deletes models after verifying every id resolves for the user, then removes dead blobs.
+///
+/// Duplicate ids are deduped rather than rejected. Shared by the Tauri commands and
+/// the web handlers so the verify-delete-GC policy lives in one place.
+///
+/// # Errors
+///
+/// Returns an error if any model id cannot be found for the user or a database call fails.
+pub async fn delete_models(
+    app_state: &AppState,
+    user: &User,
+    model_ids: Vec<i64>,
+) -> Result<(), ServiceError> {
+    let model_ids = model_ids.into_iter().unique().collect::<Vec<i64>>();
+    let model_ids_len = model_ids.len();
+    let models = model_db::get_models_via_ids(&app_state.db, user, model_ids).await?;
+
+    if models.len() != model_ids_len {
+        return Err(ServiceError::InternalError(String::from(
+            "Failed to find model to delete",
+        )));
+    }
+
+    let model_ids = models.into_iter().map(|m| m.id).collect::<Vec<i64>>();
+
+    model_db::delete_models(&app_state.db, user, &model_ids).await?;
+    delete_dead_blobs(app_state).await?;
+
+    Ok(())
 }
 
 /// Removes on-disk files for blobs that are no longer referenced.

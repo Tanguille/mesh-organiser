@@ -14,16 +14,12 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import Link from "@lucide/svelte/icons/link";
 
-  interface Function {
-    (): void;
-  }
-
   import { type Update } from "@tauri-apps/plugin-updater";
   import { toast } from "svelte-sonner";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { configuration } from "$lib/configuration.svelte";
 
-  let props: { update: Update; onDismiss?: Function } = $props();
+  let props: { update: Update; onDismiss?: () => void } = $props();
   let currentPlatform = platform();
   let automaticUpdatePlatforms = ["windows"];
 

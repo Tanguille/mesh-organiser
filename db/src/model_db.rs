@@ -152,7 +152,7 @@ pub async fn get_models(
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels = label_db::get_labels_min(db).await?;
+    let min_labels = label_db::get_labels_min(db, user).await?;
     let min_labels_map = convert_label_meta_list_to_map(min_labels);
 
     for row in rows {
@@ -222,6 +222,18 @@ pub async fn get_models_via_ids(
     Ok(paginated_response.items)
 }
 
+/// Fetches a single model by id, returning `None` when it does not exist for the user.
+pub async fn get_model_via_id(
+    db: &DbContext,
+    user: &User,
+    id: i64,
+) -> Result<Option<Model>, DbError> {
+    Ok(get_models_via_ids(db, user, vec![id])
+        .await?
+        .into_iter()
+        .next())
+}
+
 pub async fn add_model(
     db: &DbContext,
     user: &User,
@@ -261,6 +273,7 @@ pub async fn edit_model(
     description: Option<&str>,
     flags: ModelFlags,
     update_timestamp: Option<&str>,
+    global_id: Option<&str>,
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
@@ -278,10 +291,14 @@ pub async fn edit_model(
     .execute(db)
     .await?;
 
+    if let Some(global_id) = global_id {
+        edit_model_global_id(db, user, id, global_id).await?;
+    }
+
     Ok(())
 }
 
-pub async fn edit_model_global_id(
+async fn edit_model_global_id(
     db: &DbContext,
     user: &User,
     id: i64,
@@ -325,17 +342,6 @@ pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(
     query_builder.build().execute(db).await?;
 
     Ok(())
-}
-
-pub async fn get_unique_id_from_model_id(db: &DbContext, model_id: i64) -> Result<String, DbError> {
-    let row = sqlx::query!(
-        "SELECT model_unique_global_id FROM models WHERE model_id = ?",
-        model_id
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.model_unique_global_id)
 }
 
 pub async fn get_unique_ids_from_model_ids(

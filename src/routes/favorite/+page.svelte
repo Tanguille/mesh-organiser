@@ -8,7 +8,7 @@
 
 <ModelGrid
   modelStream={new ModelStreamManager(modelApi, null, null, null, {
-    favorite: false,
-    printed: true,
+    favorite: true,
+    printed: false,
   })}
 />

@@ -12,15 +12,11 @@
   import Spinner from "./spinner.svelte";
   import { PredefinedModelStreamManager } from "$lib/api/shared/model_api";
 
-  interface Function {
-    (): void;
-  }
-
   const props: {
     group: GroupMeta;
     initialEditMode?: boolean;
-    onGroupDelete?: Function;
-    onAllModelsDelete?: Function;
+    onGroupDelete?: () => void;
+    onAllModelsDelete?: () => void;
   } = $props();
   let group = $state<Group | null>(null);
   let loading = $state(true);

@@ -29,7 +29,7 @@ export function fileTypeToPlainFileExtension(fileType: FileType): string {
   }
 }
 
-export function plainFileExtensionToFileType(extension: string): FileType {
+function plainFileExtensionToFileType(extension: string): FileType {
   switch (extension.toLowerCase()) {
     case "stl":
       return FileType.STL;

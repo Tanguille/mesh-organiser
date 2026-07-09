@@ -2,14 +2,10 @@
   import type { Snippet } from "svelte";
   import Root from "./button.svelte";
 
-  interface Function {
-    (): Promise<void>;
-  }
-
   const props: {
     children: Snippet;
     class?: string;
-    onclick: Function;
+    onclick: () => Promise<void>;
     enabled?: boolean;
   } = $props();
   let active = $state(true);

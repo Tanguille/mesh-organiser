@@ -70,15 +70,6 @@ export function isModelPreviewable(model: Model): boolean {
   );
 }
 
-export function isModelSlicable(model: Model): boolean {
-  return (
-    model.blob.filetype === FileType.STL ||
-    model.blob.filetype === FileType.OBJ ||
-    model.blob.filetype === FileType.THREEMF ||
-    model.blob.filetype === FileType.STEP
-  );
-}
-
 export function fileTypeToDisplayName(fileType: FileType): string {
   switch (fileType) {
     case FileType.STL:

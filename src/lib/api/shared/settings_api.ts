@@ -89,6 +89,28 @@ export interface Configuration {
   startup_page: StartupPages;
 }
 
+export const MODEL_ORDER_LABELS: Record<OrderOptionModels, string> = {
+  "date-asc": "Added (Asc)",
+  "date-desc": "Added (Desc)",
+  "name-asc": "Name (A->Z)",
+  "name-desc": "Name (Z->A)",
+  "size-asc": "Size (Asc)",
+  "size-desc": "Size (Desc)",
+  "modified-asc": "Modified (Asc)",
+  "modified-desc": "Modified (Desc)",
+};
+
+// Groups cannot be ordered by size, so derive their labels from the model map
+// instead of maintaining a second copy; rest-destructuring preserves the key
+// insertion order the sort dropdowns render in.
+const {
+  "size-asc": _sizeAsc,
+  "size-desc": _sizeDesc,
+  ...groupOrderLabels
+} = MODEL_ORDER_LABELS;
+export const GROUP_ORDER_LABELS: Record<OrderOptionGroups, string> =
+  groupOrderLabels;
+
 export function convertOrderOptionModelsToEnum(
   orderOption: OrderOptionModels,
 ): ModelOrderBy {

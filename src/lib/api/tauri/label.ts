@@ -15,14 +15,6 @@ import {
 } from "../shared/raw_model";
 import { dateToString } from "$lib/utils";
 
-export {
-  parseRawLabel,
-  parseRawLabelMeta,
-  type RawLabel,
-  type RawLabelKeyword,
-  type RawLabelMeta,
-} from "../shared/raw_model";
-
 export class LabelApi implements ILabelApi {
   async getLabels(includeUngroupedModels: boolean): Promise<Label[]> {
     const labels = await invoke<RawLabel[]>("get_labels", {

@@ -1,13 +1,21 @@
-import type { ModelOrderBy, ModelFlags, Model } from "../shared/model_api";
-import { buildGetModelsQuery, type RawModel } from "../shared/raw_model";
+import type {
+  IModelApi,
+  ModelOrderBy,
+  ModelFlags,
+  Model,
+} from "../shared/model_api";
+import {
+  buildGetModelsQuery,
+  parseRawModel,
+  type RawModel,
+} from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import type { Share } from "../shared/share_api";
-import { type ModelApi, parseRawModel } from "../tauri/model";
 
-export class WebShareModelApi implements ModelApi {
+export class WebShareModelApi implements IModelApi {
   private requestApi: IServerRequestApi;
   private share: Share;
 

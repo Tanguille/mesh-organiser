@@ -171,14 +171,16 @@ async fn get_threemf_metadata(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ThreemfMetadata, ApplicationError> {
-    let model = model_db::get_models_via_ids(
-        &state.app_state.db,
-        &state.get_current_user(),
-        vec![model_id],
-    )
-    .await?;
+    let Some(model) =
+        model_db::get_model_via_id(&state.app_state.db, &state.get_current_user(), model_id)
+            .await?
+    else {
+        return Err(ApplicationError::InternalError(String::from(
+            "Failed to find model",
+        )));
+    };
 
-    let metadata = threemf_service::extract_metadata(&model[0], &state.app_state).await?;
+    let metadata = threemf_service::extract_metadata(&model, &state.app_state).await?;
 
     Ok(metadata)
 }
@@ -188,28 +190,22 @@ async fn extract_threemf_models(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<ModelGroupMeta, ApplicationError> {
-    let model = model_db::get_models_via_ids(
-        &state.app_state.db,
+    let Some(model) =
+        model_db::get_model_via_id(&state.app_state.db, &state.get_current_user(), model_id)
+            .await?
+    else {
+        return Err(ApplicationError::InternalError(String::from(
+            "Failed to find model",
+        )));
+    };
+
+    Ok(threemf_service::extract_models_with_thumbnails(
+        &model,
         &state.get_current_user(),
-        vec![model_id],
-    )
-    .await?;
-
-    let mut import_state =
-        threemf_service::extract_models(&model[0], &state.get_current_user(), &state.app_state)
-            .await?;
-
-    let model_ids = import_state.all_model_ids();
-
-    thumbnail_service::generate_thumbnails_for_model_ids(
         &state.app_state,
-        &state.get_current_user(),
-        model_ids,
-        &mut import_state,
+        None,
     )
-    .await?;
-
-    Ok(threemf_service::group_meta_from_import(&import_state)?)
+    .await?)
 }
 
 #[tauri::command]
@@ -392,33 +388,36 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
 }
 
 fn extract_deep_link(data: &str) -> Option<String> {
-    let possible_starts = vec![
-        "bambustudio://open/?file=",
-        "cura://open/?file=",
-        "prusaslicer://open/?file=",
-        "orcaslicer://open/?file=",
-        "elegooslicer://open/?file=",
-        "meshorganiser://open/?file=",
-        "bambustudio://open?file=",
-        "cura://open?file=",
-        "prusaslicer://open?file=",
-        "orcaslicer://open?file=",
-        "elegooslicer://open?file=",
-        "meshorganiser://open?file=",
+    let schemes = [
+        "bambustudio",
+        "cura",
+        "prusaslicer",
+        "orcaslicer",
+        "elegooslicer",
+        "meshorganiser",
     ];
 
-    for start in possible_starts {
-        if let Some(stripped) = data.strip_prefix(start) {
-            let encoded = stripped.to_string();
+    for scheme in schemes {
+        // Each scheme accepts both `scheme://open/?file=` and `scheme://open?file=`.
+        let Some(rest) = data
+            .strip_prefix(scheme)
+            .and_then(|rest| rest.strip_prefix("://open"))
+        else {
+            continue;
+        };
 
-            if data.starts_with("elegooslicer") {
-                return Some(encoded);
-            }
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
 
-            let decode = decode(&encoded).unwrap();
+        let Some(encoded) = rest.strip_prefix("?file=") else {
+            continue;
+        };
 
-            return Some(String::from(decode));
+        // elegooslicer links are passed through without percent-decoding.
+        if scheme == "elegooslicer" {
+            return Some(encoded.to_string());
         }
+
+        return Some(String::from(decode(encoded).unwrap()));
     }
 
     None

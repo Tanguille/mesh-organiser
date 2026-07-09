@@ -3,16 +3,17 @@ import {
   type GroupOrderBy,
   type Group,
   type GroupMeta,
+  type IGroupApi,
 } from "../shared/group_api";
 import type { Model } from "../shared/model_api";
+import { parseRawGroup, type RawGroup } from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import type { Share } from "../shared/share_api";
-import { parseRawGroup, type GroupApi, type RawGroup } from "../tauri/group";
 
-export class WebShareGroupApi implements GroupApi {
+export class WebShareGroupApi implements IGroupApi {
   private requestApi: IServerRequestApi;
   private share: Share;
 
@@ -58,9 +59,12 @@ export class WebShareGroupApi implements GroupApi {
 
   async deleteGroup(_group: GroupMeta): Promise<void> {}
 
-  async addModelsToGroup(_group: GroupMeta, _models: Model[]): Promise<void> {}
+  async addModelsToGroup(
+    _group: GroupMeta,
+    _models: Pick<Model, "id">[],
+  ): Promise<void> {}
 
-  async removeModelsFromGroup(_models: Model[]): Promise<void> {}
+  async removeModelsFromGroup(_models: Pick<Model, "id">[]): Promise<void> {}
 
   async getGroupCount(_include_ungrouped_models: boolean): Promise<number> {
     return this.share.modelIds.length;

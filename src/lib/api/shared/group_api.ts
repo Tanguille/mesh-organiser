@@ -1,12 +1,13 @@
 import type { LabelMeta } from "./label_api";
 import {
   MAX_PAGE_SIZE,
+  modelMatchesSearch,
   stringArrayToModelFlags,
   type Model,
   type ModelFlags,
 } from "./model_api";
 import type { ResourceMeta } from "./resource_api";
-import { GeneratorStreamManager } from "./stream_manager";
+import { GeneratorStreamManager, pagedStream } from "./stream_manager";
 
 export interface GroupMeta {
   id: number;
@@ -69,6 +70,31 @@ export enum GroupOrderBy {
   ModifiedDesc = "ModifiedDesc",
 }
 
+// Single home for the in-memory GroupOrderBy semantics, shared by the demo
+// API and the predefined stream manager so the copies cannot drift.
+export function groupOrderByComparator(
+  orderBy: GroupOrderBy,
+): (a: Group, b: Group) => number {
+  return (a, b) => {
+    switch (orderBy) {
+      case GroupOrderBy.CreatedAsc:
+        return a.meta.created.getTime() - b.meta.created.getTime();
+      case GroupOrderBy.CreatedDesc:
+        return b.meta.created.getTime() - a.meta.created.getTime();
+      case GroupOrderBy.NameAsc:
+        return a.meta.name.localeCompare(b.meta.name);
+      case GroupOrderBy.NameDesc:
+        return b.meta.name.localeCompare(a.meta.name);
+      case GroupOrderBy.ModifiedAsc:
+        return a.meta.lastModified.getTime() - b.meta.lastModified.getTime();
+      case GroupOrderBy.ModifiedDesc:
+        return b.meta.lastModified.getTime() - a.meta.lastModified.getTime();
+      default:
+        return 0;
+    }
+  };
+}
+
 // Builds the shared getGroups request body used by both the web and
 // web-share group endpoints (they differ only in the endpoint path). The
 // model_ids_str field is a hack to bypass the request uri becoming too large.
@@ -115,8 +141,13 @@ export interface IGroupApi {
     editGlobalId?: boolean,
   ): Promise<void>;
   deleteGroup(group: GroupMeta): Promise<void>;
-  addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void>;
-  removeModelsFromGroup(models: Model[]): Promise<void>;
+  // Only the model ids are consumed, so callers that merely have ids do not
+  // need to fabricate full Model objects.
+  addModelsToGroup(
+    group: GroupMeta,
+    models: Pick<Model, "id">[],
+  ): Promise<void>;
+  removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void>;
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
 }
 
@@ -148,10 +179,7 @@ export async function* groupStream(
   pageSize: number,
   includeUngroupedModels: boolean,
 ): AsyncGenerator<Group[]> {
-  let page = 1;
-  let prefetchNextTask: Promise<Group[]> | null = null;
-
-  const fetchPage = (pageNumber: number) =>
+  yield* pagedStream((pageNumber) =>
     groupApi.getGroups(
       null,
       groupIds,
@@ -161,21 +189,8 @@ export async function* groupStream(
       pageNumber,
       pageSize,
       includeUngroupedModels,
-    );
-
-  while (true) {
-    prefetchNextTask ??= fetchPage(page);
-
-    const groups = await prefetchNextTask;
-    if (groups.length === 0) {
-      break;
-    }
-
-    page += 1;
-    prefetchNextTask = fetchPage(page);
-
-    yield groups;
-  }
+    ),
+  );
 }
 
 export interface IGroupStreamManager {
@@ -216,28 +231,12 @@ export class PredefinedGroupStreamManager implements IGroupStreamManager {
       : this.groups.filter(
           (group) =>
             group.meta.name.toLowerCase().includes(this.textSearch!) ||
-            group.models.some(
-              (model) =>
-                model.name.toLowerCase().includes(this.textSearch!) ||
-                (model.description?.toLowerCase().includes(this.textSearch!) ??
-                  false),
+            group.models.some((model) =>
+              modelMatchesSearch(model, this.textSearch!),
             ),
         );
 
-    return filter.sort((a, b) => {
-      switch (this.orderBy) {
-        case GroupOrderBy.CreatedAsc:
-          return a.meta.created.getTime() - b.meta.created.getTime();
-        case GroupOrderBy.CreatedDesc:
-          return b.meta.created.getTime() - a.meta.created.getTime();
-        case GroupOrderBy.NameAsc:
-          return a.meta.name.localeCompare(b.meta.name);
-        case GroupOrderBy.NameDesc:
-          return b.meta.name.localeCompare(a.meta.name);
-        default:
-          return 0;
-      }
-    });
+    return filter.sort(groupOrderByComparator(this.orderBy));
   }
 }
 

@@ -2,8 +2,6 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { join } from "@tauri-apps/api/path";
 import { type Blob, IBlobApi } from "../shared/blob_api";
 
-export { parseRawBlob, type RawBlob } from "../shared/raw_model";
-
 export class BlobApi implements IBlobApi {
   private appDataDir: string;
 

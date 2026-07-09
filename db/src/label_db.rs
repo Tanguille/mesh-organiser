@@ -13,8 +13,11 @@ use crate::{
     util::{time_now, validate_global_id},
 };
 
-pub async fn get_labels_min(db: &DbContext) -> Result<Vec<LabelMeta>, DbError> {
-    let rows = sqlx::query!("SELECT label_id, label_name, label_color, label_unique_global_id, label_last_modified FROM labels")
+pub async fn get_labels_min(db: &DbContext, user: &User) -> Result<Vec<LabelMeta>, DbError> {
+    let rows = sqlx::query!(
+        "SELECT label_id, label_name, label_color, label_unique_global_id, label_last_modified FROM labels WHERE label_user_id = ?",
+        user.id
+    )
         .fetch_all(db)
         .await?;
 
@@ -335,10 +338,10 @@ pub async fn add_label(
     name: &str,
     color: i64,
     update_timestamp: Option<&str>,
-) -> Result<i64, DbError> {
+) -> Result<LabelMeta, DbError> {
     let unique_global_id = random_hex_32();
     let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
 
     let result = sqlx::query!(
         "INSERT INTO labels (label_name, label_color, label_user_id, label_unique_global_id, label_last_modified) VALUES (?, ?, ?, ?, ?)",
@@ -346,13 +349,18 @@ pub async fn add_label(
         color,
         user.id,
         unique_global_id,
-        timestamp
+        last_modified
     )
     .execute(db)
     .await?;
 
-    let label_id = result.last_insert_rowid();
-    Ok(label_id)
+    Ok(LabelMeta {
+        id: result.last_insert_rowid(),
+        name: name.to_string(),
+        color,
+        unique_global_id,
+        last_modified,
+    })
 }
 
 pub async fn edit_label(
@@ -362,6 +370,7 @@ pub async fn edit_label(
     name: &str,
     color: i64,
     update_timestamp: Option<&str>,
+    global_id: Option<&str>,
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
@@ -377,10 +386,14 @@ pub async fn edit_label(
     .execute(db)
     .await?;
 
+    if let Some(global_id) = global_id {
+        edit_label_global_id(db, user, label_id, global_id).await?;
+    }
+
     Ok(())
 }
 
-pub async fn edit_label_global_id(
+async fn edit_label_global_id(
     db: &DbContext,
     user: &User,
     label_id: i64,

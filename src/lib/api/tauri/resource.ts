@@ -10,12 +10,6 @@ import {
 } from "../shared/raw_model";
 import { dateToString } from "$lib/utils";
 
-export {
-  convertResourceFlagsToRaw,
-  parseRawResourceMeta,
-  type RawResourceMeta,
-} from "../shared/raw_model";
-
 export class ResourceApi implements IResourceApi {
   async getResources(): Promise<ResourceMeta[]> {
     const raw = await invoke<RawResourceMeta[]>("get_resources");

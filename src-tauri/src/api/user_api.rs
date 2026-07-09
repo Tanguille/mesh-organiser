@@ -1,9 +1,6 @@
 use tauri::State;
 
-use db::{
-    model::user::{User, hash_password},
-    user_db,
-};
+use db::{model::user::User, user_db};
 use service::export_service;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
@@ -39,13 +36,7 @@ pub async fn add_user(
     user_password: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<i64, ApplicationError> {
-    let id = user_db::add_user(
-        &state.app_state.db,
-        user_name,
-        user_email,
-        &hash_password(user_password),
-    )
-    .await?;
+    let id = user_db::add_user(&state.app_state.db, user_name, user_email, user_password).await?;
 
     Ok(id)
 }

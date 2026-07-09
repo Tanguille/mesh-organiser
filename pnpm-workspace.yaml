@@ -1,24 +1,5 @@
 minimumReleaseAgeExclude:
-  - "@threlte/core@8.5.16"
-  - "@threlte/extras@9.20.1"
-  - "@typescript-eslint/eslint-plugin@8.60.0"
-  - "@typescript-eslint/parser@8.60.0"
-  - "@typescript-eslint/project-service@8.60.0"
-  - "@typescript-eslint/scope-manager@8.60.0"
-  - "@typescript-eslint/tsconfig-utils@8.60.0"
-  - "@typescript-eslint/type-utils@8.60.0"
-  - "@typescript-eslint/types@8.60.0"
-  - "@typescript-eslint/typescript-estree@8.60.0"
-  - "@typescript-eslint/utils@8.60.0"
-  - "@typescript-eslint/visitor-keys@8.60.0"
-  - "@typescript/native-preview-darwin-arm64@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview-darwin-x64@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview-linux-arm64@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview-linux-arm@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview-linux-x64@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview-win32-arm64@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview-win32-x64@7.0.0-dev.20260525.1"
-  - "@typescript/native-preview@7.0.0-dev.20260525.1"
-  - typescript-eslint@8.60.0
+  - "@types/three@0.185.1"
+  - prettier@3.9.5
 onlyBuiltDependencies:
   - esbuild

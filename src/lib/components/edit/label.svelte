@@ -27,12 +27,11 @@
   import { getContainer } from "$lib/api/dependency_injection";
   import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
 
-  interface Function {
-    (): void;
-  }
-
-  const props: { label: LabelClass; class?: ClassValue; onDelete?: Function } =
-    $props();
+  const props: {
+    label: LabelClass;
+    class?: ClassValue;
+    onDelete?: () => void;
+  } = $props();
   const tracked_label = $derived(props.label);
   const parentId = $derived(page.url.searchParams.get("parentId"));
   let lastId = -1;

@@ -8,10 +8,6 @@
   import type { Snippet } from "svelte";
   import Plus from "@lucide/svelte/icons/plus";
 
-  interface Function {
-    (entries: string[]): Promise<void>;
-  }
-
   let {
     children,
     clazz,
@@ -22,7 +18,7 @@
   }: {
     children: Snippet;
     clazz?: ClassValue;
-    onEdit?: Function;
+    onEdit?: (entries: string[]) => Promise<void>;
     value: string[];
     title: string;
     description: string;
