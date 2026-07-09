@@ -64,7 +64,7 @@ importers:
         version: 0.185.1
       threejs-webworker-3mf-loader:
         specifier: github:manyfold3d/threejs-webworker-3mf-loader
-        version: git+https://git@github.com:manyfold3d/threejs-webworker-3mf-loader.git#cd9967b4e50e0ee07d511d481f525a97d98a0876
+        version: https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/cd9967b4e50e0ee07d511d481f525a97d98a0876
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1697,8 +1697,8 @@ packages:
   three@0.185.1:
     resolution: {integrity: sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==}
 
-  threejs-webworker-3mf-loader@git+https://git@github.com:manyfold3d/threejs-webworker-3mf-loader.git#cd9967b4e50e0ee07d511d481f525a97d98a0876:
-    resolution: {commit: cd9967b4e50e0ee07d511d481f525a97d98a0876, repo: git@github.com:manyfold3d/threejs-webworker-3mf-loader.git, type: git}
+  threejs-webworker-3mf-loader@https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/cd9967b4e50e0ee07d511d481f525a97d98a0876:
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/cd9967b4e50e0ee07d511d481f525a97d98a0876}
     version: 1.0.0
 
   tinybench@2.9.0:
@@ -3272,7 +3272,7 @@ snapshots:
 
   three@0.185.1: {}
 
-  threejs-webworker-3mf-loader@git+https://git@github.com:manyfold3d/threejs-webworker-3mf-loader.git#cd9967b4e50e0ee07d511d481f525a97d98a0876:
+  threejs-webworker-3mf-loader@https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/cd9967b4e50e0ee07d511d481f525a97d98a0876:
     dependencies:
       '@xmldom/xmldom': 0.8.13
       three: 0.164.1
