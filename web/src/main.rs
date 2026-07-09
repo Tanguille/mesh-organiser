@@ -15,7 +15,7 @@ mod web_app_state;
 mod web_import_state;
 
 fn remove_temp_paths() -> Result<(), ApplicationError> {
-    let threshold = Duration::from_secs(5 * 60);
+    let threshold = Duration::from_mins(5);
     let now = std::time::SystemTime::now();
     for entry in fs::read_dir(env::temp_dir())? {
         let entry = entry?;
@@ -41,7 +41,7 @@ fn remove_temp_paths() -> Result<(), ApplicationError> {
 
 async fn loop_remove_temp_paths() {
     loop {
-        time::sleep(Duration::from_secs(60 * 60)).await;
+        time::sleep(Duration::from_hours(1)).await;
         let _ = remove_temp_paths();
     }
 }

@@ -23,8 +23,6 @@ function convertGeometry(group: Group): BufferGeometry | null {
     }
   });
 
-  console.log(geometries);
-
   if (geometries.length === 0) {
     return null;
   }
@@ -52,34 +50,20 @@ export function loadModel(
 
   try {
     if (fileType === FileType.STL) {
-      console.log("Loading STL file, buffer length:", buffer.length);
       const loader = new STLLoader();
       localResult = loader.parse(buffer.buffer as ArrayBuffer);
-      console.log("STL parsed successfully, result:", localResult);
     } else if (fileType === FileType.THREEMF) {
-      console.log("Loading ThreeMF file, buffer length:", buffer.length);
       const loader = new ThreeMFLoader();
       const result = loader.parse(buffer.buffer as ArrayBuffer);
-      console.log("ThreeMF loader result:", result);
 
       localResult = convertGeometry(result) || new BufferGeometry();
-      console.log("ThreeMF convertGeometry result:", localResult);
     } else if (fileType === FileType.OBJ) {
-      console.log("Loading OBJ file, buffer length:", buffer.length);
       const loader = new OBJLoader();
       // TODO: This is slow!
       const text = new TextDecoder("utf-8").decode(buffer);
-      console.log(
-        "OBJ text length:",
-        text.length,
-        "first 100 chars:",
-        text.substring(0, 100),
-      );
       const result = loader.parse(text);
-      console.log("OBJ loader result:", result);
 
       localResult = convertGeometry(result) || new BufferGeometry();
-      console.log("OBJ convertGeometry result:", localResult);
     } else {
       console.error(
         "Unknown file type:",
@@ -95,7 +79,6 @@ export function loadModel(
       localResult.computeBoundingSphere();
       localResult.center();
       localResult.rotateX(Math.PI / -2);
-      console.log("Model processed successfully");
     }
 
     return localResult || null;
@@ -117,19 +100,9 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
     return;
   }
   const { buffer, fileType } = e.data;
-  console.log(
-    "Worker received message, fileType:",
-    fileType,
-    "buffer length:",
-    buffer.length,
-  );
 
   try {
     const geometry = loadModel(buffer, fileType);
-    console.log(
-      "loadModel result:",
-      geometry ? "geometry returned" : "null returned",
-    );
 
     if (geometry) {
       // Check if geometry has valid position data
@@ -142,10 +115,6 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
           transferables.push(normal);
         }
 
-        console.log(
-          "Sending successful geometry data, vertices:",
-          geometry.attributes.position.count,
-        );
         self.postMessage(
           {
             success: true,

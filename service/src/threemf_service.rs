@@ -1,10 +1,10 @@
 use std::{
     fs::{self, File as StdFile},
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use async_zip::tokio::read::seek::ZipFileReader;
-use chrono::Utc;
 use indexmap::IndexMap;
 use itertools::join;
 use regex::Regex;
@@ -12,12 +12,46 @@ use serde::{Deserialize, Serialize};
 use stl_io::Vector;
 use tokio::{fs::File, io::BufReader};
 
-use db::model::{Model, user::User};
+use db::{
+    model::{Model, model_group::ModelGroupMeta, user::User},
+    random_hex_32, time_now,
+};
 
 use crate::{
     AppState, ServiceError, cleanse_evil_from_name, export_service, import_service,
-    import_state::ImportState,
+    import_state::{ImportState, ImportStateEmitter},
+    thumbnail_service,
 };
+
+/// Builds the `ModelGroupMeta` for the group produced by a 3MF extraction.
+///
+/// Shared by the Tauri command and the web controller so the (previously
+/// divergent) safe-extraction logic lives in one place.
+///
+/// # Errors
+///
+/// Returns an error if the extraction produced no imported group.
+pub fn group_meta_from_import(import_state: &ImportState) -> Result<ModelGroupMeta, ServiceError> {
+    let (id, name) = import_state
+        .imported_models
+        .first()
+        .and_then(|m| m.group_id.zip(m.group_name.clone()))
+        .ok_or_else(|| {
+            ServiceError::InternalError("3MF extract produced no imported group".to_string())
+        })?;
+
+    let now = time_now();
+    Ok(ModelGroupMeta {
+        id,
+        name,
+        created: now.clone(),
+        last_modified: now,
+        resource_id: None,
+        unique_global_id: random_hex_32(),
+    })
+}
+
+static MODEL_SETTINGS_PART_NAME: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Deserialize)]
 pub struct ProjectSettingsConfig {
@@ -120,10 +154,12 @@ fn parse_slicer_pe_config(data: &str) -> ThreemfMetadata {
 pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
     let mut names_map = IndexMap::new();
 
-    let re = Regex::new(
-        r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#,
-    )
-    .unwrap();
+    let re = MODEL_SETTINGS_PART_NAME.get_or_init(|| {
+        Regex::new(
+            r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#,
+        )
+        .unwrap()
+    });
 
     for captures in re.captures_iter(data) {
         let part_id = captures[1].parse::<u32>().unwrap_or(u32::MAX);
@@ -310,11 +346,7 @@ pub async fn extract_models(
         ));
     }
 
-    let mut temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_extract_action_{}",
-        Utc::now().timestamp_nanos_opt().unwrap()
-    ));
-    fs::create_dir(&temp_dir)?;
+    let mut temp_dir = export_service::get_temp_dir("extract");
 
     let threemf_path =
         export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
@@ -341,6 +373,43 @@ pub async fn extract_models(
         import_service::import_path(temp_dir.to_str().unwrap(), app_state, import_state).await?;
 
     Ok(result)
+}
+
+/// Runs the full 3MF extraction workflow shared by the Tauri command and the web
+/// handler: extract the objects as models, generate their thumbnails, and return
+/// the resulting group meta.
+///
+/// The optional emitter is installed after `extract_models`, so extraction itself
+/// runs with the default `NoneImportStateEmitter` and only thumbnail progress is
+/// emitted (matching the previous per-frontend behavior).
+///
+/// # Errors
+///
+/// Returns an error if extraction, thumbnail generation, or building the group
+/// meta fails.
+pub async fn extract_models_with_thumbnails(
+    model: &Model,
+    user: &User,
+    app_state: &AppState,
+    emitter: Option<Box<dyn ImportStateEmitter + Send + Sync>>,
+) -> Result<ModelGroupMeta, ServiceError> {
+    let mut import_state = extract_models(model, user, app_state).await?;
+
+    if let Some(emitter) = emitter {
+        import_state.set_emitter(emitter);
+    }
+
+    let model_ids = import_state.all_model_ids();
+
+    thumbnail_service::generate_thumbnails_for_model_ids(
+        app_state,
+        user,
+        model_ids,
+        &mut import_state,
+    )
+    .await?;
+
+    group_meta_from_import(&import_state)
 }
 
 // -----------------------------------------------------------------------------

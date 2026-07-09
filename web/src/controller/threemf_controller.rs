@@ -12,7 +12,7 @@ use service::threemf_service;
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -34,98 +34,55 @@ pub fn router() -> Router<WebAppState> {
 
 mod get {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, StatusCode,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, StatusCode,
         WebAppState, model_db, threemf_service,
     };
 
     pub async fn get_threemf_metadata(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(model_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
-        let model =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await?;
-
-        if model.is_empty() {
+        let Some(model) =
+            model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await?
+        else {
             return Ok((StatusCode::NOT_FOUND, "Model not found").into_response());
-        }
+        };
 
         let threemf_metadata =
-            threemf_service::extract_metadata(&model[0], &app_state.app_state).await?;
+            threemf_service::extract_metadata(&model, &app_state.app_state).await?;
 
         Ok(Json(threemf_metadata).into_response())
     }
 }
 
 mod post {
-    use db::{
-        model::{blob::Blob, model_group::ModelGroupMeta},
-        random_hex_32, time_now,
-    };
-    use service::thumbnail_service;
-
     use crate::web_import_state::WebImportStateEmitter;
 
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, StatusCode,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, StatusCode,
         WebAppState, model_db, threemf_service,
     };
 
     pub async fn extract_threemf_models(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(model_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
-        let model =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await?;
-
-        if model.is_empty() {
+        let Some(model) =
+            model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await?
+        else {
             return Ok((StatusCode::NOT_FOUND, "Model not found").into_response());
-        }
+        };
 
-        let mut import_state =
-            threemf_service::extract_models(&model[0], &user, &app_state.app_state).await?;
-
-        import_state.set_emitter(Box::new(WebImportStateEmitter {}));
-
-        let model_ids: Vec<i64> = import_state
-            .imported_models
-            .iter()
-            .flat_map(|f| f.model_ids.iter().copied())
-            .collect();
-
-        let models =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids).await?;
-        let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-        thumbnail_service::generate_thumbnails(
-            &blobs,
+        let group_meta = threemf_service::extract_models_with_thumbnails(
+            &model,
+            &user,
             &app_state.app_state,
-            false,
-            &mut import_state,
+            Some(Box::new(WebImportStateEmitter {})),
         )
         .await?;
 
-        let first = import_state
-            .imported_models
-            .first()
-            .and_then(|m| m.group_id.zip(m.group_name.clone()));
-        let (id, name) = first.ok_or_else(|| {
-            ApplicationError::InternalError("3MF extract produced no imported group".to_string())
-        })?;
-
-        Ok(Json(ModelGroupMeta {
-            id,
-            name,
-            created: time_now(),
-            last_modified: time_now(),
-            resource_id: None,
-            unique_global_id: random_hex_32(),
-        })
-        .into_response())
+        Ok(Json(group_meta).into_response())
     }
 }

@@ -1,4 +1,4 @@
-import type { Blob, IBlobApi } from "../shared/blob_api";
+import { blobThumbnailUrl, type Blob, type IBlobApi } from "../shared/blob_api";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -45,6 +45,6 @@ export class WebBlobApi implements IBlobApi {
   }
 
   async getBlobThumbnailUrl(blob: Blob): Promise<string> {
-    return this.hostUrl + "/api/v1/blobs/" + blob.sha256 + "/thumb";
+    return blobThumbnailUrl(this.hostUrl, blob.sha256);
   }
 }

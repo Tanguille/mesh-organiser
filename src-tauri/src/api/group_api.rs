@@ -1,11 +1,10 @@
-use std::{str::FromStr, time::Instant};
+use std::str::FromStr;
 
 use tauri::State;
 
 use db::{
     group_db::{self, GroupOrderBy},
     model::model_group::{ModelGroup, ModelGroupMeta},
-    random_hex_32, time_now,
 };
 
 use crate::{
@@ -28,7 +27,6 @@ pub async fn get_groups(
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
     require_local_desktop_app()?;
 
-    let instant = Instant::now();
     let groups = group_db::get_groups(
         &state.app_state.db,
         &state.get_current_user(),
@@ -52,8 +50,6 @@ pub async fn get_groups(
     )
     .await?;
 
-    println!("get_groups took {:?}", instant.elapsed());
-
     Ok(groups.items)
 }
 
@@ -76,7 +72,7 @@ pub async fn add_group(
 ) -> Result<ModelGroupMeta, ApplicationError> {
     require_local_desktop_app()?;
 
-    let id = group_db::add_empty_group(
+    let group_meta = group_db::add_empty_group(
         &state.app_state.db,
         &state.get_current_user(),
         group_name,
@@ -84,14 +80,7 @@ pub async fn add_group(
     )
     .await?;
 
-    Ok(ModelGroupMeta {
-        id,
-        name: group_name.to_string(),
-        created: time_now(),
-        unique_global_id: random_hex_32(),
-        resource_id: None,
-        last_modified: time_now(),
-    })
+    Ok(group_meta)
 }
 
 #[tauri::command]
@@ -149,18 +138,9 @@ pub async fn edit_group(
         group_id,
         group_name,
         group_timestamp,
+        group_global_id,
     )
     .await?;
-
-    if let Some(global_id) = group_global_id {
-        group_db::edit_group_global_id(
-            &state.app_state.db,
-            &state.get_current_user(),
-            group_id,
-            global_id,
-        )
-        .await?;
-    }
 
     Ok(())
 }

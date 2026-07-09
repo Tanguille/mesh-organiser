@@ -1,4 +1,3 @@
-use async_zip::tokio::read::seek::ZipFileReader;
 use axum::{
     Json, Router,
     body::Body,
@@ -11,20 +10,17 @@ use axum_extra::extract::Query;
 use axum_login::login_required;
 use serde::Deserialize;
 use tokio::{fs::File, io::BufReader};
-use tokio_util::{compat::FuturesAsyncReadCompatExt, io::ReaderStream};
+use tokio_util::io::ReaderStream;
 
 use db::{
     model::{blob::Blob, user::User},
     model_db, user_db,
 };
-use service::{
-    cleanse_evil_from_name, convert_zip_to_extension, export_service,
-    export_service::get_model_path_for_blob, is_zipped_file_extension,
-};
+use service::{cleanse_evil_from_name, convert_zip_to_extension, export_service};
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -49,11 +45,9 @@ mod get {
     use crate::path_safety::{resolve_path_under_base, resolve_path_under_temp};
 
     use super::{
-        ApplicationError, AuthSession, Blob, Body, BufReader, Deserialize, File,
-        FuturesAsyncReadCompatExt, IntoResponse, Path, Query, ReaderStream, Response, State,
-        StatusCode, User, WebAppState, ZipFileReader, cleanse_evil_from_name,
-        convert_zip_to_extension, get_model_path_for_blob, is_zipped_file_extension, model_db,
-        user_db,
+        ApplicationError, Blob, Body, BufReader, CurrentUser, Deserialize, File, IntoResponse,
+        Path, Query, ReaderStream, Response, State, StatusCode, User, WebAppState,
+        cleanse_evil_from_name, convert_zip_to_extension, export_service, model_db, user_db,
     };
 
     #[derive(Deserialize)]
@@ -80,17 +74,10 @@ mod get {
     }
 
     async fn extract_user_via_share_id(app_state: &WebAppState, share_id: &str) -> Option<User> {
-        let Ok(share) = db::share_db::get_share_via_id(&app_state.app_state.db, share_id).await
-        else {
-            return None;
-        };
-
-        let Ok(Some(user)) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await
-        else {
-            return None;
-        };
-
-        Some(user)
+        crate::controller::share_controller::resolve_share_owner(app_state, share_id)
+            .await
+            .ok()
+            .map(|(_share, user)| user)
     }
 
     pub async fn download_model(
@@ -124,17 +111,11 @@ mod get {
             return StatusCode::NOT_FOUND.into_response();
         };
 
-        let Ok(model) =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await
+        let Ok(Some(model)) =
+            model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await
         else {
             return StatusCode::NOT_FOUND.into_response();
         };
-
-        if model.is_empty() {
-            return StatusCode::NOT_FOUND.into_response();
-        }
-
-        let model = &model[0];
 
         if model.blob.sha256 != blob_sha256 {
             return StatusCode::NOT_FOUND.into_response();
@@ -159,34 +140,24 @@ mod get {
     }
 
     pub async fn get_model_bytes(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(model_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Response {
-        let user = auth_session.user.unwrap().to_user();
-
-        let Ok(model) =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, vec![model_id]).await
+        let Ok(Some(model)) =
+            model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await
         else {
             return StatusCode::NOT_FOUND.into_response();
         };
-
-        if model.is_empty() {
-            return StatusCode::NOT_FOUND.into_response();
-        }
-
-        let model = &model[0];
 
         get_blob_bytes_inner(&model.blob, &app_state).await
     }
 
     pub async fn get_blob_bytes(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(sha256): Path<String>,
         State(app_state): State<WebAppState>,
     ) -> Response {
-        let user = auth_session.user.unwrap().to_user();
-
         // Verify that the user has access to a model with this blob
         let Ok(Some(_model_id)) =
             model_db::get_model_id_via_sha256(&app_state.app_state.db, &user, &sha256).await
@@ -233,30 +204,14 @@ mod get {
     }
 
     async fn get_blob_bytes_inner(blob: &Blob, app_state: &WebAppState) -> Response {
-        let src_file_path = get_model_path_for_blob(blob, &app_state.app_state);
-
-        let Ok(file) = File::open(src_file_path).await else {
+        // The plain-file vs first-zip-entry convention lives in the service
+        // layer; any open/read failure keeps the previous 500 semantics.
+        let Ok(reader) = export_service::open_blob_content_reader(blob, &app_state.app_state).await
+        else {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         };
 
-        let buffered_reader = BufReader::new(file);
-
-        if is_zipped_file_extension(&blob.filetype) {
-            let Ok(archive) = ZipFileReader::with_tokio(buffered_reader).await else {
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            };
-            let Ok(file) = archive.into_entry(0).await else {
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            };
-
-            let stream = ReaderStream::new(file.compat());
-
-            Body::from_stream(stream).into_response()
-        } else {
-            let stream = ReaderStream::new(buffered_reader);
-
-            Body::from_stream(stream).into_response()
-        }
+        Body::from_stream(ReaderStream::new(reader)).into_response()
     }
 
     pub async fn get_blobs_zip_download(
@@ -309,17 +264,15 @@ mod get {
 
 mod post {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Json, Response, State, StatusCode,
+        ApplicationError, CurrentUser, IntoResponse, Json, Response, State, StatusCode,
         WebAppState, export_service, model_db,
     };
 
     pub async fn create_blobs_zip_download(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(blob_sha256s): Json<Vec<String>>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         let Ok(model_ids) =
             model_db::get_model_ids_via_sha256s(&app_state.app_state.db, &user, &blob_sha256s)
                 .await

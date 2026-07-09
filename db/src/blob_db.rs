@@ -1,7 +1,6 @@
-use itertools::join;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 
-use crate::{DbError, db_context::DbContext, model::blob::Blob, util::time_now};
+use crate::{DbError, db_context::DbContext, model::blob::Blob, push_in_i64, util::time_now};
 
 pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let rows = sqlx::query!(
@@ -13,14 +12,14 @@ pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let mut blobs = Vec::with_capacity(rows.len());
 
     for row in rows {
-        blobs.push(Blob {
-            id: row.blob_id,
-            sha256: row.blob_sha256,
-            filetype: row.blob_filetype,
-            size: row.blob_size,
-            added: row.blob_added,
-            disk_path: row.blob_path,
-        });
+        blobs.push(Blob::from_parts(
+            row.blob_id,
+            row.blob_sha256,
+            row.blob_filetype,
+            row.blob_size,
+            row.blob_added,
+            row.blob_path,
+        ));
     }
 
     Ok(blobs)
@@ -31,24 +30,23 @@ pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob
         return Ok(Vec::new());
     }
 
-    let query = format!(
-        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs WHERE blob_id IN ({})",
-        join(ids.iter(), ",")
+    let mut query_builder = QueryBuilder::new(
+        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs WHERE blob_id IN ",
     );
-
-    let rows = sqlx::query(&query).fetch_all(db).await?;
+    push_in_i64(&mut query_builder, &ids);
+    let rows = query_builder.build().fetch_all(db).await?;
 
     let mut blobs = Vec::with_capacity(rows.len());
 
     for row in rows {
-        blobs.push(Blob {
-            id: row.get("blob_id"),
-            sha256: row.get("blob_sha256"),
-            filetype: row.get("blob_filetype"),
-            size: row.get("blob_size"),
-            added: row.get("blob_added"),
-            disk_path: row.get("blob_path"),
-        });
+        blobs.push(Blob::from_parts(
+            row.get("blob_id"),
+            row.get("blob_sha256"),
+            row.get("blob_filetype"),
+            row.get("blob_size"),
+            row.get("blob_added"),
+            row.get("blob_path"),
+        ));
     }
 
     Ok(blobs)
@@ -63,14 +61,14 @@ pub async fn get_blob_via_sha256(db: &DbContext, sha256: &str) -> Result<Option<
     .await?;
 
     match row {
-        Some(record) => Ok(Some(Blob {
-            id: record.blob_id,
-            sha256: record.blob_sha256,
-            filetype: record.blob_filetype,
-            size: record.blob_size,
-            disk_path: record.blob_path,
-            added: record.blob_added,
-        })),
+        Some(record) => Ok(Some(Blob::from_parts(
+            record.blob_id,
+            record.blob_sha256,
+            record.blob_filetype,
+            record.blob_size,
+            record.blob_added,
+            record.blob_path,
+        ))),
         None => Ok(None),
     }
 }
@@ -120,22 +118,22 @@ pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbEr
     let mut dead_blobs = Vec::with_capacity(dead_blob_rows.len());
 
     for row in dead_blob_rows {
-        dead_blobs.push(Blob {
-            id: row.blob_id,
-            sha256: row.blob_sha256,
-            filetype: row.blob_filetype,
-            size: row.blob_size,
-            added: row.blob_added,
-            disk_path: row.blob_path,
-        });
+        dead_blobs.push(Blob::from_parts(
+            row.blob_id,
+            row.blob_sha256,
+            row.blob_filetype,
+            row.blob_size,
+            row.blob_added,
+            row.blob_path,
+        ));
     }
 
-    let query = format!(
-        "DELETE FROM blobs WHERE blob_id IN ({})",
-        join(dead_blobs.iter().map(|r| r.id), ",")
-    );
-
-    sqlx::query(&query).execute(db).await?;
+    if !dead_blobs.is_empty() {
+        let dead_ids: Vec<i64> = dead_blobs.iter().map(|blob| blob.id).collect();
+        let mut query_builder = QueryBuilder::new("DELETE FROM blobs WHERE blob_id IN ");
+        push_in_i64(&mut query_builder, &dead_ids);
+        query_builder.build().execute(db).await?;
+    }
 
     Ok(dead_blobs)
 }

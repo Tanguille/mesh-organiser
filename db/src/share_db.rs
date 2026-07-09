@@ -4,7 +4,7 @@ use crate::{
     DbError,
     db_context::DbContext,
     model::{share::Share, user::User},
-    model_db, random_hex_32, time_now,
+    model_db, parse_concat_ids, random_hex_32, time_now,
 };
 
 pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbError> {
@@ -22,11 +22,9 @@ pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbErr
     Ok(shares
         .into_iter()
         .map(|share| {
-            let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids| {
-                ids.split(',')
-                    .filter_map(|s| s.parse::<i64>().ok())
-                    .collect()
-            });
+            let model_ids: Vec<i64> = share
+                .share_model_ids
+                .map_or_else(Vec::new, |ids| parse_concat_ids(&ids));
 
             Share {
                 id: share.share_id,
@@ -50,11 +48,9 @@ pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, D
         .fetch_one(db)
         .await?;
 
-    let model_ids: Vec<i64> = share.share_model_ids.map_or_else(Vec::new, |ids| {
-        ids.split(',')
-            .filter_map(|s| s.parse::<i64>().ok())
-            .collect()
-    });
+    let model_ids: Vec<i64> = share
+        .share_model_ids
+        .map_or_else(Vec::new, |ids| parse_concat_ids(&ids));
 
     Ok(Share {
         id: share.share_id,
@@ -71,9 +67,10 @@ pub async fn set_model_ids_on_share(
     share_id: &str,
     model_ids: Vec<i64>,
 ) -> Result<(), DbError> {
-    let models = model_db::get_models_via_ids(db, user, model_ids.clone()).await?;
+    let expected = model_ids.len();
+    let models = model_db::get_models_via_ids(db, user, model_ids).await?;
 
-    if models.len() != model_ids.len() {
+    if models.len() != expected {
         return Err(DbError::RowNotFound);
     }
 
@@ -94,7 +91,7 @@ pub async fn set_model_ids_on_share(
         .await?;
 
     let mut query_builder = QueryBuilder::new("INSERT INTO shares_models (share_id, model_id) ");
-    query_builder.push_values(model_ids.iter(), |mut b, model_id| {
+    query_builder.push_values(models.iter().map(|model| model.id), |mut b, model_id| {
         b.push_bind(share_id);
         b.push_bind(model_id);
     });

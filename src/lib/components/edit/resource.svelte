@@ -23,14 +23,10 @@
   import { getContainer } from "$lib/api/dependency_injection";
   import { IResourceFolderApi } from "$lib/api/shared/resource_folder_api";
 
-  interface Function {
-    (resource: ResourceMeta): void;
-  }
-
   const props: {
     resource: ResourceMeta;
     class?: ClassValue;
-    onDelete?: Function;
+    onDelete?: (resource: ResourceMeta) => void;
   } = $props();
   const trackedResource = $derived(props.resource);
   const resourceApi = getContainer().require<IResourceApi>(IResourceApi);

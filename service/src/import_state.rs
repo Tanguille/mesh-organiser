@@ -55,7 +55,6 @@ pub trait ImportStateEmitter {
     fn model_count_event(&self, status: &ImportState);
     fn thumbnail_count_event(&self, status: &ImportState);
     fn failure_reason_event(&self, status: &ImportState);
-    fn all_data_event(&self, state: &ImportState);
 }
 
 pub struct NoneImportStateEmitter;
@@ -67,7 +66,6 @@ impl ImportStateEmitter for NoneImportStateEmitter {
     fn model_group_event(&self, _status: &ImportState) {}
     fn thumbnail_count_event(&self, _status: &ImportState) {}
     fn model_count_event(&self, _status: &ImportState) {}
-    fn all_data_event(&self, _state: &ImportState) {}
 }
 
 impl ImportState {
@@ -79,20 +77,14 @@ impl ImportState {
         import_as_path: bool,
         user: User,
     ) -> Self {
-        Self {
-            imported_models: Vec::new(),
-            imported_model_count: 0,
-            model_count: 0,
-            finished_thumbnails_count: 0,
-            status: ImportStatus::Idle,
-            failure_reason: None,
+        Self::new_with_emitter(
             origin_url,
             recursive,
             delete_after_import,
-            emitter: Box::new(NoneImportStateEmitter {}),
-            user,
             import_as_path,
-        }
+            user,
+            Box::new(NoneImportStateEmitter {}),
+        )
     }
 
     #[must_use]
@@ -177,11 +169,7 @@ impl ImportState {
             .unwrap()
             .model_ids
             .push(model_id);
-        self.imported_model_count = self
-            .imported_models
-            .iter()
-            .map(|set| set.model_ids.len())
-            .sum();
+        self.imported_model_count += 1;
         self.emitter.model_count_event(self);
     }
 
@@ -192,6 +180,15 @@ impl ImportState {
         }
 
         None
+    }
+
+    /// Collects every imported model id across all import sets.
+    #[must_use]
+    pub fn all_model_ids(&self) -> Vec<i64> {
+        self.imported_models
+            .iter()
+            .flat_map(|set| set.model_ids.iter().copied())
+            .collect()
     }
 
     /// Creates groups from all import sets and assigns model group ids.
@@ -215,7 +212,9 @@ impl ImportState {
             }
 
             let group_name = set.group_name.as_ref().unwrap();
-            let group_id = group_db::add_empty_group(&state.db, user, group_name, None).await?;
+            let group_id = group_db::add_empty_group(&state.db, user, group_name, None)
+                .await?
+                .id;
 
             group_db::set_group_id_on_models(
                 &state.db,
@@ -240,10 +239,5 @@ impl ImportState {
         self.emitter.model_total_event(self);
         self.emitter.model_group_event(self);
         self.emitter.failure_reason_event(self);
-    }
-
-    // Pushes all data to the frontend
-    pub fn push_all_data_to_frontend(&self) {
-        self.emitter.all_data_event(self);
     }
 }

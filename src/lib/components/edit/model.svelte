@@ -58,17 +58,13 @@
   import OpenInSlicerButton from "../view/open-in-slicer-button.svelte";
   import Pin from "@lucide/svelte/icons/pin";
 
-  interface Function {
-    (): void;
-  }
-
   const props: {
     model: Model;
     class?: ClassValue;
     initialEditMode?: boolean;
-    onDelete?: Function;
+    onDelete?: () => void;
   } = $props();
-  let deleted = $derived({ deleted: !props.model });
+  let deleted = $state(false);
 
   let model: Model = $derived(props.model);
   let load3dPreview = $derived(
@@ -124,8 +120,6 @@
   });
 
   const save_model_debounced = debounce(async (edited_model: Model) => {
-    console.log("Saving model");
-    console.log(edited_model);
     await modelApi.editModel(edited_model);
     await labelApi.setLabelsOnModel(edited_model.labels, edited_model);
     await updateSidebarState();
@@ -144,7 +138,7 @@
   async function onDelete() {
     await modelApi.deleteModel(model);
     await updateSidebarState();
-    deleted.deleted = true;
+    deleted = true;
     props.onDelete?.();
   }
 
@@ -207,7 +201,7 @@
   }
 </script>
 
-{#if deleted.deleted}
+{#if deleted}
   <div class="flex h-64 items-center justify-center">
     <span class="text-2xl">Model Deleted</span>
   </div>

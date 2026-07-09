@@ -1,19 +1,65 @@
 import {
   createGroupInstance,
   createGroupMetaInstance,
-  GroupOrderBy,
+  groupOrderByComparator,
   type Group,
   type GroupMeta,
+  type GroupOrderBy,
   type IGroupApi,
 } from "../shared/group_api";
-import { type Model } from "../shared/model_api";
+import { modelMatchesSearch, type Model } from "../shared/model_api";
+import { convertModelFlagsToRaw } from "../shared/raw_model";
 import {
   mockGroups,
   mockModels,
   modelGroupMap,
   modelLabelsMap,
-  mockLabels,
+  resolveLabels,
 } from "./mock_data";
+
+// Walks mockModels collecting those that satisfy the membership predicate and
+// pass the model_ids / label_ids / text_search filters, accumulating the
+// Printed/Favorite flags and the union of label ids. Shared by the grouped and
+// ungrouped collection loops, which differ only in the membership predicate.
+function collectGroupModels(
+  model_ids: number[] | null,
+  label_ids: number[] | null,
+  text_search: string | null,
+  predicate: (modelId: number) => boolean,
+): { models: Model[]; labelIds: Set<number>; flags: string[] } {
+  const models: Model[] = [];
+  const labelIds = new Set<number>();
+  const flagsSet = new Set<string>();
+  const searchLower = text_search?.toLowerCase();
+
+  mockModels.forEach((model, modelId) => {
+    if (predicate(modelId)) {
+      // Check if model matches filters
+      if (model_ids && !model_ids.includes(modelId)) return;
+
+      // Check label filter
+      const modelLabelIds = modelLabelsMap.get(modelId) || [];
+      if (label_ids && !label_ids.some((lid) => modelLabelIds.includes(lid)))
+        return;
+
+      // Check text search
+      if (searchLower && !modelMatchesSearch(model, searchLower)) return;
+
+      models.push(model);
+
+      // Collect labels
+      modelLabelIds.forEach((lid) => labelIds.add(lid));
+
+      // Collect flags (union across models, deduped) via the shared converter
+      // so the flag-name literals stay centralised in raw_model.ts.
+      convertModelFlagsToRaw(model.flags)?.forEach((flag) =>
+        flagsSet.add(flag),
+      );
+    }
+  });
+
+  return { models, labelIds, flags: [...flagsSet] };
+}
 
 export class DemoGroupApi implements IGroupApi {
   async getGroups(
@@ -48,57 +94,23 @@ export class DemoGroupApi implements IGroupApi {
 
     // Build groups with their models
     for (const [groupId, groupMeta] of groupsToProcess) {
-      const modelsInGroup: Model[] = [];
-      const groupLabels = new Set<number>();
-      const groupFlags: string[] = [];
-
       // Find all models in this group
-      mockModels.forEach((model, modelId) => {
-        if (modelGroupMap.get(modelId) === groupId) {
-          // Check if model matches filters
-          if (model_ids && !model_ids.includes(modelId)) return;
-
-          // Check label filter
-          const modelLabelIds = modelLabelsMap.get(modelId) || [];
-          if (
-            label_ids &&
-            !label_ids.some((lid) => modelLabelIds.includes(lid))
-          )
-            return;
-
-          // Check text search
-          if (text_search) {
-            const searchLower = text_search.toLowerCase();
-            if (
-              !model.name.toLowerCase().includes(searchLower) &&
-              !model.description?.toLowerCase().includes(searchLower)
-            ) {
-              return;
-            }
-          }
-
-          modelsInGroup.push(model);
-
-          // Collect labels
-          modelLabelIds.forEach((lid) => groupLabels.add(lid));
-
-          // Collect flags
-          if (model.flags.printed && !groupFlags.includes("Printed")) {
-            groupFlags.push("Printed");
-          }
-          if (model.flags.favorite && !groupFlags.includes("Favorite")) {
-            groupFlags.push("Favorite");
-          }
-        }
-      });
+      const {
+        models: modelsInGroup,
+        labelIds: groupLabels,
+        flags: groupFlags,
+      } = collectGroupModels(
+        model_ids,
+        label_ids,
+        text_search,
+        (modelId) => modelGroupMap.get(modelId) === groupId,
+      );
 
       // Skip empty groups unless requested
       if (modelsInGroup.length === 0 && !include_ungrouped_models) continue;
 
       // Convert label IDs to LabelMeta
-      const labels = Array.from(groupLabels)
-        .map((id) => mockLabels.get(id))
-        .filter((l): l is NonNullable<typeof l> => l !== undefined);
+      const labels = resolveLabels(Array.from(groupLabels));
 
       const group = createGroupInstance(
         groupMeta,
@@ -113,54 +125,19 @@ export class DemoGroupApi implements IGroupApi {
 
     // Handle ungrouped models
     if (include_ungrouped_models) {
-      const ungroupedModels: Model[] = [];
-      const ungroupedLabels = new Set<number>();
-      const ungroupedFlags: string[] = [];
-
-      mockModels.forEach((model, modelId) => {
-        if (!modelGroupMap.has(modelId)) {
-          // Check filters
-          if (model_ids && !model_ids.includes(modelId)) return;
-
-          const modelLabelIds = modelLabelsMap.get(modelId) || [];
-          if (
-            label_ids &&
-            !label_ids.some((lid) => modelLabelIds.includes(lid))
-          )
-            return;
-
-          if (text_search) {
-            const searchLower = text_search.toLowerCase();
-            if (
-              !model.name.toLowerCase().includes(searchLower) &&
-              !model.description?.toLowerCase().includes(searchLower)
-            ) {
-              return;
-            }
-          }
-
-          ungroupedModels.push(model);
-          modelLabelIds.forEach((lid) => ungroupedLabels.add(lid));
-
-          if (model.flags.printed && !ungroupedFlags.includes("Printed")) {
-            ungroupedFlags.push("Printed");
-          }
-          if (model.flags.favorite && !ungroupedFlags.includes("Favorite")) {
-            ungroupedFlags.push("Favorite");
-          }
-        }
-      });
+      // The accumulated labels/flags are unused here: each ungrouped model is
+      // turned into its own group below, recomputing labels and flags per model.
+      const { models: ungroupedModels } = collectGroupModels(
+        model_ids,
+        label_ids,
+        text_search,
+        (modelId) => !modelGroupMap.has(modelId),
+      );
 
       // Create ungrouped models as individual groups
       ungroupedModels.forEach((model) => {
         const modelLabelIds = modelLabelsMap.get(model.id) || [];
-        const labels = modelLabelIds
-          .map((id) => mockLabels.get(id))
-          .filter((l): l is NonNullable<typeof l> => l !== undefined);
-
-        const flagsArray: string[] = [];
-        if (model.flags.printed) flagsArray.push("Printed");
-        if (model.flags.favorite) flagsArray.push("Favorite");
+        const labels = resolveLabels(modelLabelIds);
 
         const group = createGroupInstance(
           createGroupMetaInstance(
@@ -173,7 +150,7 @@ export class DemoGroupApi implements IGroupApi {
           [model],
           labels,
           null,
-          flagsArray,
+          convertModelFlagsToRaw(model.flags) ?? [],
         );
 
         groups.push(group);
@@ -187,35 +164,14 @@ export class DemoGroupApi implements IGroupApi {
       filteredGroups = groups.filter(
         (g) =>
           g.meta.name.toLowerCase().includes(searchLower) ||
-          g.models.some(
-            (m) =>
-              m.name.toLowerCase().includes(searchLower) ||
-              (m.description?.toLowerCase().includes(searchLower) ?? false),
-          ),
+          g.models.some((m) => modelMatchesSearch(m, searchLower)),
       );
     }
 
     filteredGroups = filteredGroups.filter((g) => g.models.length > 0);
 
     // Sort groups
-    filteredGroups.sort((a, b) => {
-      switch (order_by) {
-        case GroupOrderBy.CreatedAsc:
-          return a.meta.created.getTime() - b.meta.created.getTime();
-        case GroupOrderBy.CreatedDesc:
-          return b.meta.created.getTime() - a.meta.created.getTime();
-        case GroupOrderBy.NameAsc:
-          return a.meta.name.localeCompare(b.meta.name);
-        case GroupOrderBy.NameDesc:
-          return b.meta.name.localeCompare(a.meta.name);
-        case GroupOrderBy.ModifiedAsc:
-          return a.meta.lastModified.getTime() - b.meta.lastModified.getTime();
-        case GroupOrderBy.ModifiedDesc:
-          return b.meta.lastModified.getTime() - a.meta.lastModified.getTime();
-        default:
-          return 0;
-      }
-    });
+    filteredGroups.sort(groupOrderByComparator(order_by));
 
     // Apply pagination
     const start = (page - 1) * page_size;
@@ -265,7 +221,10 @@ export class DemoGroupApi implements IGroupApi {
     });
   }
 
-  async addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void> {
+  async addModelsToGroup(
+    group: GroupMeta,
+    models: Pick<Model, "id">[],
+  ): Promise<void> {
     models.forEach((model) => {
       // Update the model's group reference
       const existingModel = mockModels.get(model.id);
@@ -276,7 +235,7 @@ export class DemoGroupApi implements IGroupApi {
     });
   }
 
-  async removeModelsFromGroup(models: Model[]): Promise<void> {
+  async removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void> {
     models.forEach((model) => {
       // Remove the model's group reference
       const existingModel = mockModels.get(model.id);

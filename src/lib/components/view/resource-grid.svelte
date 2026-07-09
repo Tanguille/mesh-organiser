@@ -18,9 +18,8 @@
   import { ILocalApi } from "$lib/api/shared/local_api";
   import { configuration } from "$lib/configuration.svelte";
   import OpenInSlicerButton from "./open-in-slicer-button.svelte";
-  import { IDownloadApi } from "$lib/api/shared/download_api";
-  import { toast } from "svelte-sonner";
-  import { countWriter, handleGridItemKeyDown } from "$lib/utils";
+  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
+  import { handleGridItemKeyDown } from "$lib/utils";
   import Download from "@lucide/svelte/icons/download";
   import ExportModelsButton from "./export-models-button.svelte";
 
@@ -115,33 +114,6 @@
     props.resources.push(newResource);
     selected = newResource;
     await updateSidebarState();
-  }
-
-  // TODO: Split these functions off as these are identical to other implementations
-  async function onDownloadModel(group: Group) {
-    if (!downloadApi) {
-      return;
-    }
-
-    let promise;
-    let models = group.models;
-
-    if (models.length <= 0) {
-      return;
-    } else if (models.length === 1) {
-      promise = downloadApi.downloadModel(models[0]);
-    } else {
-      promise = downloadApi.downloadModelsAsZip(models);
-    }
-
-    toast.promise(promise, {
-      loading: `Downloading ${countWriter("model", models)}...`,
-      success: (_: unknown) => {
-        return `Downloaded ${countWriter("model", models)}`;
-      },
-    });
-
-    await promise;
   }
 
   async function deleteResource(resource: ResourceMeta) {
@@ -249,7 +221,9 @@
             {#if localApi}
               <ExportModelsButton models={group.models} class="grow" />
             {:else if downloadApi}
-              <AsyncButton class="grow" onclick={() => onDownloadModel(group)}
+              <AsyncButton
+                class="grow"
+                onclick={() => downloadModels(group.models, downloadApi)}
                 ><Download /> Download model</AsyncButton
               >
             {/if}

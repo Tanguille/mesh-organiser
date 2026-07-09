@@ -16,7 +16,7 @@ workspace = true
 tauri-build = { workspace = true }
 
 [dependencies]
-tauri = { workspace = true, features = ["devtools", "protocol-asset"] }
+tauri = { workspace = true, features = ["protocol-asset"] }
 tauri-plugin-opener = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -37,13 +37,15 @@ tokio = { workspace = true, features = [
 ] }
 tokio-util = { workspace = true, features = ["io"] }
 arboard = { workspace = true }
-itertools = { workspace = true }
-tauri-plugin-fs = { workspace = true, features = ["watch"] }
+tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
-service = { workspace = true }
+# STEP support ships on linux/windows; other targets compile it out — see the
+# cadrum target notes in libmeshthumbnail/Cargo.toml (linux builds OCCT from source).
+service = { workspace = true, features = ["step"] }
 serde_html_form = { workspace = true }
-tauri-plugin-http = { workspace = true, features = ["multipart"] }
+# "stream" enables reqwest::Body::wrap_stream for streaming multipart uploads.
+tauri-plugin-http = { workspace = true, features = ["multipart", "stream"] }
 tauri-plugin-store = { workspace = true }
 async_zip = { workspace = true, features = [
     "deflate",
@@ -55,4 +57,7 @@ async_zip = { workspace = true, features = [
 winreg = { workspace = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = { workspace = true, features = ["deep-link"] }
+tauri-plugin-single-instance = { workspace = true }
+
+[dev-dependencies]
+libmeshthumbnail = { workspace = true, features = ["step"] }

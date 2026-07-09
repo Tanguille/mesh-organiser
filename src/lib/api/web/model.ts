@@ -5,12 +5,16 @@ import type {
   ModelFlags,
   ModelOrderBy,
 } from "../shared/model_api";
-import { convertModelFlagsToRaw, type RawModel } from "../shared/raw_model";
+import {
+  buildGetModelsQuery,
+  convertModelFlagsToRaw,
+  parseRawModel,
+  type RawModel,
+} from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
-import { parseRawModel } from "../tauri/model";
 
 export class WebModelApi implements IModelApi {
   private requestApi: IServerRequestApi;
@@ -29,16 +33,16 @@ export class WebModelApi implements IModelApi {
     page_size: number,
     flags: ModelFlags | null,
   ): Promise<Model[]> {
-    const data = {
-      model_ids: model_ids,
-      group_ids: group_ids,
-      label_ids: label_ids,
-      order_by: order_by,
-      text_search: text_search,
-      page: page,
-      page_size: page_size,
-      model_flags: convertModelFlagsToRaw(flags),
-    };
+    const data = buildGetModelsQuery(
+      model_ids,
+      group_ids,
+      label_ids,
+      order_by,
+      text_search,
+      page,
+      page_size,
+      flags,
+    );
 
     const response = await this.requestApi.request<RawModel[]>(
       "/models",

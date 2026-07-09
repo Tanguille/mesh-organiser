@@ -1,10 +1,13 @@
 import type { LabelMeta } from "./label_api";
 import {
+  MAX_PAGE_SIZE,
+  modelMatchesSearch,
   stringArrayToModelFlags,
   type Model,
   type ModelFlags,
 } from "./model_api";
 import type { ResourceMeta } from "./resource_api";
+import { GeneratorStreamManager, pagedStream } from "./stream_manager";
 
 export interface GroupMeta {
   id: number;
@@ -67,6 +70,57 @@ export enum GroupOrderBy {
   ModifiedDesc = "ModifiedDesc",
 }
 
+// Single home for the in-memory GroupOrderBy semantics, shared by the demo
+// API and the predefined stream manager so the copies cannot drift.
+export function groupOrderByComparator(
+  orderBy: GroupOrderBy,
+): (a: Group, b: Group) => number {
+  return (a, b) => {
+    switch (orderBy) {
+      case GroupOrderBy.CreatedAsc:
+        return a.meta.created.getTime() - b.meta.created.getTime();
+      case GroupOrderBy.CreatedDesc:
+        return b.meta.created.getTime() - a.meta.created.getTime();
+      case GroupOrderBy.NameAsc:
+        return a.meta.name.localeCompare(b.meta.name);
+      case GroupOrderBy.NameDesc:
+        return b.meta.name.localeCompare(a.meta.name);
+      case GroupOrderBy.ModifiedAsc:
+        return a.meta.lastModified.getTime() - b.meta.lastModified.getTime();
+      case GroupOrderBy.ModifiedDesc:
+        return b.meta.lastModified.getTime() - a.meta.lastModified.getTime();
+      default:
+        return 0;
+    }
+  };
+}
+
+// Builds the shared getGroups request body used by both the web and
+// web-share group endpoints (they differ only in the endpoint path). The
+// model_ids_str field is a hack to bypass the request uri becoming too large.
+export function buildGetGroupsQuery(
+  model_ids: number[] | null,
+  group_ids: number[] | null,
+  label_ids: number[] | null,
+  order_by: GroupOrderBy,
+  text_search: string | null,
+  page: number,
+  page_size: number,
+  include_ungrouped_models: boolean,
+) {
+  return {
+    // Hack to bypass request uri becoming too large
+    model_ids_str: model_ids?.join(","),
+    group_ids,
+    label_ids,
+    order_by,
+    text_search,
+    page,
+    page_size,
+    include_ungrouped_models,
+  };
+}
+
 export const IGroupApi = Symbol("IGroupApi");
 
 export interface IGroupApi {
@@ -87,9 +141,33 @@ export interface IGroupApi {
     editGlobalId?: boolean,
   ): Promise<void>;
   deleteGroup(group: GroupMeta): Promise<void>;
-  addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void>;
-  removeModelsFromGroup(models: Model[]): Promise<void>;
+  // Only the model ids are consumed, so callers that merely have ids do not
+  // need to fabricate full Model objects.
+  addModelsToGroup(
+    group: GroupMeta,
+    models: Pick<Model, "id">[],
+  ): Promise<void>;
+  removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void>;
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
+}
+
+// Fetches the full group list by draining the paged stream. A single oversized
+// request is not an option: the server caps page_size at MAX_PAGE_SIZE, so
+// anything past the first page would be lost.
+export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
+  const all: Group[] = [];
+  for await (const page of groupStream(
+    api,
+    null,
+    null,
+    GroupOrderBy.ModifiedDesc,
+    null,
+    MAX_PAGE_SIZE,
+    false,
+  )) {
+    all.push(...page);
+  }
+  return all;
 }
 
 export async function* groupStream(
@@ -101,42 +179,18 @@ export async function* groupStream(
   pageSize: number,
   includeUngroupedModels: boolean,
 ): AsyncGenerator<Group[]> {
-  let page = 1;
-  let prefetchNextTask: Promise<Group[]> | null = null;
-
-  while (true) {
-    if (prefetchNextTask === null) {
-      prefetchNextTask = groupApi.getGroups(
-        null,
-        groupIds,
-        labelIds,
-        orderBy,
-        textSearch,
-        page,
-        pageSize,
-        includeUngroupedModels,
-      );
-    }
-
-    const groups = await prefetchNextTask;
-    if (groups.length === 0) {
-      break;
-    }
-
-    page += 1;
-    prefetchNextTask = groupApi.getGroups(
+  yield* pagedStream((pageNumber) =>
+    groupApi.getGroups(
       null,
       groupIds,
       labelIds,
       orderBy,
       textSearch,
-      page,
+      pageNumber,
       pageSize,
       includeUngroupedModels,
-    );
-
-    yield groups;
-  }
+    ),
+  );
 }
 
 export interface IGroupStreamManager {
@@ -177,40 +231,24 @@ export class PredefinedGroupStreamManager implements IGroupStreamManager {
       : this.groups.filter(
           (group) =>
             group.meta.name.toLowerCase().includes(this.textSearch!) ||
-            group.models.some(
-              (model) =>
-                model.name.toLowerCase().includes(this.textSearch!) ||
-                (model.description?.toLowerCase().includes(this.textSearch!) ??
-                  false),
+            group.models.some((model) =>
+              modelMatchesSearch(model, this.textSearch!),
             ),
         );
 
-    return filter.sort((a, b) => {
-      switch (this.orderBy) {
-        case GroupOrderBy.CreatedAsc:
-          return a.meta.created.getTime() - b.meta.created.getTime();
-        case GroupOrderBy.CreatedDesc:
-          return b.meta.created.getTime() - a.meta.created.getTime();
-        case GroupOrderBy.NameAsc:
-          return a.meta.name.localeCompare(b.meta.name);
-        case GroupOrderBy.NameDesc:
-          return b.meta.name.localeCompare(a.meta.name);
-        default:
-          return 0;
-      }
-    });
+    return filter.sort(groupOrderByComparator(this.orderBy));
   }
 }
 
-export class GroupStreamManager implements IGroupStreamManager {
+export class GroupStreamManager
+  extends GeneratorStreamManager<Group, GroupOrderBy>
+  implements IGroupStreamManager
+{
   private groupApi: IGroupApi;
   private groupIds: number[] | null;
   private labelIds: number[] | null;
-  private orderBy: GroupOrderBy = GroupOrderBy.CreatedDesc;
-  private textSearch: string | null = null;
   private includeUngroupedModels: boolean;
   private pageSize: number;
-  private generator: AsyncGenerator<Group[]> | null = null;
 
   constructor(
     groupApi: IGroupApi,
@@ -219,16 +257,17 @@ export class GroupStreamManager implements IGroupStreamManager {
     includeUngroupedModels: boolean,
     pageSize: number = 50,
   ) {
+    super(GroupOrderBy.CreatedDesc);
     this.groupApi = groupApi;
     this.groupIds = groupIds;
     this.labelIds = labelIds;
     this.includeUngroupedModels = includeUngroupedModels;
     this.pageSize = pageSize;
-    this.generateGenerator();
+    this.regenerate();
   }
 
-  private generateGenerator() {
-    this.generator = groupStream(
+  protected makeGenerator(): AsyncGenerator<Group[]> {
+    return groupStream(
       this.groupApi,
       this.groupIds,
       this.labelIds,
@@ -237,20 +276,6 @@ export class GroupStreamManager implements IGroupStreamManager {
       this.pageSize,
       this.includeUngroupedModels,
     );
-  }
-
-  setSearchText(text: string | null): void {
-    this.textSearch = text;
-    this.generateGenerator();
-  }
-
-  setOrderBy(order_by: GroupOrderBy): void {
-    this.orderBy = order_by;
-    this.generateGenerator();
-  }
-
-  async fetch(): Promise<Group[]> {
-    return (await this.generator!.next()).value ?? [];
   }
 }
 

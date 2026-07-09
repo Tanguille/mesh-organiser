@@ -165,6 +165,58 @@
   }
 </script>
 
+{#snippet thumbnailColorPicker(label: string)}
+  <div class="flex flex-col space-y-1.5">
+    <Label for="color">{label}</Label>
+    <div class="flex flex-row gap-2">
+      <Input
+        id="color"
+        placeholder="color"
+        type="color"
+        class="grow"
+        bind:value={configuration.thumbnail_color}
+      />
+      <Button onclick={() => (configuration.thumbnail_color = "#EEEEEE")}
+        >Default</Button
+      >
+    </div>
+  </div>
+{/snippet}
+
+{#snippet maxFilesizeBlock(
+  fileTypeName: string,
+  configKey:
+    | "max_size_model_stl_preview"
+    | "max_size_model_obj_preview"
+    | "max_size_model_3mf_preview",
+)}
+  <div class="flex flex-col gap-3">
+    <Label
+      >Max filesize where {fileTypeName} models are automatically loaded (in MB)</Label
+    >
+
+    <CheckboxWithLabel
+      label="Do not automatically load {fileTypeName} models"
+      class="ml-1"
+      bind:value={
+        () => configuration[configKey] <= 0,
+        (val) => {
+          configuration[configKey] = val
+            ? 0
+            : configurationDefault()[configKey];
+        }
+      }
+    />
+
+    <Input
+      type="number"
+      min="0"
+      disabled={configuration[configKey] <= 0}
+      bind:value={configuration[configKey]}
+    />
+  </div>
+{/snippet}
+
 <div class="hide-scrollbar h-full w-full overflow-y-auto">
   <div
     class="fix-card-width relative my-3 flex flex-row flex-wrap justify-center gap-5"
@@ -220,53 +272,22 @@
             />
           </div>
 
-          <div class="flex flex-col space-y-1.5">
-            <Label for="color">Color of the thumbnails</Label>
-            <div class="flex flex-row gap-2">
-              <Input
-                id="color"
-                placeholder="color"
-                type="color"
-                class="grow"
-                bind:value={configuration.thumbnail_color}
-              />
-              <Button
-                onclick={() => (configuration.thumbnail_color = "#EEEEEE")}
-                >Default</Button
-              >
-            </div>
-          </div>
+          {@render thumbnailColorPicker("Color of the thumbnails")}
 
           <div class="flex flex-col space-y-1.5">
             <Label for="color">Thumbnail model rotation</Label>
             <div class="grid grid-cols-3 gap-4">
-              <div class="space flex flex-col gap-2">
-                <Label>X (degrees)</Label>
-                <Input
-                  type="number"
-                  min={-360}
-                  max="360"
-                  bind:value={configuration.thumbnail_rotation[0]}
-                />
-              </div>
-              <div class="flex flex-col gap-2">
-                <Label>Y (degrees)</Label>
-                <Input
-                  type="number"
-                  min={-360}
-                  max="360"
-                  bind:value={configuration.thumbnail_rotation[1]}
-                />
-              </div>
-              <div class="flex flex-col gap-2">
-                <Label>Z (degrees)</Label>
-                <Input
-                  type="number"
-                  min={-360}
-                  max="360"
-                  bind:value={configuration.thumbnail_rotation[2]}
-                />
-              </div>
+              {#each ["X", "Y", "Z"] as axis, i (axis)}
+                <div class="flex flex-col gap-2">
+                  <Label>{axis} (degrees)</Label>
+                  <Input
+                    type="number"
+                    min={-360}
+                    max="360"
+                    bind:value={configuration.thumbnail_rotation[i]}
+                  />
+                </div>
+              {/each}
             </div>
           </div>
         </CardContent>
@@ -295,101 +316,12 @@
         </CardHeader>
         <CardContent class="flex flex-col gap-5 text-sm">
           {#if sections.includes(SettingSection.ThumbnailGenerationColorSection)}
-            <div class="flex flex-col space-y-1.5">
-              <Label for="color">Color of the 3d preview</Label>
-              <div class="flex flex-row gap-2">
-                <Input
-                  id="color"
-                  placeholder="color"
-                  type="color"
-                  class="grow"
-                  bind:value={configuration.thumbnail_color}
-                />
-                <Button
-                  onclick={() => (configuration.thumbnail_color = "#EEEEEE")}
-                  >Default</Button
-                >
-              </div>
-            </div>
+            {@render thumbnailColorPicker("Color of the 3d preview")}
           {/if}
 
-          <div class="flex flex-col gap-3">
-            <Label
-              >Max filesize where STL models are automatically loaded (in MB)</Label
-            >
-
-            <CheckboxWithLabel
-              label="Do not automatically load STL models"
-              class="ml-1"
-              bind:value={
-                () => configuration.max_size_model_stl_preview <= 0,
-                (val) => {
-                  configuration.max_size_model_stl_preview = val
-                    ? 0
-                    : configurationDefault().max_size_model_stl_preview;
-                }
-              }
-            />
-
-            <Input
-              type="number"
-              min="0"
-              disabled={configuration.max_size_model_stl_preview <= 0}
-              bind:value={configuration.max_size_model_stl_preview}
-            />
-          </div>
-
-          <div class="flex flex-col gap-3">
-            <Label
-              >Max filesize where OBJ models are automatically loaded (in MB)</Label
-            >
-
-            <CheckboxWithLabel
-              label="Do not automatically load OBJ models"
-              class="ml-1"
-              bind:value={
-                () => configuration.max_size_model_obj_preview <= 0,
-                (val) => {
-                  configuration.max_size_model_obj_preview = val
-                    ? 0
-                    : configurationDefault().max_size_model_obj_preview;
-                }
-              }
-            />
-
-            <Input
-              type="number"
-              min="0"
-              disabled={configuration.max_size_model_obj_preview <= 0}
-              bind:value={configuration.max_size_model_obj_preview}
-            />
-          </div>
-
-          <div class="flex flex-col gap-3">
-            <Label
-              >Max filesize where 3MF models are automatically loaded (in MB)</Label
-            >
-
-            <CheckboxWithLabel
-              label="Do not automatically load 3MF models"
-              class="ml-1"
-              bind:value={
-                () => configuration.max_size_model_3mf_preview <= 0,
-                (val) => {
-                  configuration.max_size_model_3mf_preview = val
-                    ? 0
-                    : configurationDefault().max_size_model_3mf_preview;
-                }
-              }
-            />
-
-            <Input
-              type="number"
-              min="0"
-              disabled={configuration.max_size_model_3mf_preview <= 0}
-              bind:value={configuration.max_size_model_3mf_preview}
-            />
-          </div>
+          {@render maxFilesizeBlock("STL", "max_size_model_stl_preview")}
+          {@render maxFilesizeBlock("OBJ", "max_size_model_obj_preview")}
+          {@render maxFilesizeBlock("3MF", "max_size_model_3mf_preview")}
         </CardContent>
       </Card>
     {/if}
@@ -641,15 +573,9 @@
                 ]}</Select.Trigger
               >
               <Select.Content>
-                <Select.Item value="no_split"
-                  >{splitConversions["no_split"]}</Select.Item
-                >
-                <Select.Item value="split-left-right"
-                  >{splitConversions["split-left-right"]}</Select.Item
-                >
-                <Select.Item value="split-top-bottom"
-                  >{splitConversions["split-top-bottom"]}</Select.Item
-                >
+                {#each Object.entries(splitConversions) as [key, value] (key)}
+                  <Select.Item value={key}>{value}</Select.Item>
+                {/each}
               </Select.Content>
             </Select.Root>
           </div>

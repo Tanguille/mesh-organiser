@@ -1,11 +1,7 @@
 <script lang="ts">
   import Link from "@lucide/svelte/icons/link";
   import Heart from "@lucide/svelte/icons/heart";
-  import { onMount } from "svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IHostApi } from "$lib/api/shared/host_api";
-
-  let version = $state("");
+  import AppHeader from "$lib/components/view/app-header.svelte";
 
   let repositoryLinks = [
     {
@@ -21,19 +17,10 @@
       url: "https://github.com/tanguille/mesh-organiser/issues",
     },
   ];
-
-  onMount(async () => {
-    let hostApi = getContainer().optional<IHostApi>(IHostApi);
-    if (hostApi) {
-      version = await hostApi.getVersion();
-    }
-  });
 </script>
 
 <div class="container flex h-full flex-col items-center justify-center gap-2">
-  <h1 class="font-bold">Mesh Organiser</h1>
-  <p class="mb-5">Version {version}</p>
-  <img src="/logo.png" class="logo tauri h-40" alt="Mesh Organiser Logo" />
+  <AppHeader />
   <div class="h-10"></div>
   <h1 class="font-bold">Credits</h1>
   <p>

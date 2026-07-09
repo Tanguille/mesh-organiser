@@ -9,7 +9,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Input } from "$lib/components/ui/input";
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "$lib/paths";
   import { page } from "$app/state";
 
   import { debounce } from "$lib/utils";
@@ -27,12 +27,11 @@
   import { getContainer } from "$lib/api/dependency_injection";
   import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
 
-  interface Function {
-    (): void;
-  }
-
-  const props: { label: LabelClass; class?: ClassValue; onDelete?: Function } =
-    $props();
+  const props: {
+    label: LabelClass;
+    class?: ClassValue;
+    onDelete?: () => void;
+  } = $props();
   const tracked_label = $derived(props.label);
   const parentId = $derived(page.url.searchParams.get("parentId"));
   let lastId = -1;
@@ -44,9 +43,7 @@
 
   let labelApi = getContainer().require<ILabelApi>(ILabelApi);
 
-  const thisLabelOnly = $derived.by(() => {
-    return page.url.searchParams.get("thisLabelOnly") === "true";
-  });
+  const thisLabelOnly = $derived.by(getThisLabelOnly);
 
   let keywords = $state<string[]>([]);
 

@@ -14,12 +14,8 @@
   let newLabelColor = $state(generateRandomColor());
   let open = $state(false);
 
-  async function setRandomColor() {
+  function setRandomColor() {
     newLabelColor = generateRandomColor();
-  }
-
-  interface Function {
-    (label_name: string, label_color: string): Promise<void>;
   }
 
   async function addLabel() {
@@ -39,7 +35,7 @@
   const props: {
     children: Snippet;
     class?: ClassValue;
-    onsubmit: Function;
+    onsubmit: (label_name: string, label_color: string) => Promise<void>;
     closeAfterCreation?: boolean;
   } = $props();
 </script>

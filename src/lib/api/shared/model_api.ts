@@ -1,6 +1,7 @@
 import type { Blob } from "./blob_api";
 import type { GroupMeta } from "./group_api";
 import type { LabelMeta } from "./label_api";
+import { GeneratorStreamManager, pagedStream } from "./stream_manager";
 
 export interface ModelFlags {
   printed: boolean;
@@ -80,6 +81,44 @@ export enum ModelOrderBy {
   ModifiedDesc = "ModifiedDesc",
 }
 
+// Single home for the in-memory ModelOrderBy semantics, shared by the demo
+// API and the predefined stream manager so the copies cannot drift.
+export function modelOrderByComparator(
+  orderBy: ModelOrderBy,
+): (a: Model, b: Model) => number {
+  return (a, b) => {
+    switch (orderBy) {
+      case ModelOrderBy.AddedAsc:
+        return a.added.getTime() - b.added.getTime();
+      case ModelOrderBy.AddedDesc:
+        return b.added.getTime() - a.added.getTime();
+      case ModelOrderBy.NameAsc:
+        return a.name.localeCompare(b.name);
+      case ModelOrderBy.NameDesc:
+        return b.name.localeCompare(a.name);
+      case ModelOrderBy.SizeAsc:
+        return a.blob.size - b.blob.size;
+      case ModelOrderBy.SizeDesc:
+        return b.blob.size - a.blob.size;
+      case ModelOrderBy.ModifiedAsc:
+        return a.lastModified.getTime() - b.lastModified.getTime();
+      case ModelOrderBy.ModifiedDesc:
+        return b.lastModified.getTime() - a.lastModified.getTime();
+      default:
+        return 0;
+    }
+  };
+}
+
+// Case-insensitive name-or-description text-search predicate; the caller is
+// responsible for lowercasing the search text once up front.
+export function modelMatchesSearch(model: Model, lowerSearch: string): boolean {
+  return (
+    model.name.toLowerCase().includes(lowerSearch) ||
+    (model.description?.toLowerCase().includes(lowerSearch) ?? false)
+  );
+}
+
 export const IModelApi = Symbol("IModelApi");
 
 export interface IModelApi {
@@ -103,6 +142,33 @@ export interface IModelApi {
   getModelCount(flags: ModelFlags | null): Promise<number>;
 }
 
+// Largest page size the backends accept (mirrors db::MAX_PAGE_SIZE; the web
+// server rejects anything larger with a 400).
+export const MAX_PAGE_SIZE = 1000;
+
+// Fetches the full model list (optionally filtered by labels) by draining the
+// paged stream. A single oversized request is not an option: the server caps
+// page_size at MAX_PAGE_SIZE, so anything past the first page would be lost.
+export async function getAllModels(
+  api: IModelApi,
+  labelIds: number[] | null = null,
+): Promise<Model[]> {
+  const all: Model[] = [];
+  for await (const page of modelStream(
+    api,
+    null,
+    null,
+    labelIds,
+    ModelOrderBy.ModifiedDesc,
+    null,
+    null,
+    MAX_PAGE_SIZE,
+  )) {
+    all.push(...page);
+  }
+  return all;
+}
+
 export async function* modelStream(
   modelApi: IModelApi,
   modelIds: number[] | null,
@@ -113,42 +179,18 @@ export async function* modelStream(
   flags: ModelFlags | null,
   pageSize: number = 50,
 ): AsyncGenerator<Model[]> {
-  let page = 1;
-  let prefetchNextTask: Promise<Model[]> | null = null;
-
-  while (true) {
-    if (prefetchNextTask === null) {
-      prefetchNextTask = modelApi.getModels(
-        modelIds,
-        groupIds,
-        labelIds,
-        orderBy,
-        textSearch,
-        page,
-        pageSize,
-        flags,
-      );
-    }
-
-    const models = await prefetchNextTask;
-    if (models.length === 0) {
-      break;
-    }
-
-    page += 1;
-    prefetchNextTask = modelApi.getModels(
+  yield* pagedStream((pageNumber) =>
+    modelApi.getModels(
       modelIds,
       groupIds,
       labelIds,
       orderBy,
       textSearch,
-      page,
+      pageNumber,
       pageSize,
       flags,
-    );
-
-    yield models;
-  }
+    ),
+  );
 }
 
 export interface IModelStreamManager {
@@ -164,6 +206,9 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
   private pageSize: number;
   private fetchIndex: number = 0;
+  // Filtered + sorted view, computed lazily and reused across page fetches.
+  // Invalidated whenever the search text or sort order changes.
+  private sortedFiltered: Model[] | null = null;
 
   constructor(models: Model[], pageSize: number = 50) {
     this.models = models;
@@ -173,47 +218,39 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   setSearchText(text: string | null): void {
     this.textSearch = text?.toLowerCase() ?? null;
     this.fetchIndex = 0;
+    this.sortedFiltered = null;
   }
 
   setOrderBy(order_by: ModelOrderBy): void {
     this.orderBy = order_by;
     this.fetchIndex = 0;
+    this.sortedFiltered = null;
+  }
+
+  private computeSortedFiltered(): Model[] {
+    const filtered = !this.textSearch
+      ? this.models
+      : this.models.filter((model) =>
+          modelMatchesSearch(model, this.textSearch!),
+        );
+
+    // Copy before sorting so we never mutate the caller-owned `this.models`.
+    return [...filtered].sort(modelOrderByComparator(this.orderBy));
   }
 
   async fetch(): Promise<Model[]> {
-    if (this.fetchIndex >= this.models.length) {
+    if (this.sortedFiltered === null) {
+      this.sortedFiltered = this.computeSortedFiltered();
+    }
+
+    if (this.fetchIndex >= this.sortedFiltered.length) {
       return [];
     }
 
-    const filter = !this.textSearch
-      ? this.models
-      : this.models.filter(
-          (model) =>
-            model.name.toLowerCase().includes(this.textSearch!) ||
-            (model.description?.toLowerCase().includes(this.textSearch!) ??
-              false),
-        );
-
-    const sort = filter.sort((a, b) => {
-      switch (this.orderBy) {
-        case ModelOrderBy.AddedAsc:
-          return a.added.getTime() - b.added.getTime();
-        case ModelOrderBy.AddedDesc:
-          return b.added.getTime() - a.added.getTime();
-        case ModelOrderBy.NameAsc:
-          return a.name.localeCompare(b.name);
-        case ModelOrderBy.NameDesc:
-          return b.name.localeCompare(a.name);
-        case ModelOrderBy.SizeAsc:
-          return a.blob.size - b.blob.size;
-        case ModelOrderBy.SizeDesc:
-          return b.blob.size - a.blob.size;
-        default:
-          return 0;
-      }
-    });
-
-    const paged = sort.slice(this.fetchIndex, this.fetchIndex + this.pageSize);
+    const paged = this.sortedFiltered.slice(
+      this.fetchIndex,
+      this.fetchIndex + this.pageSize,
+    );
     this.fetchIndex += this.pageSize;
 
     return paged;
@@ -224,16 +261,16 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   }
 }
 
-export class ModelStreamManager implements IModelStreamManager {
+export class ModelStreamManager
+  extends GeneratorStreamManager<Model, ModelOrderBy>
+  implements IModelStreamManager
+{
   private modelApi: IModelApi;
   private modelIds: number[] | null;
   private groupIds: number[] | null;
   private labelIds: number[] | null;
-  private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
-  private textSearch: string | null = null;
   private flags: ModelFlags | null;
   private pageSize: number;
-  private generator: AsyncGenerator<Model[]> | null = null;
 
   constructor(
     modelApi: IModelApi,
@@ -243,17 +280,18 @@ export class ModelStreamManager implements IModelStreamManager {
     flags: ModelFlags | null,
     pageSize: number = 50,
   ) {
+    super(ModelOrderBy.AddedDesc);
     this.modelApi = modelApi;
     this.modelIds = modelIds;
     this.groupIds = groupIds;
     this.labelIds = labelIds;
     this.flags = flags;
     this.pageSize = pageSize;
-    this.generateGenerator();
+    this.regenerate();
   }
 
-  private generateGenerator() {
-    this.generator = modelStream(
+  protected makeGenerator(): AsyncGenerator<Model[]> {
+    return modelStream(
       this.modelApi,
       this.modelIds,
       this.groupIds,
@@ -263,20 +301,6 @@ export class ModelStreamManager implements IModelStreamManager {
       this.flags,
       this.pageSize,
     );
-  }
-
-  setSearchText(text: string | null): void {
-    this.textSearch = text;
-    this.generateGenerator();
-  }
-
-  setOrderBy(order_by: ModelOrderBy): void {
-    this.orderBy = order_by;
-    this.generateGenerator();
-  }
-
-  async fetch(): Promise<Model[]> {
-    return (await this.generator!.next()).value ?? [];
   }
 
   async getAll(): Promise<Model[]> {

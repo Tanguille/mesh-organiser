@@ -1,4 +1,5 @@
 import { configuration } from "$lib/configuration.svelte";
+import { triggerDownload } from "$lib/utils";
 import type { IBlobApi } from "./blob_api";
 import type { Model } from "./model_api";
 
@@ -68,8 +69,6 @@ export class DefaultSlicerApi implements ISlicerApi {
   async openInSlicer(models: Model[]): Promise<void> {
     let modelUrl;
 
-    console.log(models);
-
     if (models.length === 0) {
       return;
     } else if (models.length === 1) {
@@ -88,10 +87,7 @@ export class DefaultSlicerApi implements ISlicerApi {
 
     deepLink += encodeURIComponent(modelUrl!);
 
-    const link = document.createElement("a");
-    link.href = deepLink;
-    link.click();
-    link.remove();
+    triggerDownload(deepLink);
   }
 
   async availableSlicers(): Promise<SlicerEntry[]> {

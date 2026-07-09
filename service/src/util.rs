@@ -1,15 +1,15 @@
 use std::{
-    ffi::OsStr,
-    io::Read,
-    path::{Path, PathBuf},
-    process::Command,
+    ffi::OsStr, future::Future, io::Read, panic, path::Path, process::Command, sync::OnceLock,
 };
 
 use regex::Regex;
+use tokio::task::JoinSet;
 
 use db::model::blob::FileType;
 
 use crate::service_error::ServiceError;
+
+static COLLAPSE_WHITESPACE: OnceLock<Regex> = OnceLock::new();
 
 /// Returns a human-friendly file name (no path); strips extension if not a directory.
 ///
@@ -30,7 +30,7 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
         file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
     }
 
-    let remove_whitespace = Regex::new(r" {2,}").unwrap();
+    let remove_whitespace = COLLAPSE_WHITESPACE.get_or_init(|| Regex::new(r" {2,}").unwrap());
 
     file_name = file_name.replace(['_', '-', '+'], " ");
 
@@ -78,7 +78,7 @@ pub fn open_folder_in_explorer(path: &Path) {
 ///
 /// Panics if the directory cannot be read or a metadata call fails.
 #[must_use]
-pub fn get_folder_size(path: &PathBuf) -> u64 {
+pub fn get_folder_size(path: &Path) -> u64 {
     std::fs::read_dir(path)
         .unwrap()
         .map(|f| f.unwrap().metadata().unwrap().len())
@@ -131,6 +131,131 @@ pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     Ok(contents)
+}
+
+/// Runs one future per item with bounded parallelism, returning every task output in completion order.
+///
+/// Spawns the future produced by `make_future` for each item, keeping at most `max` tasks in
+/// flight (throttling by awaiting a completed task once the in-flight count reaches `max`).
+/// Outputs are collected in the order tasks complete, matching `JoinSet::join_all`.
+///
+/// # Panics
+///
+/// Propagates a panicking task exactly as `JoinSet` does: a panicked task resumes the unwind
+/// (`panic::resume_unwind`), and any other `JoinError` panics.
+pub async fn run_bounded<Item, Fut, F, T>(
+    mut items: Vec<Item>,
+    max: usize,
+    mut make_future: F,
+) -> Vec<T>
+where
+    F: FnMut(Item) -> Fut,
+    Fut: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let mut futures: JoinSet<T> = JoinSet::new();
+    let mut results: Vec<T> = Vec::new();
+
+    while let Some(item) = items.pop() {
+        futures.spawn(make_future(item));
+
+        if futures.len() >= max
+            && let Some(res) = futures.join_next().await
+        {
+            match res {
+                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
+                Err(err) => panic!("{err}"),
+                Ok(output) => {
+                    results.push(output);
+                }
+            }
+        }
+    }
+
+    results.extend(futures.join_all().await);
+
+    results
+}
+
+// -----------------------------------------------------------------------------
+// Regression tests for run_bounded: lock in the current behaviour shared by the
+// import and export JoinSet loops before/after the dedup refactor — every task
+// output is returned, at most `max` tasks run concurrently, and a panicking task
+// propagates as a panic (resume_unwind).
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod run_bounded_tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use super::run_bounded;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn returns_every_task_output() {
+        let items: Vec<usize> = (0..20).collect();
+
+        let mut results = run_bounded(items.clone(), 4, |item| async move { item * 2 }).await;
+
+        // Completion order is nondeterministic, so compare as a sorted multiset.
+        results.sort_unstable();
+        let mut expected: Vec<usize> = items.into_iter().map(|item| item * 2).collect();
+        expected.sort_unstable();
+
+        assert_eq!(results, expected);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn empty_input_returns_empty_vec() {
+        let results = run_bounded(Vec::<usize>::new(), 4, |item| async move { item }).await;
+
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn never_exceeds_max_in_flight() {
+        let max = 3;
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let items: Vec<usize> = (0..30).collect();
+
+        run_bounded(items, max, |item| {
+            let in_flight = Arc::clone(&in_flight);
+            let peak = Arc::clone(&peak);
+
+            async move {
+                let current = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(current, Ordering::SeqCst);
+
+                // Yield repeatedly so other tasks can be scheduled while this one is "in flight".
+                for _ in 0..8 {
+                    tokio::task::yield_now().await;
+                }
+
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+
+                item
+            }
+        })
+        .await;
+
+        assert!(
+            peak.load(Ordering::SeqCst) <= max,
+            "peak in-flight {} exceeded max {max}",
+            peak.load(Ordering::SeqCst)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[should_panic(expected = "task boom")]
+    async fn propagates_task_panic() {
+        let items: Vec<usize> = (0..4).collect();
+
+        // A panicking task must surface as a panic via panic::resume_unwind.
+        run_bounded(items, 2, |_item| async move { panic!("task boom") }).await;
+    }
 }
 
 // -----------------------------------------------------------------------------

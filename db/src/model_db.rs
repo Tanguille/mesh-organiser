@@ -1,6 +1,5 @@
 use indexmap::IndexMap;
-use itertools::join;
-use sqlx::{Execute, QueryBuilder, Row};
+use sqlx::{QueryBuilder, Row};
 use strum::EnumString;
 
 use crate::{
@@ -11,7 +10,8 @@ use crate::{
         Model, ModelFlags, blob::Blob, label::convert_label_meta_list_to_map,
         model_group::ModelGroupMeta, user::User,
     },
-    util::{random_hex_32, time_now},
+    push_in_i64,
+    util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
 };
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
@@ -42,7 +42,6 @@ impl ModelOrderBy {
     }
 }
 
-#[derive(Default)]
 pub struct ModelFilterOptions {
     pub model_ids: Option<Vec<i64>>,
     pub group_ids: Option<Vec<i64>>,
@@ -52,6 +51,24 @@ pub struct ModelFilterOptions {
     pub model_flags: Option<ModelFlags>,
     pub page: u32,
     pub page_size: u32,
+}
+
+impl Default for ModelFilterOptions {
+    // `page`/`page_size` must default to a valid pagination window, not 0: the query uses
+    // `LIMIT {page_size}`, so a derived `page_size == 0` would silently return no rows.
+    // Mirror the codebase's "fetch all" convention (page 1, MAX_PAGE_SIZE).
+    fn default() -> Self {
+        Self {
+            model_ids: None,
+            group_ids: None,
+            label_ids: None,
+            order_by: None,
+            text_search: None,
+            model_flags: None,
+            page: 1,
+            page_size: MAX_PAGE_SIZE,
+        }
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -64,8 +81,19 @@ pub async fn get_models(
     let page_size = options.page_size.min(MAX_PAGE_SIZE);
     let offset = (i64::from(options.page) - 1) * i64::from(page_size);
 
+    if options.model_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.group_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.label_ids.as_ref().is_some_and(Vec::is_empty)
+    {
+        return Ok(PaginatedResponse {
+            page: options.page,
+            page_size,
+            items: Vec::new(),
+        });
+    }
+
     let mut query_builder = QueryBuilder::new(
-        format!("SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
+        "SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
 				blob_id, blob_sha256, blob_filetype, blob_size, blob_path,
                 GROUP_CONCAT(labels.label_id) AS label_ids,
                 models_group.group_id, group_name, group_created, group_resource_id, group_unique_global_id, group_last_modified
@@ -74,41 +102,41 @@ pub async fn get_models(
          LEFT JOIN labels ON models_labels.label_id = labels.label_id
          LEFT JOIN models_group ON models.model_group_id = models_group.group_id
 		 INNER JOIN blobs ON models.model_blob_id = blobs.blob_id
-         WHERE models.model_user_id = {} ", user.id)
+         WHERE models.model_user_id = ",
     );
+    query_builder.push_bind(user.id);
 
-    let mut seperated = query_builder.separated(" AND ");
-    seperated.push("");
-
-    if let Some(model_ids) = options.model_ids {
-        seperated.push(format!("models.model_id IN ({})", join(model_ids, ",")));
+    if let Some(model_ids) = &options.model_ids {
+        query_builder.push(" AND models.model_id IN ");
+        push_in_i64(&mut query_builder, model_ids);
     }
 
-    if let Some(group_ids) = options.group_ids {
-        seperated.push(format!("group_id IN ({})", join(group_ids, ",")));
+    if let Some(group_ids) = &options.group_ids {
+        query_builder.push(" AND group_id IN ");
+        push_in_i64(&mut query_builder, group_ids);
     }
 
-    if let Some(label_ids) = options.label_ids {
-        seperated.push(format!("labels.label_id IN ({})", join(label_ids, ",")));
+    if let Some(label_ids) = &options.label_ids {
+        query_builder.push(" AND labels.label_id IN ");
+        push_in_i64(&mut query_builder, label_ids);
     }
 
     if let Some(model_flags) = options.model_flags {
-        seperated.push(format!(
-            "(models.model_flags & {}) = {}",
-            model_flags.bits(),
-            model_flags.bits()
-        ));
+        query_builder.push(" AND (models.model_flags & ");
+        query_builder.push_bind(i64::from(model_flags.bits()));
+        query_builder.push(") = ");
+        query_builder.push_bind(i64::from(model_flags.bits()));
     }
 
     if let Some(text_search) = options.text_search {
-        let str = format!("%{text_search}%");
-        seperated.push("(model_name LIKE ");
-        seperated.push_bind_unseparated(str.clone());
-        seperated.push_unseparated(" OR model_desc LIKE ");
-        seperated.push_bind_unseparated(str.clone());
-        seperated.push_unseparated(" OR group_name LIKE ");
-        seperated.push_bind_unseparated(str);
-        seperated.push_unseparated(")");
+        let pattern = format!("%{text_search}%");
+        query_builder.push(" AND (model_name LIKE ");
+        query_builder.push_bind(pattern.clone());
+        query_builder.push(" OR model_desc LIKE ");
+        query_builder.push_bind(pattern.clone());
+        query_builder.push(" OR group_name LIKE ");
+        query_builder.push_bind(pattern);
+        query_builder.push(")");
     }
 
     query_builder.push(" GROUP BY models.model_id ");
@@ -121,14 +149,10 @@ pub async fn get_models(
     query_builder.push(format!("LIMIT {page_size} OFFSET {offset}"));
 
     let query = query_builder.build();
-
-    #[cfg(debug_assertions)]
-    println!("Generated SQL Query: {}", query.sql());
-
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels = label_db::get_labels_min(db).await?;
+    let min_labels = label_db::get_labels_min(db, user).await?;
     let min_labels_map = convert_label_meta_list_to_map(min_labels);
 
     for row in rows {
@@ -160,11 +184,7 @@ pub async fn get_models(
             labels: row
                 .get::<Option<String>, _>("label_ids")
                 .map_or_else(Vec::new, |label_ids| {
-                    let label_ids = label_ids
-                        .split(',')
-                        .filter_map(|s| s.parse::<i64>().ok())
-                        .collect::<Vec<i64>>();
-                    label_ids
+                    parse_concat_ids(&label_ids)
                         .iter()
                         .filter_map(|id| min_labels_map.get(id).cloned())
                         .collect()
@@ -172,7 +192,7 @@ pub async fn get_models(
             flags: ModelFlags::from_bits(
                 u32::try_from(row.get::<i64, _>("model_flags")).unwrap_or(0),
             )
-            .unwrap_or(ModelFlags::empty()),
+            .unwrap_or_else(ModelFlags::empty),
             unique_global_id: row.get("model_unique_global_id"),
         });
     }
@@ -200,6 +220,18 @@ pub async fn get_models_via_ids(
 
     let paginated_response = get_models(db, user, options).await?;
     Ok(paginated_response.items)
+}
+
+/// Fetches a single model by id, returning `None` when it does not exist for the user.
+pub async fn get_model_via_id(
+    db: &DbContext,
+    user: &User,
+    id: i64,
+) -> Result<Option<Model>, DbError> {
+    Ok(get_models_via_ids(db, user, vec![id])
+        .await?
+        .into_iter()
+        .next())
 }
 
 pub async fn add_model(
@@ -241,6 +273,7 @@ pub async fn edit_model(
     description: Option<&str>,
     flags: ModelFlags,
     update_timestamp: Option<&str>,
+    global_id: Option<&str>,
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
@@ -258,20 +291,20 @@ pub async fn edit_model(
     .execute(db)
     .await?;
 
+    if let Some(global_id) = global_id {
+        edit_model_global_id(db, user, id, global_id).await?;
+    }
+
     Ok(())
 }
 
-pub async fn edit_model_global_id(
+async fn edit_model_global_id(
     db: &DbContext,
     user: &User,
     id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE models SET model_unique_global_id = ? WHERE model_id = ? AND model_user_id = ?",
@@ -302,38 +335,27 @@ pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(
         return Ok(());
     }
 
-    let ids_placeholder = join(ids.iter(), ",");
-
-    let query =
-        format!("DELETE FROM models WHERE model_user_id = ? AND model_id IN ({ids_placeholder})");
-
-    sqlx::query(&query).bind(user.id).execute(db).await?;
+    let mut query_builder = QueryBuilder::new("DELETE FROM models WHERE model_user_id = ");
+    query_builder.push_bind(user.id);
+    query_builder.push(" AND model_id IN ");
+    push_in_i64(&mut query_builder, ids);
+    query_builder.build().execute(db).await?;
 
     Ok(())
-}
-
-pub async fn get_unique_id_from_model_id(db: &DbContext, model_id: i64) -> Result<String, DbError> {
-    let row = sqlx::query!(
-        "SELECT model_unique_global_id FROM models WHERE model_id = ?",
-        model_id
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.model_unique_global_id)
 }
 
 pub async fn get_unique_ids_from_model_ids(
     db: &DbContext,
     model_ids: Vec<i64>,
 ) -> Result<IndexMap<i64, String>, DbError> {
-    let ids_placeholder = join(model_ids.iter(), ",");
+    if model_ids.is_empty() {
+        return Ok(IndexMap::new());
+    }
 
-    let query = format!(
-        "SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ({ids_placeholder})"
-    );
-
-    let rows = sqlx::query(&query).fetch_all(db).await?;
+    let mut query_builder =
+        QueryBuilder::new("SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ");
+    push_in_i64(&mut query_builder, &model_ids);
+    let rows = query_builder.build().fetch_all(db).await?;
 
     let mut id_map = IndexMap::new();
 
@@ -360,7 +382,7 @@ pub async fn get_model_id_via_sha256(
     .fetch_optional(db)
     .await?;
 
-    row.map_or_else(|| Ok(None), |r| Ok(Some(r.model_id.unwrap())))
+    Ok(row.map(|r| r.model_id))
 }
 
 /// Resolve model IDs for a list of blob SHA256 hashes in one query.
@@ -376,17 +398,17 @@ pub async fn get_model_ids_via_sha256s(
         return Ok(Vec::new());
     }
 
-    let placeholders = sha256s.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query = format!(
-        "SELECT model_id, blob_sha256 FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id \
-         WHERE blob_sha256 IN ({placeholders}) AND model_user_id = ?"
+    let mut query_builder = QueryBuilder::new(
+        "SELECT model_id, blob_sha256 FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id WHERE blob_sha256 IN ",
     );
-
-    let mut q = sqlx::query(&query);
+    query_builder.push("(");
+    let mut separated = query_builder.separated(", ");
     for sha in sha256s {
-        q = q.bind(sha);
+        separated.push_bind(sha);
     }
-    let rows = q.bind(user.id).fetch_all(db).await?;
+    query_builder.push(") AND model_user_id = ");
+    query_builder.push_bind(user.id);
+    let rows = query_builder.build().fetch_all(db).await?;
 
     let sha_to_id: std::collections::HashMap<String, i64> = rows
         .iter()

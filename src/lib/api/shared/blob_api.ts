@@ -29,7 +29,7 @@ export function fileTypeToPlainFileExtension(fileType: FileType): string {
   }
 }
 
-export function plainFileExtensionToFileType(extension: string): FileType {
+function plainFileExtensionToFileType(extension: string): FileType {
   switch (extension.toLowerCase()) {
     case "stl":
       return FileType.STL;
@@ -58,6 +58,11 @@ export function createBlobInstance(
     size,
     added: new Date(added),
   };
+}
+
+// Builds the blob thumbnail URL shared by the web and web-share blob APIs.
+export function blobThumbnailUrl(origin: string, sha256: string): string {
+  return origin + "/api/v1/blobs/" + sha256 + "/thumb";
 }
 
 export const IBlobApi = Symbol("IBlobApi");

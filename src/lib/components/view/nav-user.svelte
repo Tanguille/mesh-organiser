@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
+  import { redirectAfterUserSwitch } from "$lib/paths";
   import { getContainer } from "$lib/api/dependency_injection";
   import {
     IDiskUsageInfoApi,
@@ -73,13 +74,7 @@
 
     await switchUserApi.switchUser(user);
 
-    if (location.href.includes("/group/")) {
-      await goto(resolve("/group"));
-    }
-
-    if (location.href.includes("/label/")) {
-      await goto(resolve("/"));
-    }
+    await redirectAfterUserSwitch();
 
     location.reload();
   }

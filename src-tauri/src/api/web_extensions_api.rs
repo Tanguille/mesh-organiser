@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     panic,
     path::{Path, PathBuf},
     sync::Arc,
@@ -10,7 +11,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State, http::header::CONTENT_TYPE, ipc::Response};
 use tauri_plugin_http::reqwest::{self, cookie::Jar};
 use tokio::{fs::File, io::BufReader, task::JoinSet};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio_util::{compat::TokioAsyncReadCompatExt, io::ReaderStream};
 
 use crate::{
     error::ApplicationError, mobile_guard::require_local_desktop_app,
@@ -20,16 +21,9 @@ use crate::{
 use service::{
     download_file_service,
     export_service::get_temp_dir,
-    import_service::{self, DirectoryScanModel, is_supported_extension},
+    import_service::{self, DirectoryScanModel, is_importable_upload},
     import_state::{ImportState, ImportStatus},
 };
-
-async fn download_file(url: &str, dir: &Path) -> Result<PathBuf, ApplicationError> {
-    let result = download_file_service::download_file_to(url, dir)
-        .await
-        .map_err(ApplicationError::from)?;
-    Ok(PathBuf::from(result.path))
-}
 
 async fn download_files_to_temp_dir(
     sha256s: Vec<String>,
@@ -48,9 +42,14 @@ async fn download_files_to_temp_dir(
         .collect();
     let download_futures: Vec<_> = urls
         .iter()
-        .map(|url| download_file(url, &temp_dir))
+        .map(|url| download_file_service::download_file_to(url, &temp_dir))
         .collect();
-    let paths = try_join_all(download_futures).await?;
+    let results = try_join_all(download_futures).await?;
+    let paths = results
+        .into_iter()
+        .map(|result| PathBuf::from(result.path))
+        .collect();
+
     Ok((temp_dir, paths))
 }
 
@@ -161,6 +160,41 @@ async fn logout(jar: Arc<Jar>, base_url: &str) -> Result<(), ApplicationError> {
 
 const MAX_CONCURRENT_UPLOADS: usize = 4;
 
+/// Streams a single model file to the remote server as a multipart upload.
+/// Opening and streaming inside the upload task keeps at most the in-flight
+/// chunks in memory instead of whole files.
+async fn upload_model_file(
+    client: &reqwest::Client,
+    url: &str,
+    path: &Path,
+    source_url: Option<String>,
+) -> Result<reqwest::Response, ApplicationError> {
+    let mut form = reqwest::multipart::Form::new();
+
+    if let Some(source_url) = source_url {
+        form = form.text("source_url", source_url);
+    }
+
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string();
+    let file = File::open(path).await?;
+    let len = file.metadata().await?.len();
+    // stream_with_length keeps the Content-Length header identical to the
+    // previous buffered upload instead of switching to chunked transfer.
+    let part = reqwest::multipart::Part::stream_with_length(
+        reqwest::Body::wrap_stream(ReaderStream::new(file)),
+        len,
+    )
+    .file_name(filename)
+    .mime_str("application/octet-stream")?;
+    form = form.part("file", part);
+
+    Ok(client.post(url).multipart(form).send().await?)
+}
+
 async fn get_ids(response: reqwest::Response) -> Result<Vec<i64>, ApplicationError> {
     if response.status().is_success() {
         let body = response.text().await?;
@@ -210,12 +244,6 @@ async fn process_uploads(
     let mut results = Vec::new();
 
     for path in &mut *paths {
-        let mut form = reqwest::multipart::Form::new();
-
-        if let Some(source_url) = &import_state.origin_url {
-            form = form.text("source_url", source_url.clone());
-        }
-
         if !path.path.exists() {
             println!(
                 "Warning: Path {} does not exist, skipping upload",
@@ -223,22 +251,15 @@ async fn process_uploads(
             );
         }
 
-        let file_bytes = tokio::fs::read(&path.path).await?;
-        let filename = path
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-        let part = reqwest::multipart::Part::bytes(file_bytes)
-            .file_name(filename.to_string())
-            .mime_str("application/octet-stream")?;
-        form = form.part("file", part);
-
         {
             let path = PathBuf::from(&path.path);
             let client = client.clone();
             let url = url.clone();
-            futures.spawn(async move { (path, client.post(&url).multipart(form).send().await) });
+            let source_url = import_state.origin_url.clone();
+            futures.spawn(async move {
+                let result = upload_model_file(&client, &url, &path, source_url).await;
+                (path, result)
+            });
         }
 
         if futures.len() >= MAX_CONCURRENT_UPLOADS
@@ -275,14 +296,10 @@ async fn process_uploads(
         results.push((path, ids));
     }
 
-    for result in results {
-        let path = result.0;
-        let model_ids = result.1;
-
-        // Not super efficient, fix later
-        let path = paths.iter_mut().find(|p| p.path == path).unwrap();
-
-        path.model_ids = Some(model_ids);
+    // Index results by path so matching back to the scan list is linear.
+    let mut results: HashMap<PathBuf, Vec<i64>> = results.into_iter().collect();
+    for path in paths.iter_mut() {
+        path.model_ids = results.remove(&path.path);
     }
 
     import_state.update_status(ImportStatus::Finished);
@@ -365,11 +382,7 @@ pub async fn get_file_bytes(path: String) -> Result<Response, ApplicationError> 
 
     let path = PathBuf::from(path);
 
-    if !(is_supported_extension(&path)
-        || path
-            .extension()
-            .is_some_and(|e| e.to_string_lossy().to_lowercase().ends_with("zip")))
-    {
+    if !is_importable_upload(&path) {
         return Err(ApplicationError::InternalError(
             "Unsupported file extension for getting bytes".into(),
         ));

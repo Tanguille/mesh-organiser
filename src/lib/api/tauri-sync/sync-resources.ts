@@ -6,9 +6,15 @@ import {
   SyncStep,
 } from "$lib/sync.svelte";
 import { getContainer } from "../dependency_injection";
-import { GroupOrderBy, IGroupApi, type GroupMeta } from "../shared/group_api";
+import { getAllGroups, IGroupApi, type GroupMeta } from "../shared/group_api";
 import { IResourceApi, type ResourceMeta } from "../shared/resource_api";
-import { computeDifferences, type ResourceSet } from "./algorithm";
+import {
+  applySyncResult,
+  computeDifferences,
+  resolveDirection,
+  stepDelete,
+  type ResourceSet,
+} from "./algorithm";
 
 async function stepUploadToRemote(
   toUpload: ResourceMeta[],
@@ -53,12 +59,10 @@ async function stepSyncToRemote(
   globalSyncState.processedItems = 0;
 
   for (const resourceSet of toSync) {
-    const remoteResource = isServerToLocal
-      ? resourceSet.local
-      : resourceSet.server;
-    const localResource = isServerToLocal
-      ? resourceSet.server
-      : resourceSet.local;
+    const { remote: remoteResource, local: localResource } = resolveDirection(
+      resourceSet,
+      isServerToLocal,
+    );
 
     const localResourceGroups =
       await localApi.getGroupsForResource(localResource);
@@ -94,20 +98,6 @@ async function stepSyncToRemote(
   }
 }
 
-async function deleteFromRemote(
-  toDelete: ResourceMeta[],
-  remoteApi: IResourceApi,
-): Promise<void> {
-  globalSyncState.step = SyncStep.Delete;
-  globalSyncState.processableItems = toDelete.length;
-  globalSyncState.processedItems = 0;
-
-  for (const resource of toDelete) {
-    await remoteApi.deleteResource(resource);
-    globalSyncState.processedItems += 1;
-  }
-}
-
 export async function syncResources(
   serverGroupApi: IGroupApi,
   serverResourceApi: IResourceApi,
@@ -118,33 +108,16 @@ export async function syncResources(
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
   const localResourceApi = getContainer().require<IResourceApi>(IResourceApi);
 
-  const serverGroups = (
-    await serverGroupApi.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.ModifiedDesc,
-      null,
-      1,
-      9999999,
-      false,
-    )
-  ).map((x) => x.meta);
-  const localGroups = (
-    await localGroupApi.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.ModifiedDesc,
-      null,
-      1,
-      9999999,
-      false,
-    )
-  ).map((x) => x.meta);
-
-  const serverResources = await serverResourceApi.getResources();
-  const localResources = await localResourceApi.getResources();
+  // The four full-list fetches are independent; run them concurrently.
+  const [serverGroupList, localGroupList, serverResources, localResources] =
+    await Promise.all([
+      getAllGroups(serverGroupApi),
+      getAllGroups(localGroupApi),
+      serverResourceApi.getResources(),
+      localResourceApi.getResources(),
+    ]);
+  const serverGroups = serverGroupList.map((x) => x.meta);
+  const localGroups = localGroupList.map((x) => x.meta);
 
   const syncState = computeDifferences(
     localResources,
@@ -152,51 +125,46 @@ export async function syncResources(
     lastSynced,
   );
 
-  if (syncState.toUpload.length > 0) {
-    await stepUploadToRemote(
-      syncState.toUpload,
-      localResourceApi,
-      serverResourceApi,
-      serverGroups,
-      false,
-    );
-  }
-
-  if (syncState.toDownload.length > 0) {
-    await stepUploadToRemote(
-      syncState.toDownload,
-      serverResourceApi,
-      localResourceApi,
-      localGroups,
-      true,
-    );
-  }
-
-  if (syncState.syncToServer.length > 0) {
-    await stepSyncToRemote(
-      syncState.syncToServer,
-      localResourceApi,
-      serverResourceApi,
-      serverGroups,
-      false,
-    );
-  }
-
-  if (syncState.syncToLocal.length > 0) {
-    await stepSyncToRemote(
-      syncState.syncToLocal,
-      serverResourceApi,
-      localResourceApi,
-      localGroups,
-      true,
-    );
-  }
-
-  if (syncState.toDeleteServer.length > 0) {
-    await deleteFromRemote(syncState.toDeleteServer, serverResourceApi);
-  }
-
-  if (syncState.toDeleteLocal.length > 0) {
-    await deleteFromRemote(syncState.toDeleteLocal, localResourceApi);
-  }
+  await applySyncResult(syncState, {
+    upload: (toUpload) =>
+      stepUploadToRemote(
+        toUpload,
+        localResourceApi,
+        serverResourceApi,
+        serverGroups,
+        false,
+      ),
+    download: (toDownload) =>
+      stepUploadToRemote(
+        toDownload,
+        serverResourceApi,
+        localResourceApi,
+        localGroups,
+        true,
+      ),
+    syncToServer: (toSync) =>
+      stepSyncToRemote(
+        toSync,
+        localResourceApi,
+        serverResourceApi,
+        serverGroups,
+        false,
+      ),
+    syncToLocal: (toSync) =>
+      stepSyncToRemote(
+        toSync,
+        serverResourceApi,
+        localResourceApi,
+        localGroups,
+        true,
+      ),
+    deleteServer: (toDelete) =>
+      stepDelete(toDelete, (resource) =>
+        serverResourceApi.deleteResource(resource),
+      ),
+    deleteLocal: (toDelete) =>
+      stepDelete(toDelete, (resource) =>
+        localResourceApi.deleteResource(resource),
+      ),
+  });
 }

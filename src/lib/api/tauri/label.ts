@@ -1,61 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
-  createLabelInstance,
-  createLabelMetaInstance,
   type Label,
   type LabelMeta,
   stringColorToNumber,
   type ILabelApi,
 } from "../shared/label_api";
 import type { Model } from "../shared/model_api";
+import {
+  parseRawLabel,
+  parseRawLabelMeta,
+  type RawLabel,
+  type RawLabelKeyword,
+  type RawLabelMeta,
+} from "../shared/raw_model";
 import { dateToString } from "$lib/utils";
-
-export interface RawLabelMeta {
-  id: number;
-  name: string;
-  color: number;
-  unique_global_id: string;
-  last_modified: string;
-}
-
-export function parseRawLabelMeta(raw: RawLabelMeta): LabelMeta {
-  return createLabelMetaInstance(
-    raw.id,
-    raw.name,
-    raw.color,
-    raw.last_modified,
-    raw.unique_global_id,
-  );
-}
-
-export interface RawLabel {
-  meta: RawLabelMeta;
-  children: RawLabelMeta[];
-  effective_labels: RawLabelMeta[];
-  has_parent: boolean;
-  model_count: number;
-  group_count: number;
-  self_model_count: number;
-  self_group_count: number;
-}
-
-export function parseRawLabel(raw: RawLabel): Label {
-  return createLabelInstance(
-    parseRawLabelMeta(raw.meta),
-    raw.children.map((child) => parseRawLabelMeta(child)),
-    raw.effective_labels.map((effective) => parseRawLabelMeta(effective)),
-    raw.has_parent,
-    raw.model_count,
-    raw.group_count,
-    raw.self_model_count,
-    raw.self_group_count,
-  );
-}
-
-export interface RawLabelKeyword {
-  id: number;
-  name: string;
-}
 
 export class LabelApi implements ILabelApi {
   async getLabels(includeUngroupedModels: boolean): Promise<Label[]> {
@@ -99,9 +57,9 @@ export class LabelApi implements ILabelApi {
     return await invoke("delete_label", { labelId: label.id });
   }
 
-  async setLabelsOnModel(Labels: LabelMeta[], model: Model): Promise<void> {
+  async setLabelsOnModel(labels: LabelMeta[], model: Model): Promise<void> {
     return await invoke("set_labels_on_model", {
-      labelIds: Labels.map((label) => label.id),
+      labelIds: labels.map((label) => label.id),
       modelId: model.id,
     });
   }

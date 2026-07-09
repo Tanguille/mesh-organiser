@@ -1,5 +1,5 @@
 import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
+import { resolve } from "$lib/paths";
 import { ImportStatus, type ImportState } from "./api/shared/tauri_import_api";
 
 interface GlobalImportSettings {

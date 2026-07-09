@@ -1,12 +1,13 @@
 use std::{
-    fmt::Write,
     fs::{self, read_dir},
-    panic,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use async_zip::{ZipEntryBuilder, tokio::read::seek::ZipFileReader, tokio::write::ZipFileWriter};
+use async_zip::{
+    ZipEntryBuilder,
+    tokio::{read::seek::ZipFileReader, write::ZipFileWriter},
+};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Serialize;
@@ -15,11 +16,14 @@ use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     sync::Mutex,
-    task::JoinSet,
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
-use db::{blob_db, label_db, label_keyword_db, model::blob::FileType, model::user::User, model_db};
+use db::{
+    blob_db, label_db, label_keyword_db,
+    model::{blob::FileType, user::User},
+    model_db,
+};
 
 use crate::{
     ASYNC_MULT,
@@ -101,10 +105,7 @@ pub async fn get_model_count(
         } else {
             get_model_count_from_dir(path)
         }
-    } else if path_buff
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-    {
+    } else if is_zip_path(&path_buff) {
         if import_state.import_as_path {
             return Err(ServiceError::InternalError(String::from(
                 "Cannot import a zip as path",
@@ -147,43 +148,31 @@ pub async fn import_path_inner(
         if recursive {
             import_models_from_dir_recursive(&path_buff, app_state, import_state).await?;
         } else {
-            import_models_from_dir(path, app_state, import_state, name.clone()).await?;
+            import_models_from_dir(path, app_state, import_state, name).await?;
         }
-    } else if path_buff
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
-    {
-        import_models_from_zip(path, app_state, import_state, name.clone()).await?;
+    } else if is_zip_path(&path_buff) {
+        import_models_from_zip(path, app_state, import_state, name).await?;
     } else if is_supported_extension(&path_buff) {
-        let extension = path_buff.extension().unwrap().to_str().unwrap();
-        let size = usize::try_from(path_buff.metadata()?.len()).unwrap_or(0);
-        let mut import_state = import_state.lock().await;
-
-        {
-            let mut file = File::open(&path_buff).await?;
-            let permanent_disk_path = if import_state.import_as_path {
-                Some(path_buff.clone())
-            } else {
-                None
-            };
-
-            let id = import_single_model(
-                &mut file,
-                extension,
-                size,
-                &name,
-                import_state.origin_url.as_deref(),
-                app_state,
-                &import_state.user,
-                permanent_disk_path,
+        let (user, origin_url, delete_after_import, import_as_path) = {
+            let import_state = import_state.lock().await;
+            (
+                import_state.user.clone(),
+                import_state.origin_url.clone(),
+                import_state.delete_after_import,
+                import_state.import_as_path,
             )
-            .await?;
-            import_state.add_model_id_to_current_set(id);
-        }
+        };
 
-        if import_state.delete_after_import {
-            let _ = fs::remove_file(&path_buff);
-        }
+        import_models_from_dir_inner(
+            app_state,
+            path_buff,
+            Arc::clone(&import_state),
+            &user,
+            origin_url.as_deref(),
+            delete_after_import,
+            import_as_path,
+        )
+        .await?;
     } else {
         return Err(ServiceError::InternalError(String::from(
             "Unsupported file type",
@@ -222,15 +211,18 @@ pub async fn add_labels_by_keywords(
 
     let mut all_keywords_map: IndexMap<String, Vec<i64>> = IndexMap::new();
 
-    for (label_id, keywords) in &all_keywords {
+    for (label_id, keywords) in all_keywords {
         for keyword in keywords {
-            if all_keywords_map.contains_key(&keyword.name) {
-                all_keywords_map[&keyword.name].push(*label_id);
-            } else {
-                all_keywords_map.insert(keyword.name.clone(), vec![*label_id]);
-            }
+            all_keywords_map
+                .entry(keyword.name)
+                .or_default()
+                .push(label_id);
         }
     }
+
+    // Invert model -> labels into label -> models so we can batch-insert once per
+    // distinct label instead of issuing one write per imported model.
+    let mut label_to_models: IndexMap<i64, Vec<i64>> = IndexMap::new();
 
     for model in &models {
         let mut name_parts: Vec<String> = model
@@ -250,13 +242,7 @@ pub async fn add_labels_by_keywords(
 
         let label_ids: Vec<i64> = name_parts
             .iter()
-            .flat_map(|part| {
-                if all_keywords_map.contains_key(part) {
-                    return all_keywords_map[part].clone();
-                }
-
-                vec![]
-            })
+            .flat_map(|part| all_keywords_map.get(part).into_iter().flatten().copied())
             .filter(|l| {
                 !model
                     .labels
@@ -266,21 +252,20 @@ pub async fn add_labels_by_keywords(
             .unique()
             .collect();
 
-        if !label_ids.is_empty() {
-            let _ = label_db::add_labels_on_models(
-                db,
-                &import_state.user,
-                &label_ids,
-                &[model.id],
-                None,
-            )
-            .await;
+        for label_id in label_ids {
+            label_to_models.entry(label_id).or_default().push(model.id);
         }
+    }
+
+    for (label_id, model_ids) in &label_to_models {
+        let _ =
+            label_db::add_labels_on_models(db, &import_state.user, &[*label_id], model_ids, None)
+                .await;
     }
 }
 
 async fn import_models_from_dir_recursive(
-    path: &PathBuf,
+    path: &Path,
     app_state: &AppState,
     import_state: Arc<Mutex<ImportState>>,
 ) -> Result<(), ServiceError> {
@@ -329,9 +314,10 @@ async fn import_models_from_dir_inner(
     }
 
     let file_name = util::prettify_file_name(&path, false);
+    // Extension unwraps are guarded by the is_supported_extension check above;
+    // metadata can still fail at runtime (file removed/unreadable), so propagate.
     let extension = path.extension().unwrap().to_str().unwrap();
-    let file_size = path.metadata().unwrap().len();
-    let file_size = usize::try_from(file_size).unwrap_or(0);
+    let file_size = usize::try_from(path.metadata()?.len()).unwrap_or(0);
 
     let mut file = File::open(&path).await?;
     let permanent_disk_path = if import_as_path {
@@ -385,25 +371,21 @@ async fn import_models_from_dir(
         import_as_path = import_state.import_as_path;
     }
 
-    let mut entries: Vec<PathBuf> = read_dir(path)?
+    let entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file())
         .collect();
 
-    let mut futures = JoinSet::new();
-
     let max = configuration.core_parallelism * ASYNC_MULT;
-    let mut active = 0;
 
-    while !entries.is_empty() {
-        let Some(entry) = entries.pop() else { continue };
+    // Task outputs are discarded, matching the previous loop which ignored task results.
+    let _ = util::run_bounded(entries, max, |entry| {
         let app_state = app_state.clone();
         let import_state_mutex = Arc::clone(&import_state);
         let user = user.clone();
         let origin_url = origin_url.clone();
-        active += 1;
 
-        futures.spawn(async move {
+        async move {
             import_models_from_dir_inner(
                 &app_state,
                 entry,
@@ -414,20 +396,9 @@ async fn import_models_from_dir(
                 import_as_path,
             )
             .await
-        });
-
-        if active >= max
-            && let Some(res) = futures.join_next().await
-        {
-            match res {
-                Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
-                Err(err) => panic!("{err}"),
-                _ => active -= 1,
-            }
         }
-    }
-
-    futures.join_all().await;
+    })
+    .await;
 
     Ok(())
 }
@@ -518,10 +489,7 @@ async fn import_single_model<W>(
 where
     W: AsyncRead + Unpin,
 {
-    let mut file_contents: Vec<u8> = match file_size {
-        0 => Vec::new(),
-        val => Vec::with_capacity(val),
-    };
+    let mut file_contents: Vec<u8> = Vec::with_capacity(file_size);
 
     reader.read_to_end(&mut file_contents).await?;
 
@@ -529,10 +497,7 @@ where
     hasher.update(&file_contents);
     let bytes = hasher.finalize();
     // First 128 bits of the digest as 32 hex chars (matches `blob_sha256` / `random_hex_32` shape).
-    let mut hash = String::with_capacity(32);
-    for b in bytes.iter().take(16) {
-        let _ = write!(hash, "{b:02x}");
-    }
+    let hash = hex::encode(&bytes[..16]);
 
     let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
 
@@ -598,6 +563,20 @@ pub fn is_supported_extension(path: &Path) -> bool {
     file_type.is_importable()
 }
 
+/// Returns `true` if the path has a case-insensitive `.zip` extension.
+fn is_zip_path(path: &Path) -> bool {
+    libmeshthumbnail::path_ext::matches_ext(path, "zip")
+}
+
+/// Returns `true` for paths acceptable at an upload entry point.
+///
+/// That is a supported model extension or a zip archive. Shared by the web
+/// and desktop upload handlers so the acceptance policy lives in one place.
+#[must_use]
+pub fn is_importable_upload(path: &Path) -> bool {
+    is_supported_extension(path) || is_zip_path(path)
+}
+
 fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError> {
     let entries: Vec<fs::DirEntry> = read_dir(path)?.map(|x| x.unwrap()).collect();
     let mut count = 0;
@@ -646,7 +625,7 @@ pub struct DirectoryScanModel {
 }
 
 async fn traverse_directory(
-    path: &PathBuf,
+    path: &Path,
     recursive: bool,
     set_id: u32,
 ) -> Result<Vec<DirectoryScanModel>, ServiceError> {

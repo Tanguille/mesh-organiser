@@ -18,20 +18,14 @@ pub async fn get_model_bytes(
 ) -> Result<Response, ApplicationError> {
     require_local_desktop_app()?;
 
-    let model = model_db::get_models_via_ids(
-        &state.app_state.db,
-        &state.get_current_user(),
-        vec![model_id],
-    )
-    .await?;
-
-    if model.is_empty() {
+    let Some(model) =
+        model_db::get_model_via_id(&state.app_state.db, &state.get_current_user(), model_id)
+            .await?
+    else {
         return Err(ApplicationError::InternalError(String::from(
             "Failed to find model",
         )));
-    }
-
-    let model = &model[0];
+    };
 
     get_blob_bytes_impl(&model.blob.sha256, state).await
 }

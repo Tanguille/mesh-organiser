@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE,
+    DbError, MAX_PAGE_SIZE, TimestampSchema,
     db_context::DbContext,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
@@ -9,7 +9,7 @@ use crate::{
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    random_hex_32, time_now,
+    random_hex_32, set_timestamp_column, time_now, validate_global_id,
 };
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
@@ -26,15 +26,14 @@ pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMe
     let mut resources: Vec<ResourceMeta> = Vec::with_capacity(rows.len());
 
     for row in rows {
-        resources.push(ResourceMeta {
-            id: row.resource_id.unwrap(),
-            name: row.resource_name,
-            flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
-                .unwrap_or(ResourceFlags::empty()),
-            created: row.resource_created,
-            unique_global_id: row.resource_unique_global_id,
-            last_modified: row.resource_last_modified,
-        });
+        resources.push(ResourceMeta::from_parts(
+            row.resource_id,
+            row.resource_name,
+            row.resource_flags,
+            row.resource_created,
+            row.resource_unique_global_id,
+            row.resource_last_modified,
+        ));
     }
 
     Ok(resources)
@@ -57,7 +56,7 @@ pub async fn get_groups_for_resource(
         db,
         user,
         GroupFilterOptions {
-            group_ids: Some(rows.iter().map(|r| r.group_id.unwrap()).collect()),
+            group_ids: Some(rows.iter().map(|r| r.group_id).collect()),
             order_by: Some(GroupOrderBy::NameAsc),
             page: 1,
             page_size: MAX_PAGE_SIZE,
@@ -88,15 +87,14 @@ pub async fn get_group_id_to_resource_map(
     for row in rows {
         map.insert(
             row.group_id,
-            ResourceMeta {
-                id: row.resource_id,
-                name: row.resource_name,
-                flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
-                    .unwrap_or(ResourceFlags::empty()),
-                created: row.resource_created,
-                unique_global_id: row.resource_unique_global_id,
-                last_modified: row.resource_last_modified,
-            },
+            ResourceMeta::from_parts(
+                row.resource_id,
+                row.resource_name,
+                row.resource_flags,
+                row.resource_created,
+                row.resource_unique_global_id,
+                row.resource_last_modified,
+            ),
         );
     }
 
@@ -119,15 +117,14 @@ pub async fn get_resource_meta_by_id(
     .await;
 
     match row {
-        Ok(row) => Ok(Some(ResourceMeta {
-            id: row.resource_id,
-            name: row.resource_name,
-            flags: ResourceFlags::from_bits(u32::try_from(row.resource_flags).unwrap_or(0))
-                .unwrap_or(ResourceFlags::empty()),
-            created: row.resource_created,
-            unique_global_id: row.resource_unique_global_id,
-            last_modified: row.resource_last_modified,
-        })),
+        Ok(row) => Ok(Some(ResourceMeta::from_parts(
+            row.resource_id,
+            row.resource_name,
+            row.resource_flags,
+            row.resource_created,
+            row.resource_unique_global_id,
+            row.resource_last_modified,
+        ))),
         Err(DbError::RowNotFound) => Ok(None),
         Err(e) => Err(e),
     }
@@ -138,10 +135,10 @@ pub async fn add_resource(
     user: &User,
     name: &str,
     update_timestamp: Option<&str>,
-) -> Result<i64, DbError> {
+) -> Result<ResourceMeta, DbError> {
     let now = time_now();
-    let hex = random_hex_32();
-    let updated = update_timestamp.unwrap_or(&now);
+    let unique_global_id = random_hex_32();
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
 
     let result = sqlx::query!(
         "INSERT INTO resources (resource_name, resource_created, resource_user_id, resource_unique_global_id, resource_last_modified)
@@ -149,13 +146,21 @@ pub async fn add_resource(
         name,
         now,
         user.id,
-        hex,
-        updated
+        unique_global_id,
+        last_modified
     )
     .execute(db)
     .await?;
 
-    Ok(result.last_insert_rowid())
+    // Flags match the schema's DEFAULT 0.
+    Ok(ResourceMeta {
+        id: result.last_insert_rowid(),
+        name: name.to_string(),
+        flags: ResourceFlags::empty(),
+        created: now,
+        last_modified,
+        unique_global_id,
+    })
 }
 
 pub async fn get_unique_id_from_resource_id(
@@ -193,6 +198,7 @@ pub async fn edit_resource(
     name: &str,
     flags: ResourceFlags,
     update_timestamp: Option<&str>,
+    global_id: Option<&str>,
 ) -> Result<(), DbError> {
     let bits = i64::from(flags.bits());
     let current_time = time_now();
@@ -209,20 +215,20 @@ pub async fn edit_resource(
     .execute(db)
     .await?;
 
+    if let Some(global_id) = global_id {
+        edit_resource_global_id(db, user, resource_id, global_id).await?;
+    }
+
     Ok(())
 }
 
-pub async fn edit_resource_global_id(
+async fn edit_resource_global_id(
     db: &DbContext,
     user: &User,
     resource_id: i64,
     unique_global_id: &str,
 ) -> Result<(), DbError> {
-    if unique_global_id.len() != 32 {
-        return Err(DbError::InvalidArgument(
-            "Unique Global ID must be 32 characters long".to_string(),
-        ));
-    }
+    validate_global_id(unique_global_id)?;
 
     sqlx::query!(
         "UPDATE resources SET resource_unique_global_id = ? WHERE resource_id = ? AND resource_user_id = ?",
@@ -242,16 +248,19 @@ pub async fn set_last_updated_on_resource(
     resource_id: i64,
     timestamp: &str,
 ) -> Result<(), DbError> {
-    sqlx::query!(
-        "UPDATE resources SET resource_last_modified = ? WHERE resource_id = ? AND resource_user_id = ?",
+    set_timestamp_column(
+        db,
+        TimestampSchema {
+            table: "resources",
+            ts_col: "resource_last_modified",
+            id_col: "resource_id",
+            user_col: "resource_user_id",
+        },
+        &[resource_id],
+        user.id,
         timestamp,
-        resource_id,
-        user.id
     )
-    .execute(db)
-    .await?;
-
-    Ok(())
+    .await
 }
 
 pub async fn set_resource_on_group(
@@ -261,7 +270,19 @@ pub async fn set_resource_on_group(
     group_id: i64,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let Some(group) = group_db::get_group_via_id(db, user, group_id).await? else {
+    // Lightweight existence check; the EXISTS clause mirrors get_group_via_id's
+    // behavior of treating a group with zero models as not found.
+    let Some(group_row) = sqlx::query!(
+        "SELECT group_resource_id FROM models_group
+            WHERE group_id = ? AND group_user_id = ?
+            AND EXISTS (SELECT 1 FROM models WHERE model_group_id = models_group.group_id AND model_user_id = ?)",
+        group_id,
+        user.id,
+        user.id
+    )
+    .fetch_optional(db)
+    .await?
+    else {
         return Err(DbError::RowNotFound);
     };
 
@@ -286,7 +307,7 @@ pub async fn set_resource_on_group(
         set_last_updated_on_resource(db, user, resource_id, timestamp).await?;
     }
 
-    if let Some(resource_id) = group.meta.resource_id {
+    if let Some(resource_id) = group_row.group_resource_id {
         set_last_updated_on_resource(db, user, resource_id, timestamp).await?;
     }
 

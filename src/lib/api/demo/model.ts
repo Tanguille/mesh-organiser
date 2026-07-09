@@ -1,12 +1,27 @@
 import {
-  ModelOrderBy,
+  modelMatchesSearch,
+  modelOrderByComparator,
   type IModelApi,
   type Model,
   type ModelFlags,
+  type ModelOrderBy,
 } from "../shared/model_api";
 import { mockModels, modelGroupMap, modelLabelsMap } from "./mock_data";
 
 export class DemoModelApi implements IModelApi {
+  private filterByFlags(models: Model[], flags: ModelFlags | null): Model[] {
+    if (flags) {
+      if (flags.printed !== undefined) {
+        models = models.filter((m) => m.flags.printed === flags.printed);
+      }
+      if (flags.favorite !== undefined) {
+        models = models.filter((m) => m.flags.favorite === flags.favorite);
+      }
+    }
+
+    return models;
+  }
+
   async getModels(
     model_ids: number[] | null,
     group_ids: number[] | null,
@@ -43,46 +58,14 @@ export class DemoModelApi implements IModelApi {
     // Filter by text search
     if (text_search) {
       const searchLower = text_search.toLowerCase();
-      models = models.filter(
-        (m) =>
-          m.name.toLowerCase().includes(searchLower) ||
-          (m.description?.toLowerCase().includes(searchLower) ?? false),
-      );
+      models = models.filter((m) => modelMatchesSearch(m, searchLower));
     }
 
     // Filter by flags
-    if (flags) {
-      if (flags.printed !== undefined) {
-        models = models.filter((m) => m.flags.printed === flags.printed);
-      }
-      if (flags.favorite !== undefined) {
-        models = models.filter((m) => m.flags.favorite === flags.favorite);
-      }
-    }
+    models = this.filterByFlags(models, flags);
 
     // Sort models
-    models.sort((a, b) => {
-      switch (order_by) {
-        case ModelOrderBy.AddedAsc:
-          return a.added.getTime() - b.added.getTime();
-        case ModelOrderBy.AddedDesc:
-          return b.added.getTime() - a.added.getTime();
-        case ModelOrderBy.NameAsc:
-          return a.name.localeCompare(b.name);
-        case ModelOrderBy.NameDesc:
-          return b.name.localeCompare(a.name);
-        case ModelOrderBy.SizeAsc:
-          return a.blob.size - b.blob.size;
-        case ModelOrderBy.SizeDesc:
-          return b.blob.size - a.blob.size;
-        case ModelOrderBy.ModifiedAsc:
-          return a.lastModified.getTime() - b.lastModified.getTime();
-        case ModelOrderBy.ModifiedDesc:
-          return b.lastModified.getTime() - a.lastModified.getTime();
-        default:
-          return 0;
-      }
-    });
+    models.sort(modelOrderByComparator(order_by));
 
     // Apply pagination
     const start = (page - 1) * page_size;
@@ -114,16 +97,7 @@ export class DemoModelApi implements IModelApi {
   }
 
   async getModelCount(flags: ModelFlags | null): Promise<number> {
-    let models = Array.from(mockModels.values());
-
-    if (flags) {
-      if (flags.printed !== undefined) {
-        models = models.filter((m) => m.flags.printed === flags.printed);
-      }
-      if (flags.favorite !== undefined) {
-        models = models.filter((m) => m.flags.favorite === flags.favorite);
-      }
-    }
+    const models = this.filterByFlags(Array.from(mockModels.values()), flags);
 
     return models.length;
   }

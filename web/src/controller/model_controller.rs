@@ -7,7 +7,6 @@ use axum::{
 };
 use axum_login::login_required;
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
 use tokio::fs;
 
 use db::{model::ModelFlags, model_db, model_db::ModelFilterOptions};
@@ -15,7 +14,7 @@ use service::{cleanse_evil_from_name, export_service, import_service, import_sta
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -37,12 +36,12 @@ pub fn router() -> Router<WebAppState> {
 
 mod get {
     use axum_extra::extract::Query;
-    use db::{model::user::User, share_db};
+    use db::model::user::User;
 
-    use crate::query_bounds;
+    use crate::{controller::share_controller::resolve_share_owner, query_bounds};
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ModelFilterOptions,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, ModelFilterOptions,
         ModelFlags, Path, Response, Serialize, State, WebAppState, export_service, model_db,
     };
 
@@ -91,21 +90,9 @@ mod get {
             &app_state.app_state.db,
             user,
             ModelFilterOptions {
-                model_ids: if params.model_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.model_ids)
-                },
-                group_ids: if params.group_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.group_ids)
-                },
-                label_ids: if params.label_ids.is_empty() {
-                    None
-                } else {
-                    Some(params.label_ids)
-                },
+                model_ids: query_bounds::none_if_empty(params.model_ids),
+                group_ids: query_bounds::none_if_empty(params.group_ids),
+                label_ids: query_bounds::none_if_empty(params.label_ids),
                 order_by: params
                     .order_by
                     .as_deref()
@@ -122,12 +109,10 @@ mod get {
     }
 
     pub async fn get_models(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Query(params): Query<GetModelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         get_models_inner(&app_state, &user, params).await
     }
 
@@ -136,7 +121,7 @@ mod get {
         State(app_state): State<WebAppState>,
         Query(mut params): Query<GetModelParams>,
     ) -> Result<Response, ApplicationError> {
-        let share = share_db::get_share_via_id(&app_state.app_state.db, &share_id).await?;
+        let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
 
         params.model_ids = if params.model_ids.is_empty() {
             vec![]
@@ -151,15 +136,7 @@ mod get {
         params.group_ids = vec![];
         params.label_ids = vec![];
 
-        get_models_inner(
-            &app_state,
-            &User {
-                id: share.user_id,
-                ..Default::default()
-            },
-            params,
-        )
-        .await
+        get_models_inner(&app_state, &user, params).await
     }
 
     #[derive(Deserialize)]
@@ -174,11 +151,10 @@ mod get {
     }
 
     pub async fn get_model_count(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Query(params): Query<GetModelCountParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let count = model_db::get_model_count(
             &app_state.app_state.db,
             &user,
@@ -200,10 +176,9 @@ mod get {
     }
 
     pub async fn get_model_disk_space_usage(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let data = model_db::get_size_of_models(&app_state.app_state.db, &user).await?;
         let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state.app_state)?;
 
@@ -217,7 +192,7 @@ mod get {
 
 mod put {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ModelFlags, Path, Response,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, ModelFlags, Path, Response,
         State, StatusCode, WebAppState, model_db,
     };
 
@@ -233,12 +208,11 @@ mod put {
     }
 
     pub async fn edit_model(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(model_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutModelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         model_db::edit_model(
             &app_state.app_state.db,
             &user,
@@ -248,41 +222,26 @@ mod put {
             params.model_description.as_deref(),
             params.model_flags.unwrap_or(ModelFlags::empty()),
             params.model_timestamp.as_deref(),
+            params.model_global_id.as_deref(),
         )
         .await?;
-
-        if let Some(new_global_id) = params.model_global_id {
-            model_db::edit_model_global_id(
-                &app_state.app_state.db,
-                &user,
-                model_id,
-                &new_global_id,
-            )
-            .await?;
-        }
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
 }
 
 mod delete {
-    use db::model::user::User;
-    use service::export_service::delete_dead_blobs;
-
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
-        StatusCode, WebAppState, model_db,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, export_service,
     };
 
     pub async fn delete_model(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(model_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
-        delete_model_inner(&app_state, &user, vec![model_id]).await?;
-        delete_dead_blobs(&app_state.app_state).await?;
+        export_service::delete_models(&app_state.app_state, &user, vec![model_id]).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -293,68 +252,36 @@ mod delete {
     }
 
     pub async fn delete_models(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<DeleteModelsParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
-        delete_model_inner(&app_state, &user, params.model_ids).await?;
-        delete_dead_blobs(&app_state.app_state).await?;
+        export_service::delete_models(&app_state.app_state, &user, params.model_ids).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
-    }
-
-    async fn delete_model_inner(
-        app_state: &WebAppState,
-        user: &User,
-        model_ids: Vec<i64>,
-    ) -> Result<(), ApplicationError> {
-        let ids_len = model_ids.len();
-        let models = model_db::get_models_via_ids(&app_state.app_state.db, user, model_ids).await?;
-
-        if models.len() != ids_len {
-            return Err(ApplicationError::InternalError(String::from(
-                "Failed to find model to delete",
-            )));
-        }
-
-        let ids = models.iter().map(|m| m.id).collect::<Vec<i64>>();
-
-        model_db::delete_models(&app_state.app_state.db, user, &ids).await?;
-
-        Ok(())
     }
 }
 
 mod post {
-    use db::{model::blob::Blob, random_hex_32};
-    use service::thumbnail_service;
     use tokio::io::AsyncWriteExt;
+
+    use service::thumbnail_service;
 
     use crate::web_import_state::WebImportStateEmitter;
 
     use super::{
-        ApplicationError, AuthSession, ImportState, IntoResponse, Json, Multipart, OffsetDateTime,
-        Response, State, StatusCode, WebAppState, cleanse_evil_from_name, fs, import_service,
-        model_db,
+        ApplicationError, CurrentUser, ImportState, IntoResponse, Json, Multipart, Response, State,
+        StatusCode, WebAppState, cleanse_evil_from_name, export_service, fs, import_service,
     };
 
     pub async fn add_model(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         mut multipart: Multipart,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let mut paths = vec![];
 
-        let temp_dir = std::env::temp_dir().join(format!(
-            "meshorganiser_import_action_{}_{}",
-            OffsetDateTime::now_utc().unix_timestamp(),
-            random_hex_32()
-        ));
-
-        std::fs::create_dir(&temp_dir)?;
+        let temp_dir = export_service::get_temp_dir("import");
 
         let mut link = None;
 
@@ -371,15 +298,7 @@ mod post {
 
             let file_path = temp_dir.join(cleanse_evil_from_name(&file_name));
 
-            if !(import_service::is_supported_extension(&file_path)
-                || file_path
-                    .extension()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_lowercase()
-                    == "zip")
-            {
+            if !import_service::is_importable_upload(&file_path) {
                 continue;
             }
 
@@ -433,14 +352,10 @@ mod post {
             model_ids.extend(&import_state.imported_models[0].model_ids);
         }
 
-        let models =
-            model_db::get_models_via_ids(&app_state.app_state.db, &user, model_ids.clone()).await?;
-        let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-        thumbnail_service::generate_thumbnails(
-            &blobs,
+        thumbnail_service::generate_thumbnails_for_model_ids(
             &app_state.app_state,
-            false,
+            &user,
+            model_ids.clone(),
             &mut import_state,
         )
         .await?;

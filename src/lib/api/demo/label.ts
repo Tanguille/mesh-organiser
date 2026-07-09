@@ -12,6 +12,7 @@ import {
   mockModels,
   modelLabelsMap,
   modelGroupMap,
+  resolveLabels,
 } from "./mock_data";
 
 export class DemoLabelApi implements ILabelApi {
@@ -103,9 +104,7 @@ export class DemoLabelApi implements ILabelApi {
 
       if (filteredIds.length > 0) {
         modelLabelsMap.set(modelId, filteredIds);
-        model.labels = filteredIds
-          .map((id) => mockLabels.get(id))
-          .filter((l): l is NonNullable<typeof l> => l !== undefined);
+        model.labels = resolveLabels(filteredIds);
       } else {
         modelLabelsMap.delete(modelId);
         model.labels = [];
@@ -146,9 +145,7 @@ export class DemoLabelApi implements ILabelApi {
         const newLabelIds = [...currentLabelIds, label.id];
         modelLabelsMap.set(model.id, newLabelIds);
 
-        existingModel.labels = newLabelIds
-          .map((id) => mockLabels.get(id))
-          .filter((l): l is NonNullable<typeof l> => l !== undefined);
+        existingModel.labels = resolveLabels(newLabelIds);
       }
     });
   }
@@ -169,9 +166,7 @@ export class DemoLabelApi implements ILabelApi {
 
       if (newLabelIds.length > 0) {
         modelLabelsMap.set(model.id, newLabelIds);
-        existingModel.labels = newLabelIds
-          .map((id) => mockLabels.get(id))
-          .filter((l): l is NonNullable<typeof l> => l !== undefined);
+        existingModel.labels = resolveLabels(newLabelIds);
       } else {
         modelLabelsMap.delete(model.id);
         existingModel.labels = [];

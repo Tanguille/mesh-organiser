@@ -1,13 +1,19 @@
-import type { GroupOrderBy, Group, GroupMeta } from "../shared/group_api";
+import {
+  buildGetGroupsQuery,
+  type GroupOrderBy,
+  type Group,
+  type GroupMeta,
+  type IGroupApi,
+} from "../shared/group_api";
 import type { Model } from "../shared/model_api";
+import { parseRawGroup, type RawGroup } from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import type { Share } from "../shared/share_api";
-import { parseRawGroup, type GroupApi, type RawGroup } from "../tauri/group";
 
-export class WebShareGroupApi implements GroupApi {
+export class WebShareGroupApi implements IGroupApi {
   private requestApi: IServerRequestApi;
   private share: Share;
 
@@ -26,17 +32,16 @@ export class WebShareGroupApi implements GroupApi {
     page_size: number,
     include_ungrouped_models: boolean,
   ): Promise<Group[]> {
-    const data = {
-      // Hack to bypass request uri becoming too large
-      model_ids_str: model_ids?.join(","),
-      group_ids: group_ids,
-      label_ids: label_ids,
-      order_by: order_by,
-      text_search: text_search,
-      page: page,
-      page_size: page_size,
-      include_ungrouped_models: include_ungrouped_models,
-    };
+    const data = buildGetGroupsQuery(
+      model_ids,
+      group_ids,
+      label_ids,
+      order_by,
+      text_search,
+      page,
+      page_size,
+      include_ungrouped_models,
+    );
 
     const response = await this.requestApi.request<RawGroup[]>(
       `/shares/${this.share.id}/groups`,
@@ -54,9 +59,12 @@ export class WebShareGroupApi implements GroupApi {
 
   async deleteGroup(_group: GroupMeta): Promise<void> {}
 
-  async addModelsToGroup(_group: GroupMeta, _models: Model[]): Promise<void> {}
+  async addModelsToGroup(
+    _group: GroupMeta,
+    _models: Pick<Model, "id">[],
+  ): Promise<void> {}
 
-  async removeModelsFromGroup(_models: Model[]): Promise<void> {}
+  async removeModelsFromGroup(_models: Pick<Model, "id">[]): Promise<void> {}
 
   async getGroupCount(_include_ungrouped_models: boolean): Promise<number> {
     return this.share.modelIds.length;

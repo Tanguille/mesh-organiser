@@ -46,7 +46,7 @@ use super::app_state::AppState;
 pub const ORCA_SLICER_EXECUTABLE_ENV: &str = "MESH_ORGANISER_ORCA_PATH";
 
 /// Subprocess wall-clock limit (large models can be slow).
-const SLICE_TIMEOUT: Duration = Duration::from_secs(600);
+const SLICE_TIMEOUT: Duration = Duration::from_mins(10);
 
 /// Basic slicing options for HTTP / JSON (Orca CLI mapping is partial in v1).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

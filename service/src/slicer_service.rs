@@ -20,15 +20,7 @@ pub use base::*;
 ///
 /// Returns an error if paths are empty or spawning the process fails.
 pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-    if paths.is_empty() {
-        return Err(ServiceError::InternalError(String::from(
-            "No models to open",
-        )));
-    }
-
-    Command::new(program).args(paths).spawn()?;
-
-    Ok(())
+    open_with_args_and_paths(program, &[], paths)
 }
 
 /// Opens the user-configured custom slicer with the given paths.
@@ -107,8 +99,7 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
             }
             ' ' | '\t' if !in_quotes => {
                 if !current_arg.is_empty() {
-                    args.push(current_arg.clone());
-                    current_arg.clear();
+                    args.push(std::mem::take(&mut current_arg));
                 }
                 // Skip consecutive whitespace
                 while let Some(&next_char) = chars.peek() {
@@ -136,29 +127,19 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
 
     // Now determine where the executable ends and arguments begin
     // Look for the first argument that starts with '-' or '/'
-    let mut first_flag_index = None;
-    for (i, arg) in args.iter().enumerate() {
-        if arg.starts_with('-') || arg.starts_with('/') {
-            first_flag_index = Some(i);
-            break;
-        }
+    let first_flag_index = args
+        .iter()
+        .position(|arg| arg.starts_with('-') || arg.starts_with('/'));
+
+    if let Some(flag_index) = first_flag_index {
+        let executable = args[..flag_index].join(" ");
+        let rest = args.split_off(flag_index);
+
+        (executable, rest)
+    } else {
+        let mut iter = args.into_iter();
+        let executable = iter.next().unwrap_or_default();
+
+        (executable, iter.collect())
     }
-
-    first_flag_index.map_or_else(
-        || {
-            if args.is_empty() {
-                (String::new(), Vec::new())
-            } else if args.len() == 1 {
-                (args[0].clone(), Vec::new())
-            } else {
-                (args[0].clone(), args[1..].to_vec())
-            }
-        },
-        |flag_index| {
-            let executable = args[..flag_index].join(" ");
-            let args = args[flag_index..].to_vec();
-
-            (executable, args)
-        },
-    )
 }

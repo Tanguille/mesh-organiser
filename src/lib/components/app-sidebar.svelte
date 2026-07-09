@@ -18,7 +18,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import ImportProgressIndicator from "$lib/components/view/tauri-import-progress-indicator.svelte";
 
-  import { resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "$lib/paths";
   import { page } from "$app/state";
   import { getContainer } from "$lib/api/dependency_injection";
   import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
@@ -51,9 +51,7 @@
   }
 
   const current_url = $derived(page.url.pathname);
-  const thisLabelOnly = $derived.by(() => {
-    return page.url.searchParams.get("thisLabelOnly") === "true";
-  });
+  const thisLabelOnly = $derived.by(getThisLabelOnly);
   const currentUrlChild = $derived.by(() => {
     if (!current_url.startsWith("/label/")) {
       return null;
@@ -64,6 +62,12 @@
       sidebarState.labels.find((l) => l.meta.id === labelId)?.meta ?? null;
     return label;
   });
+
+  // Lookup map so LabelTree resolves an entry by id in O(1) instead of a linear
+  // scan per node (the tree recurses, so the scan was O(nodes * labels)).
+  const labelsById = $derived(
+    new Map(sidebarState.labels.map((l) => [l.meta.id, l])),
+  );
 
   const main_group_entries = $derived.by(() => {
     let base = [
@@ -335,10 +339,7 @@
   level: number;
   parentId?: number;
 })}
-  <!-- TODO: This find isn't great -->
-  {@const labelWithChildren = sidebarState.labels.find(
-    (l) => l.meta.id === label.id,
-  )}
+  {@const labelWithChildren = labelsById.get(label.id)}
 
   {#if labelWithChildren}
     {#if labelWithChildren.children.length <= 0 || level > 5}

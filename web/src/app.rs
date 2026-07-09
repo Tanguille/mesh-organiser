@@ -3,7 +3,8 @@ use std::{
     fmt::Write,
     fs::File,
     io::{self, ErrorKind},
-    path::PathBuf,
+    net::SocketAddr,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -13,19 +14,20 @@ use axum::{
     middleware::{self, Next},
     response::Response,
 };
-use axum_login::{
-    AuthManagerLayerBuilder,
-    tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key},
-};
+use axum_login::AuthManagerLayerBuilder;
 use axum_messages::MessagesManagerLayer;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
 use tower_http::{
     compression::CompressionLayer,
-    cors::{AllowOrigin, Any, CorsLayer},
+    cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
 };
-use tower_sessions_sqlx_store::SqliteStore;
+use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
+use tower_sessions_sqlx_store::{
+    SqliteStore,
+    sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 use db::{
     db_context::{self, DbContext},
@@ -33,10 +35,7 @@ use db::{
     model::user::User,
     user_db,
 };
-use service::{
-    AppState, Configuration, StoredConfiguration, import_state::ImportState,
-    stored_to_configuration, thumbnail_service,
-};
+use service::{AppState, Configuration, import_state::ImportState, thumbnail_service};
 
 use crate::{
     controller::api_router,
@@ -119,8 +118,11 @@ fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn std::error::Error>> {
     let origins = merge_cors_origins_from_env(extra.as_deref())?;
     Ok(CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
-        .allow_methods(Any)
-        .allow_headers(Any)
+        // Wildcards are illegal (and panic in tower-http) together with
+        // allow_credentials; mirroring the request is the permissive-but-legal
+        // equivalent for credentialed CORS.
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_headers(AllowHeaders::mirror_request())
         .allow_credentials(true))
 }
 
@@ -137,7 +139,7 @@ fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
         })
 }
 
-fn ensure_config_file_exists(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !config_path.exists() {
         let mut config_file = File::create(config_path)?;
         io::Write::write_all(
@@ -151,7 +153,7 @@ fn ensure_config_file_exists(config_path: &PathBuf) -> Result<(), Box<dyn std::e
 }
 
 async fn load_and_prepare_config(
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> Result<Configuration, Box<dyn std::error::Error>> {
     let json = fs::read_to_string(config_path).await.map_err(|e| {
         io::Error::new(
@@ -159,13 +161,12 @@ async fn load_and_prepare_config(
             format!("Failed to read configuration: {e}"),
         )
     })?;
-    let configuration: StoredConfiguration = serde_json::from_str(&json).map_err(|e| {
+    let mut configuration: Configuration = serde_json::from_str(&json).map_err(|e| {
         io::Error::new(
             ErrorKind::InvalidData,
             format!("Failed to parse configuration: {e}"),
         )
     })?;
-    let mut configuration = stored_to_configuration(configuration);
     if configuration.data_path.is_empty() {
         let default_data_dir = config_path.parent().ok_or_else(|| {
             io::Error::new(
@@ -183,7 +184,7 @@ async fn load_and_prepare_config(
     Ok(configuration)
 }
 
-async fn apply_local_account_and_thumbnails(
+async fn apply_local_account(
     web_app_state: &WebAppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let local_pass = env::var("LOCAL_ACCOUNT_PASSWORD").unwrap_or_else(|_| {
@@ -200,35 +201,45 @@ async fn apply_local_account_and_thumbnails(
     user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
     group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
 
+    Ok(())
+}
+
+/// Spawns the `REGENERATE_THUMBNAILS=all|missing` pass as a background task so
+/// the TCP listener can bind immediately; a large library's CPU-bound thumbnail
+/// pass would otherwise keep the server unreachable until it finishes.
+fn spawn_thumbnail_regeneration(web_app_state: &WebAppState) {
     let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
         .unwrap_or_else(|_| "none".into())
         .to_lowercase();
-    let mut import_state = ImportState::new_with_emitter(
-        None,
-        false,
-        true,
-        false,
-        User::default(),
-        Box::new(WebImportStateEmitter {}),
-    );
-    if regenerate_thumbnails == "all" {
-        println!("Regenerating all thumbnails...");
-        thumbnail_service::generate_all_thumbnails(
-            &web_app_state.app_state,
-            true,
-            &mut import_state,
-        )
-        .await?;
-    } else if regenerate_thumbnails == "missing" {
-        println!("Regenerating missing thumbnails...");
-        thumbnail_service::generate_all_thumbnails(
-            &web_app_state.app_state,
+    let force = match regenerate_thumbnails.as_str() {
+        "all" => true,
+        "missing" => false,
+        _ => return,
+    };
+
+    let app_state = web_app_state.app_state.clone();
+    tokio::spawn(async move {
+        // Hold the import mutex so regeneration does not race concurrent imports.
+        let _import_guard = app_state.import_mutex.clone().lock_owned().await;
+
+        println!(
+            "Regenerating {} thumbnails...",
+            if force { "all" } else { "missing" }
+        );
+        let mut import_state = ImportState::new_with_emitter(
+            None,
             false,
-            &mut import_state,
-        )
-        .await?;
-    }
-    Ok(())
+            true,
+            false,
+            User::default(),
+            Box::new(WebImportStateEmitter {}),
+        );
+        if let Err(e) =
+            thumbnail_service::generate_all_thumbnails(&app_state, force, &mut import_state).await
+        {
+            eprintln!("Thumbnail regeneration failed: {e}");
+        }
+    });
 }
 
 async fn update_session_middleware(
@@ -251,6 +262,23 @@ async fn update_session_middleware(
     next.run(request).await
 }
 
+async fn setup_session_store(
+    sqlite_path: &Path,
+) -> Result<SqliteStore, Box<dyn std::error::Error>> {
+    let connect_options = SqliteConnectOptions::new()
+        .filename(sqlite_path)
+        .create_if_missing(false)
+        .busy_timeout(std::time::Duration::from_secs(15));
+    let pool = SqlitePoolOptions::new()
+        .max_connections(2)
+        .connect_with(connect_options)
+        .await?;
+    let store = SqliteStore::new(pool);
+    store.migrate().await?;
+
+    Ok(store)
+}
+
 impl App {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let port = parse_port()?;
@@ -267,10 +295,9 @@ impl App {
         let configuration = load_and_prepare_config(&config_path).await?;
 
         let data_dir = PathBuf::from(&configuration.data_path);
-        let sqlite_path = PathBuf::from(&data_dir).join("db.sqlite");
-        let sqlite_backup_dir = PathBuf::from(&data_dir).join("backups");
+        let sqlite_path = data_dir.join("db.sqlite");
+        let sqlite_backup_dir = data_dir.join("backups");
         let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
-        let db_clone = db.clone();
 
         let web_app_state = WebAppState {
             app_state: AppState {
@@ -287,10 +314,10 @@ impl App {
             port,
         };
 
-        let session_store = SqliteStore::new(db_clone);
-        session_store.migrate().await?;
+        let session_store = setup_session_store(&sqlite_path).await?;
 
-        apply_local_account_and_thumbnails(&web_app_state).await?;
+        apply_local_account(&web_app_state).await?;
+        spawn_thumbnail_regeneration(&web_app_state);
 
         Ok(Self {
             app_state: web_app_state,
@@ -308,7 +335,7 @@ impl App {
         let deletion_task = tokio::task::spawn(
             session_store
                 .clone()
-                .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+                .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
         );
 
         let signing_key_path = self.app_state.get_signing_key_path();
@@ -354,9 +381,14 @@ impl App {
         println!("Server running on port {port}");
 
         // Ensure we use a shutdown signal to abort the deletion task.
-        axum::serve(listener, app.into_make_service())
-            .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
-            .await?;
+        // Connect info is required by the auth rate limiter: tower_governor's
+        // default PeerIpKeyExtractor 500s every request without a peer address.
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
+        .await?;
 
         deletion_task.await??;
 
