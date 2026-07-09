@@ -94,7 +94,8 @@ async fn get_groups_filtered_by_ungrouped_model_do_not_expand_to_all_models() {
         .unwrap();
     let group_id = group_db::add_empty_group(&db, &user, "group", None)
         .await
-        .unwrap();
+        .unwrap()
+        .id;
     group_db::set_group_id_on_models(&db, &user, Some(group_id), vec![grouped_model_id], None)
         .await
         .unwrap();
@@ -149,7 +150,8 @@ async fn add_labels_on_models_batch_insert_links_rows() {
 
     let label_id = label_db::add_label(&db, &user, "batch", 1, None)
         .await
-        .unwrap();
+        .unwrap()
+        .id;
     let blob_id = blob_db::add_blob(&db, "label-test", "stl", 1, None)
         .await
         .unwrap();

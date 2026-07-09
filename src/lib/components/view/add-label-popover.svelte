@@ -18,10 +18,6 @@
     newLabelColor = generateRandomColor();
   }
 
-  interface Function {
-    (label_name: string, label_color: string): Promise<void>;
-  }
-
   async function addLabel() {
     if (!newLabelName) {
       return;
@@ -39,7 +35,7 @@
   const props: {
     children: Snippet;
     class?: ClassValue;
-    onsubmit: Function;
+    onsubmit: (label_name: string, label_color: string) => Promise<void>;
     closeAfterCreation?: boolean;
   } = $props();
 </script>

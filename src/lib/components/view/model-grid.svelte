@@ -2,6 +2,7 @@
   import type { IModelStreamManager, Model } from "$lib/api/shared/model_api";
   import {
     convertOrderOptionModelsToEnum,
+    MODEL_ORDER_LABELS,
     type OrderOptionModels,
     SizeOptionModelsAsList,
   } from "$lib/api/shared/settings_api";
@@ -17,21 +18,13 @@
   import Button from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
 
-  interface Function {
-    (models: Model[]): void;
-  }
-
-  interface EmptyFunction {
-    (): void;
-  }
-
   const props: {
     modelStream: IModelStreamManager;
     default_show_multiselect_all?: boolean;
     initialEditMode?: boolean;
     onRemoveGroupDelete?: boolean;
-    onDelete?: Function;
-    onEmpty?: EmptyFunction;
+    onDelete?: (models: Model[]) => void;
+    onEmpty?: () => void;
   } = $props();
   let loadedModels = $state<Model[]>([]);
   let allModels = $state<Model[]>([]);
@@ -76,19 +69,8 @@
 
   let debouncedSetNewSearchText = debounce(setNewSearchText, 200);
 
-  const readableOrders = {
-    "date-asc": "Added (Asc)",
-    "date-desc": "Added (Desc)",
-    "name-asc": "Name (A->Z)",
-    "name-desc": "Name (Z->A)",
-    "size-asc": "Size (Asc)",
-    "size-desc": "Size (Desc)",
-    "modified-asc": "Modified (Asc)",
-    "modified-desc": "Modified (Desc)",
-  };
-
   const readableOrder = $derived(
-    readableOrders[configuration.order_option_models],
+    MODEL_ORDER_LABELS[configuration.order_option_models],
   );
 
   $effect(() => {
@@ -175,7 +157,7 @@
           <Select.Content>
             <Select.Group>
               <Select.GroupHeading>Sort options</Select.GroupHeading>
-              {#each Object.entries(readableOrders) as order (order[0])}
+              {#each Object.entries(MODEL_ORDER_LABELS) as order (order[0])}
                 <Select.Item value={order[0]} label={order[1]}
                   >{order[1]}</Select.Item
                 >

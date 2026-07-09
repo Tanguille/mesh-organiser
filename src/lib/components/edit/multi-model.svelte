@@ -35,7 +35,7 @@
   import Group from "@lucide/svelte/icons/group";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Ungroup from "@lucide/svelte/icons/ungroup";
-  import { IDownloadApi } from "$lib/api/shared/download_api";
+  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
   import Download from "@lucide/svelte/icons/download";
   import OpenInSlicerButton from "../view/open-in-slicer-button.svelte";
   import { createShare, IShareApi } from "$lib/api/shared/share_api";
@@ -43,15 +43,11 @@
   import { configurationMeta } from "$lib/configuration.svelte";
   import ExportModelsButton from "../view/export-models-button.svelte";
 
-  interface Function {
-    (): void;
-  }
-
   const props: {
     models: Model[];
     class?: ClassValue;
-    onDelete?: Function;
-    onGroupDelete?: Function;
+    onDelete?: () => void;
+    onGroupDelete?: () => void;
   } = $props();
 
   const models = $derived(props.models);
@@ -184,31 +180,6 @@
     }
   }
 
-  async function onDownloadModels() {
-    if (!downloadApi) {
-      return;
-    }
-
-    let promise;
-
-    if (models.length <= 0) {
-      return;
-    } else if (models.length === 1) {
-      promise = downloadApi.downloadModel(models[0]);
-    } else {
-      promise = downloadApi.downloadModelsAsZip(models);
-    }
-
-    toast.promise(promise, {
-      loading: `Downloading ${countWriter("model", models)}...`,
-      success: (_) => {
-        return `Downloaded ${countWriter("model", models)}`;
-      },
-    });
-
-    await promise;
-  }
-
   async function onNewGroup() {
     const affected_models = models;
 
@@ -291,7 +262,9 @@
           {#if localApi}
             <ExportModelsButton {models} class="grow" />
           {:else if downloadApi}
-            <AsyncButton class="grow" onclick={onDownloadModels}
+            <AsyncButton
+              class="grow"
+              onclick={() => downloadModels(models, downloadApi)}
               ><Download /> Download {models.length > 1
                 ? "models"
                 : "model"}</AsyncButton

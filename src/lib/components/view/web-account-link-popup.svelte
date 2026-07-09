@@ -10,10 +10,6 @@
   import FolderSync from "@lucide/svelte/icons/folder-sync";
   import Globe from "@lucide/svelte/icons/globe";
 
-  interface Function {
-    (): void;
-  }
-
   import { toast } from "svelte-sonner";
   import type { AccountLinkData } from "$lib/account_link_data.svelte";
   import { getContainer } from "$lib/api/dependency_injection";
@@ -32,7 +28,7 @@
   import { resolve } from "$app/paths";
   import { redirectAfterUserSwitch } from "$lib/paths";
 
-  let props: { data: AccountLinkData; onDismiss?: Function } = $props();
+  let props: { data: AccountLinkData; onDismiss?: () => void } = $props();
   const userApi = getContainer().optional<IUserApi>(IUserApi);
   const userAdminApi = getContainer().optional<IAdminUserApi>(IAdminUserApi);
   const userSyncApi = getContainer().optional<IUserSyncApi>(IUserSyncApi);

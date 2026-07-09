@@ -8,15 +8,12 @@ use axum::{
 use axum_login::login_required;
 use serde::Deserialize;
 
-use db::{
-    model::resource::{ResourceFlags, ResourceMeta},
-    random_hex_32, resource_db, time_now,
-};
+use db::{model::resource::ResourceFlags, resource_db};
 use service::resource_service;
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -42,26 +39,24 @@ pub fn router() -> Router<WebAppState> {
 
 mod get {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Json, Path, Response, State, WebAppState,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, WebAppState,
         resource_db,
     };
 
     pub async fn get_resources(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let resources = resource_db::get_resources(&app_state.app_state.db, &user).await?;
 
         Ok(Json(resources).into_response())
     }
 
     pub async fn get_groups_for_resource(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(resource_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let groups =
             resource_db::get_groups_for_resource(&app_state.app_state.db, &user, resource_id)
                 .await?;
@@ -72,8 +67,8 @@ mod get {
 
 mod post {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ResourceFlags,
-        ResourceMeta, Response, State, WebAppState, random_hex_32, resource_db, time_now,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Response, State,
+        WebAppState, resource_db,
     };
 
     #[derive(Deserialize)]
@@ -82,23 +77,13 @@ mod post {
     }
 
     pub async fn add_resource(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<PostResourceParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-        let id =
+        let resource_meta =
             resource_db::add_resource(&app_state.app_state.db, &user, &params.resource_name, None)
                 .await?;
-
-        let resource_meta = ResourceMeta {
-            id,
-            name: params.resource_name,
-            flags: ResourceFlags::empty(),
-            created: time_now(),
-            unique_global_id: random_hex_32(),
-            last_modified: time_now(),
-        };
 
         Ok(Json(resource_meta).into_response())
     }
@@ -107,7 +92,7 @@ mod post {
 mod put {
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, ResourceFlags,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, ResourceFlags,
         Response, State, StatusCode, WebAppState, resource_db,
     };
 
@@ -121,12 +106,11 @@ mod put {
     }
 
     pub async fn edit_resource(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(resource_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutResourceParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         resource_db::edit_resource(
             &app_state.app_state.db,
             &user,
@@ -134,18 +118,9 @@ mod put {
             &params.resource_name,
             params.resource_flags,
             params.resource_timestamp.as_deref(),
+            params.resource_global_id.as_deref(),
         )
         .await?;
-
-        if let Some(new_global_id) = params.resource_global_id {
-            resource_db::edit_resource_global_id(
-                &app_state.app_state.db,
-                &user,
-                resource_id,
-                &new_global_id,
-            )
-            .await?;
-        }
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -156,12 +131,11 @@ mod put {
     }
 
     pub async fn set_resource_on_group(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(group_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<SetResourceOnGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         resource_db::set_resource_on_group(
             &app_state.app_state.db,
             &user,
@@ -177,30 +151,16 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Path, Response, State, StatusCode,
-        WebAppState, resource_db, resource_service,
+        ApplicationError, CurrentUser, IntoResponse, Path, Response, State, StatusCode,
+        WebAppState, resource_service,
     };
 
     pub async fn delete_resource(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(resource_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-        let resource =
-            resource_db::get_resource_meta_by_id(&app_state.app_state.db, &user, resource_id)
-                .await?;
-
-        if resource.is_none() {
-            return Err(ApplicationError::InternalError(String::from(
-                "Resource not found",
-            )));
-        }
-
-        let resource = resource.unwrap();
-
-        resource_service::delete_resource_folder(&resource, &user, &app_state.app_state)?;
-        resource_db::delete_resource(&app_state.app_state.db, &user, resource.id).await?;
+        resource_service::delete_resource(resource_id, &user, &app_state.app_state).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }

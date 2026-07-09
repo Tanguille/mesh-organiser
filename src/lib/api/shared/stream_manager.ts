@@ -36,3 +36,30 @@ export abstract class GeneratorStreamManager<T, O> {
     return (await this.generator!.next()).value ?? [];
   }
 }
+
+/**
+ * Drains a paged endpoint page by page, prefetching the next page while the
+ * consumer processes the current one. Terminates on the first empty page.
+ * Shared by the model and group streams, which differ only in how a page is
+ * fetched.
+ */
+export async function* pagedStream<T>(
+  fetchPage: (page: number) => Promise<T[]>,
+): AsyncGenerator<T[]> {
+  let page = 1;
+  let prefetchNextTask: Promise<T[]> | null = null;
+
+  while (true) {
+    prefetchNextTask ??= fetchPage(page);
+
+    const items = await prefetchNextTask;
+    if (items.length === 0) {
+      break;
+    }
+
+    page += 1;
+    prefetchNextTask = fetchPage(page);
+
+    yield items;
+  }
+}

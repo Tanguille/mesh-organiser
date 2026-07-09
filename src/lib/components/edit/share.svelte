@@ -22,11 +22,7 @@
   import AsyncButton from "../ui/button/async-button.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
 
-  interface Function {
-    (): void;
-  }
-
-  const props: { share: Share; class?: ClassValue; onDelete?: Function } =
+  const props: { share: Share; class?: ClassValue; onDelete?: () => void } =
     $props();
   let link = $state<string>("");
 

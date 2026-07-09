@@ -1,12 +1,13 @@
 import {
   createGroupInstance,
   createGroupMetaInstance,
-  GroupOrderBy,
+  groupOrderByComparator,
   type Group,
   type GroupMeta,
+  type GroupOrderBy,
   type IGroupApi,
 } from "../shared/group_api";
-import { type Model } from "../shared/model_api";
+import { modelMatchesSearch, type Model } from "../shared/model_api";
 import { convertModelFlagsToRaw } from "../shared/raw_model";
 import {
   mockGroups,
@@ -29,6 +30,7 @@ function collectGroupModels(
   const models: Model[] = [];
   const labelIds = new Set<number>();
   const flagsSet = new Set<string>();
+  const searchLower = text_search?.toLowerCase();
 
   mockModels.forEach((model, modelId) => {
     if (predicate(modelId)) {
@@ -41,15 +43,7 @@ function collectGroupModels(
         return;
 
       // Check text search
-      if (text_search) {
-        const searchLower = text_search.toLowerCase();
-        if (
-          !model.name.toLowerCase().includes(searchLower) &&
-          !model.description?.toLowerCase().includes(searchLower)
-        ) {
-          return;
-        }
-      }
+      if (searchLower && !modelMatchesSearch(model, searchLower)) return;
 
       models.push(model);
 
@@ -170,35 +164,14 @@ export class DemoGroupApi implements IGroupApi {
       filteredGroups = groups.filter(
         (g) =>
           g.meta.name.toLowerCase().includes(searchLower) ||
-          g.models.some(
-            (m) =>
-              m.name.toLowerCase().includes(searchLower) ||
-              (m.description?.toLowerCase().includes(searchLower) ?? false),
-          ),
+          g.models.some((m) => modelMatchesSearch(m, searchLower)),
       );
     }
 
     filteredGroups = filteredGroups.filter((g) => g.models.length > 0);
 
     // Sort groups
-    filteredGroups.sort((a, b) => {
-      switch (order_by) {
-        case GroupOrderBy.CreatedAsc:
-          return a.meta.created.getTime() - b.meta.created.getTime();
-        case GroupOrderBy.CreatedDesc:
-          return b.meta.created.getTime() - a.meta.created.getTime();
-        case GroupOrderBy.NameAsc:
-          return a.meta.name.localeCompare(b.meta.name);
-        case GroupOrderBy.NameDesc:
-          return b.meta.name.localeCompare(a.meta.name);
-        case GroupOrderBy.ModifiedAsc:
-          return a.meta.lastModified.getTime() - b.meta.lastModified.getTime();
-        case GroupOrderBy.ModifiedDesc:
-          return b.meta.lastModified.getTime() - a.meta.lastModified.getTime();
-        default:
-          return 0;
-      }
-    });
+    filteredGroups.sort(groupOrderByComparator(order_by));
 
     // Apply pagination
     const start = (page - 1) * page_size;
@@ -248,7 +221,10 @@ export class DemoGroupApi implements IGroupApi {
     });
   }
 
-  async addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void> {
+  async addModelsToGroup(
+    group: GroupMeta,
+    models: Pick<Model, "id">[],
+  ): Promise<void> {
     models.forEach((model) => {
       // Update the model's group reference
       const existingModel = mockModels.get(model.id);
@@ -259,7 +235,7 @@ export class DemoGroupApi implements IGroupApi {
     });
   }
 
-  async removeModelsFromGroup(models: Model[]): Promise<void> {
+  async removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void> {
     models.forEach((model) => {
       // Remove the model's group reference
       const existingModel = mockModels.get(model.id);

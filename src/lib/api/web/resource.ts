@@ -5,12 +5,13 @@ import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
-import { parseRawGroup, type RawGroup } from "../tauri/group";
 import {
   convertResourceFlagsToRaw,
+  parseRawGroup,
   parseRawResourceMeta,
+  type RawGroup,
   type RawResourceMeta,
-} from "../tauri/resource";
+} from "../shared/raw_model";
 
 export class WebResourceApi implements IResourceApi {
   private requestApi: IServerRequestApi;

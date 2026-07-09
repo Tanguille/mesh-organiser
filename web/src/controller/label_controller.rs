@@ -8,11 +8,11 @@ use axum::{
 use axum_login::login_required;
 use serde::Deserialize;
 
-use db::{label_db, label_keyword_db, model::label::LabelMeta, random_hex_32};
+use db::{label_db, label_keyword_db};
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -52,7 +52,7 @@ mod get {
     use axum_extra::extract::Query;
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         WebAppState, label_db, label_keyword_db,
     };
 
@@ -62,11 +62,10 @@ mod get {
     }
 
     pub async fn get_labels(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Query(params): Query<GetLabelsParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let labels = label_db::get_labels(
             &app_state.app_state.db,
             &user,
@@ -78,26 +77,22 @@ mod get {
     }
 
     pub async fn get_keywords_for_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let keywords =
             label_keyword_db::get_keywords_for_label(&app_state.app_state.db, &user, label_id)
-                .await
-                .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+                .await?;
 
         Ok(Json(keywords).into_response())
     }
 }
 
 mod post {
-    use db::time_now;
-
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, LabelMeta, Path, Response,
-        State, StatusCode, WebAppState, label_db, random_hex_32,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, label_db,
     };
 
     #[derive(Deserialize)]
@@ -107,12 +102,11 @@ mod post {
     }
 
     pub async fn add_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<PostLabelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-        let id = label_db::add_label(
+        let label_meta = label_db::add_label(
             &app_state.app_state.db,
             &user,
             &params.label_name,
@@ -120,14 +114,6 @@ mod post {
             None,
         )
         .await?;
-
-        let label_meta = LabelMeta {
-            id,
-            name: params.label_name,
-            color: params.label_color,
-            unique_global_id: random_hex_32(),
-            last_modified: time_now(),
-        };
 
         Ok(Json(label_meta).into_response())
     }
@@ -138,12 +124,11 @@ mod post {
     }
 
     pub async fn set_label_on_models(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<SetLabelOnModelsParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::remove_labels_from_models(
             &app_state.app_state.db,
             &user,
@@ -170,12 +155,11 @@ mod post {
     }
 
     pub async fn add_childs_to_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(parent_label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<AddChildsToLabelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::add_childs_to_label(
             &app_state.app_state.db,
             &user,
@@ -183,8 +167,7 @@ mod post {
             params.child_label_ids,
             None,
         )
-        .await
-        .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+        .await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -192,7 +175,7 @@ mod post {
 
 mod put {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         StatusCode, WebAppState, label_db, label_keyword_db,
     };
 
@@ -206,12 +189,11 @@ mod put {
     }
 
     pub async fn edit_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutLabelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::edit_label(
             &app_state.app_state.db,
             &user,
@@ -219,18 +201,9 @@ mod put {
             &params.label_name,
             params.label_color,
             params.label_timestamp.as_deref(),
+            params.label_global_id.as_deref(),
         )
         .await?;
-
-        if let Some(new_global_id) = params.label_global_id {
-            label_db::edit_label_global_id(
-                &app_state.app_state.db,
-                &user,
-                label_id,
-                &new_global_id,
-            )
-            .await?;
-        }
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -241,12 +214,11 @@ mod put {
     }
 
     pub async fn set_labels_on_model(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(model_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<SetLabelsOnModelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::remove_all_labels_from_models(&app_state.app_state.db, &user, &[model_id], None)
             .await?;
         label_db::add_labels_on_models(
@@ -267,20 +239,18 @@ mod put {
     }
 
     pub async fn set_childs_on_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(parent_label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<SetChildsOnLabelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::remove_all_childs_from_label(
             &app_state.app_state.db,
             &user,
             parent_label_id,
             None,
         )
-        .await
-        .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+        .await?;
 
         if !params.child_label_ids.is_empty() {
             label_db::add_childs_to_label(
@@ -290,8 +260,7 @@ mod put {
                 params.child_label_ids,
                 None,
             )
-            .await
-            .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+            .await?;
         }
 
         Ok(StatusCode::NO_CONTENT.into_response())
@@ -303,12 +272,11 @@ mod put {
     }
 
     pub async fn set_keywords_on_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<SetKeywordsOnLabelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_keyword_db::set_keywords_for_label(
             &app_state.app_state.db,
             &user,
@@ -316,8 +284,7 @@ mod put {
             params.keywords,
             None,
         )
-        .await
-        .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+        .await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -325,16 +292,15 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         StatusCode, WebAppState, label_db,
     };
 
     pub async fn delete_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::delete_label(&app_state.app_state.db, &user, label_id).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
@@ -346,12 +312,11 @@ mod delete {
     }
 
     pub async fn remove_label_from_models(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<RemoveLabelFromModelsParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::remove_labels_from_models(
             &app_state.app_state.db,
             &user,
@@ -370,12 +335,11 @@ mod delete {
     }
 
     pub async fn remove_childs_from_label(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(parent_label_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<RemoveChildsFromLabelParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         label_db::remove_childs_from_label(
             &app_state.app_state.db,
             &user,
@@ -383,8 +347,7 @@ mod delete {
             params.child_label_ids,
             None,
         )
-        .await
-        .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+        .await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }

@@ -14,6 +14,7 @@ import {
   forceApplyFieldToObject,
   metaFieldExtractor,
   resolveDirection,
+  stepDelete,
   type ResourceSet,
 } from "./algorithm";
 
@@ -28,6 +29,12 @@ async function stepUploadToRemote(
   globalSyncState.step = isDownload ? SyncStep.Download : SyncStep.Upload;
   globalSyncState.processableItems = toUpload.length;
   globalSyncState.processedItems = 0;
+
+  // Index the remote models once so per-label member resolution is
+  // O(label size) instead of a full model-library scan per label.
+  const remoteModelsById = new Map(
+    remoteModels.map((x) => [x.uniqueGlobalId, x]),
+  );
 
   // Fetch the remote labels once instead of per-iteration. `toUpload` is sorted
   // children-first, so appending each label's final meta (after editLabel pushes
@@ -48,8 +55,8 @@ async function stepUploadToRemote(
     const localModelsForLabel = await getAllModels(localModelApi, [
       label.meta.id,
     ]);
-    const relatedRemoteModels = remoteModels.filter((x) =>
-      localModelsForLabel.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
+    const relatedRemoteModels = localModelsForLabel.flatMap(
+      (model) => remoteModelsById.get(model.uniqueGlobalId) ?? [],
     );
     await remoteApi.addLabelToModels(newLabel, relatedRemoteModels);
 
@@ -78,6 +85,19 @@ async function stepSyncToRemote(
   globalSyncState.processableItems = toSync.length;
   globalSyncState.processedItems = 0;
 
+  // Index the remote models once so per-label member resolution is
+  // O(label size) instead of a full model-library scan per label.
+  const remoteModelsById = new Map(
+    remoteModels.map((x) => [x.uniqueGlobalId, x]),
+  );
+
+  // Fetch the remote labels once instead of per-iteration. Unlike the upload
+  // step no per-loop maintenance is needed: this step creates no remote labels
+  // and pairs are matched by uniqueGlobalId, so the list never changes mid-loop.
+  const remoteLabelMetas = (await remoteApi.getLabels(false)).map(
+    (x) => x.meta,
+  );
+
   for (const labelSet of toSync) {
     const { remote: remoteLabel, local: localLabel } = resolveDirection(
       labelSet,
@@ -95,16 +115,14 @@ async function stepSyncToRemote(
       remoteLabel.meta,
       remoteModelsForLabel,
     );
-    const relatedRemoteModels = remoteModels.filter((x) =>
-      localModelsForLabel.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
+    const relatedRemoteModels = localModelsForLabel.flatMap(
+      (model) => remoteModelsById.get(model.uniqueGlobalId) ?? [],
     );
     await remoteApi.addLabelToModels(remoteLabel.meta, relatedRemoteModels);
 
-    const relatedRemoteChildLabels = (await remoteApi.getLabels(false))
-      .map((x) => x.meta)
-      .filter((x) =>
-        localLabel.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
-      );
+    const relatedRemoteChildLabels = remoteLabelMetas.filter((x) =>
+      localLabel.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
+    );
 
     await remoteApi.setChildrenOnLabel(
       remoteLabel.meta,
@@ -121,23 +139,11 @@ async function stepSyncToRemote(
   }
 }
 
-async function deleteFromRemote(
-  toDelete: Label[],
-  remoteApi: ILabelApi,
-): Promise<void> {
-  globalSyncState.step = SyncStep.Delete;
-  globalSyncState.processableItems = toDelete.length;
-  globalSyncState.processedItems = 0;
-
-  for (const label of toDelete) {
-    await remoteApi.deleteLabel(label.meta);
-    globalSyncState.processedItems += 1;
-  }
-}
-
 export async function syncLabels(
   serverModelApi: IModelApi,
   serverLabelApi: ILabelApi,
+  serverModels: Model[],
+  localModels: Model[],
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
   resetSyncState();
@@ -145,14 +151,11 @@ export async function syncLabels(
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localLabelApi = getContainer().require<ILabelApi>(ILabelApi);
 
-  // The four full-list fetches are independent; run them concurrently.
-  const [serverModels, localModels, serverLabels, localLabels] =
-    await Promise.all([
-      getAllModels(serverModelApi),
-      getAllModels(localModelApi),
-      serverLabelApi.getLabels(false),
-      localLabelApi.getLabels(false),
-    ]);
+  // The two label-list fetches are independent; run them concurrently.
+  const [serverLabels, localLabels] = await Promise.all([
+    serverLabelApi.getLabels(false),
+    localLabelApi.getLabels(false),
+  ]);
 
   const modifiedServerLabels = forceApplyFieldToObject(
     serverLabels,
@@ -225,7 +228,9 @@ export async function syncLabels(
         localModels,
         true,
       ),
-    deleteServer: (toDelete) => deleteFromRemote(toDelete, serverLabelApi),
-    deleteLocal: (toDelete) => deleteFromRemote(toDelete, localLabelApi),
+    deleteServer: (toDelete) =>
+      stepDelete(toDelete, (label) => serverLabelApi.deleteLabel(label.meta)),
+    deleteLocal: (toDelete) =>
+      stepDelete(toDelete, (label) => localLabelApi.deleteLabel(label.meta)),
   });
 }

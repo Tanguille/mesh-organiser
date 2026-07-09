@@ -9,12 +9,8 @@
   import type { Model } from "$lib/api/shared/model_api";
   import type { SizeOptionModels } from "$lib/api/shared/settings_api";
   import { SizeOptionClasses } from "$lib/components/view/size-classes";
+  import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
   import { configuration } from "$lib/configuration.svelte";
-  import { handleGridItemKeyDown } from "$lib/utils";
-
-  interface Function {
-    (): void;
-  }
 
   let {
     value = $bindable(),
@@ -27,99 +23,23 @@
     itemSize: SizeOptionModels;
     availableModels: Model[];
     clazz?: ClassValue;
-    endOfListReached?: Function;
+    endOfListReached?: () => void;
   } = $props();
 
   let scrollContainer: HTMLElement;
 
-  const interval = setInterval(handleScroll, 1000);
-  const selectedSet = $derived(new Set(value.map((x) => x.id)));
-
-  onDestroy(() => {
-    clearInterval(interval);
+  const selection = createGridSelection<Model>({
+    getItems: () => availableModels,
+    getSelected: () => value,
+    setSelected: (next) => (value = next),
+    getId: (model) => model.id,
+    getScrollContainer: () => scrollContainer,
+    onEndOfList: () => endOfListReached?.(),
   });
 
-  function handleScroll() {
-    if (scrollContainer) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      if (Math.round(scrollTop + clientHeight + 10) >= scrollHeight) {
-        endOfListReached?.();
-      }
-    }
-  }
-
-  let preventOnClick = $state.raw(false);
-
-  function onClick(model: Model, event: MouseEvent) {
-    if (preventOnClick) {
-      preventOnClick = false;
-      return;
-    }
-
-    if (event.shiftKey && value.length === 1) {
-      let start = availableModels.indexOf(value[0]);
-      let end = availableModels.indexOf(model);
-
-      if (start === -1 || end === -1) {
-        return;
-      }
-
-      if (start > end) {
-        [start, end] = [end, start];
-      }
-
-      value = availableModels.slice(start, end + 1);
-    } else if (event.ctrlKey || event.metaKey) {
-      if (value.some((x) => x.id === model.id)) {
-        value = value.filter((x) => x.id !== model.id);
-      } else {
-        value = [...value, model];
-      }
-    } else {
-      value = [model];
-
-      setTimeout(() => {
-        if (event.target instanceof HTMLElement) {
-          event.target.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
-      }, 30);
-    }
-  }
-
-  function earlyOnClick(model: Model, event: MouseEvent, isSelected: boolean) {
-    preventOnClick = false;
-    if (!isSelected) {
-      onClick(model, event);
-      preventOnClick = true;
-    }
-  }
-
-  function onRightClick(model: Model, event: MouseEvent) {
-    if (value.some((m) => m.id === model.id)) {
-      return;
-    }
-
-    value = [model];
-
-    const el = event.target;
-    if (el instanceof HTMLElement) {
-      setTimeout(() => {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 30);
-    }
-  }
-
-  function onKeyDown(model: Model, event: KeyboardEvent) {
-    handleGridItemKeyDown(
-      model,
-      event,
-      onClick as (m: Model, e: MouseEvent | KeyboardEvent) => void,
-      true,
-    );
-  }
+  onDestroy(() => {
+    selection.destroy();
+  });
 
   const sizeClasses = $derived(SizeOptionClasses[itemSize]);
 </script>
@@ -127,7 +47,7 @@
 <div
   class="overflow-y-scroll {clazz}"
   bind:this={scrollContainer}
-  onscroll={handleScroll}
+  onscroll={selection.handleScroll}
 >
   <DragSelectedModels models={value} class="select-none">
     <RightClickModels
@@ -136,17 +56,17 @@
     >
       {#if itemSize.includes("List")}
         {#each availableModels as model (model.id)}
-          {@const isSelected = selectedSet.has(model.id)}
+          {@const isSelected = selection.selectedSet.has(model.id)}
           <div class="grid w-full grid-cols-[auto_1fr] items-center gap-2">
             {@render ModelCheckbox(model, "", isSelected)}
             <div
               role="option"
               tabindex="0"
               aria-selected={isSelected}
-              oncontextmenu={(e) => onRightClick(model, e)}
-              onclick={(e) => onClick(model, e)}
-              onkeydown={(e) => onKeyDown(model, e)}
-              onmousedown={(e) => earlyOnClick(model, e, isSelected)}
+              oncontextmenu={(e) => selection.onRightClick(model, e)}
+              onclick={(e) => selection.onClick(model, e)}
+              onkeydown={(e) => selection.onKeyDown(model, e)}
+              onmousedown={(e) => selection.earlyOnClick(model, e, isSelected)}
               class="min-w-0 cursor-pointer"
             >
               <ModelTinyList
@@ -160,16 +80,16 @@
         {/each}
       {:else}
         {#each availableModels as model (model.id)}
-          {@const isSelected = selectedSet.has(model.id)}
+          {@const isSelected = selection.selectedSet.has(model.id)}
           <div class="group relative">
             <div
               role="option"
               tabindex="0"
               aria-selected={isSelected}
-              oncontextmenu={(e) => onRightClick(model, e)}
-              onclick={(e) => onClick(model, e)}
-              onkeydown={(e) => onKeyDown(model, e)}
-              onmousedown={(e) => earlyOnClick(model, e, isSelected)}
+              oncontextmenu={(e) => selection.onRightClick(model, e)}
+              onclick={(e) => selection.onClick(model, e)}
+              onkeydown={(e) => selection.onKeyDown(model, e)}
+              onmousedown={(e) => selection.earlyOnClick(model, e, isSelected)}
               class="cursor-pointer"
             >
               <ModelTiny
@@ -195,13 +115,7 @@
   {#if configuration.show_multiselect_checkboxes}
     <Checkbox
       class={clazz}
-      bind:checked={
-        () => isSelected,
-        (val) =>
-          val
-            ? (value = [...value, model])
-            : (value = value.filter((x) => x.id !== model.id))
-      }
+      bind:checked={() => isSelected, (val) => selection.toggle(model, val)}
     />
   {/if}
 {/snippet}

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::{extract::FromRequestParts, http::StatusCode, http::request::Parts};
 use axum_login::{AuthUser as AxumAuthUser, AuthnBackend, UserId};
 use password_auth::verify_password;
 use serde::{Deserialize, Serialize};
@@ -160,6 +161,28 @@ impl AuthnBackend for Backend {
 //
 // Note that we've supplied our concrete backend here.
 pub type AuthSession = axum_login::AuthSession<Backend>;
+
+/// Extracts the domain [`User`] for the authenticated session, so handlers
+/// don't each repeat the auth-session unwrap and `to_user` mapping. Rejects
+/// with 401 when no user is logged in (matching `login_required!` semantics;
+/// the route layers stay in place as defense in depth).
+pub struct CurrentUser(pub User);
+
+impl<S> FromRequestParts<S> for CurrentUser
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let auth_session = AuthSession::from_request_parts(parts, state).await?;
+
+        auth_session
+            .user
+            .map(|user| Self(user.to_user()))
+            .ok_or((StatusCode::UNAUTHORIZED, "Not logged in"))
+    }
+}
 
 #[cfg(test)]
 mod tests {

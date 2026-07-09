@@ -6,7 +6,6 @@ use db::{
         label::{Label, LabelMeta},
         label_keyword::LabelKeyword,
     },
-    random_hex_32, time_now,
 };
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
@@ -32,7 +31,7 @@ pub async fn add_label(
     label_color: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<LabelMeta, ApplicationError> {
-    let id = label_db::add_label(
+    let label_meta = label_db::add_label(
         &state.app_state.db,
         &state.get_current_user(),
         label_name,
@@ -41,13 +40,7 @@ pub async fn add_label(
     )
     .await?;
 
-    Ok(LabelMeta {
-        id,
-        name: label_name.to_string(),
-        color: label_color,
-        last_modified: time_now(),
-        unique_global_id: random_hex_32(),
-    })
+    Ok(label_meta)
 }
 
 #[tauri::command]
@@ -135,18 +128,9 @@ pub async fn edit_label(
         label_name,
         label_color,
         label_timestamp,
+        label_global_id,
     )
     .await?;
-
-    if let Some(global_id) = label_global_id {
-        label_db::edit_label_global_id(
-            &state.app_state.db,
-            &state.get_current_user(),
-            label_id,
-            global_id,
-        )
-        .await?;
-    }
 
     Ok(())
 }
@@ -174,8 +158,7 @@ pub async fn add_childs_to_label(
         child_label_ids,
         None,
     )
-    .await
-    .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+    .await?;
 
     Ok(())
 }
@@ -193,8 +176,7 @@ pub async fn remove_childs_from_label(
         child_label_ids,
         None,
     )
-    .await
-    .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+    .await?;
 
     Ok(())
 }
@@ -211,8 +193,7 @@ pub async fn set_childs_on_label(
         parent_label_id,
         None,
     )
-    .await
-    .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+    .await?;
 
     if !child_label_ids.is_empty() {
         label_db::add_childs_to_label(
@@ -222,8 +203,7 @@ pub async fn set_childs_on_label(
             child_label_ids,
             None,
         )
-        .await
-        .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+        .await?;
     }
 
     Ok(())
@@ -242,8 +222,7 @@ pub async fn set_keywords_on_label(
         keywords,
         None,
     )
-    .await
-    .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+    .await?;
 
     Ok(())
 }
@@ -258,8 +237,7 @@ pub async fn get_keywords_for_label(
         &state.get_current_user(),
         label_id,
     )
-    .await
-    .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+    .await?;
 
     Ok(keywords)
 }

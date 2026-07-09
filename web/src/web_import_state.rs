@@ -56,6 +56,4 @@ impl ImportStateEmitter for WebImportStateEmitter {
             status.imported_model_count, status.model_count
         );
     }
-
-    fn all_data_event(&self, _state: &ImportState) {}
 }

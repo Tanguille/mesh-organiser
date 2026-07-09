@@ -19,7 +19,8 @@ use db::{
 
 use crate::{
     AppState, ServiceError, cleanse_evil_from_name, export_service, import_service,
-    import_state::ImportState,
+    import_state::{ImportState, ImportStateEmitter},
+    thumbnail_service,
 };
 
 /// Builds the `ModelGroupMeta` for the group produced by a 3MF extraction.
@@ -372,6 +373,43 @@ pub async fn extract_models(
         import_service::import_path(temp_dir.to_str().unwrap(), app_state, import_state).await?;
 
     Ok(result)
+}
+
+/// Runs the full 3MF extraction workflow shared by the Tauri command and the web
+/// handler: extract the objects as models, generate their thumbnails, and return
+/// the resulting group meta.
+///
+/// The optional emitter is installed after `extract_models`, so extraction itself
+/// runs with the default `NoneImportStateEmitter` and only thumbnail progress is
+/// emitted (matching the previous per-frontend behavior).
+///
+/// # Errors
+///
+/// Returns an error if extraction, thumbnail generation, or building the group
+/// meta fails.
+pub async fn extract_models_with_thumbnails(
+    model: &Model,
+    user: &User,
+    app_state: &AppState,
+    emitter: Option<Box<dyn ImportStateEmitter + Send + Sync>>,
+) -> Result<ModelGroupMeta, ServiceError> {
+    let mut import_state = extract_models(model, user, app_state).await?;
+
+    if let Some(emitter) = emitter {
+        import_state.set_emitter(emitter);
+    }
+
+    let model_ids = import_state.all_model_ids();
+
+    thumbnail_service::generate_thumbnails_for_model_ids(
+        app_state,
+        user,
+        model_ids,
+        &mut import_state,
+    )
+    .await?;
+
+    group_meta_from_import(&import_state)
 }
 
 // -----------------------------------------------------------------------------
