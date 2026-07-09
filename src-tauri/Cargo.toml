@@ -41,7 +41,7 @@ itertools = { workspace = true }
 tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
-# STEP support ships on linux/windows; other targets compile it out — see the
+# STEP support ships on linux/windows/macos; other targets compile it out — see the
 # cadrum target notes in libmeshthumbnail/Cargo.toml (linux builds OCCT from source).
 service = { workspace = true, features = ["step"] }
 serde_html_form = { workspace = true }

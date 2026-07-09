@@ -22,13 +22,14 @@ vek = { workspace = true }
 wavefront_obj = { workspace = true }
 zip = { workspace = true }
 
-[target.'cfg(target_os = "windows")'.dependencies]
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 cadrum = { workspace = true, optional = true }
 
 # Linux builds OCCT from source with the local toolchain (10-30 min once, then
 # cached in the cargo target dir). The prebuilt tarball bundles a static
 # libstdc++ from cadrum's build host, which collides with the system libstdc++
 # the GTK/WebKit stack loads and segfaults the Tauri app at startup. Windows
-# keeps the prebuilt: its mingw link is fully static, so there is no collision.
+# and macOS keep the prebuilt: the mingw link is fully static and macOS has no
+# GTK/libstdc++ in the stack, so there is no collision on either.
 [target.'cfg(target_os = "linux")'.dependencies]
 cadrum = { workspace = true, optional = true, features = ["source"] }
