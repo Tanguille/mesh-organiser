@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { IThreemfApi, ThreemfMetadata } from "../shared/threemf_api";
 import type { Model } from "../shared/model_api";
 import type { GroupMeta } from "../shared/group_api";
-import { parseRawGroupMeta, type RawGroupMeta } from "./group";
+import { parseRawGroupMeta, type RawGroupMeta } from "../shared/raw_model";
 
 export class ThreemfApi implements IThreemfApi {
   async extractThreemfModels(modelId: Model): Promise<GroupMeta> {

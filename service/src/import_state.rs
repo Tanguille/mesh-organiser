@@ -55,7 +55,6 @@ pub trait ImportStateEmitter {
     fn model_count_event(&self, status: &ImportState);
     fn thumbnail_count_event(&self, status: &ImportState);
     fn failure_reason_event(&self, status: &ImportState);
-    fn all_data_event(&self, state: &ImportState);
 }
 
 pub struct NoneImportStateEmitter;
@@ -67,7 +66,6 @@ impl ImportStateEmitter for NoneImportStateEmitter {
     fn model_group_event(&self, _status: &ImportState) {}
     fn thumbnail_count_event(&self, _status: &ImportState) {}
     fn model_count_event(&self, _status: &ImportState) {}
-    fn all_data_event(&self, _state: &ImportState) {}
 }
 
 impl ImportState {
@@ -214,7 +212,9 @@ impl ImportState {
             }
 
             let group_name = set.group_name.as_ref().unwrap();
-            let group_id = group_db::add_empty_group(&state.db, user, group_name, None).await?;
+            let group_id = group_db::add_empty_group(&state.db, user, group_name, None)
+                .await?
+                .id;
 
             group_db::set_group_id_on_models(
                 &state.db,
@@ -239,10 +239,5 @@ impl ImportState {
         self.emitter.model_total_event(self);
         self.emitter.model_group_event(self);
         self.emitter.failure_reason_event(self);
-    }
-
-    // Pushes all data to the frontend
-    pub fn push_all_data_to_frontend(&self) {
-        self.emitter.all_data_event(self);
     }
 }

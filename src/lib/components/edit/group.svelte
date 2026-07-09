@@ -32,15 +32,11 @@
   import { onMount } from "svelte";
   import { configurationMeta } from "$lib/configuration.svelte";
 
-  interface Function {
-    (): void;
-  }
-
   const props: {
     group: Group;
     class?: ClassValue;
     settingsVertical?: boolean;
-    onDelete?: Function;
+    onDelete?: () => void;
   } = $props();
   const tracked_group = $derived(props.group);
   const initialEditMode = $derived(!(props.settingsVertical ?? false));
@@ -52,10 +48,9 @@
       return [];
     }
 
-    return tracked_group.models
-      .map((x) => x.link)
-      .filter((x) => x)
-      .filter((value, index, self) => self.indexOf(value) === index);
+    return [
+      ...new Set(tracked_group.models.map((x) => x.link).filter((x) => x)),
+    ];
   });
 
   let link = $derived(links.length === 1 ? links[0]! : null);
@@ -96,8 +91,10 @@
 
       for (const model of group.models) {
         model.link = link;
-        await modelApi.editModel(model);
       }
+
+      // Edit all models concurrently rather than awaiting one round-trip per model.
+      await Promise.all(group.models.map((model) => modelApi.editModel(model)));
     },
     1000,
   );
@@ -117,8 +114,6 @@
   }
 
   async function openResourceInFolder() {
-    let resourceFolderApi =
-      getContainer().optional<IResourceFolderApi>(IResourceFolderApi);
     if (resource && resourceFolderApi) {
       await resourceFolderApi.openResourceFolder(resource);
     }

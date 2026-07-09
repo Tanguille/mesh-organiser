@@ -1,7 +1,7 @@
 import type { Blob } from "./blob_api";
 import type { GroupMeta } from "./group_api";
 import type { LabelMeta } from "./label_api";
-import { GeneratorStreamManager } from "./stream_manager";
+import { GeneratorStreamManager, pagedStream } from "./stream_manager";
 
 export interface ModelFlags {
   printed: boolean;
@@ -81,6 +81,44 @@ export enum ModelOrderBy {
   ModifiedDesc = "ModifiedDesc",
 }
 
+// Single home for the in-memory ModelOrderBy semantics, shared by the demo
+// API and the predefined stream manager so the copies cannot drift.
+export function modelOrderByComparator(
+  orderBy: ModelOrderBy,
+): (a: Model, b: Model) => number {
+  return (a, b) => {
+    switch (orderBy) {
+      case ModelOrderBy.AddedAsc:
+        return a.added.getTime() - b.added.getTime();
+      case ModelOrderBy.AddedDesc:
+        return b.added.getTime() - a.added.getTime();
+      case ModelOrderBy.NameAsc:
+        return a.name.localeCompare(b.name);
+      case ModelOrderBy.NameDesc:
+        return b.name.localeCompare(a.name);
+      case ModelOrderBy.SizeAsc:
+        return a.blob.size - b.blob.size;
+      case ModelOrderBy.SizeDesc:
+        return b.blob.size - a.blob.size;
+      case ModelOrderBy.ModifiedAsc:
+        return a.lastModified.getTime() - b.lastModified.getTime();
+      case ModelOrderBy.ModifiedDesc:
+        return b.lastModified.getTime() - a.lastModified.getTime();
+      default:
+        return 0;
+    }
+  };
+}
+
+// Case-insensitive name-or-description text-search predicate; the caller is
+// responsible for lowercasing the search text once up front.
+export function modelMatchesSearch(model: Model, lowerSearch: string): boolean {
+  return (
+    model.name.toLowerCase().includes(lowerSearch) ||
+    (model.description?.toLowerCase().includes(lowerSearch) ?? false)
+  );
+}
+
 export const IModelApi = Symbol("IModelApi");
 
 export interface IModelApi {
@@ -141,10 +179,7 @@ export async function* modelStream(
   flags: ModelFlags | null,
   pageSize: number = 50,
 ): AsyncGenerator<Model[]> {
-  let page = 1;
-  let prefetchNextTask: Promise<Model[]> | null = null;
-
-  const fetchPage = (pageNumber: number) =>
+  yield* pagedStream((pageNumber) =>
     modelApi.getModels(
       modelIds,
       groupIds,
@@ -154,21 +189,8 @@ export async function* modelStream(
       pageNumber,
       pageSize,
       flags,
-    );
-
-  while (true) {
-    prefetchNextTask ??= fetchPage(page);
-
-    const models = await prefetchNextTask;
-    if (models.length === 0) {
-      break;
-    }
-
-    page += 1;
-    prefetchNextTask = fetchPage(page);
-
-    yield models;
-  }
+    ),
+  );
 }
 
 export interface IModelStreamManager {
@@ -208,32 +230,12 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   private computeSortedFiltered(): Model[] {
     const filtered = !this.textSearch
       ? this.models
-      : this.models.filter(
-          (model) =>
-            model.name.toLowerCase().includes(this.textSearch!) ||
-            (model.description?.toLowerCase().includes(this.textSearch!) ??
-              false),
+      : this.models.filter((model) =>
+          modelMatchesSearch(model, this.textSearch!),
         );
 
     // Copy before sorting so we never mutate the caller-owned `this.models`.
-    return [...filtered].sort((a, b) => {
-      switch (this.orderBy) {
-        case ModelOrderBy.AddedAsc:
-          return a.added.getTime() - b.added.getTime();
-        case ModelOrderBy.AddedDesc:
-          return b.added.getTime() - a.added.getTime();
-        case ModelOrderBy.NameAsc:
-          return a.name.localeCompare(b.name);
-        case ModelOrderBy.NameDesc:
-          return b.name.localeCompare(a.name);
-        case ModelOrderBy.SizeAsc:
-          return a.blob.size - b.blob.size;
-        case ModelOrderBy.SizeDesc:
-          return b.blob.size - a.blob.size;
-        default:
-          return 0;
-      }
-    });
+    return [...filtered].sort(modelOrderByComparator(this.orderBy));
   }
 
   async fetch(): Promise<Model[]> {

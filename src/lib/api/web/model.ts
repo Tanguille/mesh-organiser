@@ -8,13 +8,13 @@ import type {
 import {
   buildGetModelsQuery,
   convertModelFlagsToRaw,
+  parseRawModel,
   type RawModel,
 } from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
-import { parseRawModel } from "../tauri/model";
 
 export class WebModelApi implements IModelApi {
   private requestApi: IServerRequestApi;

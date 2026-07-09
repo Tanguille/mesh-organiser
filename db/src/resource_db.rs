@@ -135,10 +135,10 @@ pub async fn add_resource(
     user: &User,
     name: &str,
     update_timestamp: Option<&str>,
-) -> Result<i64, DbError> {
+) -> Result<ResourceMeta, DbError> {
     let now = time_now();
-    let hex = random_hex_32();
-    let updated = update_timestamp.unwrap_or(&now);
+    let unique_global_id = random_hex_32();
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
 
     let result = sqlx::query!(
         "INSERT INTO resources (resource_name, resource_created, resource_user_id, resource_unique_global_id, resource_last_modified)
@@ -146,13 +146,21 @@ pub async fn add_resource(
         name,
         now,
         user.id,
-        hex,
-        updated
+        unique_global_id,
+        last_modified
     )
     .execute(db)
     .await?;
 
-    Ok(result.last_insert_rowid())
+    // Flags match the schema's DEFAULT 0.
+    Ok(ResourceMeta {
+        id: result.last_insert_rowid(),
+        name: name.to_string(),
+        flags: ResourceFlags::empty(),
+        created: now,
+        last_modified,
+        unique_global_id,
+    })
 }
 
 pub async fn get_unique_id_from_resource_id(
@@ -190,6 +198,7 @@ pub async fn edit_resource(
     name: &str,
     flags: ResourceFlags,
     update_timestamp: Option<&str>,
+    global_id: Option<&str>,
 ) -> Result<(), DbError> {
     let bits = i64::from(flags.bits());
     let current_time = time_now();
@@ -206,10 +215,14 @@ pub async fn edit_resource(
     .execute(db)
     .await?;
 
+    if let Some(global_id) = global_id {
+        edit_resource_global_id(db, user, resource_id, global_id).await?;
+    }
+
     Ok(())
 }
 
-pub async fn edit_resource_global_id(
+async fn edit_resource_global_id(
     db: &DbContext,
     user: &User,
     resource_id: i64,
@@ -257,7 +270,19 @@ pub async fn set_resource_on_group(
     group_id: i64,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let Some(group) = group_db::get_group_via_id(db, user, group_id).await? else {
+    // Lightweight existence check; the EXISTS clause mirrors get_group_via_id's
+    // behavior of treating a group with zero models as not found.
+    let Some(group_row) = sqlx::query!(
+        "SELECT group_resource_id FROM models_group
+            WHERE group_id = ? AND group_user_id = ?
+            AND EXISTS (SELECT 1 FROM models WHERE model_group_id = models_group.group_id AND model_user_id = ?)",
+        group_id,
+        user.id,
+        user.id
+    )
+    .fetch_optional(db)
+    .await?
+    else {
         return Err(DbError::RowNotFound);
     };
 
@@ -282,7 +307,7 @@ pub async fn set_resource_on_group(
         set_last_updated_on_resource(db, user, resource_id, timestamp).await?;
     }
 
-    if let Some(resource_id) = group.meta.resource_id {
+    if let Some(resource_id) = group_row.group_resource_id {
         set_last_updated_on_resource(db, user, resource_id, timestamp).await?;
     }
 

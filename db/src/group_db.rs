@@ -296,9 +296,9 @@ pub async fn add_empty_group(
     user: &User,
     group_name: &str,
     update_timestamp: Option<&str>,
-) -> Result<i64, DbError> {
+) -> Result<ModelGroupMeta, DbError> {
     let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    let last_modified = update_timestamp.unwrap_or(&now).to_string();
     let unique_global_id = random_hex_32();
 
     let result = sqlx::query!(
@@ -306,14 +306,20 @@ pub async fn add_empty_group(
         group_name,
         now,
         user.id,
-        timestamp,
+        last_modified,
         unique_global_id
     )
     .execute(db)
     .await?;
 
-    let group_id = result.last_insert_rowid();
-    Ok(group_id)
+    Ok(ModelGroupMeta {
+        id: result.last_insert_rowid(),
+        name: group_name.to_string(),
+        created: now,
+        last_modified,
+        resource_id: None,
+        unique_global_id,
+    })
 }
 
 pub async fn edit_group(
@@ -322,6 +328,7 @@ pub async fn edit_group(
     group_id: i64,
     group_name: &str,
     update_timestamp: Option<&str>,
+    global_id: Option<&str>,
 ) -> Result<(), DbError> {
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
@@ -336,10 +343,14 @@ pub async fn edit_group(
     .execute(db)
     .await?;
 
+    if let Some(global_id) = global_id {
+        edit_group_global_id(db, user, group_id, global_id).await?;
+    }
+
     Ok(())
 }
 
-pub async fn edit_group_global_id(
+async fn edit_group_global_id(
     db: &DbContext,
     user: &User,
     group_id: i64,
@@ -372,24 +383,13 @@ pub async fn delete_group(db: &DbContext, user: &User, group_id: i64) -> Result<
 }
 
 pub async fn delete_dead_groups(db: &DbContext) -> Result<(), DbError> {
-    let dead_group_ids = sqlx::query!(
-        "SELECT group_id, group_user_id FROM models_group
+    // No user filter needed: a group without models is dead regardless of owner.
+    sqlx::query!(
+        "DELETE FROM models_group
          WHERE group_id NOT IN (SELECT DISTINCT model_group_id FROM models WHERE model_group_id IS NOT NULL)"
     )
-    .fetch_all(db)
+    .execute(db)
     .await?;
-
-    for row in dead_group_ids {
-        delete_group(
-            db,
-            &User {
-                id: row.group_user_id,
-                ..Default::default()
-            },
-            row.group_id,
-        )
-        .await?;
-    }
 
     Ok(())
 }
@@ -452,15 +452,6 @@ pub async fn get_group_via_id(
     }
 
     Ok(Some(groups.remove(0)))
-}
-
-pub async fn set_last_updated_on_group(
-    db: &DbContext,
-    user: &User,
-    group_id: i64,
-    timestamp: &str,
-) -> Result<(), DbError> {
-    set_last_updated_on_groups(db, user, &[group_id], timestamp).await
 }
 
 pub async fn set_last_updated_on_groups(

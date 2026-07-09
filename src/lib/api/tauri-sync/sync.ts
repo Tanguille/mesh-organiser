@@ -2,6 +2,7 @@ import { currentUser } from "$lib/configuration.svelte";
 import { resetSyncState } from "$lib/sync.svelte";
 import { dateToString } from "$lib/utils";
 import { invoke } from "@tauri-apps/api/core";
+import { getAllModels, IModelApi } from "../shared/model_api";
 import type { IServerRequestApi } from "../shared/server_request_api";
 import type { ISyncApi } from "../shared/sync_api";
 import { ISwitchUserApi, type User } from "../shared/user_api";
@@ -48,8 +49,23 @@ export class SyncApi implements ISyncApi {
 
     try {
       await syncModels(serverModelApi, serverGroupApi, serverBlobApi);
-      await syncGroups(serverModelApi, serverGroupApi);
-      await syncLabels(serverModelApi, serverLabelApi);
+
+      // Model identities are stable once syncModels completes, so drain both
+      // full model lists once here instead of re-fetching them inside each of
+      // the group and label stages.
+      const localModelApi = getContainer().require<IModelApi>(IModelApi);
+      const [serverModels, localModels] = await Promise.all([
+        getAllModels(serverModelApi),
+        getAllModels(localModelApi),
+      ]);
+
+      await syncGroups(serverGroupApi, serverModels, localModels);
+      await syncLabels(
+        serverModelApi,
+        serverLabelApi,
+        serverModels,
+        localModels,
+      );
       await syncResources(serverGroupApi, serverResourceApi);
     } catch (e) {
       console.error("Error during sync:", e);

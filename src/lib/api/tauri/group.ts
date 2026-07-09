@@ -14,13 +14,6 @@ import {
 } from "../shared/raw_model";
 import { dateToString } from "$lib/utils";
 
-export {
-  parseRawGroup,
-  parseRawGroupMeta,
-  type RawGroup,
-  type RawGroupMeta,
-} from "../shared/raw_model";
-
 export class GroupApi implements IGroupApi {
   async getGroups(
     model_ids: number[] | null,
@@ -76,14 +69,17 @@ export class GroupApi implements IGroupApi {
     return await invoke("ungroup", { groupId: group.id });
   }
 
-  async addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void> {
+  async addModelsToGroup(
+    group: GroupMeta,
+    models: Pick<Model, "id">[],
+  ): Promise<void> {
     return await invoke("add_models_to_group", {
       groupId: group.id,
       modelIds: models.map((model) => model.id),
     });
   }
 
-  async removeModelsFromGroup(models: Model[]): Promise<void> {
+  async removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void> {
     return await invoke("remove_models_from_group", {
       modelIds: models.map((model) => model.id),
     });

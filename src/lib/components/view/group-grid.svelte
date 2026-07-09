@@ -9,6 +9,7 @@
   import type { Model } from "$lib/api/shared/model_api";
   import {
     convertOrderOptionGroupsToEnum,
+    GROUP_ORDER_LABELS,
     type OrderOptionGroups,
   } from "$lib/api/shared/settings_api";
   import { SizeOptionClasses } from "$lib/components/view/size-classes";
@@ -19,6 +20,7 @@
   import { Input } from "$lib/components/ui/input";
   import * as Select from "$lib/components/ui/select/index.js";
   import DragSelectedModels from "$lib/components/view/drag-selected-models.svelte";
+  import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
   import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
   import RightClickModels from "$lib/components/view/right-click-models.svelte";
   import { configuration } from "$lib/configuration.svelte";
@@ -27,12 +29,7 @@
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
-  import {
-    debounce,
-    handleGridItemKeyDown,
-    wait,
-    uniqueById,
-  } from "$lib/utils";
+  import { debounce, wait, uniqueById } from "$lib/utils";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -43,18 +40,13 @@
     fullGroup: boolean;
   }
 
-  interface Function {
-    (groups: GroupWithModels[]): void;
-  }
-
   const props: {
     groupStream: IGroupStreamManager;
     default_show_multiselect_all?: boolean;
-    onDelete?: Function;
+    onDelete?: (groups: GroupWithModels[]) => void;
   } = $props();
   let loadedGroups = $state<Group[]>([]);
   let selected = $state.raw<Group[]>([]);
-  const selectedSet = $derived(new Set(selected.map((x) => x.meta.id)));
 
   const isMobile = new IsMobile();
   const showLeftSide = $derived(
@@ -106,15 +98,6 @@
 
   let debouncedSetNewSearchText = debounce(setNewSearchText, 200);
 
-  function handleScroll() {
-    if (!scrollContainer || busyLoadingNext) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-    if (Math.round(scrollTop + clientHeight + 10) >= scrollHeight) {
-      fetchNextGroupSet();
-    }
-  }
-
   // Reuse the shared item size classes, layering on the image-strip widths the
   // list view needs for its `.imglist` container.
   const sizes = {
@@ -126,17 +109,8 @@
 
   const size = $derived(sizes[configuration.size_option_groups]);
 
-  const readableOrders = {
-    "date-asc": "Added (Asc)",
-    "date-desc": "Added (Desc)",
-    "name-asc": "Name (A->Z)",
-    "name-desc": "Name (Z->A)",
-    "modified-asc": "Modified (Asc)",
-    "modified-desc": "Modified (Desc)",
-  };
-
   const readableOrder = $derived(
-    readableOrders[configuration.order_option_groups],
+    GROUP_ORDER_LABELS[configuration.order_option_groups],
   );
 
   $effect(() => {
@@ -144,8 +118,6 @@
       convertOrderOptionGroupsToEnum(configuration.order_option_groups),
     );
   });
-
-  const interval = setInterval(handleScroll, 1000);
 
   let splitViewSelectedModels = $state.raw<Model[]>([]);
 
@@ -162,85 +134,23 @@
     selected = next;
   }
 
-  onDestroy(() => {
-    clearInterval(interval);
+  // Selection interaction shared with model-grid-inner. The split view's
+  // model sub-selection must be cleared whenever the group selection is about
+  // to change, so it hooks in via onBeforeSelect. fetchNextGroupSet already
+  // self-guards on busyLoadingNext.
+  const selection = createGridSelection<Group>({
+    getItems: () => loadedGroups,
+    getSelected: () => selected,
+    setSelected: (next) => (selected = next),
+    getId: (group) => group.meta.id,
+    onBeforeSelect: clearSplitViewModels,
+    getScrollContainer: () => scrollContainer,
+    onEndOfList: fetchNextGroupSet,
   });
 
-  let preventOnClick = $state.raw(false);
-
-  async function onClick(group: Group, event: MouseEvent) {
-    if (preventOnClick) {
-      preventOnClick = false;
-      return;
-    }
-
-    clearSplitViewModels();
-
-    if (event.shiftKey && selected.length === 1) {
-      let start = loadedGroups.indexOf(selected[0]);
-      let end = loadedGroups.indexOf(group);
-
-      if (start === -1 || end === -1) {
-        return;
-      }
-
-      if (start > end) {
-        [start, end] = [end, start];
-      }
-
-      selected = loadedGroups.slice(start, end + 1);
-    } else if (event.ctrlKey || event.metaKey) {
-      if (selectedSet.has(group.meta.id)) {
-        selected = selected.filter((x) => x.meta.id !== group.meta.id);
-      } else {
-        selected = [...selected, group];
-      }
-    } else {
-      selected = [group];
-
-      setTimeout(() => {
-        if (event.target instanceof HTMLElement) {
-          event.target.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
-      }, 30);
-    }
-  }
-
-  function earlyOnClick(group: Group, event: MouseEvent, isSelected: boolean) {
-    preventOnClick = false;
-    if (!isSelected) {
-      onClick(group, event);
-      preventOnClick = true;
-    }
-  }
-
-  function onRightClick(group: Group, event: MouseEvent) {
-    if (selected.some((m) => m.meta.id === group.meta.id)) {
-      return;
-    }
-
-    clearSplitViewModels();
-    selected = [group];
-
-    const el = event.target;
-    if (el instanceof HTMLElement) {
-      setTimeout(() => {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 30);
-    }
-  }
-
-  function onKeyDown(group: Group, event: KeyboardEvent) {
-    handleGridItemKeyDown(
-      group,
-      event,
-      onClick as (g: Group, e: MouseEvent | KeyboardEvent) => Promise<void>,
-      true,
-    );
-  }
+  onDestroy(() => {
+    selection.destroy();
+  });
 
   function onSearchInput(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -372,7 +282,7 @@
           <Select.Content>
             <Select.Group>
               <Select.GroupHeading>Sort options</Select.GroupHeading>
-              {#each Object.entries(readableOrders) as order (order[0])}
+              {#each Object.entries(GROUP_ORDER_LABELS) as order (order[0])}
                 <Select.Item value={order[0]} label={order[1]}
                   >{order[1]}</Select.Item
                 >
@@ -526,7 +436,7 @@
   <div
     class="h-full overflow-y-scroll"
     bind:this={scrollContainer}
-    onscroll={handleScroll}
+    onscroll={selection.handleScroll}
   >
     <DragSelectedModels
       models={selected.map((x) => x.models).flat()}
@@ -538,17 +448,18 @@
       >
         {#if configuration.size_option_groups.includes("List")}
           {#each loadedGroups as group (group.meta.id)}
-            {@const isSelected = selectedSet.has(group.meta.id)}
+            {@const isSelected = selection.selectedSet.has(group.meta.id)}
             <div class="grid w-full grid-cols-[auto_1fr] items-center gap-2">
               {@render GroupCheckbox(group, "", isSelected)}
               <div
                 role="option"
                 tabindex="0"
                 aria-selected={isSelected}
-                oncontextmenu={(e) => onRightClick(group, e)}
-                onclick={(e) => onClick(group, e)}
-                onkeydown={(e) => onKeyDown(group, e)}
-                onmousedown={(e) => earlyOnClick(group, e, isSelected)}
+                oncontextmenu={(e) => selection.onRightClick(group, e)}
+                onclick={(e) => selection.onClick(group, e)}
+                onkeydown={(e) => selection.onKeyDown(group, e)}
+                onmousedown={(e) =>
+                  selection.earlyOnClick(group, e, isSelected)}
                 class="min-w-0 cursor-pointer"
               >
                 <GroupTinyList
@@ -562,16 +473,17 @@
           {/each}
         {:else}
           {#each loadedGroups as group (group.meta.id)}
-            {@const isSelected = selectedSet.has(group.meta.id)}
+            {@const isSelected = selection.selectedSet.has(group.meta.id)}
             <div class="group relative">
               <div
                 role="option"
                 tabindex="0"
                 aria-selected={isSelected}
-                oncontextmenu={(e) => onRightClick(group, e)}
-                onclick={(e) => onClick(group, e)}
-                onkeydown={(e) => onKeyDown(group, e)}
-                onmousedown={(e) => earlyOnClick(group, e, isSelected)}
+                oncontextmenu={(e) => selection.onRightClick(group, e)}
+                onclick={(e) => selection.onClick(group, e)}
+                onkeydown={(e) => selection.onKeyDown(group, e)}
+                onmousedown={(e) =>
+                  selection.earlyOnClick(group, e, isSelected)}
                 class="cursor-pointer"
               >
                 <GroupTiny
@@ -598,17 +510,7 @@
   {#if configuration.show_multiselect_checkboxes}
     <Checkbox
       class={clazz}
-      bind:checked={
-        () => isSelected,
-        (val) => {
-          clearSplitViewModels();
-          if (val) {
-            selected = [...selected, group];
-          } else {
-            selected = selected.filter((x) => x.meta.id !== group.meta.id);
-          }
-        }
-      }
+      bind:checked={() => isSelected, (val) => selection.toggle(group, val)}
     />
   {:else}
     <div></div>

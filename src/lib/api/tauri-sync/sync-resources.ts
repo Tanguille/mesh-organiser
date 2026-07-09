@@ -12,6 +12,7 @@ import {
   applySyncResult,
   computeDifferences,
   resolveDirection,
+  stepDelete,
   type ResourceSet,
 } from "./algorithm";
 
@@ -97,20 +98,6 @@ async function stepSyncToRemote(
   }
 }
 
-async function deleteFromRemote(
-  toDelete: ResourceMeta[],
-  remoteApi: IResourceApi,
-): Promise<void> {
-  globalSyncState.step = SyncStep.Delete;
-  globalSyncState.processableItems = toDelete.length;
-  globalSyncState.processedItems = 0;
-
-  for (const resource of toDelete) {
-    await remoteApi.deleteResource(resource);
-    globalSyncState.processedItems += 1;
-  }
-}
-
 export async function syncResources(
   serverGroupApi: IGroupApi,
   serverResourceApi: IResourceApi,
@@ -171,7 +158,13 @@ export async function syncResources(
         localGroups,
         true,
       ),
-    deleteServer: (toDelete) => deleteFromRemote(toDelete, serverResourceApi),
-    deleteLocal: (toDelete) => deleteFromRemote(toDelete, localResourceApi),
+    deleteServer: (toDelete) =>
+      stepDelete(toDelete, (resource) =>
+        serverResourceApi.deleteResource(resource),
+      ),
+    deleteLocal: (toDelete) =>
+      stepDelete(toDelete, (resource) =>
+        localResourceApi.deleteResource(resource),
+      ),
   });
 }

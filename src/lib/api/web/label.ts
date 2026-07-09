@@ -16,7 +16,7 @@ import {
   type RawLabel,
   type RawLabelKeyword,
   type RawLabelMeta,
-} from "../tauri/label";
+} from "../shared/raw_model";
 
 export class WebLabelApi implements ILabelApi {
   private requestApi: IServerRequestApi;

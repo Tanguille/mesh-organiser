@@ -1,13 +1,46 @@
 import { zipSync, type Zippable } from "fflate";
 import { fileTypeToPlainFileExtension, type IBlobApi } from "./blob_api";
 import type { Model } from "./model_api";
-import { nameCollectionOfModels, triggerBlobDownload } from "$lib/utils";
+import {
+  countWriter,
+  nameCollectionOfModels,
+  triggerBlobDownload,
+} from "$lib/utils";
+import { toast } from "svelte-sonner";
 
 export const IDownloadApi = Symbol("IDownloadApi");
 
 export interface IDownloadApi {
   downloadModel(model: Model): Promise<void>;
   downloadModelsAsZip(models: Model[]): Promise<void>;
+}
+
+export async function downloadModels(
+  models: Model[],
+  downloadApi: IDownloadApi | null,
+): Promise<void> {
+  if (!downloadApi) {
+    return;
+  }
+
+  let promise;
+
+  if (models.length <= 0) {
+    return;
+  } else if (models.length === 1) {
+    promise = downloadApi.downloadModel(models[0]);
+  } else {
+    promise = downloadApi.downloadModelsAsZip(models);
+  }
+
+  toast.promise(promise, {
+    loading: `Downloading ${countWriter("model", models)}...`,
+    success: (_) => {
+      return `Downloaded ${countWriter("model", models)}`;
+    },
+  });
+
+  await promise;
 }
 
 export class DefaultDownloadApi implements IDownloadApi {

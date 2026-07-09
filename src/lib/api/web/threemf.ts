@@ -5,7 +5,7 @@ import {
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import type { IThreemfApi, ThreemfMetadata } from "../shared/threemf_api";
-import { parseRawGroupMeta, type RawGroupMeta } from "../tauri/group";
+import { parseRawGroupMeta, type RawGroupMeta } from "../shared/raw_model";
 
 export class WebThreemfApi implements IThreemfApi {
   private requestApi: IServerRequestApi;

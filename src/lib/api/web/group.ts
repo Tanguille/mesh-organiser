@@ -16,7 +16,7 @@ import {
   parseRawGroupMeta,
   type RawGroup,
   type RawGroupMeta,
-} from "../tauri/group";
+} from "../shared/raw_model";
 
 export class WebGroupApi implements IGroupApi {
   private requestApi: IServerRequestApi;
@@ -98,7 +98,10 @@ export class WebGroupApi implements IGroupApi {
     );
   }
 
-  async addModelsToGroup(group: GroupMeta, models: Model[]): Promise<void> {
+  async addModelsToGroup(
+    group: GroupMeta,
+    models: Pick<Model, "id">[],
+  ): Promise<void> {
     const data = {
       model_ids: models.map((model) => model.id),
     };
@@ -110,7 +113,7 @@ export class WebGroupApi implements IGroupApi {
     );
   }
 
-  async removeModelsFromGroup(models: Model[]): Promise<void> {
+  async removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void> {
     const data = {
       model_ids: models.map((model) => model.id),
     };

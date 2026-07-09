@@ -5,7 +5,7 @@ use db::{
         model_group::ModelGroup,
         resource::{ResourceFlags, ResourceMeta},
     },
-    random_hex_32, resource_db, time_now,
+    resource_db,
 };
 use service::resource_service;
 
@@ -26,7 +26,7 @@ pub async fn add_resource(
     resource_name: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<ResourceMeta, ApplicationError> {
-    let id = resource_db::add_resource(
+    let resource_meta = resource_db::add_resource(
         &state.app_state.db,
         &state.get_current_user(),
         resource_name,
@@ -34,14 +34,7 @@ pub async fn add_resource(
     )
     .await?;
 
-    Ok(ResourceMeta {
-        id,
-        name: resource_name.to_string(),
-        flags: ResourceFlags::empty(),
-        created: time_now(),
-        unique_global_id: random_hex_32(),
-        last_modified: time_now(),
-    })
+    Ok(resource_meta)
 }
 
 #[tauri::command]
@@ -60,18 +53,9 @@ pub async fn edit_resource(
         resource_name,
         resource_flags,
         resource_timestamp,
+        resource_global_id,
     )
     .await?;
-
-    if let Some(global_id) = resource_global_id {
-        resource_db::edit_resource_global_id(
-            &state.app_state.db,
-            &state.get_current_user(),
-            resource_id,
-            global_id,
-        )
-        .await?;
-    }
 
     Ok(())
 }
@@ -81,20 +65,7 @@ pub async fn remove_resource(
     resource_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    let user = state.get_current_user();
-    let resource =
-        resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?;
-
-    if resource.is_none() {
-        return Err(ApplicationError::InternalError(String::from(
-            "Resource not found",
-        )));
-    }
-
-    let resource = resource.unwrap();
-
-    resource_service::delete_resource_folder(&resource, &user, &state.app_state)?;
-    resource_db::delete_resource(&state.app_state.db, &state.get_current_user(), resource.id)
+    resource_service::delete_resource(resource_id, &state.get_current_user(), &state.app_state)
         .await?;
 
     Ok(())
@@ -106,9 +77,8 @@ pub async fn open_resource_folder(
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
     let user = state.get_current_user();
-    let resource = resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id)
-        .await
-        .map_err(|e| ApplicationError::InternalError(e.to_string()))?;
+    let resource =
+        resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?;
 
     if resource.is_none() {
         return Err(ApplicationError::InternalError(String::from(

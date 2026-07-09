@@ -164,7 +164,7 @@ const mockModelDataList: MockModelData[] = [
 let nextId = 1;
 let nextBlobId = 1;
 
-export const mockBlobs: Map<number, Blob> = new Map();
+const mockBlobs: Map<number, Blob> = new Map();
 export const mockModels: Map<number, Model> = new Map();
 
 // Generate mock data

@@ -81,9 +81,18 @@ async function getInitialState(): Promise<InitialState> {
 export async function initTauriLocalApis(): Promise<void> {
   resetContainer();
   const container = getContainer();
-  const state = await getInitialState();
+  const settings = new SettingsApi();
+  const userApi = new UserApi();
 
-  const appDataDirPath = await appDataDir();
+  // The four startup fetches are independent, so run them concurrently to pay
+  // the latency of the slowest round trip instead of the sum of all four.
+  const [state, appDataDirPath, config, currentUser] = await Promise.all([
+    getInitialState(),
+    appDataDir(),
+    settings.getConfiguration(),
+    userApi.getCurrentUser(),
+  ]);
+
   const blob = new BlobApi(appDataDirPath);
   const group = new GroupApi();
   const internalBrowser = new InternalBrowserApi();
@@ -91,19 +100,16 @@ export async function initTauriLocalApis(): Promise<void> {
   const model = new ModelApi();
   const resourceFolder = new ResourceFolderApi();
   const resource = new ResourceApi();
-  const settings = new SettingsApi();
   const tauriImport = new TauriImportApi();
   const sidebarApi = new TauriSidebarStateApi();
   const hostApi = new HostApi();
   const diskUsageInfoApi = new DiskUsageInfoApi();
   const slicerApi = new SlicerApi();
   const localApi = new LocalApi(appDataDirPath, state.max_parallelism ?? 2);
-  const userApi = new UserApi();
   const threemfApi = new ThreemfApi();
   const thumbnailApi = new ThumbnailApi();
   const userSyncApi = new TauriUserSyncApi();
 
-  const config = await settings.getConfiguration();
   Object.assign(configuration, config);
 
   console.log("initial state:", state);
@@ -130,7 +136,6 @@ export async function initTauriLocalApis(): Promise<void> {
 
   addEventListener("resize", debounced_resize);
 
-  const currentUser = await userApi.getCurrentUser();
   Object.assign(globalCurrentUser, currentUser);
 
   container.addSingleton(IInternalBrowserApi, internalBrowser);

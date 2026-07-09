@@ -37,7 +37,6 @@ tokio = { workspace = true, features = [
 ] }
 tokio-util = { workspace = true, features = ["io"] }
 arboard = { workspace = true }
-itertools = { workspace = true }
 tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
@@ -45,7 +44,8 @@ db = { workspace = true }
 # cadrum target notes in libmeshthumbnail/Cargo.toml (linux builds OCCT from source).
 service = { workspace = true, features = ["step"] }
 serde_html_form = { workspace = true }
-tauri-plugin-http = { workspace = true, features = ["multipart"] }
+# "stream" enables reqwest::Body::wrap_stream for streaming multipart uploads.
+tauri-plugin-http = { workspace = true, features = ["multipart", "stream"] }
 async_zip = { workspace = true, features = [
     "deflate",
     "deflate64",

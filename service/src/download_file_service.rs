@@ -1,19 +1,18 @@
 use std::{
-    env,
-    fs::{self, File},
-    io::Write,
+    fs,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 
-use chrono::Utc;
 use regex::Regex;
 use reqwest::{Response, header::CONTENT_DISPOSITION};
 use serde::Serialize;
+use tokio::{fs::File, io::AsyncWriteExt};
 use urlencoding::decode;
 
 use crate::{
-    export_service::ensure_unique_file_full_filename, service_error::ServiceError,
+    export_service::{ensure_unique_file_full_filename, get_temp_dir},
+    service_error::ServiceError,
     util::cleanse_evil_from_name,
 };
 
@@ -120,7 +119,7 @@ fn makerworld_model_page_url(original_url: &str, response_url: &str) -> Option<S
 /// Uses Content-Disposition or URL path segment for filename, cleanses it, writes to `dir`.
 /// Returns the file path and the response URL (for callers that need redirect/site logic).
 async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String), ServiceError> {
-    let response = reqwest::get(url).await?;
+    let mut response = reqwest::get(url).await?;
 
     if !response.status().is_success() {
         return Err(ServiceError::InternalError(format!(
@@ -134,9 +133,15 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
     let cleansed = cleanse_evil_from_name(&filename);
     let file_path = ensure_unique_file_full_filename(dir, &cleansed);
 
-    let mut file = File::create(&file_path)?;
-    let bytes = response.bytes().await?;
-    file.write_all(&bytes)?;
+    // Stream to disk chunk by chunk instead of buffering the whole response;
+    // callers fire these concurrently, so full-body buffering multiplies.
+    let mut file = File::create(&file_path).await?;
+    while let Some(chunk) = response.chunk().await? {
+        file.write_all(&chunk).await?;
+    }
+    // tokio::fs::File completes writes on a background task; flush before the
+    // caller renames or reads the file so it never observes a partial write.
+    file.flush().await?;
 
     Ok((file_path, response_url))
 }
@@ -166,13 +171,10 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
 ///
 /// # Panics
 ///
-/// Panics if the system clock cannot provide nanosecond timestamps for the temp dir name.
+/// Panics if creating the temp dir fails or the system clock cannot provide
+/// nanosecond timestamps for the temp dir name (see [`get_temp_dir`]).
 pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
-    let temp_dir = env::temp_dir().join(format!(
-        "meshorganiser_download_action_{}",
-        Utc::now().timestamp_nanos_opt().unwrap()
-    ));
-    fs::create_dir_all(&temp_dir)?;
+    let temp_dir = get_temp_dir("download");
 
     let (mut file_path, response_url) = download_file_to_dir(url, &temp_dir).await?;
 

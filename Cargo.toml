@@ -23,7 +23,7 @@ libmeshthumbnail = { path = "libmeshthumbnail" }
 service = { path = "service" }
 
 euc = { git = "https://github.com/zesterer/euc", rev = "e8f7aeec9ff431b373f83de2c773ddf8a2a3ec4d", default-features = false }
-cadrum = { version = "0.8", default-features = false }
+cadrum = { version = "0.8.13", default-features = false }
 threemf = { version = "0.8.0" }
 
 arboard = { version = "3.6.1", default-features = false }
@@ -39,8 +39,8 @@ axum = "0.8.9"
 axum-extra = "0.12.6"
 axum-login = "0.18.0"
 axum-messages = "0.8.0"
-bitflags = "2.11.1"
-chrono = "0.4.44"
+bitflags = "2.13.0"
+chrono = "0.4.45"
 futures = "0.3.32"
 hex = "0.4.3"
 htmlescape = "0.3.1"
@@ -48,18 +48,18 @@ image = { version = "0.25.10", default-features = false }
 indexmap = "2.14.0"
 itertools = "0.15.0"
 password-auth = "1.0.0"
-rand = "0.10.1"
-regex = "1.12.3"
+rand = "0.10.2"
+regex = "1.13.0"
 reqwest = { version = "0.13.4", default-features = false }
 serde = "1.0.228"
-serde_html_form = "0.4.0"
+serde_html_form = "0.4.1"
 serde_json = "1.0.150"
 sha2 = "0.11.0"
 sqlx = { version = "0.9.0", default-features = false }
 stl_io = "0.11.0"
 strum = "0.28.0"
-tauri = { version = "2.11.2", features = ["wry"], default-features = false }
-tauri-build = { version = "2.6.2", default-features = false }
+tauri = { version = "2.11.5", features = ["wry"], default-features = false }
+tauri-build = { version = "2.6.3", default-features = false }
 tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
@@ -74,7 +74,7 @@ tauri-plugin-updater = { version = "2.10.1", features = [
 ], default-features = false }
 tauri-plugin-single-instance = "2.4.2"
 thiserror = "2.0.18"
-time = "0.3.47"
+time = "0.3.53"
 tokio = "1.52.3"
 tokio-util = "0.7.18"
 tower_governor = "0.8.0"

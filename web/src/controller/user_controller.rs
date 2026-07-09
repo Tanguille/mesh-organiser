@@ -16,7 +16,7 @@ use service::export_service;
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -69,16 +69,14 @@ pub fn router() -> Router<WebAppState> {
 
 mod get {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Json, Response, State, WebAppState,
+        ApplicationError, CurrentUser, IntoResponse, Json, Response, State, WebAppState,
         require_admin, user_db,
     };
 
     pub async fn get_users(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin(&user, "view users")?;
 
         let users = user_db::get_users(&app_state.app_state.db).await?;
@@ -89,7 +87,7 @@ mod get {
 
 mod post {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Response, Serialize, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Response, Serialize, State,
         WebAppState, require_admin, user_db,
     };
 
@@ -107,12 +105,10 @@ mod post {
     }
 
     pub async fn add_user(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<PostUserParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin(&user, "add a new user")?;
 
         let id = user_db::add_user(
@@ -131,7 +127,7 @@ mod post {
 
 mod put {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         StatusCode, UserPermissions, WebAppState, require_admin, require_admin_or_self, user_db,
     };
 
@@ -142,13 +138,11 @@ mod put {
     }
 
     pub async fn edit_user(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(user_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutUserParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin_or_self(&user, user_id, "change this user's password")?;
 
         user_db::edit_user_min(
@@ -168,13 +162,11 @@ mod put {
     }
 
     pub async fn edit_user_password(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(user_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutUserPasswordParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin_or_self(&user, user_id, "change this user's password")?;
 
         user_db::edit_user_password(&app_state.app_state.db, user_id, &params.new_password).await?;
@@ -190,13 +182,11 @@ mod put {
     }
 
     pub async fn edit_user_permissions(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(user_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutUserPermissionsParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin(&user, "change user permissions")?;
 
         user_db::set_user_permissions(&app_state.app_state.db, user_id, params.permissions).await?;
@@ -207,17 +197,15 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, AuthSession, IntoResponse, Path, Response, State, StatusCode,
+        ApplicationError, CurrentUser, IntoResponse, Path, Response, State, StatusCode,
         WebAppState, export_service, require_admin_or_self, user_db,
     };
 
     pub async fn delete_user(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(user_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin_or_self(&user, user_id, "delete this user")?;
 
         user_db::delete_user(&app_state.app_state.db, user_id).await?;
@@ -228,12 +216,10 @@ mod delete {
     }
 
     pub async fn generate_new_sync_token(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(user_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         require_admin_or_self(&user, user_id, "generate a new sync token for this user")?;
 
         user_db::scramble_login_token(&app_state.app_state.db, user_id).await?;

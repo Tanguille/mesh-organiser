@@ -58,15 +58,11 @@
   import OpenInSlicerButton from "../view/open-in-slicer-button.svelte";
   import Pin from "@lucide/svelte/icons/pin";
 
-  interface Function {
-    (): void;
-  }
-
   const props: {
     model: Model;
     class?: ClassValue;
     initialEditMode?: boolean;
-    onDelete?: Function;
+    onDelete?: () => void;
   } = $props();
   let deleted = $state(false);
 
@@ -124,8 +120,6 @@
   });
 
   const save_model_debounced = debounce(async (edited_model: Model) => {
-    console.log("Saving model");
-    console.log(edited_model);
     await modelApi.editModel(edited_model);
     await labelApi.setLabelsOnModel(edited_model.labels, edited_model);
     await updateSidebarState();

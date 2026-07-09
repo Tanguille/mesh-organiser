@@ -65,6 +65,17 @@ async function importModel(
   });
 }
 
+// Applies only the result fields of a finished import. The counter/status
+// fields of the global importState are maintained concurrently by the Tauri
+// event listeners and must not be clobbered here.
+function applyImportResult(target: ImportState, result: ImportState): void {
+  target.imported_models.push(...result.imported_models);
+  target.origin_url = result.origin_url;
+  target.failure_reason = result.failure_reason;
+  target.recursive = result.recursive;
+  target.delete_after_import = result.delete_after_import;
+}
+
 export class TauriImportApi implements ITauriImportApi {
   eventListeners: UnlistenFn[] = [];
   complete: ((value: unknown) => void)[] = [];
@@ -104,17 +115,8 @@ export class TauriImportApi implements ITauriImportApi {
           direct_open_in_slicer,
         );
 
-        importState.imported_models.push(...importResult.imported_models);
-        importState.origin_url = importResult.origin_url;
-        importState.failure_reason = importResult.failure_reason;
-        importState.recursive = importResult.recursive;
-        importState.delete_after_import = importResult.delete_after_import;
-
-        localImportState.imported_models.push(...importResult.imported_models);
-        localImportState.origin_url = importResult.origin_url;
-        localImportState.failure_reason = importResult.failure_reason;
-        localImportState.recursive = importResult.recursive;
-        localImportState.delete_after_import = importResult.delete_after_import;
+        applyImportResult(importState, importResult);
+        applyImportResult(localImportState, importResult);
 
         if (importResult.status === ImportStatus.Failure) {
           importState.status = localImportState.status = ImportStatus.Failure;
@@ -418,12 +420,7 @@ export class TauriImportApi implements ITauriImportApi {
       return;
     }
 
-    const paths: string[] =
-      typeof result === "string"
-        ? [result]
-        : result instanceof String
-          ? [String(result)]
-          : result;
+    const paths: string[] = typeof result === "string" ? [result] : result;
 
     await this.startImportProcess(paths, {});
   }

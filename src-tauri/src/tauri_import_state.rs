@@ -10,7 +10,6 @@ const IMPORT_MODEL_TOTAL_EVENT: &str = "import-model-total";
 const IMPORT_MODEL_COUNT_EVENT: &str = "import-model-count";
 const IMPORT_THUMBNAIL_COUNT_EVENT: &str = "import-thumbnail-count";
 const IMPORT_FAILURE_REASON_EVENT: &str = "import-failure-reason";
-const IMPORT_ALL_DATA_EVENT: &str = "import-all-data";
 
 pub struct TauriImportStateEmitter {
     handle: AppHandle,
@@ -52,10 +51,6 @@ impl ImportStateEmitter for TauriImportStateEmitter {
         let _ = self
             .handle
             .emit(IMPORT_MODEL_COUNT_EVENT, status.imported_model_count);
-    }
-
-    fn all_data_event(&self, state: &ImportState) {
-        let _ = self.handle.emit(IMPORT_ALL_DATA_EVENT, state);
     }
 }
 

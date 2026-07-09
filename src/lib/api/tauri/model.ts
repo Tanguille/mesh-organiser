@@ -12,12 +12,6 @@ import {
 } from "../shared/raw_model";
 import { dateToString } from "$lib/utils";
 
-export {
-  parseRawModel,
-  type RawModel,
-  convertModelFlagsToRaw,
-} from "../shared/raw_model";
-
 export class ModelApi implements IModelApi {
   async getModels(
     model_ids: number[] | null,

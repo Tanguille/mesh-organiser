@@ -116,7 +116,7 @@ async fn load_and_prepare_config(
     Ok(configuration)
 }
 
-async fn apply_local_account_and_thumbnails(
+async fn apply_local_account(
     web_app_state: &WebAppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let local_pass = env::var("LOCAL_ACCOUNT_PASSWORD").unwrap_or_else(|_| {
@@ -133,35 +133,45 @@ async fn apply_local_account_and_thumbnails(
     user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
     group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
 
+    Ok(())
+}
+
+/// Spawns the `REGENERATE_THUMBNAILS=all|missing` pass as a background task so
+/// the TCP listener can bind immediately; a large library's CPU-bound thumbnail
+/// pass would otherwise keep the server unreachable until it finishes.
+fn spawn_thumbnail_regeneration(web_app_state: &WebAppState) {
     let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
         .unwrap_or_else(|_| "none".into())
         .to_lowercase();
-    let mut import_state = ImportState::new_with_emitter(
-        None,
-        false,
-        true,
-        false,
-        User::default(),
-        Box::new(WebImportStateEmitter {}),
-    );
-    if regenerate_thumbnails == "all" {
-        println!("Regenerating all thumbnails...");
-        thumbnail_service::generate_all_thumbnails(
-            &web_app_state.app_state,
-            true,
-            &mut import_state,
-        )
-        .await?;
-    } else if regenerate_thumbnails == "missing" {
-        println!("Regenerating missing thumbnails...");
-        thumbnail_service::generate_all_thumbnails(
-            &web_app_state.app_state,
+    let force = match regenerate_thumbnails.as_str() {
+        "all" => true,
+        "missing" => false,
+        _ => return,
+    };
+
+    let app_state = web_app_state.app_state.clone();
+    tokio::spawn(async move {
+        // Hold the import mutex so regeneration does not race concurrent imports.
+        let _import_guard = app_state.import_mutex.clone().lock_owned().await;
+
+        println!(
+            "Regenerating {} thumbnails...",
+            if force { "all" } else { "missing" }
+        );
+        let mut import_state = ImportState::new_with_emitter(
+            None,
             false,
-            &mut import_state,
-        )
-        .await?;
-    }
-    Ok(())
+            true,
+            false,
+            User::default(),
+            Box::new(WebImportStateEmitter {}),
+        );
+        if let Err(e) =
+            thumbnail_service::generate_all_thumbnails(&app_state, force, &mut import_state).await
+        {
+            eprintln!("Thumbnail regeneration failed: {e}");
+        }
+    });
 }
 
 async fn update_session_middleware(
@@ -238,7 +248,8 @@ impl App {
 
         let session_store = setup_session_store(&sqlite_path).await?;
 
-        apply_local_account_and_thumbnails(&web_app_state).await?;
+        apply_local_account(&web_app_state).await?;
+        spawn_thumbnail_regeneration(&web_app_state);
 
         Ok(Self {
             app_state: web_app_state,

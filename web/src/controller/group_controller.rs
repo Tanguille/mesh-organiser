@@ -8,14 +8,11 @@ use axum::{
 use axum_login::login_required;
 use serde::{Deserialize, Serialize};
 
-use db::{
-    group_db, group_db::GroupFilterOptions, model::model_group::ModelGroupMeta, random_hex_32,
-    time_now,
-};
+use db::{group_db, group_db::GroupFilterOptions};
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
     web_app_state::WebAppState,
 };
 
@@ -44,7 +41,7 @@ mod get {
     use crate::{controller::share_controller::resolve_share_owner, query_bounds};
 
     use super::{
-        ApplicationError, AuthSession, Deserialize, GroupFilterOptions, IntoResponse, Json, Path,
+        ApplicationError, CurrentUser, Deserialize, GroupFilterOptions, IntoResponse, Json, Path,
         Response, Serialize, State, WebAppState, group_db,
     };
 
@@ -79,12 +76,10 @@ mod get {
     }
 
     pub async fn get_groups(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Query(params): Query<GetGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         if let Err(e) = query_bounds::validate_group_list_query_bounds(
             params.paginated_bounds(),
             params.model_ids_str.as_deref(),
@@ -176,11 +171,10 @@ mod get {
     }
 
     pub async fn get_group_count(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Query(params): Query<GetGroupCountParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         let count = group_db::get_group_count(
             &app_state.app_state.db,
             &user,
@@ -194,7 +188,7 @@ mod get {
 
 mod put {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         StatusCode, WebAppState, group_db,
     };
 
@@ -207,31 +201,20 @@ mod put {
     }
 
     pub async fn edit_group(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(group_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<PutGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-
         group_db::edit_group(
             &app_state.app_state.db,
             &user,
             group_id,
             &params.group_name,
             params.group_timestamp.as_deref(),
+            params.group_global_id.as_deref(),
         )
         .await?;
-
-        if let Some(new_global_id) = params.group_global_id {
-            group_db::edit_group_global_id(
-                &app_state.app_state.db,
-                &user,
-                group_id,
-                &new_global_id,
-            )
-            .await?;
-        }
 
         Ok(StatusCode::NO_CONTENT.into_response())
     }
@@ -239,16 +222,15 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, Path, Response, State,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
         StatusCode, WebAppState, group_db,
     };
 
     pub async fn delete_group(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(group_id): Path<i64>,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         group_db::delete_group(&app_state.app_state.db, &user, group_id).await?;
 
         Ok(StatusCode::NO_CONTENT.into_response())
@@ -260,11 +242,10 @@ mod delete {
     }
 
     pub async fn remove_models_from_group(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<RemoveModelsFromGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         group_db::set_group_id_on_models(
             &app_state.app_state.db,
             &user,
@@ -280,8 +261,8 @@ mod delete {
 
 mod post {
     use super::{
-        ApplicationError, AuthSession, Deserialize, IntoResponse, Json, ModelGroupMeta, Path,
-        Response, State, StatusCode, WebAppState, group_db, random_hex_32, time_now,
+        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
+        StatusCode, WebAppState, group_db,
     };
 
     #[derive(Deserialize)]
@@ -290,23 +271,13 @@ mod post {
     }
 
     pub async fn add_group(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
         Json(params): Json<PostGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
-        let id =
+        let group_meta =
             group_db::add_empty_group(&app_state.app_state.db, &user, &params.group_name, None)
                 .await?;
-
-        let group_meta = ModelGroupMeta {
-            id,
-            name: params.group_name,
-            created: time_now(),
-            unique_global_id: random_hex_32(),
-            resource_id: None,
-            last_modified: time_now(),
-        };
 
         Ok(Json(group_meta).into_response())
     }
@@ -317,12 +288,11 @@ mod post {
     }
 
     pub async fn add_models_to_group(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         Path(group_id): Path<i64>,
         State(app_state): State<WebAppState>,
         Json(params): Json<AddModelsToGroupParams>,
     ) -> Result<Response, ApplicationError> {
-        let user = auth_session.user.unwrap().to_user();
         group_db::set_group_id_on_models(
             &app_state.app_state.db,
             &user,

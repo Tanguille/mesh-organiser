@@ -220,6 +220,10 @@ pub async fn add_labels_by_keywords(
         }
     }
 
+    // Invert model -> labels into label -> models so we can batch-insert once per
+    // distinct label instead of issuing one write per imported model.
+    let mut label_to_models: IndexMap<i64, Vec<i64>> = IndexMap::new();
+
     for model in &models {
         let mut name_parts: Vec<String> = model
             .name
@@ -248,16 +252,15 @@ pub async fn add_labels_by_keywords(
             .unique()
             .collect();
 
-        if !label_ids.is_empty() {
-            let _ = label_db::add_labels_on_models(
-                db,
-                &import_state.user,
-                &label_ids,
-                &[model.id],
-                None,
-            )
-            .await;
+        for label_id in label_ids {
+            label_to_models.entry(label_id).or_default().push(model.id);
         }
+    }
+
+    for (label_id, model_ids) in &label_to_models {
+        let _ =
+            label_db::add_labels_on_models(db, &import_state.user, &[*label_id], model_ids, None)
+                .await;
     }
 }
 
@@ -563,6 +566,15 @@ pub fn is_supported_extension(path: &Path) -> bool {
 /// Returns `true` if the path has a case-insensitive `.zip` extension.
 fn is_zip_path(path: &Path) -> bool {
     libmeshthumbnail::path_ext::matches_ext(path, "zip")
+}
+
+/// Returns `true` for paths acceptable at an upload entry point.
+///
+/// That is a supported model extension or a zip archive. Shared by the web
+/// and desktop upload handlers so the acceptance policy lives in one place.
+#[must_use]
+pub fn is_importable_upload(path: &Path) -> bool {
+    is_supported_extension(path) || is_zip_path(path)
 }
 
 fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError> {

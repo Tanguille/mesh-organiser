@@ -1,4 +1,7 @@
-use db::model::{resource::ResourceMeta, user::User};
+use db::{
+    model::{resource::ResourceMeta, user::User},
+    resource_db,
+};
 
 use crate::{service_error::ServiceError, util::open_folder_in_explorer};
 
@@ -47,6 +50,32 @@ pub fn delete_resource_folder(
     if path.exists() {
         std::fs::remove_dir_all(&path)?;
     }
+
+    Ok(())
+}
+
+/// Deletes a resource: removes its folder on disk, then the database row.
+/// Shared by the Tauri command and the web handler.
+///
+/// # Errors
+///
+/// Returns an error if the resource does not exist for the user, the folder
+/// cannot be removed, or the database delete fails.
+pub async fn delete_resource(
+    resource_id: i64,
+    user: &User,
+    app_state: &AppState,
+) -> Result<(), ServiceError> {
+    let Some(resource) =
+        resource_db::get_resource_meta_by_id(&app_state.db, user, resource_id).await?
+    else {
+        return Err(ServiceError::InternalError(String::from(
+            "Resource not found",
+        )));
+    };
+
+    delete_resource_folder(&resource, user, app_state)?;
+    resource_db::delete_resource(&app_state.db, user, resource.id).await?;
 
     Ok(())
 }

@@ -1,3 +1,5 @@
+import { globalSyncState, SyncStep } from "$lib/sync.svelte";
+
 export interface DiffableItem {
   uniqueGlobalId: string;
   lastModified: Date;
@@ -96,6 +98,22 @@ export async function applySyncResult<T>(
   }
 }
 
+// Shared SyncStep.Delete progress loop; the per-entity delete call is the only
+// part that differed between the three sync files' deleteFromRemote copies.
+export async function stepDelete<T>(
+  toDelete: T[],
+  deleteItem: (item: T) => Promise<void>,
+): Promise<void> {
+  globalSyncState.step = SyncStep.Delete;
+  globalSyncState.processableItems = toDelete.length;
+  globalSyncState.processedItems = 0;
+
+  for (const item of toDelete) {
+    await deleteItem(item);
+    globalSyncState.processedItems += 1;
+  }
+}
+
 interface DiffableExtractor<T> {
   (item: T): DiffableItem;
 }
@@ -119,10 +137,13 @@ export function computeDifferences<T extends DiffableItem>(
 ): SyncResult<T> {
   const result = defaultSyncResult<T>();
 
+  // Index both sides once so the diff is O(n + m) instead of a linear scan of
+  // the opposite list per item.
+  const serverById = new Map(serverItems.map((x) => [x.uniqueGlobalId, x]));
+  const localIds = new Set(localItems.map((x) => x.uniqueGlobalId));
+
   for (const localItem of localItems) {
-    const equivalentServerModel = serverItems.find(
-      (x) => x.uniqueGlobalId === localItem.uniqueGlobalId,
-    );
+    const equivalentServerModel = serverById.get(localItem.uniqueGlobalId);
 
     if (!equivalentServerModel) {
       if (localItem.lastModified.getTime() < lastSynced.getTime()) {
@@ -152,11 +173,7 @@ export function computeDifferences<T extends DiffableItem>(
   }
 
   for (const serverItem of serverItems) {
-    const equivalentLocalModel = localItems.find(
-      (x) => x.uniqueGlobalId === serverItem.uniqueGlobalId,
-    );
-
-    if (!equivalentLocalModel) {
+    if (!localIds.has(serverItem.uniqueGlobalId)) {
       if (serverItem.lastModified.getTime() < lastSynced.getTime()) {
         result.toDeleteServer.push(serverItem);
       } else {
