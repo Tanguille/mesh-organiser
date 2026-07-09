@@ -34,11 +34,11 @@
     "@threlte/core": "^8.5.16",
     "@threlte/extras": "^9.21.0",
     "@types/qs": "^6.15.1",
-    "@types/three": "^0.184.1",
+    "@types/three": "^0.185.1",
     "base64-js": "^1.5.1",
     "fflate": "^0.8.3",
     "qs": "^6.15.3",
-    "three": "0.184.0",
+    "three": "0.185.1",
     "threejs-webworker-3mf-loader": "github:manyfold3d/threejs-webworker-3mf-loader"
   },
   "devDependencies": {
@@ -60,7 +60,7 @@
     "globals": "^17.7.0",
     "kill-port": "^2.0.1",
     "mode-watcher": "^1.1.0",
-    "prettier": "^3.9.4",
+    "prettier": "^3.9.5",
     "prettier-plugin-svelte": "^4.1.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "svelte": "^5.56.4",
