@@ -3209,7 +3209,6 @@ dependencies = [
  "async_zip",
  "db",
  "futures",
- "itertools",
  "libmeshthumbnail",
  "serde",
  "serde_html_form 0.4.1",
@@ -7374,7 +7373,6 @@ checksum = "934504ea79927c25f18e980053b64269490284129b327334fc2591daf1539b9c"
 name = "web"
 version = "3.0.0"
 dependencies = [
- "async_zip",
  "axum",
  "axum-extra",
  "axum-login",
