@@ -1,18 +1,11 @@
-use std::{
-    env,
-    fs::File,
-    io::{self, Read, Write},
-    path::{Path, PathBuf},
-    sync::Mutex,
-};
+use std::{env, fs::File, io::Read, path::Path, sync::Mutex};
 
 use cadrum::Solid;
-use tempfile::TempDir;
 
 use crate::{
     error::MeshThumbnailError,
     mesh::Mesh,
-    parse_model::copy_zip_entry_to,
+    parse_model::with_zip_entry,
     path_ext::{is_zip_of, matches_ext},
 };
 
@@ -48,27 +41,14 @@ fn step_tolerance() -> f64 {
     })
 }
 
-/// Stages STEP bytes from `reader` into a temporary `a.step` file. The returned
-/// [`TempDir`] must be kept alive for as long as the path is used, since the
-/// directory (and file) are removed when it is dropped.
-fn stage_step_bytes(reader: &mut impl Read) -> Result<(TempDir, PathBuf), MeshThumbnailError> {
-    let temp_dir = tempfile::tempdir()?;
-    let mut temp_path = temp_dir.path().to_path_buf();
-    temp_path.push("a.step");
-    let mut temp_file = File::create(&temp_path)?;
-    io::copy(reader, &mut temp_file)?;
-    temp_file.flush()?;
-
-    Ok((temp_dir, temp_path))
-}
-
-fn read_and_mesh_step(path: &Path) -> Result<cadrum::Mesh, MeshThumbnailError> {
+/// Streams STEP bytes from `reader` straight into cadrum and meshes the result —
+/// cadrum's reader API needs no staging to disk or memory.
+fn mesh_from_reader(reader: &mut impl Read) -> Result<cadrum::Mesh, MeshThumbnailError> {
     let tessellation = cadrum::Tessellation {
         deflection_linear: step_tolerance(),
         ..cadrum::Tessellation::default()
     };
-    let mut file = File::open(path)?;
-    let solids = Solid::read_step(&mut file)?;
+    let solids = Solid::read_step(reader)?;
 
     // Poison propagates as a panic on purpose: it means a previous mesh call panicked.
     let _guard = OCCT_GUARD.lock().expect("OCCT guard poisoned");
@@ -78,10 +58,8 @@ fn read_and_mesh_step(path: &Path) -> Result<cadrum::Mesh, MeshThumbnailError> {
 /// f64→f32 truncation: OCCT gives `f64`; we need `f32` for STL/thumbnails. Precision is
 /// sufficient for display and export; explicit rounding would add cost with no practical benefit.
 #[allow(clippy::cast_possible_truncation)]
-fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let mesh = read_and_mesh_step(path)?;
-
-    Ok(Mesh {
+fn to_mesh(mesh: cadrum::Mesh) -> Mesh {
+    Mesh {
         vertices: mesh
             .vertices
             .into_iter()
@@ -92,46 +70,51 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
             .into_iter()
             .map(|i| u32::try_from(i).expect("index too large for u32"))
             .collect(),
-    })
+    }
+}
+
+fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
+    let mut file = File::open(path)?;
+
+    Ok(to_mesh(mesh_from_reader(&mut file)?))
 }
 
 fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    // Stream the entry straight to disk: decompressed STEP files can be large,
-    // so avoid buffering them fully in memory.
-    let temp_dir = tempfile::tempdir()?;
-    let temp_path = temp_dir.path().join("a.step");
-    let mut temp_file = File::create(&temp_path)?;
-    copy_zip_entry_to(
+    let mut mesh = None;
+    with_zip_entry(
         path,
         |name| {
             let name = Path::new(name);
             matches_ext(name, "step") || matches_ext(name, "stp")
         },
         "Failed to find .step model in zip",
-        &mut temp_file,
+        |_size, mut reader| {
+            mesh = Some(mesh_from_reader(&mut reader)?);
+            Ok(())
+        },
     )?;
-    temp_file.flush()?;
-    drop(temp_file);
-    // `temp_dir` stays alive until after parsing; dropping it removes the staged file.
-    parse_step(&temp_path)
+
+    // `with_zip_entry` errors when no entry matches, so a hit always set `mesh`.
+    Ok(to_mesh(mesh.expect("matched zip entry produced no mesh")))
 }
 
 /// # Errors
 ///
-/// Returns an error if staging the bytes fails, or if the STEP file cannot be
-/// read, meshed, or written as STL.
+/// Returns an error if the STEP bytes cannot be read, meshed, or written as STL.
 pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
-    // Keep `_temp_dir` alive until after conversion; dropping it removes the staged file.
-    let (_temp_dir, temp_path) = stage_step_bytes(&mut &step[..])?;
+    let mesh = mesh_from_reader(&mut &step[..])?;
+    let mut data = Vec::new();
+    mesh.write_stl(&mut data)?;
 
-    convert_step_path_to_stl(&temp_path)
+    Ok(data)
 }
 
 /// # Errors
 ///
 /// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
 pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
-    let mesh = read_and_mesh_step(step_path)?;
+    let mut file = File::open(step_path)?;
+    let mesh = mesh_from_reader(&mut file)?;
     let mut data = Vec::new();
     mesh.write_stl(&mut data)?;
 
@@ -145,7 +128,7 @@ mod tests {
     use tempfile::tempdir;
     use zip::{ZipWriter, write::SimpleFileOptions};
 
-    use super::{convert_step_path_to_stl, handle_step};
+    use super::{convert_step_path_to_stl, convert_step_to_stl, handle_step};
 
     fn fixture_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cube.step")
@@ -160,6 +143,18 @@ mod tests {
             "binary STL should include header and triangles"
         );
         assert!(!stl.is_empty());
+    }
+
+    #[test]
+    fn convert_step_to_stl_from_bytes_produces_binary_stl() {
+        let step_bytes = std::fs::read(fixture_path()).expect("read fixture");
+
+        let stl = convert_step_to_stl(&step_bytes).expect("cube.step bytes should convert");
+
+        assert!(
+            stl.len() > 84,
+            "binary STL should include header and triangles"
+        );
     }
 
     #[test]

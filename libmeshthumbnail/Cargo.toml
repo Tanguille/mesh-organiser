@@ -19,12 +19,14 @@ euc = { workspace = true }
 image = { workspace = true, features = ["png"] }
 regex = { workspace = true }
 stl_io = { workspace = true }
-tempfile = { workspace = true }
 threemf = { workspace = true }
 thiserror = { workspace = true }
 vek = { workspace = true }
 wavefront_obj = { workspace = true }
 zip = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 # Linux opts out of the prebuilt and builds OCCT from source with the local
 # toolchain (10-30 min once, then cached in the cargo target dir): the prebuilt

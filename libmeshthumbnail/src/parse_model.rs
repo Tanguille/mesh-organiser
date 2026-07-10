@@ -42,24 +42,6 @@ fn with_zip_entry(
     Err(MeshThumbnailError::InternalError(String::from(not_found)))
 }
 
-/// Streams the matching entry's decompressed bytes into `out`, for large
-/// formats (STEP) that should not be buffered fully in memory.
-///
-/// # Errors
-/// Same as [`with_zip_entry`].
-#[cfg(feature = "step")]
-pub(crate) fn copy_zip_entry_to(
-    path: &Path,
-    matches: impl Fn(&str) -> bool,
-    not_found: &str,
-    out: &mut impl io::Write,
-) -> Result<(), MeshThumbnailError> {
-    with_zip_entry(path, matches, not_found, |_size, reader| {
-        io::copy(reader, out)?;
-        Ok(())
-    })
-}
-
 /// Buffered variant for the small mesh formats that are parsed from memory,
 /// pre-sized to the entry's reported size.
 ///
