@@ -49,15 +49,16 @@ cargo clippy --workspace --all-targets
 ### STEP support (cadrum/OCCT)
 
 STEP parsing is provided by [cadrum](https://crates.io/crates/cadrum) and ships in the
-Linux and Windows apps (the `step` feature, enabled by `src-tauri`). No system
+Linux, Windows, and macOS apps (the `step` feature, enabled by `src-tauri`). No system
 OpenCASCADE install is needed:
 
-- **Windows**: cadrum downloads a prebuilt, statically linked OCCT — nothing to do.
-- **Linux**: cadrum builds OCCT from source with the local toolchain the first time
-  (10-30 minutes; needs `cmake` and a C++ compiler). The result is cached in the cargo
-  target directory, so later builds are quick. The prebuilt tarball is not used on
-  Linux on purpose: its bundled static libstdc++ collides with the system one loaded
-  by GTK/WebKit and segfaults the app at startup (see `libmeshthumbnail/Cargo.toml`).
+- **All platforms**: cadrum's build script downloads a prebuilt, statically linked OCCT
+  for the current target automatically (see cadrum's README for the target table).
+- **Linux** is the one exception: it builds OCCT from source with the local toolchain
+  the first time (10-30 minutes; needs `cmake` and a C++ compiler; cached in the cargo
+  target directory afterwards). The prebuilt is skipped on purpose: its bundled static
+  libstdc++ collides with the system one loaded by GTK/WebKit and segfaults the app at
+  startup (see `libmeshthumbnail/Cargo.toml`).
 
 The regular workspace commands cover the STEP path — no special flags or scripts:
 

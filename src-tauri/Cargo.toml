@@ -40,8 +40,8 @@ arboard = { workspace = true }
 tauri-plugin-fs = { workspace = true }
 tauri-plugin-os = { workspace = true }
 db = { workspace = true }
-# STEP support ships on linux/windows; other targets compile it out — see the
-# cadrum target notes in libmeshthumbnail/Cargo.toml (linux builds OCCT from source).
+# STEP parsing via cadrum — see libmeshthumbnail/Cargo.toml for the linux
+# source-build note.
 service = { workspace = true, features = ["step"] }
 serde_html_form = { workspace = true }
 # "stream" enables reqwest::Body::wrap_stream for streaming multipart uploads.
