@@ -6,13 +6,13 @@ use crate::error::MeshThumbnailError;
 
 mod gcode;
 mod obj;
-#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
+#[cfg(feature = "step")]
 mod step;
 mod stl;
 mod threemf;
-#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
+#[cfg(feature = "step")]
 pub use step::convert_step_path_to_stl;
-#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
+#[cfg(feature = "step")]
 pub use step::convert_step_to_stl;
 
 /// Opens `path` as a zip, finds the first entry whose name satisfies `matches`,
@@ -40,24 +40,6 @@ fn with_zip_entry(
     }
 
     Err(MeshThumbnailError::InternalError(String::from(not_found)))
-}
-
-/// Streams the matching entry's decompressed bytes into `out`, for large
-/// formats (STEP) that should not be buffered fully in memory.
-///
-/// # Errors
-/// Same as [`with_zip_entry`].
-#[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
-pub(crate) fn copy_zip_entry_to(
-    path: &Path,
-    matches: impl Fn(&str) -> bool,
-    not_found: &str,
-    out: &mut impl io::Write,
-) -> Result<(), MeshThumbnailError> {
-    with_zip_entry(path, matches, not_found, |_size, reader| {
-        io::copy(reader, out)?;
-        Ok(())
-    })
 }
 
 /// Buffered variant for the small mesh formats that are parsed from memory,
@@ -101,7 +83,7 @@ pub fn handle_parse(path: &Path) -> Result<Option<crate::mesh::Mesh>, MeshThumbn
         return Ok(Some(mesh));
     }
 
-    #[cfg(all(feature = "step", any(target_os = "linux", target_os = "windows")))]
+    #[cfg(feature = "step")]
     if let Some(mesh) = step::handle_step(path)? {
         return Ok(Some(mesh));
     }
