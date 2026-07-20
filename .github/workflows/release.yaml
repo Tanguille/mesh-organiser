@@ -18,12 +18,145 @@ on:
 
 env:
   MESH_THUMBNAIL_REPO: suchmememanyskill/mesh-thumbnail
+  DOCKER_REGISTRY: ghcr.io
+  DOCKER_IMAGE_NAME: ${{ github.repository }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  build-docker:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release-settings.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Compute release settings
+        id: release-settings
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.releaseType }}" = "build-only" ]; then
+              echo "tag_name=" >> $GITHUB_OUTPUT
+            else
+              echo "tag_name=v__VERSION__" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@3e533ba6a3d463619f5a55e94e0b2a8e2d6f8d0a # v3.3.0
+
+      - name: Login to Container Registry
+        uses: docker/login-action@4c7f4a84d1a4d3d4a5d7e5f7d7a8f9c0d1e2f3a4b # v3.2.0
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.5.1
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=${{ steps.release-settings.outputs.tag_name }},enable=${{ steps.release-settings.outputs.tag_name != '' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@4a13e500e55cf30b5371520fe84a5f054b5de8c6 # v6.10.0
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.releaseType != 'build-only' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-android:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: current
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          shared-key: release-android
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compute release settings
+        id: release-settings
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.releaseType }}" = "build-only" ]; then
+              echo "tag_name=" >> $GITHUB_OUTPUT
+              echo "upload_workflow_artifacts=true" >> $GITHUB_OUTPUT
+            else
+              echo "tag_name=v__VERSION__" >> $GITHUB_OUTPUT
+              echo "upload_workflow_artifacts=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "upload_workflow_artifacts=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Android APK (arm64)
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.release-settings.outputs.tag_name }}
+          releaseName: "Mesh Organiser Android ${{ steps.release-settings.outputs.tag_name }}"
+          releaseBody: "Android APK build"
+          releaseDraft: false
+          prerelease: false
+          args: --config src-tauri/tauri.release-csp.json --target aarch64-linux-android --bundles apk
+
+      - name: Upload APK as artifact
+        if: steps.release-settings.outputs.upload_workflow_artifacts == 'true'
+        uses: actions/upload-artifact@4a13e500e55cf30b5371520fe84a5f054b5de8c6 # v4.6.2
+        with:
+          name: mesh-organiser-android-arm64
+          path: src-tauri/target/aarch64-linux-android/release/bundle/apk/*.apk
+
   build-tauri:
     permissions:
       contents: write

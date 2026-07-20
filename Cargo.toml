@@ -73,6 +73,7 @@ tauri-plugin-updater = { version = "2.10.1", features = [
     "rustls-tls",
 ], default-features = false }
 tauri-plugin-single-instance = "2.4.2"
+tauri-plugin-store = "2.4.2"
 thiserror = "2.0.18"
 time = "0.3.53"
 tokio = "1.52.3"

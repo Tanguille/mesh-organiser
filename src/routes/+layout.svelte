@@ -27,10 +27,12 @@
   import { IUserApi } from "$lib/api/shared/user_api";
   import { accountLinkData } from "$lib/account_link_data.svelte";
   import WebAccountLinkPopup from "$lib/components/view/web-account-link-popup.svelte";
+  import BottomNav from "$lib/components/mobile/bottom-nav.svelte";
 
   let { children } = $props();
   let initializationDone = $state(false);
   let hasSidebar = $state(true);
+  const isMobile = new IsMobile();
 
   /** Vite 8 dev client can race HMR transport `send` before `connect` (see `vite/dist/client/client.mjs`). */
   function isViteDevClientNoise(message: string): boolean {
@@ -96,17 +98,16 @@
 
       let userApi = getContainer().optional<IUserApi>(IUserApi);
 
-      if (userApi) {
-        if (!(await userApi.isAuthenticated())) {
-          await goto(resolve("/login"));
-        }
-      }
-
       if (panicState.inPanic) {
         await goto(resolve("/panic"));
+      } else if (userApi && !(await userApi.isAuthenticated())) {
+        await goto(resolve("/login"));
       }
 
       if (getContainer().optional<ISidebarStateApi>(ISidebarStateApi) == null) {
+        hasSidebar = false;
+      } else if (isMobile.current) {
+        // Hide sidebar on mobile, use bottom nav instead
         hasSidebar = false;
       } else {
         await updateSidebarState();
@@ -125,8 +126,6 @@
       });
     }
   });
-
-  const is_mobile = new IsMobile();
 
   const save_configuration_debounce_ms = 400;
 
@@ -163,15 +162,18 @@
         <AppSidebar />
       {/if}
       <main class="flex h-full flex-1 flex-row" style="min-width: 0;">
-        {#if is_mobile.current && hasSidebar}
+        {#if isMobile.current && hasSidebar}
           <Sidebar.Trigger
             class="absolute z-10 aspect-square h-10 w-10 bg-background"
           />
         {/if}
-        <div class="flex-1 pl-2" style="min-width: 0;">
+        <div class="flex-1 pb-16 pl-2" style="min-width: 0;">
           {@render children?.()}
         </div>
       </main>
+      {#if isMobile.current && !hasSidebar}
+        <BottomNav />
+      {/if}
       {#if updateState.update}
         <UpdatePopup
           update={updateState.update}
