@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build stage
-FROM --platform=$BUILDPLATFORM rust:1.97.0-slim AS build
+FROM --platform=$BUILDPLATFORM rust:1.97.1-slim AS build
 WORKDIR /source
 COPY . .
 ARG VITE_APP_VERSION
