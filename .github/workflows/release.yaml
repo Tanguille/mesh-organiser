@@ -67,10 +67,18 @@ jobs:
           node-version: current
           cache: pnpm
 
+      # Matches rust-ci.yaml. dtolnay/rust-toolchain publishes no tags, so
+      # Dependabot cannot resolve a SHA pin to it and errors out the entire
+      # github-actions update batch; this action is tagged and resolves fine.
+      # cache/rustflags are disabled to keep the previous behaviour: caching
+      # stays with the explicit Swatinem step below, and the release build must
+      # not fail on warnings.
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
-          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          target: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          cache: false
+          rustflags: ""
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
