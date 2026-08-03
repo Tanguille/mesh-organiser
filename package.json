@@ -34,7 +34,7 @@
     "@threlte/core": "^8.5.16",
     "@threlte/extras": "^9.21.0",
     "@types/qs": "^6.15.1",
-    "@types/three": "^0.185.1",
+    "@types/three": "^0.185.3",
     "base64-js": "^1.5.1",
     "fflate": "^0.8.3",
     "qs": "^6.15.3",
