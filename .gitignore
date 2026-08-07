@@ -12,3 +12,4 @@ vite.config.ts.timestamp-*
 /external-binaries
 /target
 .eslintcache
+.worktrees/
