@@ -189,8 +189,7 @@ async fn read_zip_entry_by_suffix(
         if entry
             .filename()
             .as_str()
-            .ok()
-            .is_some_and(|s| s.ends_with(filename_suffix))
+            .is_ok_and(|s| s.ends_with(filename_suffix))
         {
             let mut file = zip.reader_with_entry(i).await?;
             let mut contents = String::new();
