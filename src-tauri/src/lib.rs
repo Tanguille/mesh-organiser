@@ -635,9 +635,23 @@ pub fn run() {
 
                 {
                     let app_state = state.app_state.clone();
+                    let user = state.get_current_user();
                     tauri::async_runtime::spawn(async move {
                         let _ = group_db::delete_dead_groups(&app_state.db).await;
                         let _ = export_service::delete_dead_blobs(&app_state).await;
+
+                        // Thumbnails are cached per machine in the app data directory while
+                        // models and the database can sit on a shared data path, so a library
+                        // imported elsewhere shows up here without any. Existing thumbnails
+                        // are skipped, which keeps this cheap on every launch.
+                        let _lock = app_state.import_mutex.lock().await;
+                        let mut import_state = ImportState::new(None, false, false, false, user);
+                        let _ = thumbnail_service::generate_all_thumbnails(
+                            &app_state,
+                            false,
+                            &mut import_state,
+                        )
+                        .await;
                     });
                 }
 
