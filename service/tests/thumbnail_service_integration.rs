@@ -15,6 +15,9 @@ use service::{
     AppState, Configuration, import_state::ImportState, thumbnail_service::generate_all_thumbnails,
 };
 
+/// Builds an `AppState` whose data and app-data paths both point at a fresh
+/// temporary directory, so models, thumbnails and the database are isolated
+/// per test.
 async fn test_app_state() -> (tempfile::TempDir, AppState) {
     let dir = tempdir().unwrap();
     let data_path = dir.path().join("data");
