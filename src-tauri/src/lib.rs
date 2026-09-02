@@ -646,12 +646,15 @@ pub fn run() {
                         // are skipped, which keeps this cheap on every launch.
                         let _lock = app_state.import_mutex.lock().await;
                         let mut import_state = ImportState::new(None, false, false, false, user);
-                        let _ = thumbnail_service::generate_all_thumbnails(
+                        if let Err(e) = thumbnail_service::generate_all_thumbnails(
                             &app_state,
                             false,
                             &mut import_state,
                         )
-                        .await;
+                        .await
+                        {
+                            eprintln!("Thumbnail backfill failed: {e}");
+                        }
                     });
                 }
 
