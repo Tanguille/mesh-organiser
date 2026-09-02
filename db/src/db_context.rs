@@ -1,8 +1,9 @@
 use std::{fs, path::Path, time::Duration};
 
+use sha2::{Digest, Sha384};
 use sqlx::{
     self, Pool, Sqlite,
-    migrate::MigrateDatabase,
+    migrate::{MigrateDatabase, Migrator},
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 
@@ -32,7 +33,12 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
 
     let migration_count = get_db_migration_count(&db).await;
 
-    sqlx::migrate!("./migrations").run(&db).await.unwrap();
+    let migrator = sqlx::migrate!("./migrations");
+    repair_line_ending_checksums(&db, &migrator).await;
+    migrator
+        .run(&db)
+        .await
+        .expect("failed to run database migrations");
     backup_db(sqlite_path, sqlite_backup_dir);
 
     let new_migration_count = get_db_migration_count(&db).await;
@@ -45,6 +51,56 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
     }
 
     db
+}
+
+/// Rewrites stored migration checksums that differ from the embedded migrations
+/// only in line endings.
+///
+/// sqlx hashes the raw bytes of each migration file, so a checkout with CRLF
+/// endings produces different checksums than an LF checkout for byte-identical
+/// SQL. A database migrated by one platform then aborts startup on the other
+/// with `VersionMismatch`, which matters because the database can be shared
+/// through a network location. Repairing the affected rows is safe: the
+/// statements that ran are the same modulo line endings.
+///
+/// Checksums that do not match either line-ending variant are left untouched so
+/// a genuinely modified migration still fails loudly.
+async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
+    let applied: Vec<(i64, Vec<u8>)> =
+        match sqlx::query_as("SELECT version, checksum FROM _sqlx_migrations")
+            .fetch_all(db)
+            .await
+        {
+            Ok(rows) => rows,
+            // No migration table yet: nothing has been applied to repair.
+            Err(_) => return,
+        };
+
+    for migration in migrator.iter() {
+        let Some((_, stored)) = applied.iter().find(|(v, _)| *v == migration.version) else {
+            continue;
+        };
+
+        if stored.as_slice() == migration.checksum.as_ref() {
+            continue;
+        }
+
+        let lf = migration.sql.as_str().replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+
+        if stored.as_slice() != Sha384::digest(lf.as_bytes()).as_slice()
+            && stored.as_slice() != Sha384::digest(crlf.as_bytes()).as_slice()
+        {
+            continue;
+        }
+
+        sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?")
+            .bind(migration.checksum.as_ref())
+            .bind(migration.version)
+            .execute(db)
+            .await
+            .expect("failed to repair migration checksum");
+    }
 }
 
 async fn get_db_migration_count(db: &DbContext) -> usize {

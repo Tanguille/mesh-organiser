@@ -1,0 +1,4 @@
+# sqlx hashes the raw bytes of each migration file, so a CRLF checkout would
+# produce different checksums than an LF one and break databases shared between
+# platforms. Keep them LF everywhere.
+*.sql text eol=lf
