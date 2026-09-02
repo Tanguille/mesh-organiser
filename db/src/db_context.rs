@@ -56,15 +56,10 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
 /// Rewrites stored migration checksums that differ from the embedded migrations
 /// only in line endings.
 ///
-/// sqlx hashes the raw bytes of each migration file, so a checkout with CRLF
-/// endings produces different checksums than an LF checkout for byte-identical
-/// SQL. A database migrated by one platform then aborts startup on the other
-/// with `VersionMismatch`, which matters because the database can be shared
-/// through a network location. Repairing the affected rows is safe: the
-/// statements that ran are the same modulo line endings.
-///
-/// Checksums that do not match either line-ending variant are left untouched so
-/// a genuinely modified migration still fails loudly.
+/// sqlx hashes the raw bytes of each migration file, so a CRLF checkout and an
+/// LF one disagree about byte-identical SQL — and the database can be shared
+/// between platforms through a network data path. Checksums matching neither
+/// variant are left alone, so a genuinely modified migration still fails.
 async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
     let applied: Vec<(i64, Vec<u8>)> =
         match sqlx::query_as("SELECT version, checksum FROM _sqlx_migrations")
