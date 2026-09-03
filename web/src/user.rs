@@ -42,11 +42,11 @@ impl AuthUser {
             permissions: db::model::user::UserPermissions::from_bits_truncate(
                 self.permissions.try_into().unwrap_or(u32::MAX),
             ),
-            password_hash: String::new(),
+            password_hash: String::default(),
             last_sync: None,
             sync_token: None,
             sync_url: None,
-            created_at: String::new(),
+            created_at: String::default(),
         }
     }
 

@@ -32,9 +32,7 @@ impl InitialState {
     pub fn new(config: &Configuration) -> Self {
         Self {
             deep_link_url: None,
-            max_parallelism: thread::available_parallelism()
-                .unwrap_or(NonZeroUsize::new(6).unwrap())
-                .get(),
+            max_parallelism: thread::available_parallelism().map_or(6, NonZeroUsize::get),
             collapse_sidebar: config.collapse_sidebar,
             account_link: None,
         }
