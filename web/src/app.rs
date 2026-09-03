@@ -1,5 +1,6 @@
 use std::{
     env,
+    error::Error,
     fmt::Write,
     fs::File,
     io::{self, ErrorKind},
@@ -61,7 +62,7 @@ pub struct App {
     session_store: SqliteStore,
 }
 
-fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
+fn parse_port() -> Result<u16, Box<dyn Error>> {
     env::var(ENV_SERVER_PORT)
         .unwrap_or_else(|_| "3000".into())
         .parse::<u16>()
@@ -74,7 +75,7 @@ fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
         })
 }
 
-fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn Error>> {
     if !config_path.exists() {
         let mut config_file = File::create(config_path)?;
         io::Write::write_all(
@@ -87,9 +88,7 @@ fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-async fn load_and_prepare_config(
-    config_path: &Path,
-) -> Result<Configuration, Box<dyn std::error::Error>> {
+async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Box<dyn Error>> {
     let json = fs::read_to_string(config_path).await.map_err(|e| {
         io::Error::new(
             ErrorKind::InvalidData,
@@ -119,9 +118,7 @@ async fn load_and_prepare_config(
     Ok(configuration)
 }
 
-async fn apply_local_account(
-    web_app_state: &WebAppState,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn apply_local_account(web_app_state: &WebAppState) -> Result<(), Box<dyn Error>> {
     let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
         let key = Key::generate();
         let key_bytes = key.master();
@@ -197,9 +194,7 @@ async fn update_session_middleware(
     next.run(request).await
 }
 
-async fn setup_session_store(
-    sqlite_path: &Path,
-) -> Result<SqliteStore, Box<dyn std::error::Error>> {
+async fn setup_session_store(sqlite_path: &Path) -> Result<SqliteStore, Box<dyn Error>> {
     let connect_options = SqliteConnectOptions::new()
         .filename(sqlite_path)
         .create_if_missing(false)
@@ -215,7 +210,7 @@ async fn setup_session_store(
 }
 
 impl App {
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
         let port = parse_port()?;
         let config_path = env::var(ENV_APP_CONFIG_PATH)
             .map_err(|_| {
@@ -260,7 +255,7 @@ impl App {
         })
     }
 
-    pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn serve(self) -> Result<(), Box<dyn Error>> {
         // Session layer.
         //
         // This uses `tower-sessions` to establish a layer that will provide the session

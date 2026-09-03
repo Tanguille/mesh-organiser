@@ -1,5 +1,6 @@
 use std::{
     fs::{self, read_dir},
+    mem,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -69,7 +70,7 @@ pub async fn import_path(
 
             let import_state = {
                 let fake = ImportState::new(None, false, false, false, User::default());
-                std::mem::replace(&mut *import_state, fake)
+                mem::replace(&mut *import_state, fake)
             };
 
             Ok(import_state)

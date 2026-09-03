@@ -1,5 +1,7 @@
 //! Integration tests for recovering from cross-platform migration checksums.
 
+use std::{panic::AssertUnwindSafe, path::Path};
+
 use db::db_context;
 use futures::FutureExt;
 use sqlx::Row;
@@ -7,7 +9,7 @@ use tempfile::tempdir;
 
 /// Rewrites every stored checksum to the one a CRLF checkout would have
 /// produced, mimicking a database last migrated on Windows.
-async fn rewrite_checksums_as_crlf(db_path: &std::path::Path) {
+async fn rewrite_checksums_as_crlf(db_path: &Path) {
     let db = sqlx::SqlitePool::connect(&format!("sqlite:{}", db_path.display()))
         .await
         .unwrap();
@@ -84,7 +86,7 @@ async fn setup_db_leaves_genuinely_modified_migrations_failing() {
         .unwrap();
     pool.close().await;
 
-    let result = std::panic::AssertUnwindSafe(db_context::setup_db(&db_path, &backup_dir))
+    let result = AssertUnwindSafe(db_context::setup_db(&db_path, &backup_dir))
         .catch_unwind()
         .await;
 

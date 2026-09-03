@@ -1,3 +1,5 @@
+use std::io;
+
 use serde::{Serialize, Serializer, ser::SerializeStruct};
 use thiserror::Error;
 
@@ -25,7 +27,7 @@ where
 #[derive(Error, Debug)]
 pub enum ServiceError {
     #[error("Failed to open or read file")]
-    FileSystemFault(#[from] std::io::Error),
+    FileSystemFault(#[from] io::Error),
     #[error("Failed to read or write zip file")]
     ZipError(#[from] async_zip::error::ZipError),
     #[error("Internal error")]

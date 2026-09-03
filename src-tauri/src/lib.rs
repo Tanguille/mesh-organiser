@@ -1,6 +1,8 @@
 use std::{
-    fs::File,
+    env,
+    fs::{self, File},
     io::prelude::*,
+    panic,
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
@@ -404,7 +406,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
         };
     }
 
-    let json = std::fs::read_to_string(path).expect("Failed to read configuration");
+    let json = fs::read_to_string(path).expect("Failed to read configuration");
 
     serde_json::from_str(&json).expect("Failed to parse configuration")
 }
@@ -485,14 +487,14 @@ pub fn run() {
                         .unwrap(),
                 );
 
-                if !std::fs::exists(&app_data_path).unwrap_or(false) {
-                    std::fs::create_dir_all(&app_data_path)
+                if !fs::exists(&app_data_path).unwrap_or(false) {
+                    fs::create_dir_all(&app_data_path)
                         .expect("failed to create app data dir");
                 }
 
                 let app_data_path_clone = String::from(&app_data_path);
 
-                std::panic::set_hook(Box::new(move |info| {
+                panic::set_hook(Box::new(move |info| {
                     let loc = PathBuf::from(&app_data_path_clone).join("crash.log");
 
                     let error_message = info
@@ -523,7 +525,7 @@ pub fn run() {
 
                 let mut initial_state = InitialState::new(&config);
 
-                let mut argv = std::env::args();
+                let mut argv = env::args();
 
                 if argv.len() == 2
                 {

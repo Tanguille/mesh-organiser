@@ -1,3 +1,5 @@
+use std::env;
+
 use axum::{
     Json, Router,
     body::Body,
@@ -49,7 +51,7 @@ mod get {
     use super::{
         ApplicationError, Blob, Body, BufReader, CurrentUser, Deserialize, File, IntoResponse,
         Path, Query, ReaderStream, Response, State, StatusCode, User, WebAppState,
-        cleanse_evil_from_name, convert_zip_to_extension, export_service, model_db, user_db,
+        cleanse_evil_from_name, convert_zip_to_extension, env, export_service, model_db, user_db,
     };
 
     #[derive(Deserialize)]
@@ -217,7 +219,7 @@ mod get {
         }
 
         // zip dirs live directly under the process temp dir
-        let path = match resolve_path_under_base(&std::env::temp_dir(), &zip_dir).await {
+        let path = match resolve_path_under_base(&env::temp_dir(), &zip_dir).await {
             Ok(path) => path,
             Err(e) => return e.respond(),
         };

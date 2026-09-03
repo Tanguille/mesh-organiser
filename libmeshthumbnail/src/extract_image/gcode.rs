@@ -1,4 +1,5 @@
 use std::{
+    cmp::Reverse,
     fs::File,
     io::{BufRead, BufReader, Cursor, Read},
     path::Path,
@@ -99,7 +100,7 @@ where
     // which embedded thumbnail wins on ties.
     let Some(largest_image) = gcode_images
         .into_iter()
-        .min_by_key(|image| std::cmp::Reverse(image.area()))
+        .min_by_key(|image| Reverse(image.area()))
     else {
         return Err(MeshThumbnailError::InternalError(String::from(
             "No thumbnail found in gcode file",

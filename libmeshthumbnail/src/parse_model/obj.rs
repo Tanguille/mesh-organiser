@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, fs, path::Path, str};
 
 use vek::Vec3;
 use wavefront_obj::obj::{self, ObjSet};
@@ -21,7 +21,7 @@ pub fn handle(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
 }
 
 fn parse(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    parse_bytes(&std::fs::read(path)?)
+    parse_bytes(&fs::read(path)?)
 }
 
 fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
@@ -33,7 +33,7 @@ fn parse_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 }
 
 fn parse_bytes(buffer: &[u8]) -> Result<Mesh, MeshThumbnailError> {
-    let utf8 = std::str::from_utf8(buffer).map_err(|e| {
+    let utf8 = str::from_utf8(buffer).map_err(|e| {
         MeshThumbnailError::InternalError(format!("OBJ content is not valid UTF-8: {e}"))
     })?;
 

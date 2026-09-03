@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::OnceLock};
+use std::{ffi::OsStr, fs, future::Future, panic, path::Path, process::Command, sync::OnceLock};
 
 use regex::Regex;
 use tokio::task::JoinSet;
@@ -75,7 +75,7 @@ pub fn open_folder_in_explorer(path: &Path) {
 /// Panics if the directory cannot be read or a metadata call fails.
 #[must_use]
 pub fn get_folder_size(path: &Path) -> u64 {
-    std::fs::read_dir(path)
+    fs::read_dir(path)
         .unwrap()
         .map(|f| f.unwrap().metadata().unwrap().len())
         .sum()

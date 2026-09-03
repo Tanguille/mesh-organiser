@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use axum::{extract::FromRequestParts, http::StatusCode, http::request::Parts};
 use axum_login::{AuthUser as AxumAuthUser, AuthnBackend, UserId};
@@ -21,8 +21,8 @@ pub struct AuthUser {
 
 // Here we've implemented `Debug` manually to avoid accidentally logging the
 // password hash and validity token.
-impl std::fmt::Debug for AuthUser {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AuthUser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("User")
             .field("id", &self.id)
             .field("username", &self.username)

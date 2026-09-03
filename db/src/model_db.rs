@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
 use sqlx::{QueryBuilder, Row};
 use strum::EnumString;
@@ -406,7 +408,7 @@ pub async fn get_model_ids_via_sha256s(
     query_builder.push_bind(user.id);
     let rows = query_builder.build().fetch_all(db).await?;
 
-    let sha_to_id: std::collections::HashMap<String, i64> = rows
+    let sha_to_id: HashMap<String, i64> = rows
         .iter()
         .map(|r| {
             (

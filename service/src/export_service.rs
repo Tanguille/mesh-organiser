@@ -1,6 +1,9 @@
 use std::{
     collections::HashSet,
+    env,
+    fs::{self, File as StdFile},
     path::{Path, PathBuf},
+    time::{Duration, SystemTime},
 };
 
 use async_zip::{
@@ -35,7 +38,7 @@ use super::app_state::AppState;
 pub const TEMP_DIR_PREFIX: &str = "meshorganiser_";
 
 /// How long a temp directory must be untouched before `remove_stale_temp_dirs` reaps it.
-const STALE_TEMP_DIR_AGE: std::time::Duration = std::time::Duration::from_mins(5);
+const STALE_TEMP_DIR_AGE: Duration = Duration::from_mins(5);
 
 /// Returns a new temp directory for the given action; panics on I/O or clock failure.
 ///
@@ -44,11 +47,11 @@ const STALE_TEMP_DIR_AGE: std::time::Duration = std::time::Duration::from_mins(5
 /// Panics if the system temp dir is unavailable or the system clock cannot provide nanosecond timestamps.
 #[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
-    let temp_dir = std::env::temp_dir().join(format!(
+    let temp_dir = env::temp_dir().join(format!(
         "{TEMP_DIR_PREFIX}{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
-    std::fs::create_dir_all(&temp_dir).unwrap();
+    fs::create_dir_all(&temp_dir).unwrap();
 
     temp_dir
 }
@@ -62,22 +65,19 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
 ///
 /// Returns an error if the system temp dir cannot be read or a stale directory cannot be removed.
 pub fn remove_stale_temp_dirs() -> Result<(), ServiceError> {
-    let now = std::time::SystemTime::now();
-    for entry in std::fs::read_dir(std::env::temp_dir())? {
+    let now = SystemTime::now();
+    for entry in fs::read_dir(env::temp_dir())? {
         let path = entry?.path();
         if path.is_dir()
             && path
                 .file_name()
                 .is_some_and(|name| name.to_string_lossy().starts_with(TEMP_DIR_PREFIX))
-            && let Ok(metadata) = std::fs::metadata(&path)
+            && let Ok(metadata) = fs::metadata(&path)
             && let Ok(modified) = metadata.modified()
-            && now
-                .duration_since(modified)
-                .unwrap_or(std::time::Duration::ZERO)
-                >= STALE_TEMP_DIR_AGE
+            && now.duration_since(modified).unwrap_or(Duration::ZERO) >= STALE_TEMP_DIR_AGE
         {
             println!("Removing temporary path {}", path.display());
-            std::fs::remove_dir_all(&path)?;
+            fs::remove_dir_all(&path)?;
         }
     }
 
@@ -141,7 +141,7 @@ pub async fn export_to_temp_folder(
 
     if configuration.export_metadata {
         let metadata_path = temp_dir.join("metadata.json");
-        let metadata_file = std::fs::File::create(&metadata_path)?;
+        let metadata_file = StdFile::create(&metadata_path)?;
         serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 
@@ -400,13 +400,13 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
 
         if blob.disk_path.is_none()
             && model_path.exists()
-            && let Err(e) = std::fs::remove_file(model_path)
+            && let Err(e) = fs::remove_file(model_path)
         {
             eprintln!("Failed to remove dead blob model file: {e}");
         }
 
         if image_path.exists()
-            && let Err(e) = std::fs::remove_file(image_path)
+            && let Err(e) = fs::remove_file(image_path)
         {
             eprintln!("Failed to remove dead blob image file: {e}");
         }
