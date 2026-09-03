@@ -42,8 +42,9 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
-    use crate::controller::share_controller::resolve_share_owner;
-    use crate::path_safety::resolve_path_under_base;
+    use crate::{
+        controller::share_controller::resolve_share_owner, path_safety::resolve_path_under_base,
+    };
 
     use super::{
         ApplicationError, Blob, Body, BufReader, CurrentUser, Deserialize, File, IntoResponse,

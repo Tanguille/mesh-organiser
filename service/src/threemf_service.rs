@@ -197,6 +197,7 @@ async fn read_zip_entry_by_suffix(
     let mut file = zip.reader_with_entry(index).await?;
     let mut contents = String::new();
     file.read_to_string_checked(&mut contents).await?;
+
     Ok(contents)
 }
 
