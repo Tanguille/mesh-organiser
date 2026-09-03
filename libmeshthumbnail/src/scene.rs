@@ -1,6 +1,10 @@
 use euc::{CullMode, DepthMode, Pipeline, TriangleList};
 use vek::{Mat4, Rgba, Vec3, Vec4};
 
+/// Substituted when a normal or view vector has zero length and cannot be
+/// normalized; points straight at the camera so shading stays defined.
+const FALLBACK_NORMAL: Vec3<f32> = Vec3::new(0.0, 0.0, 1.0);
+
 // Vertex data that will be interpolated across the triangle
 #[derive(Clone, Copy, Debug)]
 pub struct VertexData {
@@ -101,15 +105,12 @@ impl Pipeline<'_> for Scene {
 
     fn fragment(&self, data: Self::VertexData) -> Self::Fragment {
         // Normalize the interpolated normal (simulates the derivative-based normal computation)
-        let normal = data
-            .normal
-            .try_normalized()
-            .unwrap_or(Vec3::new(0.0, 0.0, 1.0));
+        let normal = data.normal.try_normalized().unwrap_or(FALLBACK_NORMAL);
 
         // View direction calculation
         let view_dir = (self.camera_position - data.world_pos)
             .try_normalized()
-            .unwrap_or(Vec3::new(0.0, 0.0, 1.0));
+            .unwrap_or(FALLBACK_NORMAL);
 
         // Light direction follows camera (as in the original shader)
         let light_dir = view_dir;

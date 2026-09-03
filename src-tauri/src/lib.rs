@@ -314,11 +314,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
             let _ = f.window().set_title("Downloading model...");
         }
 
-        if let DownloadEvent::Finished {
-            url: _,
-            path,
-            success,
-        } = event
+        if let DownloadEvent::Finished { path, success, .. } = event
             && path.is_some()
             && success
         {
@@ -635,7 +631,7 @@ pub fn run() {
         .expect("error while running tauri application");
 
     app.run(|app_handle, e| {
-        if let tauri::RunEvent::ExitRequested { .. } = e {
+        if matches!(e, tauri::RunEvent::ExitRequested { .. }) {
             // Close sqlite db
             tauri::async_runtime::block_on(async move {
                 let app_state = app_handle.state::<TauriAppState>();

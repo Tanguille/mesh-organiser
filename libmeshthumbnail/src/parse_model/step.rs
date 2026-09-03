@@ -14,6 +14,7 @@ use crate::{
 /// generate hundreds of thousands of triangles); map it to the same relative fraction the
 /// upstream default uses so the env var behaves consistently regardless of model size.
 const TOLERANCE_DEFAULT: f64 = 0.004;
+const TOLERANCE_ENV: &str = "LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE";
 
 /// OCCT's mesh kernel keeps process-wide state (`BRepMesh_IncrementalMesh`, FFI handles) that is
 /// not safe to invoke from multiple threads concurrently — parallel STEP parses have been
@@ -32,11 +33,10 @@ pub fn handle_step(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     }
 }
 
-/// Reads the STEP triangulation tolerance from the
-/// `LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE` env var, falling back to
-/// `TOLERANCE_DEFAULT` when unset or unparseable.
+/// Reads the STEP triangulation tolerance from the `TOLERANCE_ENV` env var,
+/// falling back to `TOLERANCE_DEFAULT` when unset or unparseable.
 fn step_tolerance() -> f64 {
-    env::var("LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE").map_or(TOLERANCE_DEFAULT, |value| {
+    env::var(TOLERANCE_ENV).map_or(TOLERANCE_DEFAULT, |value| {
         value.parse::<f64>().unwrap_or(TOLERANCE_DEFAULT)
     })
 }

@@ -49,13 +49,20 @@ use crate::{
     web_import_state::WebImportStateEmitter,
 };
 
+// Env var names live in one place so a lookup and the message naming it in an
+// error cannot drift apart.
+const ENV_SERVER_PORT: &str = "SERVER_PORT";
+const ENV_LOCAL_ACCOUNT_PASSWORD: &str = "LOCAL_ACCOUNT_PASSWORD";
+const ENV_REGENERATE_THUMBNAILS: &str = "REGENERATE_THUMBNAILS";
+const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
+
 pub struct App {
     app_state: WebAppState,
     session_store: SqliteStore,
 }
 
 fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
-    env::var("SERVER_PORT")
+    env::var(ENV_SERVER_PORT)
         .unwrap_or_else(|_| "3000".into())
         .parse::<u16>()
         .map_err(|e| {
@@ -115,7 +122,7 @@ async fn load_and_prepare_config(
 async fn apply_local_account(
     web_app_state: &WebAppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let local_pass = env::var("LOCAL_ACCOUNT_PASSWORD").unwrap_or_else(|_| {
+    let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
         let key = Key::generate();
         let key_bytes = key.master();
         let mut pass = String::new();
@@ -136,7 +143,7 @@ async fn apply_local_account(
 /// the TCP listener can bind immediately; a large library's CPU-bound thumbnail
 /// pass would otherwise keep the server unreachable until it finishes.
 fn spawn_thumbnail_regeneration(web_app_state: &WebAppState) {
-    let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
+    let regenerate_thumbnails = env::var(ENV_REGENERATE_THUMBNAILS)
         .unwrap_or_else(|_| "none".into())
         .to_lowercase();
     let force = match regenerate_thumbnails.as_str() {
@@ -210,11 +217,11 @@ async fn setup_session_store(
 impl App {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let port = parse_port()?;
-        let config_path = env::var("APP_CONFIG_PATH")
+        let config_path = env::var(ENV_APP_CONFIG_PATH)
             .map_err(|_| {
                 io::Error::new(
                     ErrorKind::NotFound,
-                    "Expected environment variable APP_CONFIG_PATH to be set",
+                    format!("Expected environment variable {ENV_APP_CONFIG_PATH} to be set"),
                 )
             })
             .map(PathBuf::from)?;

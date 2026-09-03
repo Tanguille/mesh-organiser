@@ -16,6 +16,8 @@ mod user;
 mod web_app_state;
 mod web_import_state;
 
+const ENV_RUST_LOG: &str = "RUST_LOG";
+
 async fn loop_remove_temp_paths() {
     loop {
         time::sleep(Duration::from_hours(1)).await;
@@ -26,9 +28,9 @@ async fn loop_remove_temp_paths() {
 #[allow(clippy::future_not_send)] // App and its state are not Send; run on main thread via block_on
 async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
-        .with(EnvFilter::new(env::var("RUST_LOG").unwrap_or_else(|_| {
-            "axum_login=debug,tower_sessions=debug,sqlx=warn,tower_http=debug".into()
-        })))
+        .with(EnvFilter::new(env::var(ENV_RUST_LOG).unwrap_or_else(
+            |_| "axum_login=debug,tower_sessions=debug,sqlx=warn,tower_http=debug".into(),
+        )))
         .with(tracing_subscriber::fmt::layer())
         .try_init()?;
 

@@ -131,7 +131,7 @@ pub async fn get_model_count(
 /// # Panics
 ///
 /// Panics if the path has no extension when checked (internal logic bug).
-pub async fn import_path_inner(
+async fn import_path_inner(
     path: &str,
     app_state: &AppState,
     import_state: Arc<Mutex<ImportState>>,
@@ -358,19 +358,18 @@ async fn import_models_from_dir(
     group_name: String,
 ) -> Result<(), ServiceError> {
     let configuration = app_state.get_configuration();
-    let user;
-    let origin_url;
-    let delete_after_import;
-    let import_as_path;
-    {
+    let (user, origin_url, delete_after_import, import_as_path) = {
         let mut import_state = import_state.lock().await;
 
         import_state.add_new_import_set(Some(group_name));
-        user = import_state.user.clone();
-        origin_url = import_state.origin_url.clone();
-        delete_after_import = import_state.delete_after_import;
-        import_as_path = import_state.import_as_path;
-    }
+
+        (
+            import_state.user.clone(),
+            import_state.origin_url.clone(),
+            import_state.delete_after_import,
+            import_state.import_as_path,
+        )
+    };
 
     let entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())
