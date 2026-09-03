@@ -212,7 +212,6 @@ pub async fn generate_thumbnails(
     import_state.update_total_model_count(paths.len());
 
     let mut futures = JoinSet::new();
-    let mut active = 0;
 
     for (model_path, image_path) in paths {
         futures.spawn_blocking(move || {
@@ -227,18 +226,14 @@ pub async fn generate_thumbnails(
                 prefer_gcode_thumbnail,
             );
         });
-        active += 1;
 
-        if active >= max_concurrent
+        if futures.len() >= max_concurrent
             && let Some(res) = futures.join_next().await
         {
             match res {
                 Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
                 Err(err) => panic!("{err}"),
-                Ok(()) => {
-                    active -= 1;
-                    import_state.update_finished_thumbnails_count(1);
-                }
+                Ok(()) => import_state.update_finished_thumbnails_count(1),
             }
         }
     }

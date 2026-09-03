@@ -42,7 +42,8 @@ pub fn router() -> Router<WebAppState> {
 }
 
 mod get {
-    use crate::path_safety::{resolve_path_under_base, resolve_path_under_temp};
+    use crate::controller::share_controller::resolve_share_owner;
+    use crate::path_safety::resolve_path_under_base;
 
     use super::{
         ApplicationError, Blob, Body, BufReader, CurrentUser, Deserialize, File, IntoResponse,
@@ -73,13 +74,6 @@ mod get {
         Some(user)
     }
 
-    async fn extract_user_via_share_id(app_state: &WebAppState, share_id: &str) -> Option<User> {
-        crate::controller::share_controller::resolve_share_owner(app_state, share_id)
-            .await
-            .ok()
-            .map(|(_share, user)| user)
-    }
-
     pub async fn download_model(
         Path(blob_sha256): Path<String>,
         State(app_state): State<WebAppState>,
@@ -98,9 +92,9 @@ mod get {
                 user_id: None,
                 user_hash: None,
                 share_id: Some(share_id),
-            } => match extract_user_via_share_id(&app_state, &share_id).await {
-                Some(u) => u,
-                None => return StatusCode::NOT_FOUND.into_response(),
+            } => match resolve_share_owner(&app_state, &share_id).await {
+                Ok((_share, user)) => user,
+                Err(_) => return StatusCode::NOT_FOUND.into_response(),
             },
             _ => return StatusCode::NOT_FOUND.into_response(),
         };
@@ -186,7 +180,7 @@ mod get {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         }
 
-        let base_dir = app_state.get_image_dir();
+        let base_dir = app_state.app_state.get_image_dir();
         let src_file_path = match resolve_path_under_base(&base_dir, &format!("{sha256}.png")).await
         {
             Ok(path) => path,
@@ -221,7 +215,8 @@ mod get {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         }
 
-        let path = match resolve_path_under_temp(&zip_dir).await {
+        // zip dirs live directly under the process temp dir
+        let path = match resolve_path_under_base(&std::env::temp_dir(), &zip_dir).await {
             Ok(path) => path,
             Err(e) => return e.respond(),
         };

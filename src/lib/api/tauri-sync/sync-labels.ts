@@ -1,5 +1,6 @@
 import { currentUser } from "$lib/configuration.svelte";
 import {
+  beginSyncStep,
   globalSyncState,
   resetSyncState,
   SyncStage,
@@ -26,9 +27,10 @@ async function stepUploadToRemote(
   remoteModels: Model[],
   isDownload: boolean,
 ): Promise<void> {
-  globalSyncState.step = isDownload ? SyncStep.Download : SyncStep.Upload;
-  globalSyncState.processableItems = toUpload.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(
+    isDownload ? SyncStep.Download : SyncStep.Upload,
+    toUpload.length,
+  );
 
   // Index the remote models once so per-label member resolution is
   // O(label size) instead of a full model-library scan per label.
@@ -81,9 +83,7 @@ async function stepSyncToRemote(
   remoteModels: Model[],
   isServerToLocal: boolean,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.UpdateMetadata;
-  globalSyncState.processableItems = toSync.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.UpdateMetadata, toSync.length);
 
   // Index the remote models once so per-label member resolution is
   // O(label size) instead of a full model-library scan per label.
@@ -146,8 +146,7 @@ export async function syncLabels(
   localModels: Model[],
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
-  resetSyncState();
-  globalSyncState.stage = SyncStage.Labels;
+  resetSyncState(SyncStage.Labels);
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localLabelApi = getContainer().require<ILabelApi>(ILabelApi);
 

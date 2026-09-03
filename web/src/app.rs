@@ -54,10 +54,6 @@ pub struct App {
     session_store: SqliteStore,
 }
 
-fn expected_env_error_msg(var_name: &str) -> String {
-    format!("Expected environment variable {var_name} to be set")
-}
-
 fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
     env::var("SERVER_PORT")
         .unwrap_or_else(|_| "3000".into())
@@ -218,7 +214,7 @@ impl App {
             .map_err(|_| {
                 io::Error::new(
                     ErrorKind::NotFound,
-                    expected_env_error_msg("APP_CONFIG_PATH"),
+                    "Expected environment variable APP_CONFIG_PATH to be set",
                 )
             })
             .map(PathBuf::from)?;
@@ -386,21 +382,4 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     }
 
     db.close().await;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::expected_env_error_msg;
-
-    #[test]
-    fn expected_env_error_msg_format() {
-        assert_eq!(
-            expected_env_error_msg("FOO"),
-            "Expected environment variable FOO to be set"
-        );
-        assert_eq!(
-            expected_env_error_msg("APP_CONFIG_PATH"),
-            "Expected environment variable APP_CONFIG_PATH to be set"
-        );
-    }
 }

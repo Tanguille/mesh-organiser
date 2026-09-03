@@ -137,14 +137,3 @@ pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbEr
 
     Ok(dead_blobs)
 }
-
-pub async fn get_blob_model_usage_count(db: &DbContext, blob_id: i64) -> Result<i64, DbError> {
-    let row = sqlx::query!(
-        "SELECT COUNT(*) as count FROM models WHERE model_blob_id = ?",
-        blob_id
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.count)
-}

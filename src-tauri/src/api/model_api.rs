@@ -46,15 +46,13 @@ pub async fn add_model(
     )
     .await?;
 
-    let models_len = models.len();
-    let (_, paths) =
-        export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
-
     if open_in_slicer
-        && models_len > 0
+        && !models.is_empty()
         && let Some(slicer) = &state.get_configuration().slicer
     {
-        slicer.open(paths, &state.app_state).await?;
+        let (_, paths) =
+            export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
+        slicer.open(paths, &state.app_state)?;
     }
 
     import_state.status = ImportStatus::Finished;

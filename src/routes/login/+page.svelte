@@ -27,8 +27,7 @@
 
     try {
       await loginApi.loginUser(email, password);
-      await goto(resolve("/"));
-      location.reload();
+      location.href = resolve("/");
     } catch {
       toast.error("Login failed. Please check your credentials and try again.");
     }

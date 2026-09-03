@@ -80,45 +80,15 @@ fn parse_step(path: &Path) -> Result<Mesh, MeshThumbnailError> {
 }
 
 fn parse_step_zip(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let mut mesh = None;
-    with_zip_entry(
+    Ok(to_mesh(with_zip_entry(
         path,
         |name| {
             let name = Path::new(name);
             matches_ext(name, "step") || matches_ext(name, "stp")
         },
         "Failed to find .step model in zip",
-        |_size, mut reader| {
-            mesh = Some(mesh_from_reader(&mut reader)?);
-            Ok(())
-        },
-    )?;
-
-    // `with_zip_entry` errors when no entry matches, so a hit always set `mesh`.
-    Ok(to_mesh(mesh.expect("matched zip entry produced no mesh")))
-}
-
-/// # Errors
-///
-/// Returns an error if the STEP bytes cannot be read, meshed, or written as STL.
-pub fn convert_step_to_stl(step: &[u8]) -> Result<Vec<u8>, MeshThumbnailError> {
-    let mesh = mesh_from_reader(&mut &step[..])?;
-    let mut data = Vec::new();
-    mesh.write_stl(&mut data)?;
-
-    Ok(data)
-}
-
-/// # Errors
-///
-/// Returns an error if the STEP file cannot be read or meshed, or if writing the STL fails.
-pub fn convert_step_path_to_stl(step_path: &Path) -> Result<Vec<u8>, MeshThumbnailError> {
-    let mut file = File::open(step_path)?;
-    let mesh = mesh_from_reader(&mut file)?;
-    let mut data = Vec::new();
-    mesh.write_stl(&mut data)?;
-
-    Ok(data)
+        |_size, mut reader| mesh_from_reader(&mut reader),
+    )?))
 }
 
 #[cfg(test)]
@@ -128,33 +98,10 @@ mod tests {
     use tempfile::tempdir;
     use zip::{ZipWriter, write::SimpleFileOptions};
 
-    use super::{convert_step_path_to_stl, convert_step_to_stl, handle_step};
+    use super::handle_step;
 
     fn fixture_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cube.step")
-    }
-
-    #[test]
-    fn convert_step_path_to_stl_produces_binary_stl() {
-        let stl = convert_step_path_to_stl(&fixture_path()).expect("cube.step should convert");
-
-        assert!(
-            stl.len() > 84,
-            "binary STL should include header and triangles"
-        );
-        assert!(!stl.is_empty());
-    }
-
-    #[test]
-    fn convert_step_to_stl_from_bytes_produces_binary_stl() {
-        let step_bytes = std::fs::read(fixture_path()).expect("read fixture");
-
-        let stl = convert_step_to_stl(&step_bytes).expect("cube.step bytes should convert");
-
-        assert!(
-            stl.len() > 84,
-            "binary STL should include header and triangles"
-        );
     }
 
     #[test]

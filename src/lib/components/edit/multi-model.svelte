@@ -61,7 +61,7 @@
   );
 
   let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
-  let appliedLabels = $derived(uniqueById(models.map((x) => x.labels).flat()));
+  let appliedLabels = $derived(uniqueById(models.flatMap((x) => x.labels)));
 
   const modelApi = getContainer().require<IModelApi>(IModelApi);
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
@@ -112,14 +112,6 @@
 
     await promise;
     await updateSidebarState();
-  }
-
-  async function setPrintedFlagOnAllModels(printed: boolean) {
-    await setFlagOnAllModels((x) => (x.flags.printed = printed), printed);
-  }
-
-  async function setFavoriteFlagOnAllModels(favorite: boolean) {
-    await setFlagOnAllModels((x) => (x.flags.favorite = favorite), favorite);
   }
 
   async function setFlagOnAllModels(action: (m: Model) => void, set: boolean) {
@@ -196,10 +188,10 @@
   }
 
   async function onRemoveGroup() {
-    const count = models.length;
-    await groupApi.removeModelsFromGroup(models);
+    const affected_models = models;
+    await groupApi.removeModelsFromGroup(affected_models);
     await updateSidebarState();
-    toast.success(`Ungrouped ${count} model(s)`);
+    toast.success(`Ungrouped ${countWriter("model", affected_models)}`);
     props.onGroupDelete?.();
   }
 
@@ -321,13 +313,17 @@
           <CheckboxWithLabel
             class="ml-1"
             label="Printed"
-            bind:value={() => printed, (val) => setPrintedFlagOnAllModels(val)}
+            bind:value={
+              () => printed,
+              (val) => setFlagOnAllModels((x) => (x.flags.printed = val), val)
+            }
           />
           <CheckboxWithLabel
             class="ml-1"
             label="Favorite"
             bind:value={
-              () => favorited, (val) => setFavoriteFlagOnAllModels(val)
+              () => favorited,
+              (val) => setFlagOnAllModels((x) => (x.flags.favorite = val), val)
             }
           />
         </div>

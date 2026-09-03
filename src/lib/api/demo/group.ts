@@ -157,18 +157,7 @@ export class DemoGroupApi implements IGroupApi {
       });
     }
 
-    // Apply text search to group names
-    let filteredGroups = groups;
-    if (text_search) {
-      const searchLower = text_search.toLowerCase();
-      filteredGroups = groups.filter(
-        (g) =>
-          g.meta.name.toLowerCase().includes(searchLower) ||
-          g.models.some((m) => modelMatchesSearch(m, searchLower)),
-      );
-    }
-
-    filteredGroups = filteredGroups.filter((g) => g.models.length > 0);
+    const filteredGroups = groups.filter((g) => g.models.length > 0);
 
     // Sort groups
     filteredGroups.sort(groupOrderByComparator(order_by));

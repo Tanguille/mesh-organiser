@@ -2,14 +2,13 @@ use std::{
     collections::HashMap,
     panic,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
 use futures::future::try_join_all;
 use serde::Serialize;
 use tauri::{AppHandle, State, http::header::CONTENT_TYPE, ipc::Response};
-use tauri_plugin_http::reqwest::{self, cookie::Jar};
+use tauri_plugin_http::reqwest;
 use tokio::{fs::File, io::BufReader, task::JoinSet};
 use tokio_util::{compat::TokioAsyncReadCompatExt, io::ReaderStream};
 
@@ -37,11 +36,11 @@ async fn download_files_to_temp_dir(
             )
         })
         .collect();
-    let download_futures: Vec<_> = urls
-        .iter()
-        .map(|url| download_file_service::download_file_to(url, &temp_dir))
-        .collect();
-    let results = try_join_all(download_futures).await?;
+    let results = try_join_all(
+        urls.iter()
+            .map(|url| download_file_service::download_file_to(url, &temp_dir)),
+    )
+    .await?;
     let paths = results
         .into_iter()
         .map(|result| PathBuf::from(result.path))
@@ -102,16 +101,15 @@ pub async fn download_files_and_open_in_slicer(
 ) -> Result<(), ApplicationError> {
     if let Some(slicer) = &state.get_configuration().slicer {
         let temp_dir = download_files_to_temp_dir(sha256s, base_url, user_id, user_hash).await?;
-        slicer.open(temp_dir.1, &state.app_state).await?;
+        slicer.open(temp_dir.1, &state.app_state)?;
     }
 
     Ok(())
 }
 
-async fn login(token: &str, base_url: &str) -> Result<Arc<Jar>, ApplicationError> {
-    let jar = Arc::new(Jar::default());
+async fn login(token: &str, base_url: &str) -> Result<reqwest::Client, ApplicationError> {
     let client = reqwest::ClientBuilder::new()
-        .cookie_provider(Arc::clone(&jar))
+        .cookie_store(true)
         .build()
         .unwrap();
 
@@ -131,15 +129,10 @@ async fn login(token: &str, base_url: &str) -> Result<Arc<Jar>, ApplicationError
         ));
     }
 
-    Ok(jar)
+    Ok(client)
 }
 
-async fn logout(jar: Arc<Jar>, base_url: &str) -> Result<(), ApplicationError> {
-    let client = reqwest::ClientBuilder::new()
-        .cookie_provider(Arc::clone(&jar))
-        .build()
-        .unwrap();
-
+async fn logout(client: &reqwest::Client, base_url: &str) -> Result<(), ApplicationError> {
     let url = format!("{base_url}/api/v1/logout");
 
     let response = client.post(&url).send().await?;
@@ -213,7 +206,7 @@ async fn get_ids(response: reqwest::Response) -> Result<Vec<i64>, ApplicationErr
 }
 
 async fn process_uploads(
-    jar: Arc<Jar>,
+    client: &reqwest::Client,
     base_url: &str,
     paths: &mut Vec<DirectoryScanModel>,
     source_url: Option<String>,
@@ -225,11 +218,6 @@ async fn process_uploads(
     );
     import_state.update_status(ImportStatus::ProcessingModels);
     import_state.update_total_model_count(paths.len());
-
-    let client = reqwest::ClientBuilder::new()
-        .cookie_provider(Arc::clone(&jar))
-        .build()
-        .unwrap();
 
     let url = format!("{base_url}/api/v1/models");
     let mut futures = JoinSet::new();
@@ -327,10 +315,10 @@ pub async fn upload_models_to_remote_server(
     };
     let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
 
-    let jar = login(&token, &base_url).await?;
+    let client = login(&token, &base_url).await?;
     let mut scan = import_service::expand_paths(&paths, recursive).await?;
     let import_state = process_uploads(
-        Arc::clone(&jar),
+        &client,
         &base_url,
         &mut scan,
         source_url,
@@ -339,14 +327,14 @@ pub async fn upload_models_to_remote_server(
     )
     .await?;
 
-    logout(jar, &base_url).await?;
+    logout(&client, &base_url).await?;
 
     if open_in_slicer
         && !scan.is_empty()
         && let Some(slicer) = &app_state.get_configuration().slicer
     {
         let model_paths: Vec<PathBuf> = scan.iter().map(|m| m.path.clone()).collect();
-        slicer.open(model_paths, &app_state.app_state).await?;
+        slicer.open(model_paths, &app_state.app_state)?;
     }
 
     Ok(UploadResult {

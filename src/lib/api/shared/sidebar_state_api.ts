@@ -40,6 +40,14 @@ export interface ISidebarStateApi {
 }
 
 export class DefaultSidebarStateApi implements ISidebarStateApi {
+  private includeShares: boolean;
+
+  // Tauri-local mode opts out: TauriProxyShareApi.getShares() drains the full
+  // local and remote model lists just to count shares.
+  constructor(includeShares = true) {
+    this.includeShares = includeShares;
+  }
+
   async getSidebarState(): Promise<SidebarState> {
     const container = getContainer();
     const modelApi = container.require<IModelApi>(IModelApi);
@@ -59,7 +67,9 @@ export class DefaultSidebarStateApi implements ISidebarStateApi {
       slicerApi
         ? slicerApi.availableSlicers()
         : Promise.resolve([] as SlicerEntry[]),
-      shareApi ? shareApi.getShares() : Promise.resolve([] as Share[]),
+      this.includeShares && shareApi
+        ? shareApi.getShares()
+        : Promise.resolve([] as Share[]),
     ]);
 
     return {

@@ -9,25 +9,7 @@ fn main() {
 
         // Convert to string and normalize for SQLite URL format
         let path = absolute_path.to_str().unwrap().replace('\\', "/");
-        // For Windows absolute paths, ensure format is D:/path (no leading slash before drive)
-        let normalized_path = if cfg!(windows) && path.len() > 2 {
-            // On Windows, if we have something like /D:/path, remove the leading slash
-            if let Some(stripped) = path.strip_prefix('/') {
-                let chars: Vec<char> = stripped.chars().collect();
-                if chars.len() > 1 && chars[1] == ':' {
-                    // Remove leading slash: /D:/path -> D:/path
-                    stripped.to_string()
-                } else {
-                    path
-                }
-            } else {
-                path
-            }
-        } else {
-            path
-        };
-
-        let db_url = format!("sqlite:///{normalized_path}");
+        let db_url = format!("sqlite:///{path}");
         println!("cargo:rustc-env=DATABASE_URL={db_url}");
         println!("cargo:rerun-if-changed=model.sqlite");
     } else {

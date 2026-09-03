@@ -6,50 +6,22 @@ use std::{
 
 use winreg::{HKEY, RegKey, enums};
 
-use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_with_paths};
+use crate::{service_error::ServiceError, slicer_service::open_with_args_and_paths};
 
-use super::{Slicer, open_custom_slicer};
+use super::Slicer;
 
 impl Slicer {
-    #[must_use]
-    pub fn is_installed(&self) -> bool {
-        if matches!(self, Self::Custom) {
-            return true;
-        }
-
+    pub(super) fn detect_installed(&self) -> bool {
         get_slicer_path(self).is_some()
     }
 
-    /// Opens the slicer with the given model paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the slicer is not installed or spawning the process fails.
-    ///
     /// # Panics
     ///
-    /// Panics if the slicer path cannot be converted to UTF-8.
-    pub async fn open(
-        &self,
-        paths: Vec<PathBuf>,
-        app_state: &AppState,
-    ) -> Result<(), ServiceError> {
-        if matches!(self, Self::Custom) {
-            return open_custom_slicer(paths, app_state).await;
-        }
-
-        if !self.is_installed() {
-            return Err(ServiceError::InternalError(String::from(
-                "Slicer not installed",
-            )));
-        }
-
+    /// Panics if the slicer path cannot be resolved or converted to UTF-8.
+    pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
         let slicer_pathbuf = get_slicer_path(self).unwrap();
-        let slicer_path = slicer_pathbuf.to_str().unwrap();
 
-        println!("Opening in slicer: {paths:?}");
-
-        open_with_paths(slicer_path, paths)
+        open_with_args_and_paths(slicer_pathbuf.to_str().unwrap(), &[], paths)
     }
 }
 

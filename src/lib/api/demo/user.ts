@@ -1,8 +1,4 @@
-import {
-  createUserInstance,
-  type IUserApi,
-  type User,
-} from "../shared/user_api";
+import { newlyCreatedUser, type IUserApi, type User } from "../shared/user_api";
 
 export class DemoUserApi implements IUserApi {
   async isAuthenticated(): Promise<boolean> {
@@ -10,15 +6,6 @@ export class DemoUserApi implements IUserApi {
   }
 
   async getCurrentUser(): Promise<User> {
-    return createUserInstance(
-      1,
-      "Demo User",
-      "demo@user.com",
-      new Date().toISOString(),
-      [],
-      null,
-      null,
-      null,
-    );
+    return newlyCreatedUser(1, "Demo User", "demo@user.com");
   }
 }

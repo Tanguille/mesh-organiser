@@ -54,7 +54,8 @@ pub async fn import_path(
     import_state.status = ImportStatus::ProcessingModels;
     import_state.emit_all();
 
-    let model_count = get_model_count(path, import_state.recursive, &import_state).await?;
+    let model_count =
+        get_model_count(path, import_state.recursive, import_state.import_as_path).await?;
     import_state.update_total_model_count(model_count);
 
     let import_state = Arc::new(Mutex::new(import_state));
@@ -95,7 +96,7 @@ pub async fn import_path(
 pub async fn get_model_count(
     path: &str,
     recursive: bool,
-    import_state: &ImportState,
+    import_as_path: bool,
 ) -> Result<usize, ServiceError> {
     let path_buff = PathBuf::from(path);
 
@@ -106,7 +107,7 @@ pub async fn get_model_count(
             get_model_count_from_dir(path)
         }
     } else if is_zip_path(&path_buff) {
-        if import_state.import_as_path {
+        if import_as_path {
             return Err(ServiceError::InternalError(String::from(
                 "Cannot import a zip as path",
             )));
@@ -412,12 +413,6 @@ async fn import_models_from_zip(
     let mut import_state = import_state.lock().await;
     import_state.add_new_import_set(Some(group_name));
 
-    if import_state.import_as_path {
-        return Err(ServiceError::InternalError(String::from(
-            "Cannot import a zip as path",
-        )));
-    }
-
     {
         let zip_file = File::open(path).await?;
         let buffered_reader = BufReader::new(zip_file);
@@ -696,16 +691,13 @@ pub async fn expand_paths(
 
 #[cfg(test)]
 mod tests {
-    use db::model::user::User;
-
-    use crate::{import_state::ImportState, service_error::ServiceError};
+    use crate::service_error::ServiceError;
 
     use super::get_model_count;
 
     #[tokio::test]
     async fn get_model_count_unsupported_extension_returns_err() {
-        let state = ImportState::new(None, false, false, false, User::default());
-        let result = get_model_count("somefile.xyz", false, &state).await;
+        let result = get_model_count("somefile.xyz", false, false).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         if let ServiceError::InternalError(msg) = &err {
@@ -720,8 +712,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_model_count_zip_with_import_as_path_returns_err() {
-        let state = ImportState::new(None, false, false, true, User::default());
-        let result = get_model_count("archive.zip", false, &state).await;
+        let result = get_model_count("archive.zip", false, true).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         if let ServiceError::InternalError(msg) = &err {

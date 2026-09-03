@@ -8,29 +8,12 @@ const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
 const cargo = readFileSync("Cargo.toml", "utf-8");
 const tauriPath = "src-tauri/tauri.conf.json";
 const tauri = JSON.parse(readFileSync(tauriPath, "utf-8"));
-const lines = cargo.split(/\r?\n/);
-
-let inWorkspacePackage = false;
-let cargoVersion = null;
-
-for (const line of lines) {
-  if (line.trim() === "[workspace.package]") {
-    inWorkspacePackage = true;
-    continue;
-  }
-
-  if (inWorkspacePackage && /^\[/.test(line)) {
-    break;
-  }
-
-  if (inWorkspacePackage) {
-    const m = line.match(/^version\s*=\s*"([^"]+)"/);
-    if (m) {
-      cargoVersion = m[1];
-      break;
-    }
-  }
-}
+// Splitting on line-start `[` isolates each section body, so a `[` inside a
+// value cannot bleed the match across sections.
+const cargoVersion = cargo
+  .split(/^\[/m)
+  .find((section) => section.startsWith("workspace.package]"))
+  ?.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 
 if (cargoVersion == null) {
   console.error(

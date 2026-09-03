@@ -43,5 +43,6 @@ export interface ITauriImportApi {
     settings: ImportModelSettings,
   ): Promise<ImportState>;
   openFolderForImporting(): Promise<void>;
+  initImportListeners(): Promise<void>;
   openFilesForImporting(): Promise<void>;
 }

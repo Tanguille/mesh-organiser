@@ -85,41 +85,18 @@ impl Pipeline<'_> for Scene {
     ) where
         O: FnMut(<Self::Primitives as euc::primitives::PrimitiveKind<Self::VertexData>>::Primitive),
     {
-        // Compute the face normal from the triangle vertices in world space
-        let [v0, v1, v2] = primitive;
+        // Face normal from the triangle's world-space edges (flat shading).
+        let [mut v0, mut v1, mut v2] = primitive;
 
-        // Calculate edges
-        let edge1 = v1.1.world_pos - v0.1.world_pos;
-        let edge2 = v2.1.world_pos - v0.1.world_pos;
+        let normal = (v1.1.world_pos - v0.1.world_pos)
+            .cross(v2.1.world_pos - v0.1.world_pos)
+            .normalized();
 
-        // Compute normal via cross product
-        let cross = edge1.cross(edge2);
-        let normal = cross.normalized();
+        v0.1.normal = normal;
+        v1.1.normal = normal;
+        v2.1.normal = normal;
 
-        // Create new vertices with the computed normal
-        let v0_new = (
-            v0.0,
-            VertexData {
-                world_pos: v0.1.world_pos,
-                normal,
-            },
-        );
-        let v1_new = (
-            v1.0,
-            VertexData {
-                world_pos: v1.1.world_pos,
-                normal,
-            },
-        );
-        let v2_new = (
-            v2.0,
-            VertexData {
-                world_pos: v2.1.world_pos,
-                normal,
-            },
-        );
-
-        output([v0_new, v1_new, v2_new]);
+        output([v0, v1, v2]);
     }
 
     fn fragment(&self, data: Self::VertexData) -> Self::Fragment {

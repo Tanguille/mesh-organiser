@@ -66,12 +66,10 @@ pub fn render(
         &mut depth_buffer,
     );
 
-    RgbaImage::from_fn(
+    RgbaImage::from_raw(
         u32::try_from(image_size.x).unwrap_or(0),
         u32::try_from(image_size.y).unwrap_or(0),
-        |x, y| {
-            let pixel = color_buffer.raw()[y as usize * image_size.x + x as usize];
-            image::Rgba(pixel)
-        },
+        color_buffer.raw().as_flattened().to_vec(),
     )
+    .unwrap_or_default()
 }
