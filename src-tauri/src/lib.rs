@@ -308,11 +308,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         }
     })
     .on_download(|f, event| {
-        if let DownloadEvent::Requested {
-            url,
-            destination: _,
-        } = &event
-        {
+        if let DownloadEvent::Requested { url, .. } = &event {
             println!("Download started: {url:?}");
             let () = f.app_handle().emit("download-started", url).unwrap();
             let _ = f.window().set_title("Downloading model...");

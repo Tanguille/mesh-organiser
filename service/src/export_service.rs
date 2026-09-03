@@ -48,7 +48,7 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
         "{TEMP_DIR_PREFIX}{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
-    std::fs::create_dir(&temp_dir).unwrap();
+    std::fs::create_dir_all(&temp_dir).unwrap();
 
     temp_dir
 }
@@ -531,7 +531,7 @@ mod tests {
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: i64::try_from(content.len()).expect("len fits in i64"),
-            added: String::new(),
+            added: String::default(),
             disk_path: None,
         };
 
@@ -563,7 +563,7 @@ mod tests {
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: 0,
-            added: String::new(),
+            added: String::default(),
             disk_path: None,
         };
 
@@ -587,7 +587,7 @@ mod tests {
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: i64::try_from(content.len()).expect("len fits in i64"),
-            added: String::new(),
+            added: String::default(),
             disk_path: None,
         };
 
@@ -597,12 +597,12 @@ mod tests {
             blob,
             link: None,
             description: None,
-            added: String::new(),
-            last_modified: String::new(),
+            added: String::default(),
+            last_modified: String::default(),
             group: None,
             labels: Vec::new(),
             flags: ModelFlags::empty(),
-            unique_global_id: String::new(),
+            unique_global_id: String::default(),
         };
 
         let temp_dir = tempdir().unwrap();

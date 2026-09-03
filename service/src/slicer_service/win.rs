@@ -110,7 +110,7 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
             let program_files = "C:\\Program Files";
             if let Ok(entries) = fs::read_dir(program_files) {
                 for entry in entries.flatten() {
-                    if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                    if entry.file_type().is_ok_and(|ft| ft.is_dir())
                         && let Some(folder_name) = entry.file_name().to_str()
                         && folder_name.starts_with("UltiMaker Cura")
                     {

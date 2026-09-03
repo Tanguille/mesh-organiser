@@ -115,7 +115,7 @@ pub async fn edit_model(
         model_name,
         model_url,
         model_description,
-        model_flags.unwrap_or(ModelFlags::empty()),
+        model_flags.unwrap_or_default(),
         model_timestamp,
         model_global_id,
     )
