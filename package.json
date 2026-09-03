@@ -31,7 +31,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "~2.10.1",
-    "@threlte/core": "^8.5.16",
+    "@threlte/core": "^8.6.0",
     "@threlte/extras": "^9.21.0",
     "@types/qs": "^6.15.1",
     "@types/three": "^0.185.4",
