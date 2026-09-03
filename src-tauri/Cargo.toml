@@ -46,6 +46,7 @@ service = { workspace = true, features = ["step"] }
 serde_html_form = { workspace = true }
 # "stream" enables reqwest::Body::wrap_stream for streaming multipart uploads.
 tauri-plugin-http = { workspace = true, features = ["multipart", "stream"] }
+tauri-plugin-store = { workspace = true }
 async_zip = { workspace = true, features = [
     "deflate",
     "deflate64",
