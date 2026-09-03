@@ -1,4 +1,4 @@
-use std::{mem, path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command};
 
 use crate::service_error::ServiceError;
 
@@ -121,7 +121,7 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
             }
             ' ' | '\t' if !in_quotes => {
                 if !current_arg.is_empty() {
-                    args.push(mem::take(&mut current_arg));
+                    args.push(std::mem::take(&mut current_arg));
                 }
                 // Skip consecutive whitespace
                 while let Some(&next_char) = chars.peek() {

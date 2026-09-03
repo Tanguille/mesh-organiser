@@ -1,4 +1,4 @@
-use std::{fs::File, path::Path};
+use std::path::Path;
 
 use vek::Vec3;
 
@@ -13,7 +13,7 @@ pub fn handle_threemf(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
 }
 
 fn parse_3mf(path: &Path) -> Result<Mesh, MeshThumbnailError> {
-    let handle = File::open(path)?;
+    let handle = std::fs::File::open(path)?;
     let mfmodel = threemf::read(handle)?;
 
     let mesh = mfmodel

@@ -1,9 +1,8 @@
 use std::{
     collections::HashSet,
-    env,
-    fs::{self, File as StdFile},
+    env, fs,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use async_zip::{
@@ -65,7 +64,7 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
 ///
 /// Returns an error if the system temp dir cannot be read or a stale directory cannot be removed.
 pub fn remove_stale_temp_dirs() -> Result<(), ServiceError> {
-    let now = SystemTime::now();
+    let now = std::time::SystemTime::now();
     for entry in fs::read_dir(env::temp_dir())? {
         let path = entry?.path();
         if path.is_dir()
@@ -141,7 +140,7 @@ pub async fn export_to_temp_folder(
 
     if configuration.export_metadata {
         let metadata_path = temp_dir.join("metadata.json");
-        let metadata_file = StdFile::create(&metadata_path)?;
+        let metadata_file = fs::File::create(&metadata_path)?;
         serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 

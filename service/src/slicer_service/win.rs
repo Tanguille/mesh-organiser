@@ -1,6 +1,6 @@
 use std::{
     ffi::OsString,
-    fs, io,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -34,7 +34,7 @@ fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<String> {
 
     let reg_key = reg_key_result.unwrap();
 
-    let value: Result<OsString, io::Error> = reg_key.get_value(field);
+    let value: Result<OsString, std::io::Error> = reg_key.get_value(field);
 
     value.map_or(None, |s| Some(s.to_str().unwrap().to_string()))
 }

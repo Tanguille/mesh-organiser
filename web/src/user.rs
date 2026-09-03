@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use axum::{extract::FromRequestParts, http::StatusCode, http::request::Parts};
-use axum_login::{AuthUser as AxumAuthUser, AuthnBackend, UserId};
+use axum_login::{AuthnBackend, UserId};
 use password_auth::verify_password;
 use serde::{Deserialize, Serialize};
 use tokio::task;
@@ -68,7 +68,7 @@ impl AuthUser {
     }
 }
 
-impl AxumAuthUser for AuthUser {
+impl axum_login::AuthUser for AuthUser {
     type Id = i64;
 
     fn id(&self) -> Self::Id {

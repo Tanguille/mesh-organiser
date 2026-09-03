@@ -1,9 +1,7 @@
 use std::{
     fs,
-    num::NonZeroUsize,
     path::PathBuf,
     sync::{Arc, Mutex},
-    thread,
 };
 
 use serde::{Deserialize, Serialize};
@@ -32,7 +30,8 @@ impl InitialState {
     pub fn new(config: &Configuration) -> Self {
         Self {
             deep_link_url: None,
-            max_parallelism: thread::available_parallelism().map_or(6, NonZeroUsize::get),
+            max_parallelism: std::thread::available_parallelism()
+                .map_or(6, std::num::NonZeroUsize::get),
             collapse_sidebar: config.collapse_sidebar,
             account_link: None,
         }

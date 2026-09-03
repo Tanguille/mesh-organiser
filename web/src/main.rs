@@ -1,4 +1,4 @@
-use std::{env, error::Error, process, time::Duration};
+use std::{env, time::Duration};
 
 use tokio::time;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -26,7 +26,7 @@ async fn loop_remove_temp_paths() {
 }
 
 #[allow(clippy::future_not_send)] // App and its state are not Send; run on main thread via block_on
-async fn async_main() -> Result<(), Box<dyn Error>> {
+async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(EnvFilter::new(env::var(ENV_RUST_LOG).unwrap_or_else(
             |_| "axum_login=debug,tower_sessions=debug,sqlx=warn,tower_http=debug".into(),
@@ -48,6 +48,6 @@ fn main() {
 
     if let Err(e) = rt.block_on(async_main()) {
         eprintln!("Fatal: {e}");
-        process::exit(1);
+        std::process::exit(1);
     }
 }

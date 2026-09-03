@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File as StdFile},
+    fs,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -310,7 +310,7 @@ fn extract_models_inner(
             });
         }
 
-        let mut file = StdFile::create(stl_path)?;
+        let mut file = fs::File::create(stl_path)?;
         stl_io::write_stl(&mut file, triangles.iter())?;
     }
 

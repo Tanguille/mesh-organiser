@@ -1,5 +1,3 @@
-use std::io;
-
 use async_zip::error::ZipError;
 use serde::{Serialize, Serializer};
 use service::service_error;
@@ -8,7 +6,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ApplicationError {
     #[error("Failed to open or read file")]
-    FileSystemFault(#[from] io::Error),
+    FileSystemFault(#[from] std::io::Error),
     #[error("Internal error")]
     InternalError(String),
     #[error("Failed to process JSON")]

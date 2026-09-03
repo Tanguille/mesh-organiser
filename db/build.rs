@@ -1,9 +1,9 @@
-use std::{env, path::Path};
+use std::env;
 
 fn main() {
     // Set DATABASE_URL for sqlx compile-time query checking
     // This allows sqlx::query! macros to verify queries at compile time
-    let db_path = Path::new("model.sqlite");
+    let db_path = std::path::Path::new("model.sqlite");
     if db_path.exists() {
         // Get absolute path without using canonicalize to avoid Windows path issues
         let current_dir = env::current_dir().expect("Failed to get current directory");

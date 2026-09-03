@@ -1,8 +1,6 @@
 use std::{
-    env,
     fs::{self, File},
     io::prelude::*,
-    panic,
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
@@ -494,7 +492,7 @@ pub fn run() {
 
                 let app_data_path_clone = String::from(&app_data_path);
 
-                panic::set_hook(Box::new(move |info| {
+                std::panic::set_hook(Box::new(move |info| {
                     let loc = PathBuf::from(&app_data_path_clone).join("crash.log");
 
                     let error_message = info
@@ -525,7 +523,7 @@ pub fn run() {
 
                 let mut initial_state = InitialState::new(&config);
 
-                let mut argv = env::args();
+                let mut argv = std::env::args();
 
                 if argv.len() == 2
                 {

@@ -1,7 +1,5 @@
 //! Integration tests for dynamic SQL query paths (IN clauses, batch inserts).
 
-use std::fs;
-
 use db::{blob_db, db_context, group_db, label_db, model::user::User, model_db};
 use tempfile::tempdir;
 
@@ -9,7 +7,7 @@ async fn test_db() -> (tempfile::TempDir, db_context::DbContext) {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("db.sqlite");
     let backup_dir = dir.path().join("backups");
-    fs::create_dir_all(&backup_dir).unwrap();
+    std::fs::create_dir_all(&backup_dir).unwrap();
     let db = db_context::setup_db(&db_path, &backup_dir).await;
     (dir, db)
 }

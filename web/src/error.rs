@@ -1,5 +1,3 @@
-use std::io;
-
 use axum::{Json, extract::multipart::MultipartError, response::IntoResponse};
 use serde::{Serialize, Serializer};
 use thiserror::Error;
@@ -10,7 +8,7 @@ use service::service_error;
 #[derive(Error, Debug)]
 pub enum ApplicationError {
     #[error("Failed to open or read file")]
-    FileSystemFault(#[from] io::Error),
+    FileSystemFault(#[from] std::io::Error),
     #[error("Internal error")]
     InternalError(String),
     #[error("Failed to process JSON")]

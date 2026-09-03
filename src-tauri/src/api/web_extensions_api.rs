@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fs, panic,
+    panic,
     path::{Path, PathBuf},
 };
 
@@ -80,7 +80,7 @@ pub async fn download_files_and_open_in_folder(
             futures::io::copy(&mut reader, &mut stream_writer).await?;
             stream_writer.close().await?;
             drop(reader);
-            let _ = fs::remove_file(&model_path);
+            let _ = std::fs::remove_file(&model_path);
         }
 
         writer.close().await?;
