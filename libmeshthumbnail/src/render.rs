@@ -10,7 +10,6 @@ pub fn render(
     image_size: Vec2<usize>,
     rotation: Vec3<f32>,
     color: Vec3<u8>,
-    zoom: f32,
 ) -> RgbaImage {
     let mut color_buffer = Buffer2d::fill([image_size.x, image_size.y], [0, 0, 0, 0]); // Transparent background
     let mut depth_buffer = Buffer2d::fill([image_size.x, image_size.y], 1.0);
@@ -18,7 +17,7 @@ pub fn render(
     let aabb = mesh.aabb();
     let center = aabb.center();
     let magnitude = aabb.size().magnitude();
-    let scale = (2.4 / magnitude) * zoom;
+    let scale = 2.4 / magnitude;
 
     // Set up camera and view matrices
     // First scale, then translate to origin

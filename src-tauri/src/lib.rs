@@ -395,34 +395,6 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
     serde_html_form::from_str(query).ok()
 }
 
-fn remove_temp_paths() -> Result<(), ApplicationError> {
-    let threshold = std::time::Duration::from_mins(5);
-    let now = std::time::SystemTime::now();
-    for entry in std::fs::read_dir(std::env::temp_dir())? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir()
-            && path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .starts_with("meshorganiser_")
-            && let Ok(metadata) = std::fs::metadata(&path)
-            && let Ok(modified) = metadata.modified()
-            && now
-                .duration_since(modified)
-                .unwrap_or(std::time::Duration::ZERO)
-                >= threshold
-        {
-            println!("Removing temporary path {}", path.display());
-            std::fs::remove_dir_all(&path)?;
-        }
-    }
-
-    Ok(())
-}
-
 /// Reads the configuration from the settings file.
 ///
 /// # Panics
@@ -454,7 +426,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 #[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub fn run() {
     thread::spawn(move || {
-        let _ = remove_temp_paths();
+        let _ = export_service::remove_stale_temp_dirs();
     });
 
     let app = tauri::Builder::default()

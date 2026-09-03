@@ -212,7 +212,7 @@ mod get {
     pub async fn get_blobs_zip_download(
         Path(zip_dir): Path<String>,
     ) -> Result<Response, ApplicationError> {
-        if !zip_dir.starts_with("meshorganiser_") {
+        if !zip_dir.starts_with(export_service::TEMP_DIR_PREFIX) {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         }
 

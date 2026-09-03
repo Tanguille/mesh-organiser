@@ -28,6 +28,15 @@ use crate::{
 
 use super::app_state::AppState;
 
+/// Prefix every temp directory this app creates under the system temp dir.
+///
+/// Owned here because `get_temp_dir` is what produces the name; anything that
+/// recognises or reaps our temp dirs must match on this rather than respell it.
+pub const TEMP_DIR_PREFIX: &str = "meshorganiser_";
+
+/// How long a temp directory must be untouched before `remove_stale_temp_dirs` reaps it.
+const STALE_TEMP_DIR_AGE: std::time::Duration = std::time::Duration::from_mins(5);
+
 /// Returns a new temp directory for the given action; panics on I/O or clock failure.
 ///
 /// # Panics
@@ -36,11 +45,43 @@ use super::app_state::AppState;
 #[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
     let temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_{action}_action_{}",
+        "{TEMP_DIR_PREFIX}{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
     std::fs::create_dir(&temp_dir).unwrap();
+
     temp_dir
+}
+
+/// Removes this app's temp directories that have gone untouched for [`STALE_TEMP_DIR_AGE`].
+///
+/// Both the desktop app and the web server reap on their own schedule, so the
+/// rule for what counts as ours and what counts as stale lives here once.
+///
+/// # Errors
+///
+/// Returns an error if the system temp dir cannot be read or a stale directory cannot be removed.
+pub fn remove_stale_temp_dirs() -> Result<(), ServiceError> {
+    let now = std::time::SystemTime::now();
+    for entry in std::fs::read_dir(std::env::temp_dir())? {
+        let path = entry?.path();
+        if path.is_dir()
+            && path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(TEMP_DIR_PREFIX))
+            && let Ok(metadata) = std::fs::metadata(&path)
+            && let Ok(modified) = metadata.modified()
+            && now
+                .duration_since(modified)
+                .unwrap_or(std::time::Duration::ZERO)
+                >= STALE_TEMP_DIR_AGE
+        {
+            println!("Removing temporary path {}", path.display());
+            std::fs::remove_dir_all(&path)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {

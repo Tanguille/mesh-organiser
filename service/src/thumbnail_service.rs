@@ -63,7 +63,7 @@ fn render(
         }
     };
 
-    let thumbnail = render::render(&mesh, IMAGE_SIZE, rotation, color, 1.0);
+    let thumbnail = render::render(&mesh, IMAGE_SIZE, rotation, color);
 
     DynamicImage::ImageRgba8(thumbnail).save(image_path)?;
 
