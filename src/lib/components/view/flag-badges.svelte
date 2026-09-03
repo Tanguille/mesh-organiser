@@ -7,7 +7,5 @@
 </script>
 
 {#each flagsToGlyphObjects(props.flags) as glyph (glyph.id)}
-  <Badge class={glyph.badgeClasses}
-    ><glyph.glyph size="16" class={glyph.glyphClasses} /></Badge
-  >
+  <Badge><glyph.glyph size="16" /></Badge>
 {/each}

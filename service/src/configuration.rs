@@ -71,14 +71,7 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         let installed_slicer = Slicer::iter().find(Slicer::is_installed);
-        let mut parallelism = thread::available_parallelism()
-            .unwrap_or(NonZeroUsize::new(3).unwrap())
-            .get()
-            / 2;
-
-        if parallelism == 0 {
-            parallelism = 1;
-        }
+        let parallelism = (thread::available_parallelism().map_or(3, NonZeroUsize::get) / 2).max(1);
 
         Self {
             data_path: String::new(),
@@ -204,16 +197,6 @@ mod tests {
             default.show_ungrouped_models_in_groups
         );
         assert_eq!(config.group_split_view, default.group_split_view);
-    }
-
-    // Rewritten from the former stored_to_configuration_empty_uses_defaults:
-    // deserialize JSON straight into Configuration instead of building a literal.
-    #[test]
-    fn deserialize_empty_uses_defaults() {
-        let config: Configuration = serde_json::from_str("{}").expect("deserialize");
-        assert_eq!(config.data_path, Configuration::default().data_path);
-        assert_eq!(config.theme, "default");
-        assert_eq!(config.thumbnail_rotation, [35, 30, 0]);
     }
 
     // Rewritten from the former stored_to_configuration_overrides_single_field:

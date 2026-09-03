@@ -1,5 +1,6 @@
 use std::{
     env,
+    error::Error,
     fmt::Write,
     fs::File,
     io::{self, ErrorKind},
@@ -49,17 +50,20 @@ use crate::{
     web_import_state::WebImportStateEmitter,
 };
 
+// Env var names live in one place so a lookup and the message naming it in an
+// error cannot drift apart.
+const ENV_SERVER_PORT: &str = "SERVER_PORT";
+const ENV_LOCAL_ACCOUNT_PASSWORD: &str = "LOCAL_ACCOUNT_PASSWORD";
+const ENV_REGENERATE_THUMBNAILS: &str = "REGENERATE_THUMBNAILS";
+const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
+
 pub struct App {
     app_state: WebAppState,
     session_store: SqliteStore,
 }
 
-fn expected_env_error_msg(var_name: &str) -> String {
-    format!("Expected environment variable {var_name} to be set")
-}
-
-fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
-    env::var("SERVER_PORT")
+fn parse_port() -> Result<u16, Box<dyn Error>> {
+    env::var(ENV_SERVER_PORT)
         .unwrap_or_else(|_| "3000".into())
         .parse::<u16>()
         .map_err(|e| {
@@ -71,7 +75,7 @@ fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
         })
 }
 
-fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn Error>> {
     if !config_path.exists() {
         let mut config_file = File::create(config_path)?;
         io::Write::write_all(
@@ -84,9 +88,7 @@ fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-async fn load_and_prepare_config(
-    config_path: &Path,
-) -> Result<Configuration, Box<dyn std::error::Error>> {
+async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Box<dyn Error>> {
     let json = fs::read_to_string(config_path).await.map_err(|e| {
         io::Error::new(
             ErrorKind::InvalidData,
@@ -116,10 +118,8 @@ async fn load_and_prepare_config(
     Ok(configuration)
 }
 
-async fn apply_local_account(
-    web_app_state: &WebAppState,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let local_pass = env::var("LOCAL_ACCOUNT_PASSWORD").unwrap_or_else(|_| {
+async fn apply_local_account(web_app_state: &WebAppState) -> Result<(), Box<dyn Error>> {
+    let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
         let key = Key::generate();
         let key_bytes = key.master();
         let mut pass = String::new();
@@ -140,7 +140,7 @@ async fn apply_local_account(
 /// the TCP listener can bind immediately; a large library's CPU-bound thumbnail
 /// pass would otherwise keep the server unreachable until it finishes.
 fn spawn_thumbnail_regeneration(web_app_state: &WebAppState) {
-    let regenerate_thumbnails = env::var("REGENERATE_THUMBNAILS")
+    let regenerate_thumbnails = env::var(ENV_REGENERATE_THUMBNAILS)
         .unwrap_or_else(|_| "none".into())
         .to_lowercase();
     let force = match regenerate_thumbnails.as_str() {
@@ -194,9 +194,7 @@ async fn update_session_middleware(
     next.run(request).await
 }
 
-async fn setup_session_store(
-    sqlite_path: &Path,
-) -> Result<SqliteStore, Box<dyn std::error::Error>> {
+async fn setup_session_store(sqlite_path: &Path) -> Result<SqliteStore, Box<dyn Error>> {
     let connect_options = SqliteConnectOptions::new()
         .filename(sqlite_path)
         .create_if_missing(false)
@@ -212,13 +210,13 @@ async fn setup_session_store(
 }
 
 impl App {
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
         let port = parse_port()?;
-        let config_path = env::var("APP_CONFIG_PATH")
+        let config_path = env::var(ENV_APP_CONFIG_PATH)
             .map_err(|_| {
                 io::Error::new(
                     ErrorKind::NotFound,
-                    expected_env_error_msg("APP_CONFIG_PATH"),
+                    format!("Expected environment variable {ENV_APP_CONFIG_PATH} to be set"),
                 )
             })
             .map(PathBuf::from)?;
@@ -257,7 +255,7 @@ impl App {
         })
     }
 
-    pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn serve(self) -> Result<(), Box<dyn Error>> {
         // Session layer.
         //
         // This uses `tower-sessions` to establish a layer that will provide the session
@@ -386,21 +384,4 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     }
 
     db.close().await;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::expected_env_error_msg;
-
-    #[test]
-    fn expected_env_error_msg_format() {
-        assert_eq!(
-            expected_env_error_msg("FOO"),
-            "Expected environment variable FOO to be set"
-        );
-        assert_eq!(
-            expected_env_error_msg("APP_CONFIG_PATH"),
-            "Expected environment variable APP_CONFIG_PATH to be set"
-        );
-    }
 }

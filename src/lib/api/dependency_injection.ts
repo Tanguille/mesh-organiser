@@ -1,21 +1,9 @@
-type Constructor<T = unknown> = new (...args: unknown[]) => T;
-type Token<T = unknown> = Constructor<T> | symbol | string;
+type Token = symbol | string;
 
-export interface IDependencyContainer {
-  require<T>(type: Token<T>): T;
-  optional<T>(type: Token<T>): T | null;
-  addSingleton<T>(obj: T): void;
-  addSingleton<T>(token: Token<T>, obj: T): void;
-  clear(): void;
-}
+export class DependencyContainer {
+  private container: Map<Token, unknown> = new Map();
 
-export class DependencyContainer implements IDependencyContainer {
-  private container: Map<
-    symbol | string | (new (...args: unknown[]) => unknown),
-    unknown
-  > = new Map();
-
-  require<T>(type: Token<T>): T {
+  require<T>(type: Token): T {
     const instance = this.container.get(type);
     if (instance === undefined) {
       throw new Error(`Dependency not found: ${String(type)}`);
@@ -23,30 +11,13 @@ export class DependencyContainer implements IDependencyContainer {
     return instance as T;
   }
 
-  optional<T>(type: Token<T>): T | null {
+  optional<T>(type: Token): T | null {
     const instance = this.container.get(type);
     return (instance !== undefined ? instance : null) as T | null;
   }
 
-  addSingleton<T>(obj: T): void;
-  addSingleton<T>(token: Token<T>, obj: T): void;
-  addSingleton<T>(tokenOrObj: Token<T> | T, obj?: T): void {
-    if (obj !== undefined) {
-      // Token-based: addSingleton<IMyInterface>(IMyInterfaceToken, myInstance)
-      this.container.set(
-        tokenOrObj as symbol | string | (new (...args: unknown[]) => unknown),
-        obj,
-      );
-    } else {
-      // Class-based: addSingleton(myInstance)
-      const instance = tokenOrObj as T;
-      const constructor = (
-        instance as object & {
-          constructor: new (...args: unknown[]) => unknown;
-        }
-      ).constructor;
-      this.container.set(constructor, instance);
-    }
+  addSingleton(token: Token, obj: unknown): void {
+    this.container.set(token, obj);
   }
 
   clear(): void {
@@ -56,7 +27,7 @@ export class DependencyContainer implements IDependencyContainer {
 
 const container = new DependencyContainer();
 
-export function getContainer(): IDependencyContainer {
+export function getContainer(): DependencyContainer {
   return container;
 }
 

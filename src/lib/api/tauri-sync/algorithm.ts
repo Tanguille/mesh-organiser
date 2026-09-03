@@ -1,4 +1,4 @@
-import { globalSyncState, SyncStep } from "$lib/sync.svelte";
+import { beginSyncStep, globalSyncState, SyncStep } from "$lib/sync.svelte";
 
 export interface DiffableItem {
   uniqueGlobalId: string;
@@ -104,9 +104,7 @@ export async function stepDelete<T>(
   toDelete: T[],
   deleteItem: (item: T) => Promise<void>,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.Delete;
-  globalSyncState.processableItems = toDelete.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.Delete, toDelete.length);
 
   for (const item of toDelete) {
     await deleteItem(item);

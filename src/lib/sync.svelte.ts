@@ -32,6 +32,13 @@ function defaultSyncState(): SyncState {
 
 export const globalSyncState: SyncState = $state(defaultSyncState());
 
-export function resetSyncState(): void {
+export function resetSyncState(stage: SyncStage = SyncStage.Idle): void {
   Object.assign(globalSyncState, defaultSyncState());
+  globalSyncState.stage = stage;
+}
+
+export function beginSyncStep(step: SyncStep, total: number): void {
+  globalSyncState.step = step;
+  globalSyncState.processableItems = total;
+  globalSyncState.processedItems = 0;
 }

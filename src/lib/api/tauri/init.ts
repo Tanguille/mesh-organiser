@@ -27,6 +27,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { debounce } from "$lib/utils";
 import {
+  DefaultSidebarStateApi,
   EmptySidebarStateApi,
   ISidebarStateApi,
 } from "../shared/sidebar_state_api";
@@ -65,7 +66,6 @@ import { SyncApi } from "../tauri-sync/sync";
 import { ISyncApi } from "../shared/sync_api";
 import { TauriProxyShareApi } from "../tauri-online/local-proxy-share";
 import { IShareApi } from "../shared/share_api";
-import { TauriSidebarStateApi } from "./sidebar_state";
 
 interface InitialState {
   deep_link_url?: string;
@@ -101,7 +101,7 @@ export async function initTauriLocalApis(): Promise<void> {
   const resourceFolder = new ResourceFolderApi();
   const resource = new ResourceApi();
   const tauriImport = new TauriImportApi();
-  const sidebarApi = new TauriSidebarStateApi();
+  const sidebarApi = new DefaultSidebarStateApi(false);
   const hostApi = new HostApi();
   const diskUsageInfoApi = new DiskUsageInfoApi();
   const slicerApi = new SlicerApi();

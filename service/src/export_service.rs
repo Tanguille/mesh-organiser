@@ -1,6 +1,8 @@
 use std::{
     collections::HashSet,
+    env, fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use async_zip::{
@@ -28,6 +30,15 @@ use crate::{
 
 use super::app_state::AppState;
 
+/// Prefix every temp directory this app creates under the system temp dir.
+///
+/// Owned here because `get_temp_dir` is what produces the name; anything that
+/// recognises or reaps our temp dirs must match on this rather than respell it.
+pub const TEMP_DIR_PREFIX: &str = "meshorganiser_";
+
+/// How long a temp directory must be untouched before `remove_stale_temp_dirs` reaps it.
+const STALE_TEMP_DIR_AGE: Duration = Duration::from_mins(5);
+
 /// Returns a new temp directory for the given action; panics on I/O or clock failure.
 ///
 /// # Panics
@@ -35,12 +46,41 @@ use super::app_state::AppState;
 /// Panics if the system temp dir is unavailable or the system clock cannot provide nanosecond timestamps.
 #[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "meshorganiser_{action}_action_{}",
+    let temp_dir = env::temp_dir().join(format!(
+        "{TEMP_DIR_PREFIX}{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
-    std::fs::create_dir(&temp_dir).unwrap();
+    fs::create_dir_all(&temp_dir).unwrap();
+
     temp_dir
+}
+
+/// Removes this app's temp directories that have gone untouched for [`STALE_TEMP_DIR_AGE`].
+///
+/// Both the desktop app and the web server reap on their own schedule, so the
+/// rule for what counts as ours and what counts as stale lives here once.
+///
+/// # Errors
+///
+/// Returns an error if the system temp dir cannot be read or a stale directory cannot be removed.
+pub fn remove_stale_temp_dirs() -> Result<(), ServiceError> {
+    let now = std::time::SystemTime::now();
+    for entry in fs::read_dir(env::temp_dir())? {
+        let path = entry?.path();
+        if path.is_dir()
+            && path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(TEMP_DIR_PREFIX))
+            && let Ok(metadata) = fs::metadata(&path)
+            && let Ok(modified) = metadata.modified()
+            && now.duration_since(modified).unwrap_or(Duration::ZERO) >= STALE_TEMP_DIR_AGE
+        {
+            println!("Removing temporary path {}", path.display());
+            fs::remove_dir_all(&path)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn get_model_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
@@ -100,7 +140,7 @@ pub async fn export_to_temp_folder(
 
     if configuration.export_metadata {
         let metadata_path = temp_dir.join("metadata.json");
-        let metadata_file = std::fs::File::create(&metadata_path)?;
+        let metadata_file = fs::File::create(&metadata_path)?;
         serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 
@@ -359,13 +399,13 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
 
         if blob.disk_path.is_none()
             && model_path.exists()
-            && let Err(e) = std::fs::remove_file(model_path)
+            && let Err(e) = fs::remove_file(model_path)
         {
             eprintln!("Failed to remove dead blob model file: {e}");
         }
 
         if image_path.exists()
-            && let Err(e) = std::fs::remove_file(image_path)
+            && let Err(e) = fs::remove_file(image_path)
         {
             eprintln!("Failed to remove dead blob image file: {e}");
         }
@@ -490,7 +530,7 @@ mod tests {
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: i64::try_from(content.len()).expect("len fits in i64"),
-            added: String::new(),
+            added: String::default(),
             disk_path: None,
         };
 
@@ -522,7 +562,7 @@ mod tests {
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: 0,
-            added: String::new(),
+            added: String::default(),
             disk_path: None,
         };
 
@@ -546,7 +586,7 @@ mod tests {
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
             size: i64::try_from(content.len()).expect("len fits in i64"),
-            added: String::new(),
+            added: String::default(),
             disk_path: None,
         };
 
@@ -556,12 +596,12 @@ mod tests {
             blob,
             link: None,
             description: None,
-            added: String::new(),
-            last_modified: String::new(),
+            added: String::default(),
+            last_modified: String::default(),
             group: None,
             labels: Vec::new(),
             flags: ModelFlags::empty(),
-            unique_global_id: String::new(),
+            unique_global_id: String::default(),
         };
 
         let temp_dir = tempdir().unwrap();

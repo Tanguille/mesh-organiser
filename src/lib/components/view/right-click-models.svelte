@@ -20,6 +20,7 @@
   import { IGroupApi } from "$lib/api/shared/group_api";
   import type { Snippet } from "svelte";
   import PackageOpen from "@lucide/svelte/icons/package-open";
+  import { countWriter } from "$lib/utils";
 
   const props: { children: Snippet; models: Model[]; class?: ClassValue } =
     $props();
@@ -70,7 +71,7 @@
   </ContextMenu.Trigger>
   <ContextMenu.Content class="w-64">
     <ContextMenu.Item inset disabled
-      >Selected {props.models.length} model(s)</ContextMenu.Item
+      >Selected {countWriter("model", props.models)}</ContextMenu.Item
     >
     {#if props.models.length > 0}
       <ContextMenu.Item inset onclick={onOpenInSlicer}

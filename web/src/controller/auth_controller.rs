@@ -6,7 +6,7 @@ use axum::{
 };
 
 use crate::{
-    user::{AuthSession, Credentials, PasswordCredentials, TokenCredentials},
+    user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
     web_app_state::WebAppState,
 };
 
@@ -27,20 +27,13 @@ mod get {
 
     use crate::error::ApplicationError;
 
-    use super::{AuthSession, IntoResponse, Json, StatusCode, WebAppState};
+    use super::{CurrentUser, IntoResponse, Json, StatusCode, WebAppState};
 
     pub async fn me(
-        auth_session: AuthSession,
+        CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
     ) -> Result<Response, ApplicationError> {
-        let Some(u) = auth_session.user else {
-            return Ok(StatusCode::UNAUTHORIZED.into_response());
-        };
-        let user = u.to_user();
-
-        let user = user_db::get_user_by_id(&app_state.app_state.db, user.id).await?;
-
-        let Some(user) = user else {
+        let Some(user) = user_db::get_user_by_id(&app_state.app_state.db, user.id).await? else {
             return Ok(StatusCode::UNAUTHORIZED.into_response());
         };
 
@@ -49,42 +42,37 @@ mod get {
 }
 
 mod post {
+    use axum::response::Response;
+
     use super::{
         AuthSession, Credentials, IntoResponse, Json, PasswordCredentials, StatusCode,
         TokenCredentials,
     };
 
     pub async fn password(
-        mut auth_session: AuthSession,
+        auth_session: AuthSession,
         Json(creds): Json<PasswordCredentials>,
-    ) -> impl IntoResponse {
-        let user = match auth_session
-            .authenticate(Credentials::Password(creds))
-            .await
-        {
-            Ok(Some(user)) => user,
-            Ok(None) => {
-                return (StatusCode::UNAUTHORIZED, "Invalid username or password").into_response();
-            }
-            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        };
-
-        if auth_session.login(&user).await.is_err() {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-
-        StatusCode::NO_CONTENT.into_response()
+    ) -> Response {
+        login_inner(
+            auth_session,
+            Credentials::Password(creds),
+            "Invalid username or password",
+        )
+        .await
     }
 
-    pub async fn token(
+    pub async fn token(auth_session: AuthSession, Json(creds): Json<TokenCredentials>) -> Response {
+        login_inner(auth_session, Credentials::Token(creds), "Invalid token").await
+    }
+
+    async fn login_inner(
         mut auth_session: AuthSession,
-        Json(creds): Json<TokenCredentials>,
-    ) -> impl IntoResponse {
-        let user = match auth_session.authenticate(Credentials::Token(creds)).await {
+        creds: Credentials,
+        invalid_message: &'static str,
+    ) -> Response {
+        let user = match auth_session.authenticate(creds).await {
             Ok(Some(user)) => user,
-            Ok(None) => {
-                return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
-            }
+            Ok(None) => return (StatusCode::UNAUTHORIZED, invalid_message).into_response(),
             Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         };
 

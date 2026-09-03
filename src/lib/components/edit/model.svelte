@@ -361,10 +361,6 @@
           <ModelImg {model} class="flex h-full flex-row justify-center" />
         {/if}
       </div>
-
-      <div class="absolute left-7 m-0 flex h-9 flex-row"></div>
-
-      <div class="absolute right-0 mr-6 flex h-9 flex-row gap-2"></div>
     </CardHeader>
     <CardContent class="pt-4 text-sm">
       <div class="mb-4 grid grid-cols-2 gap-4">

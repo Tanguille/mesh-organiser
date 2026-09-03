@@ -13,23 +13,15 @@
     <ModelImg model={representativeModel(props.model)} class="h-full w-full" />
   {:else if props.model.length <= 1}
     <ModelImg model={props.model[0]} class="h-full w-full" />
-  {:else if props.model.length <= 2}
-    <div class="grid grid-cols-2 gap-1">
-      <ModelImg model={props.model[0]} class="h-full w-full" />
-      <ModelImg model={props.model[1]} class="h-full w-full" />
-    </div>
-  {:else if props.model.length <= 3}
-    <div class="grid grid-flow-col grid-cols-2 grid-rows-2 gap-1">
-      <ModelImg model={props.model[0]} class="h-full w-full" />
-      <ModelImg model={props.model[1]} class="h-full w-full" />
-      <ModelImg model={props.model[2]} class="h-full w-full" />
-    </div>
   {:else}
-    <div class="grid grid-flow-col grid-cols-2 grid-rows-2 gap-1">
-      <ModelImg model={props.model[0]} class="h-full w-full" />
-      <ModelImg model={props.model[1]} class="h-full w-full" />
-      <ModelImg model={props.model[2]} class="h-full w-full" />
-      <ModelImg model={props.model[3]} class="h-full w-full" />
+    <div
+      class={props.model.length === 2
+        ? "grid grid-cols-2 gap-1"
+        : "grid grid-flow-col grid-cols-2 grid-rows-2 gap-1"}
+    >
+      {#each props.model.slice(0, 4) as model (model.id)}
+        <ModelImg {model} class="h-full w-full" />
+      {/each}
     </div>
   {/if}
 </div>

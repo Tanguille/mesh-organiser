@@ -37,13 +37,11 @@ fn require_admin_or_self(
     target_id: i64,
     action: &str,
 ) -> Result<(), ApplicationError> {
-    if !user.permissions.contains(UserPermissions::Admin) && user.id != target_id {
-        return Err(ApplicationError::InternalError(format!(
-            "Insufficient permissions to {action}."
-        )));
+    if user.id == target_id {
+        return Ok(());
     }
 
-    Ok(())
+    require_admin(user, action)
 }
 
 pub fn router() -> Router<WebAppState> {

@@ -13,7 +13,7 @@
   import { PredefinedModelStreamManager } from "$lib/api/shared/model_api";
 
   const props: {
-    group: GroupMeta;
+    group: Pick<GroupMeta, "id">;
     initialEditMode?: boolean;
     onGroupDelete?: () => void;
     onAllModelsDelete?: () => void;

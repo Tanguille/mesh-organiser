@@ -72,13 +72,9 @@
       .sort((a, b) => {
         switch (currentFilter.order) {
           case "date-asc":
-            return (
-              new Date(a.created).getTime() - new Date(b.created).getTime()
-            );
+            return a.created.getTime() - b.created.getTime();
           case "date-desc":
-            return (
-              new Date(b.created).getTime() - new Date(a.created).getTime()
-            );
+            return b.created.getTime() - a.created.getTime();
           case "name-asc":
             return a.name.localeCompare(b.name);
           case "name-desc":
@@ -163,7 +159,7 @@
           oncontextmenu={(e) => onClick(resource, e)}
           onclick={(e) => onClick(resource, e)}
           onkeydown={(e) => onKeyDown(resource, e)}
-          class="flex h-14 w-full min-w-0 cursor-pointer flex-row gap-3 overflow-hidden rounded-lg border p-1 px-3 select-none [&_.imglist]:w-[165px] {isSelected
+          class="flex h-14 w-full min-w-0 cursor-pointer flex-row gap-3 overflow-hidden rounded-lg border p-1 px-3 select-none {isSelected
             ? 'border-primary'
             : ''}"
         >

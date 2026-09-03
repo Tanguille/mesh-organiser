@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
 use indexmap::IndexMap;
 use itertools::Itertools;
-use sqlx::{QueryBuilder, Row};
+use sqlx::QueryBuilder;
 use strum::EnumString;
 
 use crate::{
@@ -68,8 +66,7 @@ impl Default for GroupFilterOptions {
     }
 }
 
-/// Builds group list from a flat model list. Main cost is typically the upstream fetch of all
-/// models; label dedup is O(1) per model via `HashSet`.
+/// Builds group list from a flat model list. Main cost is typically the upstream fetch of all models.
 fn convert_model_list_to_groups(
     models: Vec<Model>,
     include_ungrouped_models: bool,
@@ -107,12 +104,10 @@ fn convert_model_list_to_groups(
 
         group.flags |= ModelFlags::from_bits_truncate(model.flags.bits());
 
-        let mut existing_label_ids: HashSet<i64> = group.labels.iter().map(|l| l.id).collect();
         for label in &model.labels {
-            if !existing_label_ids.insert(label.id) {
-                continue;
+            if !group.labels.iter().any(|l| l.id == label.id) {
+                group.labels.push(label.clone());
             }
-            group.labels.push(label.clone());
         }
 
         group.models.push(model);
@@ -134,8 +129,7 @@ pub async fn get_groups(
 
     let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
 
-    // Enforce pagination limits to prevent unbounded queries
-    // Use MAX_PAGE_SIZE for fetching data, actual pagination happens in-memory
+    // Fetch the full "fetch all" default window; actual pagination happens in-memory below.
     let models = model_db::get_models(
         db,
         user,
@@ -144,8 +138,6 @@ pub async fn get_groups(
             group_ids: options.group_ids,
             label_ids: options.label_ids,
             text_search: options.text_search,
-            page: 1,
-            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )
@@ -176,8 +168,6 @@ pub async fn get_groups(
             user,
             ModelFilterOptions {
                 group_ids: Some(group_ids),
-                page: 1,
-                page_size: MAX_PAGE_SIZE,
                 ..Default::default()
             },
         )
@@ -230,28 +220,6 @@ async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<St
     Ok(row.group_unique_global_id)
 }
 
-async fn get_unique_ids_from_group_ids(
-    db: &DbContext,
-    group_ids: &[i64],
-) -> Result<IndexMap<i64, String>, DbError> {
-    let mut id_map = IndexMap::new();
-    if group_ids.is_empty() {
-        return Ok(id_map);
-    }
-
-    let mut query_builder = QueryBuilder::new(
-        "SELECT group_id, group_unique_global_id FROM models_group WHERE group_id IN ",
-    );
-    push_in_i64(&mut query_builder, group_ids);
-    let rows = query_builder.build().fetch_all(db).await?;
-
-    for row in rows {
-        id_map.insert(row.get("group_id"), row.get("group_unique_global_id"));
-    }
-
-    Ok(id_map)
-}
-
 pub async fn set_group_id_on_models(
     db: &DbContext,
     user: &User,
@@ -267,15 +235,9 @@ pub async fn set_group_id_on_models(
         .filter_map(|m| m.group.as_ref().map(|g| g.id))
         .unique()
         .collect();
-    let mut group_ids = get_unique_ids_from_group_ids(db, &old_group_ids).await?;
-
-    if group_ids.len() != old_group_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
 
     if let Some(gid) = group_id {
-        let hex = get_unique_id_from_group_id(db, gid).await?;
-        group_ids.insert(gid, hex);
+        get_unique_id_from_group_id(db, gid).await?;
         old_group_ids.push(gid);
     }
 
@@ -438,8 +400,6 @@ pub async fn get_group_via_id(
         user,
         ModelFilterOptions {
             group_ids: Some(vec![group_id]),
-            page: 1,
-            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )

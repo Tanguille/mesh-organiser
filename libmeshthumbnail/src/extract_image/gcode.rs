@@ -6,10 +6,10 @@ use std::{
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use image::{DynamicImage, ImageReader};
-use zip::ZipArchive;
 
 use crate::{
     error::MeshThumbnailError,
+    parse_model::with_zip_entry,
     path_ext::{is_zip_of, matches_ext},
 };
 
@@ -41,22 +41,12 @@ fn extract_image_from_gcode_file(gcode_path: &Path) -> Result<DynamicImage, Mesh
 }
 
 fn extract_image_from_gcode_zip(gcode_zip_path: &Path) -> Result<DynamicImage, MeshThumbnailError> {
-    let file = File::open(gcode_zip_path)?;
-    let mut zip = ZipArchive::new(file)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        if Path::new(file.name())
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
-        {
-            return extract_image_from_gcode(&mut file);
-        }
-    }
-
-    Err(MeshThumbnailError::InternalError(String::from(
+    with_zip_entry(
+        gcode_zip_path,
+        |name| matches_ext(Path::new(name), "gcode"),
         "No gcode file found in zip archive",
-    )))
+        |_size, mut reader| extract_image_from_gcode(&mut reader),
+    )
 }
 
 fn extract_image_from_gcode<W>(reader: &mut W) -> Result<DynamicImage, MeshThumbnailError>

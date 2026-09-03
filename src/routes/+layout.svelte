@@ -17,7 +17,7 @@
     configuration,
     configurationMeta,
     panicState,
-    scheduleConfigurationPersist,
+    updateConfiguration,
   } from "$lib/configuration.svelte";
   import { updateSidebarState } from "$lib/sidebar_data.svelte";
   import { updateState } from "$lib/update_data.svelte";
@@ -143,10 +143,11 @@
       return;
     }
 
-    return scheduleConfigurationPersist(
-      snapshot,
-      save_configuration_debounce_ms,
-    );
+    const timeoutId = window.setTimeout(() => {
+      void updateConfiguration(snapshot);
+    }, save_configuration_debounce_ms);
+
+    return () => window.clearTimeout(timeoutId);
   });
 </script>
 

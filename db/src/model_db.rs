@@ -6,10 +6,7 @@ use crate::{
     DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     label_db,
-    model::{
-        Model, ModelFlags, blob::Blob, label::convert_label_meta_list_to_map,
-        model_group::ModelGroupMeta, user::User,
-    },
+    model::{Model, ModelFlags, blob::Blob, model_group::ModelGroupMeta, user::User},
     push_in_i64,
     util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
 };
@@ -152,8 +149,11 @@ pub async fn get_models(
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels = label_db::get_labels_min(db, user).await?;
-    let min_labels_map = convert_label_meta_list_to_map(min_labels);
+    let min_labels_map: IndexMap<_, _> = label_db::get_labels_min(db, user)
+        .await?
+        .into_iter()
+        .map(|l| (l.id, l))
+        .collect();
 
     for row in rows {
         models.push(Model {
@@ -209,12 +209,8 @@ pub async fn get_models_via_ids(
     user: &User,
     ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
-    // Use MAX_PAGE_SIZE instead of u32::MAX to ensure bounded queries
-    // If more items are needed, multiple calls should be made
     let options = ModelFilterOptions {
         model_ids: Some(ids),
-        page: 1,
-        page_size: MAX_PAGE_SIZE,
         ..Default::default()
     };
 

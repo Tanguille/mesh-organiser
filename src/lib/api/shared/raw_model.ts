@@ -22,6 +22,7 @@ import {
   type ResourceFlags,
   type ResourceMeta,
 } from "./resource_api";
+import { createUserInstance, type User } from "./user_api";
 
 /** Raw blob shape (matches tauri blob response). */
 export interface RawBlob {
@@ -233,5 +234,30 @@ export function parseRawModel(raw: RawModel): Model {
     raw.labels.map((label) => parseRawLabelMeta(label)),
     raw.flags,
     raw.unique_global_id,
+  );
+}
+
+/** Raw user shape (matches tauri and server user responses). */
+export interface RawUser {
+  id: number;
+  username: string;
+  email: string;
+  created_at: string;
+  permissions: string[];
+  sync_url: string | null;
+  sync_token: string | null;
+  last_sync: string | null;
+}
+
+export function parseRawUser(raw: RawUser): User {
+  return createUserInstance(
+    raw.id,
+    raw.username,
+    raw.email,
+    raw.created_at,
+    raw.permissions,
+    raw.sync_url,
+    raw.sync_token,
+    raw.last_sync,
   );
 }

@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -30,8 +31,7 @@ impl InitialState {
         Self {
             deep_link_url: None,
             max_parallelism: std::thread::available_parallelism()
-                .unwrap_or(std::num::NonZeroUsize::new(6).unwrap())
-                .get(),
+                .map_or(6, std::num::NonZeroUsize::get),
             collapse_sidebar: config.collapse_sidebar,
             account_link: None,
         }
@@ -57,6 +57,18 @@ impl TauriAppState {
         user.clone()
     }
 
+    /// Fetches a model for the current user, erroring when it does not exist.
+    pub async fn require_model(
+        &self,
+        model_id: i64,
+    ) -> Result<db::model::Model, crate::error::ApplicationError> {
+        db::model_db::get_model_via_id(&self.app_state.db, &self.get_current_user(), model_id)
+            .await?
+            .ok_or_else(|| {
+                crate::error::ApplicationError::InternalError(String::from("Failed to find model"))
+            })
+    }
+
     pub async fn set_current_user_by_id(
         &self,
         user_id: i64,
@@ -77,7 +89,7 @@ impl TauriAppState {
             configuration.last_user_id = user_id;
             let json = serde_json::to_string(&*configuration).unwrap();
             drop(configuration);
-            std::fs::write(path, json).expect("Failed to write configuration");
+            fs::write(path, json).expect("Failed to write configuration");
         }
 
         Ok(())
@@ -95,7 +107,7 @@ impl TauriAppState {
         new_configuration.last_user_id = self.get_current_user().id;
         let json = serde_json::to_string(&new_configuration).unwrap();
 
-        std::fs::write(path, json).expect("Failed to write configuration");
+        fs::write(path, json).expect("Failed to write configuration");
 
         let mut configuration = self.app_state.configuration.lock().unwrap();
         // A deep link was newly enabled: it is on now and was off before.

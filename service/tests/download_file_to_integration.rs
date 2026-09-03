@@ -5,7 +5,7 @@
 //! regression coverage so that consolidating download logic in the service
 //! crate does not break behaviour.
 
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use service::download_file_service::{download_file_to, get_content_disposition_filename};
 use tempfile::tempdir;
@@ -44,7 +44,7 @@ async fn download_file_to_writes_file_with_content_disposition() {
         "filename should be example.stl from Content-Disposition, got {:?}",
         path.file_name()
     );
-    let contents = std::fs::read_to_string(&path).expect("read file");
+    let contents = fs::read_to_string(&path).expect("read file");
     assert_eq!(contents, "test content");
 }
 
@@ -70,7 +70,7 @@ async fn download_file_to_uses_url_path_when_no_content_disposition() {
         "filename should come from URL path, got {:?}",
         path.file_name()
     );
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "test content");
+    assert_eq!(fs::read_to_string(&path).unwrap(), "test content");
 }
 
 #[tokio::test]
