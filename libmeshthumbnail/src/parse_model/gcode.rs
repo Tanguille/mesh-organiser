@@ -1,4 +1,5 @@
 use std::{
+    f32::consts::PI,
     fs::File,
     io::{BufRead, BufReader, Cursor, Read},
     path::Path,
@@ -155,7 +156,7 @@ fn edge_transform(p1: Vec3<f32>, p2: Vec3<f32>, length: f32) -> Mat4<f32> {
         Quaternion::identity()
     } else if (direction + x_axis).magnitude() < 0.001 {
         // 180 degree rotation around y-axis
-        Quaternion::rotation_y(std::f32::consts::PI)
+        Quaternion::rotation_y(PI)
     } else {
         Quaternion::rotation_from_to_3d(x_axis, direction)
     };
@@ -177,7 +178,7 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
     for i in 0..=length_subdivisions {
         let length_ratio = i as f32 / length_subdivisions as f32;
         for j in 0..angle_subdivisions {
-            let angle = 2.0 * std::f32::consts::PI * j as f32 / angle_subdivisions as f32;
+            let angle = 2.0 * PI * j as f32 / angle_subdivisions as f32;
             positions.push(Vec3::new(
                 length_ratio,
                 angle.cos() * radius,

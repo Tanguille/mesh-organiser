@@ -171,8 +171,7 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
 ///
 /// # Panics
 ///
-/// Panics if creating the temp dir fails or the system clock cannot provide
-/// nanosecond timestamps for the temp dir name (see [`get_temp_dir`]).
+/// Panics if creating the temp dir fails (see [`get_temp_dir`]).
 pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     let temp_dir = get_temp_dir("download");
 

@@ -41,20 +41,6 @@ export async function updateConfiguration(
   await settingsApi.saveConfiguration(config);
 }
 
-/** Debounced persistence for a frozen snapshot; does not mutate `configuration`. */
-export function scheduleConfigurationPersist(
-  snapshot: Configuration,
-  debounceMs: number,
-): () => void {
-  const timeoutId = window.setTimeout(() => {
-    void updateConfiguration(snapshot);
-  }, debounceMs);
-
-  return () => {
-    window.clearTimeout(timeoutId);
-  };
-}
-
 export const panicState = $state({
   inPanic: false,
   message: "",

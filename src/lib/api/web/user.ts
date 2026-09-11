@@ -3,7 +3,7 @@ import {
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import type { IUserApi, IUserTokenApi, User } from "../shared/user_api";
-import { parseTauriRawUser, type TauriRawUser } from "../tauri/user";
+import { parseRawUser, type RawUser } from "../shared/raw_model";
 import { triggerDownload } from "$lib/utils";
 
 export class WebUserApi implements IUserApi, IUserTokenApi {
@@ -14,11 +14,11 @@ export class WebUserApi implements IUserApi, IUserTokenApi {
   }
 
   async getCurrentUser(): Promise<User> {
-    const rawUser = await this.requestApi.request<TauriRawUser>(
+    const rawUser = await this.requestApi.request<RawUser>(
       "/users/me",
       HttpMethod.GET,
     );
-    return parseTauriRawUser(rawUser);
+    return parseRawUser(rawUser);
   }
 
   async isAuthenticated(): Promise<boolean> {

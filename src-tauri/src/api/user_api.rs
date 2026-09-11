@@ -46,9 +46,6 @@ pub async fn edit_user(
     user_id: i64,
     user_name: &str,
     user_email: &str,
-    _user_last_sync: Option<String>,
-    _user_sync_token: Option<String>,
-    _user_sync_url: Option<String>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
     user_db::edit_user_min(&state.app_state.db, user_id, user_name, user_email).await?;

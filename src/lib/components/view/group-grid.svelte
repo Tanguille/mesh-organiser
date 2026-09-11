@@ -159,9 +159,12 @@
     );
   }
 
+  const modelsInSelectedGroups = $derived(selected.flatMap((g) => g.models));
+  const modelsInLoadedGroups = $derived(loadedGroups.flatMap((g) => g.models));
+
   let selectedModels = $derived(
     splitViewSelectedModels.length <= 0
-      ? selected.map((x) => x.models).flat()
+      ? modelsInSelectedGroups
       : splitViewSelectedModels,
   );
 
@@ -240,18 +243,9 @@
     }
   }
 
-  let groupStreamLoadGen = 0;
-
   $effect(() => {
     void props.groupStream;
-
-    const gen = ++groupStreamLoadGen;
-    untrack(async () => {
-      await resetGroupSet();
-      if (gen !== groupStreamLoadGen) {
-        return;
-      }
-    });
+    untrack(() => resetGroupSet());
   });
 </script>
 
@@ -349,15 +343,7 @@
         </Button>
       {/if}
       {#if selected.length >= 2}
-        {#if selectedModels.length >= 2}
-          <EditMultiModel
-            models={selectedModels}
-            {onDelete}
-            onGroupDelete={() => onGroupDeleteViaModels(selectedModels)}
-          />
-        {:else if selectedModels.length === 1}
-          <ModelEdit model={selectedModels[0]} {onDelete} />
-        {/if}
+        {@render SelectedModelsEditor()}
       {:else if selected.length === 1 && selected[0].meta.id >= 0}
         <EditGroup
           group={selected[0]}
@@ -371,15 +357,7 @@
               href={resolve("/group/" + selected[0].meta.id)}>View models</a
             >
           {/if}
-          {#if selectedModels.length >= 2}
-            <EditMultiModel
-              models={selectedModels}
-              {onDelete}
-              onGroupDelete={() => onGroupDeleteViaModels(selectedModels)}
-            />
-          {:else if selectedModels.length === 1}
-            <ModelEdit model={selectedModels[0]} {onDelete} />
-          {/if}
+          {@render SelectedModelsEditor()}
         {:else}
           <ModelEdit model={selected[0].models[0]} {onDelete} />
         {/if}
@@ -387,14 +365,13 @@
         <ModelEdit model={selected[0].models[0]} {onDelete} />
       {:else if props.default_show_multiselect_all && loadedGroups.length > 0}
         <EditMultiModel
-          models={loadedGroups.map((x) => x.models).flat()}
+          models={modelsInLoadedGroups}
           onDelete={() => {
             clearSplitViewModels();
             selected = [...loadedGroups];
             onDelete();
           }}
-          onGroupDelete={() =>
-            onGroupDeleteViaModels(loadedGroups.map((x) => x.models).flat())}
+          onGroupDelete={() => onGroupDeleteViaModels(modelsInLoadedGroups)}
         />
       {:else}
         <div
@@ -406,6 +383,18 @@
     </div>
   {/if}
 </div>
+
+{#snippet SelectedModelsEditor()}
+  {#if selectedModels.length >= 2}
+    <EditMultiModel
+      models={selectedModels}
+      {onDelete}
+      onGroupDelete={() => onGroupDeleteViaModels(selectedModels)}
+    />
+  {:else if selectedModels.length === 1}
+    <ModelEdit model={selectedModels[0]} {onDelete} />
+  {/if}
+{/snippet}
 
 {#snippet SplitView(
   wrapperClass: ClassValue,
@@ -419,7 +408,7 @@
       <ModelGridInner
         bind:value={splitViewSelectedModels}
         itemSize={configuration.size_option_groups}
-        availableModels={selected.map((x) => x.models).flat()}
+        availableModels={modelsInSelectedGroups}
         clazz={innerClazz}
       />
     {:else}
@@ -438,12 +427,9 @@
     bind:this={scrollContainer}
     onscroll={selection.handleScroll}
   >
-    <DragSelectedModels
-      models={selected.map((x) => x.models).flat()}
-      class="select-none"
-    >
+    <DragSelectedModels models={modelsInSelectedGroups} class="select-none">
       <RightClickModels
-        models={selected.map((x) => x.models).flat()}
+        models={modelsInSelectedGroups}
         class={`flex flex-row flex-wrap content-start justify-center gap-2 outline-0 ${configuration.show_multiselect_checkboxes && configuration.size_option_groups.includes("Grid") ? "pt-[5px]" : ""}`}
       >
         {#if configuration.size_option_groups.includes("List")}

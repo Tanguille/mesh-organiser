@@ -1,13 +1,9 @@
-use std::{
-    ffi::OsStr, future::Future, io::Read, panic, path::Path, process::Command, sync::OnceLock,
-};
+use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::OnceLock};
 
 use regex::Regex;
 use tokio::task::JoinSet;
 
 use db::model::blob::FileType;
-
-use crate::service_error::ServiceError;
 
 static COLLAPSE_WHITESPACE: OnceLock<Regex> = OnceLock::new();
 
@@ -119,18 +115,6 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
         "gcode.zip" => "gcode",
         _ => &lowercase,
     })
-}
-
-/// Reads the entire file as a UTF-8 string.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be opened or read.
-pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
-    let mut file = std::fs::File::open(path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    Ok(contents)
 }
 
 /// Runs one future per item with bounded parallelism, returning every task output in completion order.
@@ -262,8 +246,8 @@ mod run_bounded_tests {
 // Regression tests for service::util pure helpers.
 // We test these after consolidating util so that src-tauri uses service::util;
 // the goal is to lock in behaviour and catch regressions from deduplication.
-// Only pure functions are unit-tested here; IO (read_file_as_text,
-// get_folder_size, open_folder_in_explorer) is left out unless tested via temp dir.
+// Only pure functions are unit-tested here; IO (get_folder_size,
+// open_folder_in_explorer) is left out unless tested via temp dir.
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]

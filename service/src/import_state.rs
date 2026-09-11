@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 
 use serde::Serialize;
 use strum::Display;
@@ -43,7 +43,7 @@ pub struct ImportState {
 }
 
 impl Debug for dyn ImportStateEmitter + Send + Sync {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ImportStateEmitter")
     }
 }

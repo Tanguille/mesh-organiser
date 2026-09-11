@@ -22,7 +22,7 @@
       return "Last synced just now";
     }
 
-    return `Last synced ${timeSinceDate(currentUser.lastSync)}`;
+    return `Last synced ${lastSync}`;
   }
 
   let lastSync = $state(updateLastSync());

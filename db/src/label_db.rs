@@ -160,7 +160,6 @@ pub async fn get_labels(
 
         if include_ungrouped_models {
             entry.self_group_count += parent_label_ungrouped_count;
-            entry.group_count += parent_label_ungrouped_count;
         }
 
         if let Some(child_id) = child_label_id
@@ -244,20 +243,14 @@ pub async fn add_labels_on_models(
         return Err(DbError::RowNotFound);
     }
 
-    // Collect all label-model combinations
-    let mut values = Vec::with_capacity(label_ids.len() * model_ids.len());
-    for label_id in label_ids {
-        for model_id in model_ids {
-            values.push((*label_id, *model_id));
-        }
-    }
-
     // Batch insert using a single query with multiple VALUES
-    if !values.is_empty() {
+    if !label_ids.is_empty() && !model_ids.is_empty() {
         let mut query_builder =
             QueryBuilder::new("INSERT INTO models_labels (label_id, model_id) ");
         query_builder.push_values(
-            values.iter().copied(),
+            label_ids
+                .iter()
+                .flat_map(|label_id| model_ids.iter().map(move |model_id| (*label_id, *model_id))),
             |mut builder, (label_id, model_id)| {
                 builder.push_bind(label_id);
                 builder.push_bind(model_id);

@@ -14,13 +14,38 @@ mod win;
 
 pub use base::*;
 
-/// Spawns the given program with the model paths as arguments.
-///
-/// # Errors
-///
-/// Returns an error if paths are empty or spawning the process fails.
-pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-    open_with_args_and_paths(program, &[], paths)
+impl Slicer {
+    #[must_use]
+    pub fn is_installed(&self) -> bool {
+        matches!(self, Self::Custom) || self.detect_installed()
+    }
+
+    /// Opens the slicer application with the given paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slicer is not installed or if no models are provided.
+    pub fn open(&self, paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
+        if matches!(self, Self::Custom) {
+            return open_custom_slicer(paths, app_state);
+        }
+
+        if !self.is_installed() {
+            return Err(ServiceError::InternalError(String::from(
+                "Slicer not installed",
+            )));
+        }
+
+        println!("Opening in slicer: {paths:?}");
+
+        if paths.is_empty() {
+            return Err(ServiceError::InternalError(String::from(
+                "No models to open",
+            )));
+        }
+
+        self.spawn_with_paths(paths)
+    }
 }
 
 /// Opens the user-configured custom slicer with the given paths.
@@ -28,10 +53,7 @@ pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), Service
 /// # Errors
 ///
 /// Returns an error if the custom slicer path is not set, not found, or spawning fails.
-pub async fn open_custom_slicer(
-    paths: Vec<PathBuf>,
-    app_state: &AppState,
-) -> Result<(), ServiceError> {
+pub fn open_custom_slicer(paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
     let path = app_state.get_configuration().custom_slicer_path;
     if path.is_empty() {
         return Err(ServiceError::InternalError(String::from(

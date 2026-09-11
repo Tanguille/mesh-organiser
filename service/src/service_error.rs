@@ -49,59 +49,26 @@ impl Serialize for ServiceError {
     where
         S: Serializer,
     {
-        match self {
-            Self::FileSystemFault(inner) => serialize_error_struct(
-                serializer,
-                "FileSystemFault",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::ZipError(inner) => serialize_error_struct(
-                serializer,
-                "ZipError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::InternalError(s) => {
-                serialize_error_struct(serializer, "InternalError", &self.to_string(), s)
+        let (error_type, error_inner_message) = match self {
+            Self::FileSystemFault(inner) => ("FileSystemFault", inner.to_string()),
+            Self::ZipError(inner) => ("ZipError", inner.to_string()),
+            Self::InternalError(s) => ("InternalError", s.clone()),
+            Self::DownloadError(inner) => ("DownloadError", inner.to_string()),
+            Self::JsonError(inner) => ("JsonError", inner.to_string()),
+            Self::DatabaseError(inner) => ("DatabaseError", inner.to_string()),
+            Self::TaskExecutionFailedError(inner) => {
+                ("TaskExecutionFailedError", inner.to_string())
             }
-            Self::DownloadError(inner) => serialize_error_struct(
-                serializer,
-                "DownloadError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::JsonError(inner) => serialize_error_struct(
-                serializer,
-                "JsonError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::DatabaseError(inner) => serialize_error_struct(
-                serializer,
-                "DatabaseError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::TaskExecutionFailedError(inner) => serialize_error_struct(
-                serializer,
-                "TaskExecutionFailedError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::ThreemfError(inner) => serialize_error_struct(
-                serializer,
-                "ThreemfError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::ThumbnailError(inner) => serialize_error_struct(
-                serializer,
-                "ThumbnailError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-        }
+            Self::ThreemfError(inner) => ("ThreemfError", inner.to_string()),
+            Self::ThumbnailError(inner) => ("ThumbnailError", inner.to_string()),
+        };
+
+        serialize_error_struct(
+            serializer,
+            error_type,
+            &self.to_string(),
+            &error_inner_message,
+        )
     }
 }
 

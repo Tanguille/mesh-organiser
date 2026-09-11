@@ -57,8 +57,7 @@ export function createUserInstance(
   };
 }
 
-// Builds a freshly-created User from the id/username/email returned by addUser,
-// with empty permissions and sync fields, shared across backends.
+// Builds a User with no permissions and no sync configuration, created now.
 export function newlyCreatedUser(
   id: number,
   username: string,

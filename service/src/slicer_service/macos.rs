@@ -1,42 +1,19 @@
 use std::{path::PathBuf, process::Command};
 
-use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_custom_slicer};
+use crate::service_error::ServiceError;
 
 use super::Slicer;
 
 impl Slicer {
-    pub fn is_installed(&self) -> bool {
-        if let Slicer::Custom = self {
-            return true;
-        }
-
-        get_slicer_path(&self).is_some()
+    pub(super) fn detect_installed(&self) -> bool {
+        get_slicer_path(self).is_some()
     }
 
-    pub async fn open(
-        &self,
-        paths: Vec<PathBuf>,
-        app_state: &AppState,
-    ) -> Result<(), ServiceError> {
-        if let Slicer::Custom = self {
-            return open_custom_slicer(paths, app_state).await;
-        }
-
-        if !self.is_installed() {
-            return Err(ServiceError::InternalError(String::from(
-                "Slicer not installed",
-            )));
-        }
-
-        println!("Opening in slicer: {:?}", paths);
-
-        if paths.len() == 0 {
-            return Err(ServiceError::InternalError(String::from(
-                "No models to open",
-            )));
-        }
-
-        let slicer_path = get_slicer_path(&self).unwrap();
+    /// # Panics
+    ///
+    /// Panics if the slicer path cannot be resolved.
+    pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
+        let slicer_path = get_slicer_path(self).unwrap();
 
         Command::new("open")
             .arg("-a")
@@ -50,43 +27,16 @@ impl Slicer {
 }
 
 fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
-    match slicer {
-        Slicer::PrusaSlicer => {
-            let path: PathBuf =
-                PathBuf::from("/Applications/Original Prusa Drivers/PrusaSlicer.app");
-            let second_path = PathBuf::from("/Applications/PrusaSlicer.app");
+    let candidates: &[&str] = match slicer {
+        Slicer::PrusaSlicer => &[
+            "/Applications/Original Prusa Drivers/PrusaSlicer.app",
+            "/Applications/PrusaSlicer.app",
+        ],
+        Slicer::OrcaSlicer => &["/Applications/OrcaSlicer.app"],
+        Slicer::Cura => &["/Applications/UltiMaker Cura.app"],
+        Slicer::BambuStudio => &["/Applications/BambuStudio.app"],
+        Slicer::Custom => &[],
+    };
 
-            if path.exists() {
-                return Some(path);
-            }
-
-            if second_path.exists() {
-                return Some(second_path);
-            }
-
-            return None;
-        }
-        Slicer::OrcaSlicer => {
-            let path = PathBuf::from("/Applications/OrcaSlicer.app");
-            if path.exists() {
-                return Some(path);
-            }
-            return None;
-        }
-        Slicer::Cura => {
-            let path = PathBuf::from("/Applications/UltiMaker Cura.app");
-            if path.exists() {
-                return Some(path);
-            }
-            return None;
-        }
-        Slicer::BambuStudio => {
-            let path = PathBuf::from("/Applications/BambuStudio.app");
-            if path.exists() {
-                return Some(path);
-            }
-            return None;
-        }
-        _ => None,
-    }
+    candidates.iter().map(PathBuf::from).find(|p| p.exists())
 }

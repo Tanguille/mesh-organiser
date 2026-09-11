@@ -23,12 +23,7 @@ const availableThemes = {
 };
 
 export function getThemeName(theme: string): string {
-  const index = theme as keyof typeof availableThemes;
-  if (index in availableThemes) {
-    return availableThemes[index];
-  }
-
-  return "(Unknown)";
+  return availableThemes[theme as keyof typeof availableThemes] ?? "(Unknown)";
 }
 
 export function getAvailableThemes(): string[] {

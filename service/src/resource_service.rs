@@ -1,3 +1,5 @@
+use std::fs;
+
 use db::{
     model::{resource::ResourceMeta, user::User},
     resource_db,
@@ -23,9 +25,9 @@ pub fn open_resource_folder(
     if !resource_path.exists() {
         let old_resource_path = path.join(resource.id.to_string());
         if old_resource_path.exists() {
-            std::fs::rename(&old_resource_path, &resource_path)?;
+            fs::rename(&old_resource_path, &resource_path)?;
         } else {
-            std::fs::create_dir_all(&resource_path)?;
+            fs::create_dir_all(&resource_path)?;
         }
     }
 
@@ -48,7 +50,7 @@ pub fn delete_resource_folder(
     path.push(format!("{}_{}", resource.id, user.id));
 
     if path.exists() {
-        std::fs::remove_dir_all(&path)?;
+        fs::remove_dir_all(&path)?;
     }
 
     Ok(())

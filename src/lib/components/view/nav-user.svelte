@@ -16,7 +16,6 @@
   } from "$lib/api/shared/user_api";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import { useSidebar } from "$lib/components/ui/sidebar/index.js";
   import { toReadableSize } from "$lib/utils";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
   import CircleUser from "@lucide/svelte/icons/circle-user";
@@ -28,8 +27,6 @@
   import CircleHelp from "@lucide/svelte/icons/circle-help";
   import UserPen from "@lucide/svelte/icons/user-pen";
   import Link from "@lucide/svelte/icons/link";
-
-  useSidebar();
 
   const currentUserEditApi =
     getContainer().optional<IUserManageSelfApi>(IUserManageSelfApi);

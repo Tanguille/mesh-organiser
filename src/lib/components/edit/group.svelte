@@ -43,15 +43,9 @@
   let deleted = $state(false);
   let editMode = $derived(initialEditMode);
 
-  const links = $derived.by(() => {
-    if (!tracked_group) {
-      return [];
-    }
-
-    return [
-      ...new Set(tracked_group.models.map((x) => x.link).filter((x) => x)),
-    ];
-  });
+  const links = $derived([
+    ...new Set(tracked_group.models.map((x) => x.link).filter((x) => x)),
+  ]);
 
   let link = $derived(links.length === 1 ? links[0]! : null);
   let link_disabled = $derived(links.length > 1);

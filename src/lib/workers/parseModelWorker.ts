@@ -76,9 +76,9 @@ export function loadModel(
 
     if (localResult) {
       localResult = toCreasedNormals(localResult, 0.1);
-      localResult.computeBoundingSphere();
       localResult.center();
       localResult.rotateX(Math.PI / -2);
+      localResult.computeBoundingSphere();
     }
 
     return localResult || null;

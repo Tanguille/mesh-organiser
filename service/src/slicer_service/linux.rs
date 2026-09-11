@@ -1,16 +1,11 @@
 use std::{path::PathBuf, process::Command};
 
-use crate::{app_state::AppState, service_error::ServiceError, slicer_service::open_custom_slicer};
+use crate::service_error::ServiceError;
 
 use super::Slicer;
 
 impl Slicer {
-    #[must_use]
-    pub fn is_installed(&self) -> bool {
-        if matches!(self, Self::Custom) {
-            return true;
-        }
-
+    pub(super) fn detect_installed(&self) -> bool {
         let package = get_flatpak_slicer_package(self);
 
         if package.is_empty() {
@@ -23,34 +18,7 @@ impl Slicer {
         }
     }
 
-    /// Opens the slicer application with the given paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the slicer is not installed or if no models are provided.
-    pub async fn open(
-        &self,
-        paths: Vec<PathBuf>,
-        app_state: &AppState,
-    ) -> Result<(), ServiceError> {
-        if matches!(self, Self::Custom) {
-            return open_custom_slicer(paths, app_state).await;
-        }
-
-        if !self.is_installed() {
-            return Err(ServiceError::InternalError(String::from(
-                "Slicer not installed",
-            )));
-        }
-
-        println!("Opening in slicer: {paths:?}");
-
-        if paths.is_empty() {
-            return Err(ServiceError::InternalError(String::from(
-                "No models to open",
-            )));
-        }
-
+    pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
         let _ = Command::new("flatpak")
             .arg("run")
             .arg("--file-forwarding")

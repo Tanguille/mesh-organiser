@@ -1,5 +1,6 @@
 import { currentUser } from "$lib/configuration.svelte";
 import {
+  beginSyncStep,
   globalSyncState,
   resetSyncState,
   SyncStage,
@@ -23,9 +24,10 @@ async function stepUploadToRemote(
   remoteGroups: GroupMeta[],
   isDownload: boolean,
 ): Promise<void> {
-  globalSyncState.step = isDownload ? SyncStep.Download : SyncStep.Upload;
-  globalSyncState.processableItems = toUpload.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(
+    isDownload ? SyncStep.Download : SyncStep.Upload,
+    toUpload.length,
+  );
 
   for (const resource of toUpload) {
     const newResource = await remoteApi.addResource(resource.name);
@@ -54,9 +56,7 @@ async function stepSyncToRemote(
   remoteGroups: GroupMeta[],
   isServerToLocal: boolean,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.UpdateMetadata;
-  globalSyncState.processableItems = toSync.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.UpdateMetadata, toSync.length);
 
   for (const resourceSet of toSync) {
     const { remote: remoteResource, local: localResource } = resolveDirection(
@@ -103,8 +103,7 @@ export async function syncResources(
   serverResourceApi: IResourceApi,
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
-  resetSyncState();
-  globalSyncState.stage = SyncStage.Resources;
+  resetSyncState(SyncStage.Resources);
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
   const localResourceApi = getContainer().require<IResourceApi>(IResourceApi);
 

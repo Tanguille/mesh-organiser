@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE, TimestampSchema,
+    DbError, TimestampSchema,
     db_context::DbContext,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
@@ -58,8 +58,6 @@ pub async fn get_groups_for_resource(
         GroupFilterOptions {
             group_ids: Some(rows.iter().map(|r| r.group_id).collect()),
             order_by: Some(GroupOrderBy::NameAsc),
-            page: 1,
-            page_size: MAX_PAGE_SIZE,
             ..Default::default()
         },
     )
@@ -113,21 +111,19 @@ pub async fn get_resource_meta_by_id(
         id,
         user.id
     )
-    .fetch_one(db)
-    .await;
+    .fetch_optional(db)
+    .await?;
 
-    match row {
-        Ok(row) => Ok(Some(ResourceMeta::from_parts(
+    Ok(row.map(|row| {
+        ResourceMeta::from_parts(
             row.resource_id,
             row.resource_name,
             row.resource_flags,
             row.resource_created,
             row.resource_unique_global_id,
             row.resource_last_modified,
-        ))),
-        Err(DbError::RowNotFound) => Ok(None),
-        Err(e) => Err(e),
-    }
+        )
+    }))
 }
 
 pub async fn add_resource(
@@ -287,10 +283,9 @@ pub async fn set_resource_on_group(
     };
 
     // Permission check
-    let _ = match resource_id {
-        Some(rid) => Some(get_unique_id_from_resource_id(db, user, rid).await?),
-        None => None,
-    };
+    if let Some(rid) = resource_id {
+        get_unique_id_from_resource_id(db, user, rid).await?;
+    }
 
     sqlx::query!(
         "UPDATE models_group SET group_resource_id = ? WHERE group_id = ? AND group_user_id = ?",

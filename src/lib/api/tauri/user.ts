@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { parseRawUser, type RawUser } from "../shared/raw_model";
 import {
-  createUserInstance,
   IAdminUserApi,
   ISwitchUserApi,
   IUserManageSelfApi,
@@ -8,30 +8,6 @@ import {
   type IUserApi,
   type User,
 } from "../shared/user_api";
-
-export interface TauriRawUser {
-  id: number;
-  username: string;
-  email: string;
-  created_at: string;
-  permissions: string[];
-  sync_url: string | null;
-  sync_token: string | null;
-  last_sync: string | null;
-}
-
-export function parseTauriRawUser(raw: TauriRawUser): User {
-  return createUserInstance(
-    raw.id,
-    raw.username,
-    raw.email,
-    raw.created_at,
-    raw.permissions,
-    raw.sync_url,
-    raw.sync_token,
-    raw.last_sync,
-  );
-}
 
 export class UserApi
   implements IUserApi, IAdminUserApi, ISwitchUserApi, IUserManageSelfApi
@@ -41,18 +17,18 @@ export class UserApi
   }
 
   async getCurrentUser(): Promise<User> {
-    const user = await invoke<TauriRawUser>("get_current_user", {});
+    const user = await invoke<RawUser>("get_current_user", {});
 
     user.permissions.push("Admin");
 
-    return parseTauriRawUser(user);
+    return parseRawUser(user);
   }
 
   async getAvailableUsers(): Promise<User[]> {
-    const users = await invoke<TauriRawUser[]>("get_users", {});
+    const users = await invoke<RawUser[]>("get_users", {});
     console.log("get users", users);
 
-    return users.map((user) => parseTauriRawUser(user));
+    return users.map((user) => parseRawUser(user));
   }
 
   async getAllUsers(): Promise<User[]> {

@@ -157,48 +157,23 @@ export async function runWithLimit<T>(
   limit: number = 4,
 ): Promise<void> {
   let index = 0;
-  let active = 0;
   let failed = false;
 
-  return new Promise((resolve, reject) => {
-    const launchNext = () => {
-      while (active < limit) {
-        if (failed) {
-          return;
-        }
-
-        if (index >= items.length) {
-          if (active === 0) resolve();
-          break;
-        }
-
-        // A synchronous throw from fn must reject the run, not escape a
-        // .finally() callback as an unhandled rejection that hangs the await.
-        let task: Promise<void>;
-        try {
-          task = fn(items[index++]);
-        } catch (err) {
-          failed = true;
-          reject(err);
-          return;
-        }
-
-        active++;
-
-        task
-          .catch((err) => {
-            failed = true;
-            reject(err);
-          })
-          .finally(() => {
-            active--;
-            launchNext();
-          });
+  // async worker: a synchronous throw from fn arrives here as a rejection.
+  const worker = async () => {
+    while (index < items.length && !failed) {
+      try {
+        await fn(items[index++]);
+      } catch (err) {
+        failed = true;
+        throw err;
       }
-    };
+    }
+  };
 
-    launchNext();
-  });
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
 }
 
 // Trigger a browser download/navigation via a transient anchor element.
@@ -226,12 +201,7 @@ export function triggerBlobDownload(
 }
 
 export function dateToString(date: Date): string {
-  const isoString = date.toISOString();
-  if (isoString.includes(".")) {
-    return isoString.split(".")[0] + "Z";
-  }
-
-  return isoString;
+  return date.toISOString().split(".")[0] + "Z";
 }
 
 export function timeSinceDate(date: Date): string {

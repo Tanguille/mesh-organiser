@@ -77,16 +77,13 @@ pub async fn open_resource_folder(
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
     let user = state.get_current_user();
-    let resource =
-        resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?;
-
-    if resource.is_none() {
+    let Some(resource) =
+        resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?
+    else {
         return Err(ApplicationError::InternalError(String::from(
             "Resource not found",
         )));
-    }
-
-    let resource = resource.unwrap();
+    };
 
     resource_service::open_resource_folder(&resource, &user, &state.app_state)?;
     Ok(())
