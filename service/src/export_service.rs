@@ -8,7 +8,6 @@ use std::{
 use async_zip::{
     Compression, ZipEntryBuilder, tokio::read::seek::ZipFileReader, tokio::write::ZipFileWriter,
 };
-use chrono::Utc;
 use itertools::Itertools;
 use tokio::{
     fs::File,
@@ -39,22 +38,22 @@ pub const TEMP_DIR_PREFIX: &str = "meshorganiser_";
 /// How long a temp directory must be untouched before `remove_stale_temp_dirs` reaps it.
 const STALE_TEMP_DIR_AGE: Duration = Duration::from_mins(5);
 
-/// Returns a new temp directory for the given action; panics on I/O or clock failure.
+/// Returns a new temp directory for the given action.
+///
+/// The directory is created atomically with a random suffix, so concurrent
+/// callers never share a workspace. The caller owns cleanup;
+/// [`remove_stale_temp_dirs`] reaps whatever is left behind.
 ///
 /// # Panics
 ///
-/// Panics if the system temp dir is unavailable or the system clock cannot provide nanosecond timestamps.
+/// Panics if the directory cannot be created under the system temp dir.
 #[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
-    let temp_dir = env::temp_dir().join(format!(
-        "{TEMP_DIR_PREFIX}{action}_action_{}",
-        Utc::now().timestamp_nanos_opt().unwrap()
-    ));
-    // create_dir (not create_dir_all) so a name collision fails loudly instead of
-    // silently sharing a workspace between two concurrent exports.
-    fs::create_dir(&temp_dir).unwrap(); // skipcq: RS-W1032
-
-    temp_dir
+    tempfile::Builder::new()
+        .prefix(&format!("{TEMP_DIR_PREFIX}{action}_action_"))
+        .tempdir_in(env::temp_dir())
+        .unwrap()
+        .keep()
 }
 
 /// Removes this app's temp directories that have gone untouched for [`STALE_TEMP_DIR_AGE`].

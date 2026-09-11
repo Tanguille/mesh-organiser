@@ -27,6 +27,7 @@ stl_io = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 threemf = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util = { workspace = true, features = ["io"] }
 urlencoding = { workspace = true }
@@ -42,7 +43,6 @@ chrono = { workspace = true }
 fake = { workspace = true }
 proptest = { workspace = true }
 reqwest = { workspace = true, features = ["rustls"] }
-tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = { workspace = true }
 zip = { workspace = true }
