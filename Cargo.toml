@@ -79,7 +79,7 @@ tokio = "1.52.3"
 tokio-util = "0.7.18"
 tower_governor = "0.8.0"
 tower-http = "0.7.0"
-tower-sessions = { version = "0.14.0", default-features = false }
+tower-sessions = { version = "0.15.0", default-features = false }
 tower-sessions-sqlx-store = "0.15.0"
 tracing-subscriber = "0.3.23"
 urlencoding = "2.1.3"
