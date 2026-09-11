@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File as StdFile},
+    fs,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -183,24 +183,22 @@ async fn read_zip_entry_by_suffix(
     let mut buffered_reader = BufReader::new(zip_file);
     let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
 
-    let entries: Vec<_> = zip.file().entries().to_vec();
-
-    for (i, entry) in entries.iter().enumerate() {
-        if entry
+    let Some(index) = zip.file().entries().iter().position(|entry| {
+        entry
             .filename()
             .as_str()
             .is_ok_and(|s| s.ends_with(filename_suffix))
-        {
-            let mut file = zip.reader_with_entry(i).await?;
-            let mut contents = String::new();
-            file.read_to_string_checked(&mut contents).await?;
-            return Ok(contents);
-        }
-    }
+    }) else {
+        return Err(ServiceError::InternalError(
+            "No zip entry matching suffix".to_string(),
+        ));
+    };
 
-    Err(ServiceError::InternalError(
-        "No zip entry matching suffix".to_string(),
-    ))
+    let mut file = zip.reader_with_entry(index).await?;
+    let mut contents = String::default();
+    file.read_to_string_checked(&mut contents).await?;
+
+    Ok(contents)
 }
 
 /// Reads `model_settings.config` from a 3MF zip.
@@ -230,13 +228,7 @@ pub async fn extract_metadata(
         ));
     }
 
-    let temp_dir = std::env::temp_dir().join("meshorganiser_metadata_action");
-    if !temp_dir.exists() {
-        fs::create_dir(&temp_dir)?;
-    }
-
-    let threemf_path =
-        export_service::get_path_from_model(&temp_dir, model, app_state, true).await?;
+    let threemf_path = export_service::get_model_path_for_blob(&model.blob, app_state);
 
     let c1 = read_zip_entry_by_suffix(threemf_path.clone(), "project_settings.config").await;
     if let Ok(contents) = c1 {
@@ -318,7 +310,7 @@ fn extract_models_inner(
             });
         }
 
-        let mut file = StdFile::create(stl_path)?;
+        let mut file = fs::File::create(stl_path)?;
         stl_io::write_stl(&mut file, triangles.iter())?;
     }
 

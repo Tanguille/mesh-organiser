@@ -1,6 +1,10 @@
 use euc::{CullMode, DepthMode, Pipeline, TriangleList};
 use vek::{Mat4, Rgba, Vec3, Vec4};
 
+/// Substituted when a normal or view vector has zero length and cannot be
+/// normalized; points straight at the camera so shading stays defined.
+const FALLBACK_NORMAL: Vec3<f32> = Vec3::new(0.0, 0.0, 1.0);
+
 // Vertex data that will be interpolated across the triangle
 #[derive(Clone, Copy, Debug)]
 pub struct VertexData {
@@ -85,54 +89,28 @@ impl Pipeline<'_> for Scene {
     ) where
         O: FnMut(<Self::Primitives as euc::primitives::PrimitiveKind<Self::VertexData>>::Primitive),
     {
-        // Compute the face normal from the triangle vertices in world space
-        let [v0, v1, v2] = primitive;
+        // Face normal from the triangle's world-space edges (flat shading).
+        let [mut v0, mut v1, mut v2] = primitive;
 
-        // Calculate edges
-        let edge1 = v1.1.world_pos - v0.1.world_pos;
-        let edge2 = v2.1.world_pos - v0.1.world_pos;
+        let normal = (v1.1.world_pos - v0.1.world_pos)
+            .cross(v2.1.world_pos - v0.1.world_pos)
+            .normalized();
 
-        // Compute normal via cross product
-        let cross = edge1.cross(edge2);
-        let normal = cross.normalized();
+        v0.1.normal = normal;
+        v1.1.normal = normal;
+        v2.1.normal = normal;
 
-        // Create new vertices with the computed normal
-        let v0_new = (
-            v0.0,
-            VertexData {
-                world_pos: v0.1.world_pos,
-                normal,
-            },
-        );
-        let v1_new = (
-            v1.0,
-            VertexData {
-                world_pos: v1.1.world_pos,
-                normal,
-            },
-        );
-        let v2_new = (
-            v2.0,
-            VertexData {
-                world_pos: v2.1.world_pos,
-                normal,
-            },
-        );
-
-        output([v0_new, v1_new, v2_new]);
+        output([v0, v1, v2]);
     }
 
     fn fragment(&self, data: Self::VertexData) -> Self::Fragment {
         // Normalize the interpolated normal (simulates the derivative-based normal computation)
-        let normal = data
-            .normal
-            .try_normalized()
-            .unwrap_or(Vec3::new(0.0, 0.0, 1.0));
+        let normal = data.normal.try_normalized().unwrap_or(FALLBACK_NORMAL);
 
         // View direction calculation
         let view_dir = (self.camera_position - data.world_pos)
             .try_normalized()
-            .unwrap_or(Vec3::new(0.0, 0.0, 1.0));
+            .unwrap_or(FALLBACK_NORMAL);
 
         // Light direction follows camera (as in the original shader)
         let light_dir = view_dir;

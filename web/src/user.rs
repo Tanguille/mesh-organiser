@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use axum::{extract::FromRequestParts, http::StatusCode, http::request::Parts};
-use axum_login::{AuthUser as AxumAuthUser, AuthnBackend, UserId};
+use axum_login::{AuthnBackend, UserId};
 use password_auth::verify_password;
 use serde::{Deserialize, Serialize};
 use tokio::task;
@@ -21,8 +21,8 @@ pub struct AuthUser {
 
 // Here we've implemented `Debug` manually to avoid accidentally logging the
 // password hash and validity token.
-impl std::fmt::Debug for AuthUser {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AuthUser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("User")
             .field("id", &self.id)
             .field("username", &self.username)
@@ -42,11 +42,11 @@ impl AuthUser {
             permissions: db::model::user::UserPermissions::from_bits_truncate(
                 self.permissions.try_into().unwrap_or(u32::MAX),
             ),
-            password_hash: String::new(),
+            password_hash: String::default(),
             last_sync: None,
             sync_token: None,
             sync_url: None,
-            created_at: String::new(),
+            created_at: String::default(),
         }
     }
 
@@ -68,7 +68,7 @@ impl AuthUser {
     }
 }
 
-impl AxumAuthUser for AuthUser {
+impl axum_login::AuthUser for AuthUser {
     type Id = i64;
 
     fn id(&self) -> Self::Id {

@@ -11,7 +11,6 @@
   import GroupPage from "$lib/components/view/group-page.svelte";
   import ModelGrid from "$lib/components/view/model-grid.svelte";
 
-  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import File from "@lucide/svelte/icons/file";
   import Folder from "@lucide/svelte/icons/folder";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -119,16 +118,12 @@
   });
 
   let importGroupsLoadGen = 0;
-  let previousImportStatus: ImportStatus | undefined = undefined;
 
   $effect(() => {
     const status = importState.status;
     if (status != ImportStatus.Finished) {
       importedGroups = [];
-      if (previousImportStatus === ImportStatus.Finished) {
-        importGroupsLoadGen++;
-      }
-      previousImportStatus = status;
+      importGroupsLoadGen++; // cancel any in-flight group load
       return;
     }
 
@@ -136,7 +131,6 @@
       .map((res) => res.model_ids)
       .flat();
 
-    previousImportStatus = status;
     const gen = ++importGroupsLoadGen;
     untrack(async () => {
       const groups = await groupApi.getGroups(
@@ -306,9 +300,7 @@
       {:else}
         <h1>Importing model...</h1>
       {/if}
-      <div>
-        <LoaderCircle class="h-10 w-10 animate-spin" />
-      </div>
+      <Spinner />
     </div>
   {/if}
 </div>

@@ -88,10 +88,6 @@
     }
   }
 
-  async function onInternalStateChange() {
-    await updateSidebarState();
-  }
-
   onMount(async () => {
     max_parallelism = (await localApi?.getMaxParallelism()) ?? 128;
 
@@ -302,12 +298,7 @@
               () => configuration.watch_downloads_folder,
               (val) => {
                 configuration.watch_downloads_folder = val;
-                if (tauriImportApi) {
-                  // initImportListeners exists on Tauri impl but not on shared interface
-                  (
-                    tauriImportApi as unknown as { initImportListeners(): void }
-                  ).initImportListeners();
-                }
+                tauriImportApi?.initImportListeners();
               }
             }
             label="Watch Downloads folder for new models to import"
@@ -487,7 +478,7 @@
               () => configuration.show_ungrouped_models_in_groups,
               (val) => {
                 configuration.show_ungrouped_models_in_groups = val;
-                onInternalStateChange();
+                updateSidebarState();
               }
             }
             label="Show ungrouped models in groups"

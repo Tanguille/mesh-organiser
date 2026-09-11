@@ -10,25 +10,22 @@ mod obj;
 mod step;
 mod stl;
 mod threemf;
-#[cfg(feature = "step")]
-pub use step::convert_step_path_to_stl;
-#[cfg(feature = "step")]
-pub use step::convert_step_to_stl;
 
 /// Opens `path` as a zip, finds the first entry whose name satisfies `matches`,
-/// and hands its reported decompressed size plus reader to `read_entry`.
+/// and hands its reported decompressed size plus reader to `read_entry`, returning
+/// whatever `read_entry` produces.
 ///
 /// Returns `InternalError(not_found)` when no entry matches.
 ///
 /// # Errors
 /// Returns an error when the file cannot be opened as a zip, when an entry
 /// cannot be read, or when no entry matches the predicate.
-fn with_zip_entry(
+pub(crate) fn with_zip_entry<R>(
     path: &Path,
     matches: impl Fn(&str) -> bool,
     not_found: &str,
-    read_entry: impl FnOnce(u64, &mut dyn io::Read) -> Result<(), MeshThumbnailError>,
-) -> Result<(), MeshThumbnailError> {
+    read_entry: impl FnOnce(u64, &mut dyn io::Read) -> Result<R, MeshThumbnailError>,
+) -> Result<R, MeshThumbnailError> {
     let handle = File::open(path)?;
     let mut zip = ZipArchive::new(handle)?;
 
@@ -52,14 +49,12 @@ pub(crate) fn find_zip_entry_bytes(
     matches: impl Fn(&str) -> bool,
     not_found: &str,
 ) -> Result<Vec<u8>, MeshThumbnailError> {
-    let mut buffer = Vec::new();
     with_zip_entry(path, matches, not_found, |size, reader| {
-        buffer.reserve_exact(usize::try_from(size).unwrap_or(0));
+        let mut buffer = Vec::with_capacity(usize::try_from(size).unwrap_or(0));
         io::copy(reader, &mut buffer)?;
-        Ok(())
-    })?;
 
-    Ok(buffer)
+        Ok(buffer)
+    })
 }
 
 /// Parses a mesh from the given path (STL, OBJ, 3MF, G-code, etc.).

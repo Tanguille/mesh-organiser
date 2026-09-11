@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{State, ipc::Response};
 
-use db::{blob_db, model_db};
+use db::blob_db;
 use service::export_service;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
@@ -13,19 +13,16 @@ pub async fn get_model_bytes(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
-    let Some(model) =
-        model_db::get_model_via_id(&state.app_state.db, &state.get_current_user(), model_id)
-            .await?
-    else {
-        return Err(ApplicationError::InternalError(String::from(
-            "Failed to find model",
-        )));
-    };
+    let model = state.require_model(model_id).await?;
 
-    get_blob_bytes_impl(&model.blob.sha256, state).await
+    // Todo: This is not a streamed response. Less efficient than the streaming we did before!
+    let bytes = export_service::get_bytes_from_blob(&model.blob, &state.app_state).await?;
+
+    Ok(Response::new(bytes))
 }
 
-async fn get_blob_bytes_impl(
+#[tauri::command]
+pub async fn get_blob_bytes(
     sha256: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
@@ -39,14 +36,6 @@ async fn get_blob_bytes_impl(
     let bytes = export_service::get_bytes_from_blob(&blob, &state.app_state).await?;
 
     Ok(Response::new(bytes))
-}
-
-#[tauri::command]
-pub async fn get_blob_bytes(
-    sha256: &str,
-    state: State<'_, TauriAppState>,
-) -> Result<Response, ApplicationError> {
-    get_blob_bytes_impl(sha256, state).await
 }
 
 #[derive(Serialize)]

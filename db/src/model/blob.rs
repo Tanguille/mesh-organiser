@@ -72,11 +72,7 @@ impl FileType {
             return Self::from_extension("gcode.zip");
         }
         if name_lower.ends_with(".step.zip") || name_lower.ends_with(".stp.zip") {
-            return Self::from_extension(if name_lower.ends_with(".stp.zip") {
-                "stp.zip"
-            } else {
-                "step.zip"
-            });
+            return Self::from_extension("step.zip");
         }
         path.extension().map_or(Self::Unknown, |ext| {
             Self::from_extension(&ext.to_string_lossy())
@@ -129,16 +125,6 @@ impl FileType {
     }
 
     #[must_use]
-    pub const fn is_stl(&self) -> bool {
-        matches!(self, Self::Stl | Self::ZippedStl)
-    }
-
-    #[must_use]
-    pub const fn is_obj(&self) -> bool {
-        matches!(self, Self::Obj | Self::ZippedObj)
-    }
-
-    #[must_use]
     pub const fn is_3mf(&self) -> bool {
         matches!(self, Self::Threemf)
     }
@@ -161,44 +147,6 @@ impl FileType {
     #[must_use]
     pub const fn is_zippable(&self) -> bool {
         matches!(self, Self::Stl | Self::Obj | Self::Step | Self::Gcode)
-    }
-
-    #[must_use]
-    pub fn to_zip(&self) -> Self {
-        match self {
-            Self::Stl => Self::ZippedStl,
-            Self::Obj => Self::ZippedObj,
-            Self::Step => Self::ZippedStep,
-            Self::Gcode => Self::ZippedGcode,
-            _ => self.clone(),
-        }
-    }
-
-    #[must_use]
-    pub fn from_zip(&self) -> Self {
-        match self {
-            Self::ZippedStl => Self::Stl,
-            Self::ZippedObj => Self::Obj,
-            Self::ZippedStep => Self::Step,
-            Self::ZippedGcode => Self::Gcode,
-            _ => self.clone(),
-        }
-    }
-
-    #[must_use]
-    pub const fn is_supported_by_thumbnail_gen(&self) -> bool {
-        matches!(
-            self,
-            Self::Stl
-                | Self::ZippedStl
-                | Self::Obj
-                | Self::ZippedObj
-                | Self::Gcode
-                | Self::ZippedGcode
-                | Self::Step
-                | Self::ZippedStep
-                | Self::Threemf
-        )
     }
 
     #[must_use]

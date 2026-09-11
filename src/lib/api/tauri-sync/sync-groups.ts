@@ -1,5 +1,6 @@
 import { currentUser } from "$lib/configuration.svelte";
 import {
+  beginSyncStep,
   globalSyncState,
   resetSyncState,
   SyncStage,
@@ -40,9 +41,10 @@ async function stepUploadToRemote(
   remoteModelsById: Map<string, Model>,
   isDownload: boolean,
 ): Promise<void> {
-  globalSyncState.step = isDownload ? SyncStep.Download : SyncStep.Upload;
-  globalSyncState.processableItems = toUpload.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(
+    isDownload ? SyncStep.Download : SyncStep.Upload,
+    toUpload.length,
+  );
 
   await runWithLimit(toUpload, (group) =>
     finalizeSingleGroupUpload(group, remoteApi, remoteModelsById),
@@ -81,9 +83,7 @@ async function stepSyncToRemote(
   remoteModelsById: Map<string, Model>,
   isServerToLocal: boolean,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.UpdateMetadata;
-  globalSyncState.processableItems = toSync.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.UpdateMetadata, toSync.length);
 
   await runWithLimit(toSync, (groupSet) =>
     finalizeSyncToRemote(
@@ -101,8 +101,7 @@ export async function syncGroups(
   localModels: Model[],
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
-  resetSyncState();
-  globalSyncState.stage = SyncStage.Groups;
+  resetSyncState(SyncStage.Groups);
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
 
   // The two full-list fetches are independent; run them concurrently.

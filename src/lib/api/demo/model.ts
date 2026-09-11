@@ -10,16 +10,14 @@ import { mockModels, modelGroupMap, modelLabelsMap } from "./mock_data";
 
 export class DemoModelApi implements IModelApi {
   private filterByFlags(models: Model[], flags: ModelFlags | null): Model[] {
-    if (flags) {
-      if (flags.printed !== undefined) {
-        models = models.filter((m) => m.flags.printed === flags.printed);
-      }
-      if (flags.favorite !== undefined) {
-        models = models.filter((m) => m.flags.favorite === flags.favorite);
-      }
+    if (!flags) {
+      return models;
     }
-
-    return models;
+    return models.filter(
+      (m) =>
+        m.flags.printed === flags.printed &&
+        m.flags.favorite === flags.favorite,
+    );
   }
 
   async getModels(
