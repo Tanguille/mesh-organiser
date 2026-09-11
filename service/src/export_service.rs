@@ -52,7 +52,7 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
     ));
     // create_dir (not create_dir_all) so a name collision fails loudly instead of
     // silently sharing a workspace between two concurrent exports.
-    fs::create_dir(&temp_dir).unwrap();
+    fs::create_dir(&temp_dir).unwrap(); // skipcq: RS-W1032
 
     temp_dir
 }
