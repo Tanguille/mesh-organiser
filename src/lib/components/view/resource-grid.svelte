@@ -1,8 +1,8 @@
 <script lang="ts">
   import { resolve } from "$lib/paths";
   import { Input } from "$lib/components/ui/input";
-  import * as Select from "$lib/components/ui/select/index.js";
   import GroupTinyList from "./group-tiny-list.svelte";
+  import SortFilter from "./sort-filter.svelte";
   import { AsyncButton, buttonVariants } from "$lib/components/ui/button";
   import EditResource from "$lib/components/edit/resource.svelte";
   import NotebookText from "@lucide/svelte/icons/notebook-text";
@@ -22,6 +22,10 @@
   import { handleGridItemKeyDown } from "$lib/utils";
   import Download from "@lucide/svelte/icons/download";
   import ExportModelsButton from "./export-models-button.svelte";
+  import {
+    GROUP_ORDER_LABELS,
+    type OrderOptionGroups,
+  } from "$lib/api/shared/settings_api";
 
   const props: { resources: ResourceMeta[] } = $props();
   let selected = $state.raw<ResourceMeta | null>(null);
@@ -36,13 +40,14 @@
 
   interface SearchFilters {
     search: string;
-    order: "date-asc" | "date-desc" | "name-asc" | "name-desc";
+    // Resources sort on the same keys as groups.
+    order: OrderOptionGroups;
     limit: number;
   }
 
   const currentFilter = $state<SearchFilters>({
     search: "",
-    order: "date-desc",
+    order: "modified-desc",
     limit: 100,
   });
 
@@ -54,15 +59,6 @@
       }
     }
   }
-
-  const readableOrders = {
-    "date-asc": "Date (Asc)",
-    "date-desc": "Date (Desc)",
-    "name-asc": "Name (Asc)",
-    "name-desc": "Name (Desc)",
-  };
-
-  const readableOrder = $derived(readableOrders[currentFilter.order]);
 
   const filteredCollection = $derived.by(() => {
     let search_lower = currentFilter.search.toLowerCase();
@@ -79,6 +75,10 @@
             return a.name.localeCompare(b.name);
           case "name-desc":
             return b.name.localeCompare(a.name);
+          case "modified-asc":
+            return a.lastModified.getTime() - b.lastModified.getTime();
+          case "modified-desc":
+            return b.lastModified.getTime() - a.lastModified.getTime();
           default:
             return 0;
         }
@@ -121,28 +121,17 @@
 
 <div class="flex h-full flex-row">
   <div class="flex flex-1 flex-col gap-1" style="min-width: 0;">
-    <div class="grid grid-cols-2 justify-center gap-5 px-5 py-3">
+    <div class="flex flex-row justify-center gap-3 px-5 py-3">
       <Input
         bind:value={currentFilter.search}
-        class="border-primary"
+        class="grow border-primary"
         placeholder="Search"
       />
 
-      <Select.Root type="single" name="Sort" bind:value={currentFilter.order}>
-        <Select.Trigger class="border-primary">
-          {readableOrder}
-        </Select.Trigger>
-        <Select.Content>
-          <Select.Group>
-            <Select.GroupHeading>Sort options</Select.GroupHeading>
-            {#each Object.entries(readableOrders) as order (order[0])}
-              <Select.Item value={order[0]} label={order[1]}
-                >{order[1]}</Select.Item
-              >
-            {/each}
-          </Select.Group>
-        </Select.Content>
-      </Select.Root>
+      <SortFilter
+        bind:value={currentFilter.order}
+        options={GROUP_ORDER_LABELS}
+      />
     </div>
 
     <div

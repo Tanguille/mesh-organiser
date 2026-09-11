@@ -1,6 +1,10 @@
 //! Integration tests for dynamic SQL query paths (IN clauses, batch inserts).
 
-use db::{blob_db, db_context, group_db, label_db, model::user::User, model_db};
+use db::{
+    blob_db, db_context, group_db, label_db,
+    model::{blob::FileType, user::User},
+    model_db,
+};
 use tempfile::tempdir;
 
 async fn test_db() -> (tempfile::TempDir, db_context::DbContext) {
@@ -196,4 +200,62 @@ async fn get_groups_default_filter_options_does_not_panic() {
     let _ = group_db::get_groups(&db, &user, zero_opts)
         .await
         .expect("zero page/page_size must be clamped, not panic");
+}
+
+#[tokio::test]
+async fn get_models_file_type_filter_matches_every_stored_spelling() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+
+    // In-place imports keep the caller's spelling; the rest are zipped on import.
+    for (sha, filetype) in [("a", "STL"), ("b", "stl.zip"), ("c", "stp"), ("d", "3mf")] {
+        let blob_id = blob_db::add_blob(&db, sha, filetype, 1, None)
+            .await
+            .unwrap();
+        model_db::add_model(&db, &user, sha, blob_id, None, None)
+            .await
+            .unwrap();
+    }
+
+    let names = |models: Vec<db::model::Model>| -> Vec<String> {
+        let mut names: Vec<String> = models.into_iter().map(|m| m.name).collect();
+        names.sort();
+        names
+    };
+
+    let stl = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            file_types: Some(vec![FileType::Stl]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(names(stl.items), ["a", "b"]);
+
+    let step_or_3mf = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            file_types: Some(vec![FileType::ZippedStep, FileType::Threemf]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(names(step_or_3mf.items), ["c", "d"]);
+
+    let none = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            file_types: Some(vec![]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(none.items.is_empty());
 }

@@ -6,6 +6,4 @@
   let modelApi = getContainer().require<IModelApi>(IModelApi);
 </script>
 
-<ModelGrid
-  modelStream={new ModelStreamManager(modelApi, null, null, null, null)}
-/>
+<ModelGrid modelStream={new ModelStreamManager(modelApi)} />

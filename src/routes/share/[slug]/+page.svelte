@@ -2,6 +2,7 @@
   import { page } from "$app/state";
   import { getContainer } from "$lib/api/dependency_injection";
   import {
+    defaultGroupFilter,
     GroupOrderBy,
     IGroupApi,
     PredefinedGroupStreamManager,
@@ -22,14 +23,13 @@
   onMount(async () => {
     share = await shareApi.getShare(shareId);
     groups = await groupApi.getGroups(
-      share.modelIds,
-      null,
-      null,
-      GroupOrderBy.CreatedAsc,
-      null,
+      defaultGroupFilter({
+        modelIds: share.modelIds,
+        orderBy: GroupOrderBy.CreatedAsc,
+        includeUngroupedModels: true,
+      }),
       1,
       share.modelIds.length,
-      true,
     );
   });
 </script>

@@ -1,7 +1,11 @@
-import type { Blob } from "./blob_api";
+import { normalizeFileTypeFilter, type Blob, type FileType } from "./blob_api";
 import type { GroupMeta } from "./group_api";
 import type { LabelMeta } from "./label_api";
-import { GeneratorStreamManager, pagedStream } from "./stream_manager";
+import {
+  GeneratorStreamManager,
+  pagedStream,
+  type StreamFilter,
+} from "./stream_manager";
 
 export interface ModelFlags {
   printed: boolean;
@@ -119,18 +123,35 @@ export function modelMatchesSearch(model: Model, lowerSearch: string): boolean {
   );
 }
 
+export interface ModelFilter extends StreamFilter<ModelOrderBy> {
+  modelIds: number[] | null;
+  groupIds: number[] | null;
+  labelIds: number[] | null;
+  flags: ModelFlags | null;
+}
+
+export function defaultModelFilter(
+  overrides: Partial<ModelFilter> = {},
+): ModelFilter {
+  return {
+    modelIds: null,
+    groupIds: null,
+    labelIds: null,
+    orderBy: ModelOrderBy.ModifiedDesc,
+    textSearch: null,
+    flags: null,
+    fileTypes: null,
+    ...overrides,
+  };
+}
+
 export const IModelApi = Symbol("IModelApi");
 
 export interface IModelApi {
   getModels(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: ModelOrderBy,
-    text_search: string | null,
+    filter: ModelFilter,
     page: number,
-    page_size: number,
-    flags: ModelFlags | null,
+    pageSize: number,
   ): Promise<Model[]>;
   editModel(
     model: Model,
@@ -156,12 +177,7 @@ export async function getAllModels(
   const all: Model[] = [];
   for await (const page of modelStream(
     api,
-    null,
-    null,
-    labelIds,
-    ModelOrderBy.ModifiedDesc,
-    null,
-    null,
+    defaultModelFilter({ labelIds }),
     MAX_PAGE_SIZE,
   )) {
     all.push(...page);
@@ -171,31 +187,18 @@ export async function getAllModels(
 
 export async function* modelStream(
   modelApi: IModelApi,
-  modelIds: number[] | null,
-  groupIds: number[] | null,
-  labelIds: number[] | null,
-  orderBy: ModelOrderBy,
-  textSearch: string | null,
-  flags: ModelFlags | null,
+  filter: ModelFilter,
   pageSize: number = 50,
 ): AsyncGenerator<Model[]> {
   yield* pagedStream((pageNumber) =>
-    modelApi.getModels(
-      modelIds,
-      groupIds,
-      labelIds,
-      orderBy,
-      textSearch,
-      pageNumber,
-      pageSize,
-      flags,
-    ),
+    modelApi.getModels(filter, pageNumber, pageSize),
   );
 }
 
 export interface IModelStreamManager {
   setSearchText(text: string | null): void;
   setOrderBy(order_by: ModelOrderBy): void;
+  setFileTypes(fileTypes: FileType[]): void;
   fetch(): Promise<Model[]>;
   getAll(): Promise<Model[]>;
 }
@@ -203,11 +206,12 @@ export interface IModelStreamManager {
 export class PredefinedModelStreamManager implements IModelStreamManager {
   private models: Model[];
   private textSearch: string | null = null;
+  private fileTypes: FileType[] | null = null;
   private orderBy: ModelOrderBy = ModelOrderBy.AddedDesc;
   private pageSize: number;
   private fetchIndex: number = 0;
   // Filtered + sorted view, computed lazily and reused across page fetches.
-  // Invalidated whenever the search text or sort order changes.
+  // Invalidated whenever the search text, file types or sort order changes.
   private sortedFiltered: Model[] | null = null;
 
   constructor(models: Model[], pageSize: number = 50) {
@@ -227,12 +231,18 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
     this.sortedFiltered = null;
   }
 
+  setFileTypes(fileTypes: FileType[]): void {
+    this.fileTypes = normalizeFileTypeFilter(fileTypes);
+    this.fetchIndex = 0;
+    this.sortedFiltered = null;
+  }
+
   private computeSortedFiltered(): Model[] {
-    const filtered = !this.textSearch
-      ? this.models
-      : this.models.filter((model) =>
-          modelMatchesSearch(model, this.textSearch!),
-        );
+    const filtered = this.models.filter(
+      (model) =>
+        (!this.textSearch || modelMatchesSearch(model, this.textSearch)) &&
+        (!this.fileTypes || this.fileTypes.includes(model.blob.filetype)),
+    );
 
     // Copy before sorting so we never mutate the caller-owned `this.models`.
     return [...filtered].sort(modelOrderByComparator(this.orderBy));
@@ -262,45 +272,25 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
 }
 
 export class ModelStreamManager
-  extends GeneratorStreamManager<Model, ModelOrderBy>
+  extends GeneratorStreamManager<Model, ModelFilter>
   implements IModelStreamManager
 {
   private modelApi: IModelApi;
-  private modelIds: number[] | null;
-  private groupIds: number[] | null;
-  private labelIds: number[] | null;
-  private flags: ModelFlags | null;
   private pageSize: number;
 
   constructor(
     modelApi: IModelApi,
-    modelIds: number[] | null,
-    groupIds: number[] | null,
-    labelIds: number[] | null,
-    flags: ModelFlags | null,
+    filter: ModelFilter = defaultModelFilter(),
     pageSize: number = 50,
   ) {
-    super(ModelOrderBy.AddedDesc);
+    super(filter);
     this.modelApi = modelApi;
-    this.modelIds = modelIds;
-    this.groupIds = groupIds;
-    this.labelIds = labelIds;
-    this.flags = flags;
     this.pageSize = pageSize;
     this.regenerate();
   }
 
   protected makeGenerator(): AsyncGenerator<Model[]> {
-    return modelStream(
-      this.modelApi,
-      this.modelIds,
-      this.groupIds,
-      this.labelIds,
-      this.orderBy,
-      this.textSearch,
-      this.flags,
-      this.pageSize,
-    );
+    return modelStream(this.modelApi, this.filter, this.pageSize);
   }
 
   async getAll(): Promise<Model[]> {

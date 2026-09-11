@@ -1,6 +1,6 @@
 import {
   buildGetGroupsQuery,
-  type GroupOrderBy,
+  type GroupFilter,
   type Group,
   type GroupMeta,
   type IGroupApi,
@@ -23,25 +23,11 @@ export class WebShareGroupApi implements IGroupApi {
   }
 
   async getGroups(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: GroupOrderBy,
-    text_search: string | null,
+    filter: GroupFilter,
     page: number,
-    page_size: number,
-    include_ungrouped_models: boolean,
+    pageSize: number,
   ): Promise<Group[]> {
-    const data = buildGetGroupsQuery(
-      model_ids,
-      group_ids,
-      label_ids,
-      order_by,
-      text_search,
-      page,
-      page_size,
-      include_ungrouped_models,
-    );
+    const data = buildGetGroupsQuery(filter, page, pageSize);
 
     const response = await this.requestApi.request<RawGroup[]>(
       `/shares/${this.share.id}/groups`,

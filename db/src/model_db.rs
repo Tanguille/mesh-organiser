@@ -6,7 +6,12 @@ use crate::{
     DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     label_db,
-    model::{Model, ModelFlags, blob::Blob, model_group::ModelGroupMeta, user::User},
+    model::{
+        Model, ModelFlags,
+        blob::{Blob, FileType},
+        model_group::ModelGroupMeta,
+        user::User,
+    },
     push_in_i64,
     util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
 };
@@ -46,6 +51,8 @@ pub struct ModelFilterOptions {
     pub order_by: Option<ModelOrderBy>,
     pub text_search: Option<String>,
     pub model_flags: Option<ModelFlags>,
+    /// Restrict to blobs of these types (zipped or not). `None` = any; `Some(&[])` = nothing.
+    pub file_types: Option<Vec<FileType>>,
     pub page: u32,
     pub page_size: u32,
 }
@@ -62,6 +69,7 @@ impl Default for ModelFilterOptions {
             order_by: None,
             text_search: None,
             model_flags: None,
+            file_types: None,
             page: 1,
             page_size: MAX_PAGE_SIZE,
         }
@@ -81,6 +89,7 @@ pub async fn get_models(
     if options.model_ids.as_ref().is_some_and(Vec::is_empty)
         || options.group_ids.as_ref().is_some_and(Vec::is_empty)
         || options.label_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.file_types.as_ref().is_some_and(Vec::is_empty)
     {
         return Ok(PaginatedResponse {
             page: options.page,
@@ -123,6 +132,15 @@ pub async fn get_models(
         query_builder.push_bind(i64::from(model_flags.bits()));
         query_builder.push(") = ");
         query_builder.push_bind(i64::from(model_flags.bits()));
+    }
+
+    if let Some(file_types) = &options.file_types {
+        query_builder.push(" AND LOWER(blob_filetype) IN (");
+        let mut separated = query_builder.separated(", ");
+        for extension in file_types.iter().flat_map(FileType::storage_extensions) {
+            separated.push_bind(*extension);
+        }
+        query_builder.push(")");
     }
 
     if let Some(text_search) = options.text_search {

@@ -6,6 +6,17 @@ export enum FileType {
   GCODE = "gcode.zip",
 }
 
+// Selecting nothing or everything in the file-type filter both mean "don't
+// filter"; null lets the backends skip the clause entirely.
+export function normalizeFileTypeFilter(
+  fileTypes: FileType[],
+): FileType[] | null {
+  const unique = [...new Set(fileTypes)];
+  return unique.length === 0 || unique.length === Object.values(FileType).length
+    ? null
+    : unique;
+}
+
 export interface Blob {
   id: number;
   sha256: string;

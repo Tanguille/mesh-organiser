@@ -3,8 +3,8 @@ import {
   createGroupMetaInstance,
   groupOrderByComparator,
   type Group,
+  type GroupFilter,
   type GroupMeta,
-  type GroupOrderBy,
   type IGroupApi,
 } from "../shared/group_api";
 import { modelMatchesSearch, type Model } from "../shared/model_api";
@@ -63,15 +63,19 @@ function collectGroupModels(
 
 export class DemoGroupApi implements IGroupApi {
   async getGroups(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: GroupOrderBy,
-    text_search: string | null,
+    filter: GroupFilter,
     page: number,
     page_size: number,
-    include_ungrouped_models: boolean,
   ): Promise<Group[]> {
+    const {
+      modelIds: model_ids,
+      groupIds: group_ids,
+      labelIds: label_ids,
+      orderBy: order_by,
+      textSearch: text_search,
+      fileTypes: file_types,
+      includeUngroupedModels: include_ungrouped_models,
+    } = filter;
     const groups: Group[] = [];
 
     // Collect all groups that match the criteria
@@ -157,7 +161,13 @@ export class DemoGroupApi implements IGroupApi {
       });
     }
 
-    const filteredGroups = groups.filter((g) => g.models.length > 0);
+    // Like the SQL backend: keep whole groups that contain any matching type.
+    const filteredGroups = groups.filter(
+      (g) =>
+        g.models.length > 0 &&
+        (!file_types ||
+          g.models.some((m) => file_types.includes(m.blob.filetype))),
+    );
 
     // Sort groups
     filteredGroups.sort(groupOrderByComparator(order_by));

@@ -156,7 +156,7 @@ pub fn parse_comma_separated_i64(str: &str, max: usize) -> Result<Vec<i64>, Quer
 
 /// Converts a request-param `Vec<i64>` into `Option<Vec<i64>>`, treating an empty list as absent.
 #[must_use]
-pub fn none_if_empty(ids: Vec<i64>) -> Option<Vec<i64>> {
+pub fn none_if_empty<T>(ids: Vec<T>) -> Option<Vec<T>> {
     if ids.is_empty() { None } else { Some(ids) }
 }
 

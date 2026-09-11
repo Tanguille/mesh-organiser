@@ -14,8 +14,8 @@ import {
 import {
   createModelInstance,
   type Model,
+  type ModelFilter,
   type ModelFlags,
-  type ModelOrderBy,
 } from "./model_api";
 import {
   createResourceMetaInstance,
@@ -69,24 +69,20 @@ export interface RawModel {
 // Builds the shared getModels request body used by both the web and
 // web-share model endpoints (they differ only in the endpoint path).
 export function buildGetModelsQuery(
-  model_ids: number[] | null,
-  group_ids: number[] | null,
-  label_ids: number[] | null,
-  order_by: ModelOrderBy,
-  text_search: string | null,
+  filter: ModelFilter,
   page: number,
   page_size: number,
-  flags: ModelFlags | null,
 ) {
   return {
-    model_ids,
-    group_ids,
-    label_ids,
-    order_by,
-    text_search,
+    model_ids: filter.modelIds,
+    group_ids: filter.groupIds,
+    label_ids: filter.labelIds,
+    order_by: filter.orderBy,
+    text_search: filter.textSearch,
+    file_types: filter.fileTypes,
     page,
     page_size,
-    model_flags: convertModelFlagsToRaw(flags),
+    model_flags: convertModelFlagsToRaw(filter.flags),
   };
 }
 

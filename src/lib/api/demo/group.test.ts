@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { GroupOrderBy } from "../shared/group_api";
+import { defaultGroupFilter, GroupOrderBy } from "../shared/group_api";
 import { DemoGroupApi } from "./group";
 import {
   mockGroups,
@@ -37,14 +37,9 @@ describe("DemoGroupApi.getGroups grouped collection", () => {
     const groupedIds = groupedModelIds();
     // Act
     const groups = await api.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.NameAsc,
-      null,
+      defaultGroupFilter({ orderBy: GroupOrderBy.NameAsc }),
       1,
       100,
-      false,
     );
     // Assert: every returned group is a real group, and each contained model
     // is mapped to exactly that group id in modelGroupMap.
@@ -68,14 +63,9 @@ describe("DemoGroupApi.getGroups grouped collection", () => {
     });
     // Act
     const groups = await api.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.NameAsc,
-      null,
+      defaultGroupFilter({ orderBy: GroupOrderBy.NameAsc }),
       1,
       100,
-      false,
     );
     // Assert
     for (const group of groups) {
@@ -88,14 +78,12 @@ describe("DemoGroupApi.getGroups grouped collection", () => {
   it("applies the text_search predicate to member models", async () => {
     // Act: search for a primitive that lives inside the grouped branch.
     const groups = await api.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.NameAsc,
-      "sphere",
+      defaultGroupFilter({
+        orderBy: GroupOrderBy.NameAsc,
+        textSearch: "sphere",
+      }),
       1,
       100,
-      false,
     );
     // Assert: only matching models survive within the returned groups.
     for (const group of groups) {
@@ -116,14 +104,12 @@ describe("DemoGroupApi.getGroups ungrouped collection", () => {
     });
     // Act
     const groups = await api.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.NameAsc,
-      null,
+      defaultGroupFilter({
+        orderBy: GroupOrderBy.NameAsc,
+        includeUngroupedModels: true,
+      }),
       1,
       100,
-      true,
     );
     // Assert: ungrouped models appear as singleton groups with a negated id,
     // and grouped + ungrouped membership partitions every mock model.
@@ -148,14 +134,9 @@ describe("DemoGroupApi.getGroups ungrouped collection", () => {
   it("excludes ungrouped singleton groups when include_ungrouped_models is false", async () => {
     // Act
     const groups = await api.getGroups(
-      null,
-      null,
-      null,
-      GroupOrderBy.NameAsc,
-      null,
+      defaultGroupFilter({ orderBy: GroupOrderBy.NameAsc }),
       1,
       100,
-      false,
     );
     // Assert
     expect(groups.every((group) => group.meta.id >= 0)).toBe(true);
@@ -169,14 +150,13 @@ describe("DemoGroupApi.getGroups ungrouped collection", () => {
     expect(targetId).toBeDefined();
     // Act
     const groups = await api.getGroups(
-      [targetId!],
-      null,
-      null,
-      GroupOrderBy.NameAsc,
-      null,
+      defaultGroupFilter({
+        modelIds: [targetId!],
+        orderBy: GroupOrderBy.NameAsc,
+        includeUngroupedModels: true,
+      }),
       1,
       100,
-      true,
     );
     // Assert: the only ungrouped singleton present is the requested model.
     const ungroupedGroups = groups.filter((group) => group.meta.id < 0);
