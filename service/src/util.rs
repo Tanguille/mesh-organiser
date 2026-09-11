@@ -195,7 +195,7 @@ mod run_bounded_tests {
     async fn empty_input_returns_empty_vec() {
         let results = run_bounded(Vec::<usize>::new(), 4, |item| async move { item }).await;
 
-        assert!(results.is_empty());
+        assert_eq!(results.len(), 0);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(user.username, "alice");
         assert_eq!(user.email, "alice@example.com");
         assert!(user.permissions.is_empty());
-        assert!(user.password_hash.is_empty());
+        assert_eq!(user.password_hash, "");
         assert!(user.sync_url.is_none());
     }
 
