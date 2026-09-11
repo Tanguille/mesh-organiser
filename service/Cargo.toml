@@ -37,7 +37,6 @@ async_zip = { workspace = true, features = [
     "deflate64",
     "tokio-fs",
 ] }
-chrono = { workspace = true }
 
 [dev-dependencies]
 fake = { workspace = true }
