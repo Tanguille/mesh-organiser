@@ -212,7 +212,9 @@ mod get {
     pub async fn get_blobs_zip_download(
         Path(zip_dir): Path<String>,
     ) -> Result<Response, ApplicationError> {
-        if !zip_dir.starts_with(export_service::TEMP_DIR_PREFIX) {
+        // Axum percent-decodes the segment, so `%2F` would otherwise let a
+        // prefixed name reach a sibling dir via `..`; require one path component.
+        if !zip_dir.starts_with(export_service::TEMP_DIR_PREFIX) || zip_dir.contains(['/', '\\']) {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         }
 

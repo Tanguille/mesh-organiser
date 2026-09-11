@@ -50,7 +50,9 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
         "{TEMP_DIR_PREFIX}{action}_action_{}",
         Utc::now().timestamp_nanos_opt().unwrap()
     ));
-    fs::create_dir_all(&temp_dir).unwrap();
+    // create_dir (not create_dir_all) so a name collision fails loudly instead of
+    // silently sharing a workspace between two concurrent exports.
+    fs::create_dir(&temp_dir).unwrap();
 
     temp_dir
 }
