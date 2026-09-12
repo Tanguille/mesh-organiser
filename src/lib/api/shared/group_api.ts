@@ -100,9 +100,12 @@ export function groupOrderByComparator(
   };
 }
 
-// Builds the shared getGroups request body used by both the web and
-// web-share group endpoints (they differ only in the endpoint path). The
-// model_ids_str field is a hack to bypass the request uri becoming too large.
+/**
+ * Builds the shared request parameters for the web and web-share group endpoints.
+ *
+ * Model IDs are encoded as a comma-separated `model_ids_str` value to avoid
+ * oversized request URIs from repeated parameters.
+ */
 export function buildGetGroupsQuery(
   filter: GroupFilter,
   page: number,
@@ -129,6 +132,10 @@ export interface GroupFilter extends StreamFilter<GroupOrderBy> {
   includeUngroupedModels: boolean;
 }
 
+/**
+ * Creates a complete group filter with modified-descending order, no active
+ * filters, and ungrouped models excluded, then applies the supplied overrides.
+ */
 export function defaultGroupFilter(
   overrides: Partial<GroupFilter> = {},
 ): GroupFilter {
@@ -169,9 +176,12 @@ export interface IGroupApi {
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
 }
 
-// Fetches the full group list by draining the paged stream. A single oversized
-// request is not an option: the server caps page_size at MAX_PAGE_SIZE, so
-// anything past the first page would be lost.
+/**
+ * Fetches every group by draining the paged stream.
+ *
+ * The server caps page size at {@link MAX_PAGE_SIZE}, so the function requests
+ * consecutive pages rather than relying on one oversized request.
+ */
 export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
   const all: Group[] = [];
   for await (const page of groupStream(
@@ -184,6 +194,7 @@ export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
   return all;
 }
 
+/** Yields filtered group pages until the API returns an empty page. */
 export async function* groupStream(
   groupApi: IGroupApi,
   filter: GroupFilter,
@@ -197,6 +208,7 @@ export async function* groupStream(
 export interface IGroupStreamManager {
   setSearchText(text: string | null): void;
   setOrderBy(order_by: GroupOrderBy): void;
+  /** Replaces the file-type filter and restarts pagination. An empty or complete selection clears it. */
   setFileTypes(fileTypes: FileType[]): void;
   fetch(): Promise<Group[]>;
 }
@@ -227,6 +239,7 @@ export class PredefinedGroupStreamManager implements IGroupStreamManager {
     this.alreadyFetched = false;
   }
 
+  /** Returns matching groups once, then an empty page until a filter or ordering changes. */
   async fetch(): Promise<Group[]> {
     if (this.alreadyFetched) {
       return [];
@@ -274,6 +287,7 @@ export class GroupStreamManager
   }
 }
 
+/** Returns the requested group, or `null` when it is not visible to the API. */
 export async function getGroupById(
   groupApi: IGroupApi,
   groupId: number,

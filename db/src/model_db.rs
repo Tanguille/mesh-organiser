@@ -76,6 +76,10 @@ impl Default for ModelFilterOptions {
     }
 }
 
+/// Returns a page of the user's models that match every supplied filter.
+///
+/// File types match case-insensitively across their zipped and unzipped storage extensions. A
+/// present but empty ID, label, group, or file-type list produces an empty page.
 #[allow(clippy::too_many_lines)]
 pub async fn get_models(
     db: &DbContext,

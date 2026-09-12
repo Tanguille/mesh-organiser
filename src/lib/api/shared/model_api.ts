@@ -130,6 +130,10 @@ export interface ModelFilter extends StreamFilter<ModelOrderBy> {
   flags: ModelFlags | null;
 }
 
+/**
+ * Creates a complete model filter with modified-descending order and no active
+ * filters, then applies the supplied overrides.
+ */
 export function defaultModelFilter(
   overrides: Partial<ModelFilter> = {},
 ): ModelFilter {
@@ -167,9 +171,12 @@ export interface IModelApi {
 // server rejects anything larger with a 400).
 export const MAX_PAGE_SIZE = 1000;
 
-// Fetches the full model list (optionally filtered by labels) by draining the
-// paged stream. A single oversized request is not an option: the server caps
-// page_size at MAX_PAGE_SIZE, so anything past the first page would be lost.
+/**
+ * Fetches every model, optionally filtered by label IDs, by draining the paged stream.
+ *
+ * The server caps page size at {@link MAX_PAGE_SIZE}, so the function requests
+ * consecutive pages rather than relying on one oversized request.
+ */
 export async function getAllModels(
   api: IModelApi,
   labelIds: number[] | null = null,
@@ -185,6 +192,7 @@ export async function getAllModels(
   return all;
 }
 
+/** Yields filtered model pages until the API returns an empty page. */
 export async function* modelStream(
   modelApi: IModelApi,
   filter: ModelFilter,
@@ -198,6 +206,7 @@ export async function* modelStream(
 export interface IModelStreamManager {
   setSearchText(text: string | null): void;
   setOrderBy(order_by: ModelOrderBy): void;
+  /** Replaces the file-type filter and restarts pagination. An empty or complete selection clears it. */
   setFileTypes(fileTypes: FileType[]): void;
   fetch(): Promise<Model[]>;
   getAll(): Promise<Model[]>;
@@ -248,6 +257,7 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
     return [...filtered].sort(modelOrderByComparator(this.orderBy));
   }
 
+  /** Returns the next page of matching models, or an empty page when exhausted. */
   async fetch(): Promise<Model[]> {
     if (this.sortedFiltered === null) {
       this.sortedFiltered = this.computeSortedFiltered();

@@ -9,6 +9,13 @@ use sqlx::{
 
 pub type DbContext = Pool<Sqlite>;
 
+/// Opens or creates a SQLite database, backs up its pre-migration state, and applies migrations.
+///
+/// The database is vacuumed when at least one migration is applied.
+///
+/// # Panics
+///
+/// Panics if the database cannot be created, opened, backed up, migrated, or vacuumed.
 pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext {
     let url = format!(
         "sqlite:{}",
