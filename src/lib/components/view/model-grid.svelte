@@ -139,6 +139,7 @@
         <FileTypeFilter
           onchange={(x) => {
             props.modelStream.setFileTypes(x);
+            selected = [];
             resetModelSet();
           }}
         />

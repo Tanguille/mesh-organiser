@@ -33,7 +33,13 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
 
     let migration_count = get_db_migration_count(&db).await;
 
-    dedupe_models_before_blob_migration(&db, migration_count).await;
+    // Snapshot before the dedup delete and the migration run below, so a failure
+    // partway through leaves a recoverable copy of the pre-migration database.
+    backup_db(sqlite_path, sqlite_backup_dir);
+
+    dedupe_models_before_blob_migration(&db, migration_count)
+        .await
+        .expect("failed to dedupe models before blob migration");
 
     let migrator = sqlx::migrate!("./migrations");
     repair_line_ending_checksums(&db, &migrator).await;
@@ -41,7 +47,6 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
         .run(&db)
         .await
         .expect("failed to run database migrations");
-    backup_db(sqlite_path, sqlite_backup_dir);
 
     let new_migration_count = get_db_migration_count(&db).await;
 
@@ -105,16 +110,21 @@ async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
 /// can never migrate. Keep the oldest row per hash and drop the rest, but only on
 /// databases that still have to run that migration (count 1..=5); the column no
 /// longer exists afterwards. Ported from upstream (suchmememanyskill#38).
-async fn dedupe_models_before_blob_migration(db: &DbContext, migration_count: usize) {
+async fn dedupe_models_before_blob_migration(
+    db: &DbContext,
+    migration_count: usize,
+) -> Result<(), sqlx::Error> {
     if !(1..=5).contains(&migration_count) {
-        return;
+        return Ok(());
     }
 
-    let _ = sqlx::query(
+    sqlx::query(
         "DELETE FROM models WHERE model_id NOT IN (SELECT MIN(model_id) FROM models GROUP BY model_sha256)",
     )
     .execute(db)
-    .await;
+    .await?;
+
+    Ok(())
 }
 
 async fn get_db_migration_count(db: &DbContext) -> usize {
@@ -182,14 +192,14 @@ mod tests {
             .await
             .unwrap();
 
-        dedupe_models_before_blob_migration(&db, 6).await;
+        dedupe_models_before_blob_migration(&db, 6).await.unwrap();
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM models")
             .fetch_one(&db)
             .await
             .unwrap();
         assert_eq!(count, 5, "must not touch databases past migration 6");
 
-        dedupe_models_before_blob_migration(&db, 5).await;
+        dedupe_models_before_blob_migration(&db, 5).await.unwrap();
         let ids: Vec<(i64,)> = sqlx::query_as("SELECT model_id FROM models ORDER BY model_id")
             .fetch_all(&db)
             .await
