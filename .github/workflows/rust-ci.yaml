@@ -38,6 +38,13 @@ jobs:
         with:
           components: rustfmt, clippy
           cache-on-failure: false
+          # cadrum's OCCT build output lives directly under target/, outside the
+          # directories cargo's own fingerprinting revalidates on every build. A
+          # restored cache can silently carry an incomplete copy of it forward
+          # while cargo still considers the crate's build script up to date,
+          # so caching target/ here trades a one-time corruption for a
+          # recurring one. Always rebuild OCCT from scratch (~25-30 min) instead.
+          cache-targets: false
 
       - name: Install system dependencies
         run: |
@@ -55,8 +62,9 @@ jobs:
 
       # src-tauri ships `step`, so feature unification builds and tests the STEP
       # path in these workspace runs. On Linux this compiles OCCT from source via
-      # cadrum (~30 min uncached; cached in the cargo target dir afterwards) — see
-      # libmeshthumbnail/Cargo.toml for why Linux cannot use the prebuilt tarball.
+      # cadrum (~25-30 min, every run — see the cache-targets: false note above)
+      # — see libmeshthumbnail/Cargo.toml for why Linux cannot use the prebuilt
+      # tarball.
       - run: cargo build --workspace --all-targets
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace --all-targets
