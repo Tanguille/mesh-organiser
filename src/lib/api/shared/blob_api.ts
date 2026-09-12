@@ -6,8 +6,12 @@ export enum FileType {
   GCODE = "gcode.zip",
 }
 
-// Selecting nothing or everything in the file-type filter both mean "don't
-// filter"; null lets the backends skip the clause entirely.
+/**
+ * Normalizes a file-type selection for backend filters.
+ *
+ * Empty and complete selections become `null`, meaning no filter. Partial
+ * selections are deduplicated while retaining their first-seen order.
+ */
 export function normalizeFileTypeFilter(
   fileTypes: FileType[],
 ): FileType[] | null {

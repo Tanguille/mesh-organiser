@@ -130,6 +130,7 @@ export interface ModelFilter extends StreamFilter<ModelOrderBy> {
   flags: ModelFlags | null;
 }
 
+/** Returns a complete model filter with default ordering and optional filters disabled. */
 export function defaultModelFilter(
   overrides: Partial<ModelFilter> = {},
 ): ModelFilter {
@@ -148,6 +149,7 @@ export function defaultModelFilter(
 export const IModelApi = Symbol("IModelApi");
 
 export interface IModelApi {
+  /** Returns one page of models selected by all active filter fields. */
   getModels(
     filter: ModelFilter,
     page: number,
@@ -167,9 +169,10 @@ export interface IModelApi {
 // server rejects anything larger with a 400).
 export const MAX_PAGE_SIZE = 1000;
 
-// Fetches the full model list (optionally filtered by labels) by draining the
-// paged stream. A single oversized request is not an option: the server caps
-// page_size at MAX_PAGE_SIZE, so anything past the first page would be lost.
+/**
+ * Fetches every model, optionally filtered by labels, by draining the API's
+ * paginated results.
+ */
 export async function getAllModels(
   api: IModelApi,
   labelIds: number[] | null = null,
@@ -185,6 +188,7 @@ export async function getAllModels(
   return all;
 }
 
+/** Yields successive nonempty pages of models matching `filter`. */
 export async function* modelStream(
   modelApi: IModelApi,
   filter: ModelFilter,
@@ -198,6 +202,7 @@ export async function* modelStream(
 export interface IModelStreamManager {
   setSearchText(text: string | null): void;
   setOrderBy(order_by: ModelOrderBy): void;
+  /** Replaces the file-type selection and restarts iteration from the first result. */
   setFileTypes(fileTypes: FileType[]): void;
   fetch(): Promise<Model[]>;
   getAll(): Promise<Model[]>;

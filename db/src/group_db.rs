@@ -120,8 +120,15 @@ fn convert_model_list_to_groups(
     index_map.into_values().collect()
 }
 
-/// Returns full group list (meta, models, labels, resource). Callers that only need meta + counts
-/// could be served by a future summary endpoint to reduce payload and DB load.
+/// Returns a page of groups whose models match the supplied filters.
+///
+/// Unless incomplete groups are allowed, model-level filters select groups but each returned
+/// group is repopulated with all of its models. Ungrouped models are represented as individual
+/// groups when requested.
+///
+/// # Errors
+///
+/// Returns an error if the groups or their related models and resources cannot be queried.
 pub async fn get_groups(
     db: &DbContext,
     user: &User,

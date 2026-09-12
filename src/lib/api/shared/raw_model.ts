@@ -66,8 +66,7 @@ export interface RawModel {
   unique_global_id: string;
 }
 
-// Builds the shared getModels request body used by both the web and
-// web-share model endpoints (they differ only in the endpoint path).
+/** Builds query parameters for the web and web-share model endpoints. */
 export function buildGetModelsQuery(
   filter: ModelFilter,
   page: number,

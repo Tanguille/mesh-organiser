@@ -116,9 +116,10 @@ impl FileType {
         .to_string()
     }
 
-    /// Every `blob_filetype` value a blob of this type may be stored under. Import keeps
-    /// the caller's spelling ("STL", "stp") for in-place blobs and zips the rest, so a
-    /// type filter must accept all of them; compare against `LOWER(blob_filetype)`.
+    /// Returns the lowercase storage extensions considered equivalent to this file type.
+    ///
+    /// Zipped and unzipped variants share the same set of extensions. Unknown types return an
+    /// empty slice.
     #[must_use]
     pub const fn storage_extensions(&self) -> &'static [&'static str] {
         match self {

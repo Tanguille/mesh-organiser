@@ -100,9 +100,12 @@ export function groupOrderByComparator(
   };
 }
 
-// Builds the shared getGroups request body used by both the web and
-// web-share group endpoints (they differ only in the endpoint path). The
-// model_ids_str field is a hack to bypass the request uri becoming too large.
+/**
+ * Builds query parameters for the web and web-share group endpoints.
+ *
+ * Model IDs are encoded as one comma-separated value to avoid the URI growth
+ * caused by repeated query parameters.
+ */
 export function buildGetGroupsQuery(
   filter: GroupFilter,
   page: number,
@@ -129,6 +132,7 @@ export interface GroupFilter extends StreamFilter<GroupOrderBy> {
   includeUngroupedModels: boolean;
 }
 
+/** Returns a complete group filter with default ordering and optional filters disabled. */
 export function defaultGroupFilter(
   overrides: Partial<GroupFilter> = {},
 ): GroupFilter {
@@ -147,6 +151,7 @@ export function defaultGroupFilter(
 export const IGroupApi = Symbol("IGroupApi");
 
 export interface IGroupApi {
+  /** Returns one page of groups selected by all active filter fields. */
   getGroups(
     filter: GroupFilter,
     page: number,
@@ -169,9 +174,11 @@ export interface IGroupApi {
   getGroupCount(include_ungrouped_models: boolean): Promise<number>;
 }
 
-// Fetches the full group list by draining the paged stream. A single oversized
-// request is not an option: the server caps page_size at MAX_PAGE_SIZE, so
-// anything past the first page would be lost.
+/**
+ * Fetches all groups visible under the default filter by draining the API's paginated results.
+ *
+ * Requests use the largest page size accepted by the server.
+ */
 export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
   const all: Group[] = [];
   for await (const page of groupStream(
@@ -184,6 +191,7 @@ export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
   return all;
 }
 
+/** Yields successive nonempty pages of groups matching `filter`. */
 export async function* groupStream(
   groupApi: IGroupApi,
   filter: GroupFilter,
@@ -197,6 +205,7 @@ export async function* groupStream(
 export interface IGroupStreamManager {
   setSearchText(text: string | null): void;
   setOrderBy(order_by: GroupOrderBy): void;
+  /** Replaces the file-type selection and restarts iteration from the first result. */
   setFileTypes(fileTypes: FileType[]): void;
   fetch(): Promise<Group[]>;
 }
@@ -274,6 +283,7 @@ export class GroupStreamManager
   }
 }
 
+/** Returns the requested group, or `null` when it does not exist or is not visible. */
 export async function getGroupById(
   groupApi: IGroupApi,
   groupId: number,

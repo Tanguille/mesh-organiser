@@ -9,6 +9,14 @@ use sqlx::{
 
 pub type DbContext = Pool<Sqlite>;
 
+/// Opens or creates a SQLite database, backs it up, and applies the embedded migrations.
+///
+/// Legacy databases are deduplicated when required before migrations run. The returned pool
+/// is ready to serve queries.
+///
+/// # Panics
+///
+/// Panics if the database or backup cannot be accessed, or if preparation or migration fails.
 pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext {
     let url = format!(
         "sqlite:{}",
@@ -105,11 +113,14 @@ async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
     }
 }
 
-/// Pre-multi_user databases allowed the same file to be imported twice. Migration 6
-/// copies `models.model_sha256` into `blobs.blob_sha256 UNIQUE`, so such a database
-/// can never migrate. Keep the oldest row per hash and drop the rest, but only on
-/// databases that still have to run that migration (count 1..=5); the column no
-/// longer exists afterwards. Ported from upstream (suchmememanyskill#38).
+/// Removes duplicate model rows from databases that have not yet run migration 6.
+///
+/// For databases with one through five applied migrations, this keeps the lowest
+/// `model_id` for each `model_sha256`. Other migration states are left unchanged.
+///
+/// # Errors
+///
+/// Returns an error if the duplicate rows cannot be deleted.
 async fn dedupe_models_before_blob_migration(
     db: &DbContext,
     migration_count: usize,
