@@ -26,7 +26,12 @@ Without these, builds and releases still work; only the updater signature is ski
 
 ### 3. Run the release workflow
 
-#### Option A: Manual dispatch (recommended)
+Merging a release PR (e.g. `release/v4.0.0` → `main`) creates the release
+automatically: the `release-tag` workflow tags the new `package.json` version
+(`v4.0.0`) and opens the GitHub Release, and the tag push triggers `publish`
+to build the binaries. No manual tag push is needed.
+
+#### Option A: Manual dispatch (recommended for drafts / rebuilds)
 
 1. Go to **Actions** → **publish** workflow → **Run workflow**
 2. Choose **Release type**:
@@ -56,6 +61,7 @@ For build-only:
 
 ## Workflows
 
+- **release-tag** (`release-tag.yaml`) – Auto-tags `v<package.json version>` and creates the GitHub Release on push to `main`. Trigger: push to `main` touching `package.json`/`Cargo.toml`.
 - **publish** (`release.yaml`) – Builds the app and creates a release or artifacts. Trigger: manual (workflow_dispatch) or push of tag `v*`.
 
 ## Notes
