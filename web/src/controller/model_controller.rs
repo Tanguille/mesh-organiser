@@ -40,6 +40,8 @@ mod get {
 
     use crate::{controller::share_controller::resolve_share_owner, query_bounds};
 
+    use db::model::blob::FileType;
+
     use super::{
         ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, ModelFilterOptions,
         ModelFlags, Path, Response, Serialize, State, WebAppState, export_service, model_db,
@@ -57,6 +59,8 @@ mod get {
         pub text_search: Option<String>,
         #[serde(default)]
         pub model_flags: ModelFlags,
+        #[serde(default)]
+        pub file_types: Vec<FileType>,
         pub page: u32,
         pub page_size: u32,
     }
@@ -98,6 +102,7 @@ mod get {
                     .as_deref()
                     .map(query_bounds::parse_model_order_by_bounded),
                 model_flags: if flags.is_empty() { None } else { Some(flags) },
+                file_types: query_bounds::none_if_empty(params.file_types),
                 text_search: params.text_search,
                 page: params.page,
                 page_size: params.page_size,

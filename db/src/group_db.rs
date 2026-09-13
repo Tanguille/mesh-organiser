@@ -8,6 +8,7 @@ use crate::{
     db_context::DbContext,
     model::{
         Model, ModelFlags,
+        blob::FileType,
         model_group::{ModelGroup, ModelGroupMeta},
         resource::ResourceMeta,
         user::User,
@@ -33,6 +34,8 @@ pub struct GroupFilterOptions {
     pub label_ids: Option<Vec<i64>>,
     pub order_by: Option<GroupOrderBy>,
     pub text_search: Option<String>,
+    /// Keep only groups containing at least one model of these types; see `ModelFilterOptions`.
+    pub file_types: Option<Vec<FileType>>,
     /// 1-based page number. `Default` returns 1; values of 0 are treated as 1 by `get_groups`
     /// to keep the function panic-free even if a caller forgets to override the field.
     pub page: u32,
@@ -57,6 +60,7 @@ impl Default for GroupFilterOptions {
             label_ids: None,
             order_by: None,
             text_search: None,
+            file_types: None,
             page: 1,
             page_size: MAX_PAGE_SIZE,
             include_ungrouped_models: false,
@@ -116,8 +120,15 @@ fn convert_model_list_to_groups(
     index_map.into_values().collect()
 }
 
-/// Returns full group list (meta, models, labels, resource). Callers that only need meta + counts
-/// could be served by a future summary endpoint to reduce payload and DB load.
+/// Returns a page of groups whose models match the supplied filters.
+///
+/// Unless incomplete groups are allowed, model-level filters select groups but each returned
+/// group is repopulated with all of its models. Ungrouped models are represented as individual
+/// groups when requested.
+///
+/// # Errors
+///
+/// Returns an error if the groups or their related models and resources cannot be queried.
 pub async fn get_groups(
     db: &DbContext,
     user: &User,
@@ -126,6 +137,7 @@ pub async fn get_groups(
     let filtered_on_labels = options.label_ids.is_some();
     let filtered_on_text = options.text_search.is_some();
     let filtered_on_models = options.model_ids.is_some();
+    let filtered_on_file_types = options.file_types.is_some();
 
     let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
 
@@ -138,6 +150,7 @@ pub async fn get_groups(
             group_ids: options.group_ids,
             label_ids: options.label_ids,
             text_search: options.text_search,
+            file_types: options.file_types,
             ..Default::default()
         },
     )
@@ -151,9 +164,10 @@ pub async fn get_groups(
 
     // When filters were applied, we may have only a subset of each group's models. Re-fetch full
     // groups unless the caller allows incomplete groups or wants to keep filtered groups as-is.
-    let re_fetch_full_groups = (filtered_on_labels || filtered_on_text || filtered_on_models)
-        && !options.allow_incomplete_groups
-        && !options.split_incomplete_groups;
+    let re_fetch_full_groups =
+        (filtered_on_labels || filtered_on_text || filtered_on_models || filtered_on_file_types)
+            && !options.allow_incomplete_groups
+            && !options.split_incomplete_groups;
 
     if re_fetch_full_groups {
         let group_ids: Vec<i64> = groups

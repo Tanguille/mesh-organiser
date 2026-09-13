@@ -3,14 +3,14 @@
   import {
     convertOrderOptionModelsToEnum,
     MODEL_ORDER_LABELS,
-    type OrderOptionModels,
-    SizeOptionModelsAsList,
   } from "$lib/api/shared/settings_api";
   import ModelEdit from "$lib/components/edit/model.svelte";
   import MultiModelEdit from "$lib/components/edit/multi-model.svelte";
   import { Input } from "$lib/components/ui/input";
-  import * as Select from "$lib/components/ui/select/index.js";
+  import FileTypeFilter from "$lib/components/view/file-type-filter.svelte";
   import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
+  import SortFilter from "$lib/components/view/sort-filter.svelte";
+  import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
   import { configuration } from "$lib/configuration.svelte";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import { debounce, wait } from "$lib/utils";
@@ -68,10 +68,6 @@
   }
 
   let debouncedSetNewSearchText = debounce(setNewSearchText, 200);
-
-  const readableOrder = $derived(
-    MODEL_ORDER_LABELS[configuration.order_option_models],
-  );
 
   $effect(() => {
     props.modelStream.setOrderBy(
@@ -140,51 +136,26 @@
           placeholder="Search"
         />
 
-        <Select.Root
-          type="single"
-          name="Sort"
-          onValueChange={(x) => {
-            props.modelStream.setOrderBy(
-              convertOrderOptionModelsToEnum(x as OrderOptionModels),
-            );
+        <FileTypeFilter
+          onchange={async (x) => {
+            props.modelStream.setFileTypes(x);
+            selected = [];
+            allModels = [];
+            await resetModelSet();
+            allModels = await props.modelStream.getAll();
+          }}
+        />
+
+        <SortFilter
+          bind:value={configuration.order_option_models}
+          options={MODEL_ORDER_LABELS}
+          onchange={(x) => {
+            props.modelStream.setOrderBy(convertOrderOptionModelsToEnum(x));
             resetModelSet();
           }}
-          bind:value={configuration.order_option_models}
-        >
-          <Select.Trigger class="border-primary">
-            {readableOrder}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Group>
-              <Select.GroupHeading>Sort options</Select.GroupHeading>
-              {#each Object.entries(MODEL_ORDER_LABELS) as order (order[0])}
-                <Select.Item value={order[0]} label={order[1]}
-                  >{order[1]}</Select.Item
-                >
-              {/each}
-            </Select.Group>
-          </Select.Content>
-        </Select.Root>
+        />
 
-        <Select.Root
-          type="single"
-          name="Size"
-          bind:value={configuration.size_option_models}
-        >
-          <Select.Trigger class="border-primary">
-            {configuration.size_option_models.replaceAll("_", " ")}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Group>
-              <Select.GroupHeading>Size options</Select.GroupHeading>
-              {#each SizeOptionModelsAsList as entry (entry)}
-                <Select.Item value={entry} label={entry.replaceAll("_", " ")}
-                  >{entry.replaceAll("_", " ")}</Select.Item
-                >
-              {/each}
-            </Select.Group>
-          </Select.Content>
-        </Select.Root>
+        <UiSizeFilter bind:value={configuration.size_option_models} />
       </div>
 
       <ModelGridInner

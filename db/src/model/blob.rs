@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
@@ -116,6 +116,22 @@ impl FileType {
         .to_string()
     }
 
+    /// Returns the lowercase storage extensions considered equivalent to this file type.
+    ///
+    /// Zipped and unzipped variants share the same set of extensions. Unknown types return an
+    /// empty slice.
+    #[must_use]
+    pub const fn storage_extensions(&self) -> &'static [&'static str] {
+        match self {
+            Self::Stl | Self::ZippedStl => &["stl", "stl.zip"],
+            Self::Obj | Self::ZippedObj => &["obj", "obj.zip"],
+            Self::Gcode | Self::ZippedGcode => &["gcode", "gcode.zip"],
+            Self::Step | Self::ZippedStep => &["step", "step.zip", "stp", "stp.zip"],
+            Self::Threemf => &["3mf"],
+            Self::Unknown => &[],
+        }
+    }
+
     #[must_use]
     pub const fn is_zipped(&self) -> bool {
         matches!(
@@ -155,5 +171,13 @@ impl FileType {
             self,
             Self::Stl | Self::Obj | Self::Gcode | Self::Step | Self::Threemf
         )
+    }
+}
+
+/// API clients send file types as extensions ("stl", "3mf", "step.zip"), not variant names.
+impl<'de> Deserialize<'de> for FileType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let extension = String::deserialize(deserializer)?;
+        Ok(Self::from_extension(&extension))
     }
 }

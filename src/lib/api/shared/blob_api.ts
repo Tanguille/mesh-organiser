@@ -6,6 +6,21 @@ export enum FileType {
   GCODE = "gcode.zip",
 }
 
+/**
+ * Normalizes a file-type selection for backend filters.
+ *
+ * Empty and complete selections become `null`, meaning no filter. Partial
+ * selections are deduplicated while retaining their first-seen order.
+ */
+export function normalizeFileTypeFilter(
+  fileTypes: FileType[],
+): FileType[] | null {
+  const unique = [...new Set(fileTypes)];
+  return unique.length === 0 || unique.length === Object.values(FileType).length
+    ? null
+    : unique;
+}
+
 export interface Blob {
   id: number;
   sha256: string;

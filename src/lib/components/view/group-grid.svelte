@@ -10,7 +10,6 @@
   import {
     convertOrderOptionGroupsToEnum,
     GROUP_ORDER_LABELS,
-    type OrderOptionGroups,
   } from "$lib/api/shared/settings_api";
   import { SizeOptionClasses } from "$lib/components/view/size-classes";
   import EditGroup from "$lib/components/edit/group.svelte";
@@ -18,11 +17,13 @@
   import EditMultiModel from "$lib/components/edit/multi-model.svelte";
   import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
   import { Input } from "$lib/components/ui/input";
-  import * as Select from "$lib/components/ui/select/index.js";
   import DragSelectedModels from "$lib/components/view/drag-selected-models.svelte";
+  import FileTypeFilter from "$lib/components/view/file-type-filter.svelte";
   import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
   import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
   import RightClickModels from "$lib/components/view/right-click-models.svelte";
+  import SortFilter from "$lib/components/view/sort-filter.svelte";
+  import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
   import { configuration } from "$lib/configuration.svelte";
   import { IsSplitGridSize } from "$lib/hooks/is-split-grid-size.svelte";
   import { onDestroy, untrack } from "svelte";
@@ -108,10 +109,6 @@
   };
 
   const size = $derived(sizes[configuration.size_option_groups]);
-
-  const readableOrder = $derived(
-    GROUP_ORDER_LABELS[configuration.order_option_groups],
-  );
 
   $effect(() => {
     props.groupStream.setOrderBy(
@@ -255,57 +252,27 @@
       <div class="flex flex-row justify-center gap-3 px-5 py-3">
         <Input
           oninput={onSearchInput}
-          class="border-primary"
+          class="grow border-primary"
           placeholder="Search"
         />
 
-        <Select.Root
-          type="single"
-          name="Sort"
-          onValueChange={(x) => {
-            props.groupStream.setOrderBy(
-              convertOrderOptionGroupsToEnum(x as OrderOptionGroups),
-            );
+        <FileTypeFilter
+          onchange={(x) => {
+            props.groupStream.setFileTypes(x);
             resetGroupSet();
           }}
-          bind:value={configuration.order_option_groups}
-        >
-          <Select.Trigger class="border-primary">
-            {readableOrder}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Group>
-              <Select.GroupHeading>Sort options</Select.GroupHeading>
-              {#each Object.entries(GROUP_ORDER_LABELS) as order (order[0])}
-                <Select.Item value={order[0]} label={order[1]}
-                  >{order[1]}</Select.Item
-                >
-              {/each}
-            </Select.Group>
-          </Select.Content>
-        </Select.Root>
+        />
 
-        <Select.Root
-          type="single"
-          name="Size"
-          bind:value={configuration.size_option_groups}
-        >
-          <Select.Trigger class="border-primary">
-            {configuration.size_option_groups.replaceAll("_", " ")}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Group>
-              <Select.GroupHeading>Size options</Select.GroupHeading>
-              {#each Object.entries(sizes) as size_entry (size_entry[0])}
-                <Select.Item
-                  value={size_entry[0]}
-                  label={size_entry[0].replaceAll("_", " ")}
-                  >{size_entry[0].replaceAll("_", " ")}</Select.Item
-                >
-              {/each}
-            </Select.Group>
-          </Select.Content>
-        </Select.Root>
+        <SortFilter
+          bind:value={configuration.order_option_groups}
+          options={GROUP_ORDER_LABELS}
+          onchange={(x) => {
+            props.groupStream.setOrderBy(convertOrderOptionGroupsToEnum(x));
+            resetGroupSet();
+          }}
+        />
+
+        <UiSizeFilter bind:value={configuration.size_option_groups} />
       </div>
 
       {#if effectiveSplitSetting === "no_split"}

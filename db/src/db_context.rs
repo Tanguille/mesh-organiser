@@ -9,6 +9,14 @@ use sqlx::{
 
 pub type DbContext = Pool<Sqlite>;
 
+/// Opens or creates a `SQLite` database, backs it up, and applies the embedded migrations.
+///
+/// Legacy databases are deduplicated when required before migrations run. The returned pool
+/// is ready to serve queries.
+///
+/// # Panics
+///
+/// Panics if the database or backup cannot be accessed, or if preparation or migration fails.
 pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext {
     let url = format!(
         "sqlite:{}",
@@ -33,13 +41,21 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
 
     let migration_count = get_db_migration_count(&db).await;
 
+    // Snapshot before the dedup delete and the migration run below, so a failure
+    // partway through leaves a recoverable copy of the pre-migration database.
+    // VACUUM INTO includes committed rows still present in SQLite's WAL.
+    backup_db(&db, sqlite_path, sqlite_backup_dir).await;
+
+    dedupe_models_before_blob_migration(&db, migration_count)
+        .await
+        .expect("failed to dedupe models before blob migration");
+
     let migrator = sqlx::migrate!("./migrations");
     repair_line_ending_checksums(&db, &migrator).await;
     migrator
         .run(&db)
         .await
         .expect("failed to run database migrations");
-    backup_db(sqlite_path, sqlite_backup_dir);
 
     let new_migration_count = get_db_migration_count(&db).await;
 
@@ -98,6 +114,31 @@ async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
     }
 }
 
+/// Removes duplicate model rows from databases that have not yet run migration 6.
+///
+/// For databases with one through five applied migrations, this keeps the lowest
+/// `model_id` for each `model_sha256`. Other migration states are left unchanged.
+///
+/// # Errors
+///
+/// Returns an error if the duplicate rows cannot be deleted.
+async fn dedupe_models_before_blob_migration(
+    db: &DbContext,
+    migration_count: usize,
+) -> Result<(), sqlx::Error> {
+    if !(1..=5).contains(&migration_count) {
+        return Ok(());
+    }
+
+    sqlx::query(
+        "DELETE FROM models WHERE model_id NOT IN (SELECT MIN(model_id) FROM models GROUP BY model_sha256)",
+    )
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
 async fn get_db_migration_count(db: &DbContext) -> usize {
     let row: (i64,) = match sqlx::query_as("SELECT COUNT(*) as count FROM _sqlx_migrations")
         .fetch_one(db)
@@ -110,7 +151,7 @@ async fn get_db_migration_count(db: &DbContext) -> usize {
     row.0.try_into().unwrap_or(0)
 }
 
-fn backup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) {
+async fn backup_db(db: &DbContext, sqlite_path: &Path, sqlite_backup_dir: &Path) {
     let timestamp = chrono::Utc::now().timestamp_millis();
 
     if !sqlite_path.exists() {
@@ -122,7 +163,13 @@ fn backup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) {
     }
 
     let backup_file_path = sqlite_backup_dir.join(format!("{timestamp}.sqlite"));
-    fs::copy(sqlite_path, &backup_file_path).expect("Failed to create backup");
+    let escaped_backup_path = backup_file_path.to_string_lossy().replace('\'', "''");
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "VACUUM INTO '{escaped_backup_path}'"
+    )))
+    .execute(db)
+    .await
+    .expect("Failed to create backup");
 
     let mut backups: Vec<_> = fs::read_dir(sqlite_backup_dir)
         .expect("Failed to read backup directory")
@@ -137,5 +184,44 @@ fn backup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) {
     while backups.len() > 5 {
         let oldest = backups.remove(0);
         fs::remove_file(oldest.path()).expect("Failed to remove old backup");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::dedupe_models_before_blob_migration;
+
+    /// A pre-migration-6 `models` table with duplicated hashes keeps only the oldest row
+    /// per hash; a database past migration 6 (no `model_sha256` column) is left alone.
+    #[tokio::test]
+    async fn dedupe_keeps_oldest_row_per_hash() {
+        let db = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE models (model_id INTEGER PRIMARY KEY, model_sha256 TEXT)")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO models VALUES (1,'a'),(2,'a'),(3,'b'),(4,'a'),(5,'c')")
+            .execute(&db)
+            .await
+            .unwrap();
+
+        dedupe_models_before_blob_migration(&db, 6).await.unwrap();
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM models")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(count, 5, "must not touch databases past migration 6");
+
+        dedupe_models_before_blob_migration(&db, 5).await.unwrap();
+        let ids: Vec<(i64,)> = sqlx::query_as("SELECT model_id FROM models ORDER BY model_id")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        assert_eq!(ids, vec![(1,), (3,), (5,)]);
     }
 }

@@ -23,6 +23,7 @@
     resetImportState,
   } from "$lib/import.svelte";
   import {
+    defaultGroupFilter,
     type Group,
     GroupOrderBy,
     IGroupApi,
@@ -134,14 +135,13 @@
     const gen = ++importGroupsLoadGen;
     untrack(async () => {
       const groups = await groupApi.getGroups(
-        importedModelIds,
-        null,
-        null,
-        GroupOrderBy.NameDesc,
-        null,
+        defaultGroupFilter({
+          modelIds: importedModelIds,
+          orderBy: GroupOrderBy.NameDesc,
+          includeUngroupedModels: true,
+        }),
         1,
         importedModelIds.length,
-        true,
       );
       if (gen !== importGroupsLoadGen) {
         return;

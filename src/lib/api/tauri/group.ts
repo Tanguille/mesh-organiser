@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   type Group,
+  type GroupFilter,
   type GroupMeta,
-  type GroupOrderBy,
   type IGroupApi,
 } from "../shared/group_api";
 import { type Model } from "../shared/model_api";
@@ -16,24 +16,20 @@ import { dateToString } from "$lib/utils";
 
 export class GroupApi implements IGroupApi {
   async getGroups(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: GroupOrderBy,
-    text_search: string | null,
+    filter: GroupFilter,
     page: number,
-    page_size: number,
-    include_ungrouped_models: boolean,
+    pageSize: number,
   ): Promise<Group[]> {
     const groups = await invoke<RawGroup[]>("get_groups", {
-      modelIds: model_ids,
-      groupIds: group_ids,
-      labelIds: label_ids,
-      orderBy: order_by,
-      textSearch: text_search,
-      page: page,
-      pageSize: page_size,
-      includeUngroupedModels: include_ungrouped_models,
+      modelIds: filter.modelIds,
+      groupIds: filter.groupIds,
+      labelIds: filter.labelIds,
+      orderBy: filter.orderBy,
+      textSearch: filter.textSearch,
+      fileTypes: filter.fileTypes,
+      page,
+      pageSize,
+      includeUngroupedModels: filter.includeUngroupedModels,
     });
 
     return groups.map((group) => parseRawGroup(group));

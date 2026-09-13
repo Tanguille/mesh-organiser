@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use db::{
-    model::ModelFlags,
+    model::{ModelFlags, blob::FileType},
     model_db,
     model_db::{ModelFilterOptions, ModelOrderBy},
 };
@@ -68,6 +68,7 @@ pub async fn get_models(
     order_by: Option<String>,
     text_search: Option<String>,
     model_flags: Option<ModelFlags>,
+    file_types: Option<Vec<FileType>>,
     page: u32,
     page_size: u32,
     state: State<'_, TauriAppState>,
@@ -87,6 +88,7 @@ pub async fn get_models(
                 ))?,
             model_flags,
             text_search,
+            file_types,
             page,
             page_size,
         },

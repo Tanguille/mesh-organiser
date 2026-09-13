@@ -4,7 +4,10 @@ use tauri::State;
 
 use db::{
     group_db::{self, GroupOrderBy},
-    model::model_group::{ModelGroup, ModelGroupMeta},
+    model::{
+        blob::FileType,
+        model_group::{ModelGroup, ModelGroupMeta},
+    },
 };
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
@@ -20,6 +23,7 @@ pub async fn get_groups(
     page: u32,
     page_size: u32,
     include_ungrouped_models: Option<bool>,
+    file_types: Option<Vec<FileType>>,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
     let groups = group_db::get_groups(
@@ -36,6 +40,7 @@ pub async fn get_groups(
                     "Invalid order_by value. Valid values are: CreatedAsc, CreatedDesc, NameAsc, NameDesc, ModifiedAsc, ModifiedDesc".to_string()
                 ))?,
             text_search,
+            file_types,
             page,
             page_size,
             include_ungrouped_models: include_ungrouped_models.unwrap_or(false),

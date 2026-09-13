@@ -40,6 +40,8 @@ mod get {
 
     use crate::{controller::share_controller::resolve_share_owner, query_bounds};
 
+    use db::model::blob::FileType;
+
     use super::{
         ApplicationError, CurrentUser, Deserialize, GroupFilterOptions, IntoResponse, Json, Path,
         Response, Serialize, State, WebAppState, group_db,
@@ -56,6 +58,8 @@ mod get {
         pub label_ids: Vec<i64>,
         pub order_by: Option<String>,
         pub text_search: Option<String>,
+        #[serde(default)]
+        pub file_types: Vec<FileType>,
         pub page: u32,
         pub page_size: u32,
         pub include_ungrouped_models: Option<bool>,
@@ -110,6 +114,7 @@ mod get {
                     .as_deref()
                     .map(query_bounds::parse_group_order_by_bounded),
                 text_search: params.text_search,
+                file_types: query_bounds::none_if_empty(params.file_types),
                 page: params.page,
                 page_size: params.page_size,
                 include_ungrouped_models: params.include_ungrouped_models.unwrap_or(false),
@@ -148,6 +153,7 @@ mod get {
                     .as_deref()
                     .map(query_bounds::parse_group_order_by_bounded),
                 text_search: params.text_search,
+                file_types: query_bounds::none_if_empty(params.file_types),
                 page: params.page,
                 page_size: params.page_size,
                 include_ungrouped_models: params.include_ungrouped_models.unwrap_or(true),
