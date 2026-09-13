@@ -1,5 +1,6 @@
 {
   "name": "mesh-organiser",
+  "version": "4.0.0",
   "packageManager": "pnpm@12.4.1",
   "type": "module",
   "scripts": {
