@@ -1,11 +1,10 @@
-import type { IconProps } from "@lucide/svelte";
-import type { Component } from "svelte";
+import type { LucideIcon } from "@lucide/svelte";
 
 import PrinterCheck from "@lucide/svelte/icons/printer-check";
 import Star from "@lucide/svelte/icons/star";
 import type { ModelFlags } from "./api/shared/model_api";
 
-export type Glyph = Component<IconProps, Record<string, unknown>, "">;
+export type Glyph = LucideIcon;
 
 export interface GlyphObject {
   /** Stable key for `{#each ...}` (order matches flag checks). */

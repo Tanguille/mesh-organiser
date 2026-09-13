@@ -1,0 +1,76 @@
+name: release-tag
+
+# Auto-create the version tag + GitHub Release (with auto-generated release
+# notes) when a release PR merges to main. Merging `release/v4.0.0` (which bumps `package.json` to 4.0.0) pushes
+# tag `v4.0.0`, which in turn triggers the `publish` workflow (tag push `v*`)
+# that builds the Tauri binaries and attaches them to the release.
+#
+# Manual fallback (unchanged): `git tag vX.Y.Z && git push origin vX.Y.Z`
+# or Actions -> publish -> Run workflow.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+      - Cargo.toml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag-on-version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Read app version
+        id: version
+        run: |
+          VERSION=$(jq -r .version package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version: $VERSION"
+
+      - name: Skip if tag already exists
+        id: check
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists, nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.tag }}" -m "Mesh Organiser ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release with auto-generated notes
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.version.outputs.tag }} already exists."
+          else
+            # --generate-notes builds the body automatically from PRs/commits
+            # since the previous tag (no static --notes/--notes-file allowed
+            # alongside it). The later `publish` run attaches Tauri binaries
+            # to this same release without overwriting the notes.
+            gh release create "${{ steps.version.outputs.tag }}" \
+              --title "Mesh Organiser ${{ steps.version.outputs.tag }}" \
+              --generate-notes
+          fi
