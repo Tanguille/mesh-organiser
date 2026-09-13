@@ -272,7 +272,11 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
   }
 
   async getAll(): Promise<Model[]> {
-    return this.models;
+    if (this.sortedFiltered === null) {
+      this.sortedFiltered = this.computeSortedFiltered();
+    }
+
+    return [...this.sortedFiltered];
   }
 }
 

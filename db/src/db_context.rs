@@ -9,7 +9,7 @@ use sqlx::{
 
 pub type DbContext = Pool<Sqlite>;
 
-/// Opens or creates a SQLite database, backs it up, and applies the embedded migrations.
+/// Opens or creates a `SQLite` database, backs it up, and applies the embedded migrations.
 ///
 /// Legacy databases are deduplicated when required before migrations run. The returned pool
 /// is ready to serve queries.
@@ -43,7 +43,8 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
 
     // Snapshot before the dedup delete and the migration run below, so a failure
     // partway through leaves a recoverable copy of the pre-migration database.
-    backup_db(sqlite_path, sqlite_backup_dir);
+    // VACUUM INTO includes committed rows still present in SQLite's WAL.
+    backup_db(&db, sqlite_path, sqlite_backup_dir).await;
 
     dedupe_models_before_blob_migration(&db, migration_count)
         .await
@@ -150,7 +151,7 @@ async fn get_db_migration_count(db: &DbContext) -> usize {
     row.0.try_into().unwrap_or(0)
 }
 
-fn backup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) {
+async fn backup_db(db: &DbContext, sqlite_path: &Path, sqlite_backup_dir: &Path) {
     let timestamp = chrono::Utc::now().timestamp_millis();
 
     if !sqlite_path.exists() {
@@ -162,7 +163,13 @@ fn backup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) {
     }
 
     let backup_file_path = sqlite_backup_dir.join(format!("{timestamp}.sqlite"));
-    fs::copy(sqlite_path, &backup_file_path).expect("Failed to create backup");
+    let escaped_backup_path = backup_file_path.to_string_lossy().replace('\'', "''");
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "VACUUM INTO '{escaped_backup_path}'"
+    )))
+    .execute(db)
+    .await
+    .expect("Failed to create backup");
 
     let mut backups: Vec<_> = fs::read_dir(sqlite_backup_dir)
         .expect("Failed to read backup directory")

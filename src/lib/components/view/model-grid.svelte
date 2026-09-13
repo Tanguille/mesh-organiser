@@ -137,10 +137,12 @@
         />
 
         <FileTypeFilter
-          onchange={(x) => {
+          onchange={async (x) => {
             props.modelStream.setFileTypes(x);
             selected = [];
-            resetModelSet();
+            allModels = [];
+            await resetModelSet();
+            allModels = await props.modelStream.getAll();
           }}
         />
 
