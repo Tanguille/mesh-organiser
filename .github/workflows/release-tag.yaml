@@ -2,8 +2,12 @@ name: release-tag
 
 # Auto-create the version tag + GitHub Release (with auto-generated release
 # notes) when a release PR merges to main. Merging `release/v4.0.0` (which bumps `package.json` to 4.0.0) pushes
-# tag `v4.0.0`, which in turn triggers the `publish` workflow (tag push `v*`)
-# that builds the Tauri binaries and attaches them to the release.
+# tag `v4.0.0` and then dispatches the `publish` workflow, which builds the
+# Tauri binaries and attaches them to the release.
+#
+# The dispatch is explicit because GitHub never fires `on: push` workflows for
+# tags pushed with GITHUB_TOKEN (recursion guard) — v4.0.0 shipped with no
+# assets for exactly that reason. `workflow_dispatch` via the API is allowed.
 #
 # Manual fallback (unchanged): `git tag vX.Y.Z && git push origin vX.Y.Z`
 # or Actions -> publish -> Run workflow.
@@ -18,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # gh workflow run
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -74,3 +79,9 @@ jobs:
               --title "Mesh Organiser ${{ steps.version.outputs.tag }}" \
               --generate-notes
           fi
+
+      - name: Dispatch publish workflow to build and attach assets
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yaml --ref "${{ steps.version.outputs.tag }}" -f releaseType=publish
