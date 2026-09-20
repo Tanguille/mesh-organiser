@@ -56,16 +56,15 @@ jobs:
       - name: Verify package.json matches Cargo workspace version
         run: node scripts/check-package-cargo-version.mjs
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v4
+      # Matches svelte-ci.yaml: pnpm version comes from package.json
+      # `packageManager`, so a hardcoded `version:` here can't drift from it.
+      - name: Set up pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with:
-          version: 10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: current
-          cache: pnpm
+          runtime: node@latest
+          cache: true
+          cache-dependency-path: pnpm-lock.yaml
+          install: false
 
       # Matches rust-ci.yaml. dtolnay/rust-toolchain publishes no tags, so
       # Dependabot cannot resolve a SHA pin to it and errors out the entire
