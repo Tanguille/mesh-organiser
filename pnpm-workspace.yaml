@@ -1,5 +1,4 @@
 minimumReleaseAgeExclude:
-  - autoprefixer@10.6.0
-  - tailwind-merge@3.7.0
+  - "@tauri-apps/plugin-updater@2.12.0"
 onlyBuiltDependencies:
   - esbuild
