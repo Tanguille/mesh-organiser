@@ -39,7 +39,7 @@
     "base64-js": "^1.5.1",
     "fflate": "^0.8.3",
     "qs": "^6.16.0",
-    "three": "0.186.0",
+    "three": "0.186.1",
     "threejs-webworker-3mf-loader": "github:manyfold3d/threejs-webworker-3mf-loader"
   },
   "devDependencies": {
