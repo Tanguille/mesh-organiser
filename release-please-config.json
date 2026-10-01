@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "node",
-  "package-name": "mesh-organiser",
   "include-v-in-tag": true,
   "tag-separator": "",
   "include-component-in-tag": false,
@@ -21,6 +20,9 @@
     { "type": "build", "section": "Build System", "hidden": true },
     { "type": "ci", "section": "Continuous Integration", "hidden": true }
   ],
+  "packages": {
+    ".": {}
+  },
   "extra-files": [
     {
       "type": "toml",
