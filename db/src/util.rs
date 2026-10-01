@@ -43,7 +43,7 @@ mod tests {
         assert_eq!(hex.len(), 32);
         assert!(
             hex.chars()
-                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+                .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character)),
             "expected only [0-9a-f], got {hex}"
         );
     }

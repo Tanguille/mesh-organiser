@@ -154,7 +154,7 @@ async fn download_file_thingiverse_decodes_last_url_segment() {
     let path = PathBuf::from(&result.path);
     assert!(path.exists());
     assert_eq!(
-        path.file_name().and_then(|n| n.to_str()),
+        path.file_name().and_then(|name| name.to_str()),
         Some("naïve file.stl")
     );
     assert_eq!(
@@ -183,7 +183,7 @@ async fn download_file_nexprint_decodes_quoted_filename_from_url() {
     let path = PathBuf::from(&result.path);
     assert!(path.exists());
     assert_eq!(
-        path.file_name().and_then(|n| n.to_str()),
+        path.file_name().and_then(|name| name.to_str()),
         Some("naïve file.stl")
     );
     assert_eq!(result.source_uri.as_deref(), Some("https://nexprint.com/"));

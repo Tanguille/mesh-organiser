@@ -47,13 +47,16 @@ async fn serve_share_page(
     html = html
         .replace(
             "content=\"Mesh Organiser\"",
-            &format!("content=\"Share: {}\"", escape_attr(&share.share_name)),
+            &format!(
+                "content=\"Share: {}\"",
+                escape_html_attribute(&share.share_name)
+            ),
         )
         .replace(
             "content=\"A personal 3d printing model library.\"",
             &format!(
                 "content=\"Shared by user {}. Contains {} model{}.\"",
-                escape_attr(&user.username),
+                escape_html_attribute(&user.username),
                 share.model_ids.len(),
                 if share.model_ids.len() >= 2 { "s" } else { "" }
             ),
@@ -64,16 +67,16 @@ async fn serve_share_page(
 
 /// Share and user names are user-controlled and get spliced into `<meta content="...">`
 /// attributes, so every character that could break out of the attribute or the tag is escaped.
-fn escape_attr(s: &str) -> String {
-    let mut escaped = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
+fn escape_html_attribute(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
             '&' => escaped.push_str("&amp;"),
             '<' => escaped.push_str("&lt;"),
             '>' => escaped.push_str("&gt;"),
             '"' => escaped.push_str("&quot;"),
             '\'' => escaped.push_str("&#39;"),
-            _ => escaped.push(c),
+            _ => escaped.push(character),
         }
     }
 
@@ -82,55 +85,65 @@ fn escape_attr(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape_attr;
+    use super::escape_html_attribute;
 
     const DANGEROUS: [char; 5] = ['"', '<', '>', '&', '\''];
 
     /// Raw `&` can legitimately appear as the start of an entity, so for it we only check that
     /// every `&` is followed by an entity body ending in `;`. The others must be gone entirely.
     fn assert_attribute_safe(escaped: &str) {
-        for c in ['"', '<', '>', '\''] {
-            assert!(!escaped.contains(c), "raw {c:?} left in {escaped:?}");
+        for character in ['"', '<', '>', '\''] {
+            assert!(
+                !escaped.contains(character),
+                "raw {character:?} left in {escaped:?}"
+            );
         }
 
-        for (i, _) in escaped.match_indices('&') {
+        for (position, _) in escaped.match_indices('&') {
             assert!(
-                escaped[i..].contains(';'),
+                escaped[position..].contains(';'),
                 "bare '&' (not an entity) in {escaped:?}"
             );
         }
     }
 
     #[test]
-    fn escape_attr_neutralises_attribute_injection_payload() {
-        let escaped = escape_attr(r#"x" onload="alert(1)"#);
+    fn escape_html_attribute_neutralises_attribute_injection_payload() {
+        let escaped = escape_html_attribute(r#"x" onload="alert(1)"#);
 
         assert_attribute_safe(&escaped);
     }
 
     #[test]
-    fn escape_attr_neutralises_script_tag() {
-        let escaped = escape_attr("<script>alert('x')</script>");
+    fn escape_html_attribute_neutralises_script_tag() {
+        let escaped = escape_html_attribute("<script>alert('x')</script>");
 
         assert_attribute_safe(&escaped);
         assert!(!escaped.contains("<script"));
     }
 
     #[test]
-    fn escape_attr_escapes_every_dangerous_char() {
-        for c in DANGEROUS {
-            let escaped = escape_attr(&format!("a{c}b"));
+    fn escape_html_attribute_escapes_every_dangerous_character() {
+        for character in DANGEROUS {
+            let escaped = escape_html_attribute(&format!("a{character}b"));
 
-            assert_ne!(escaped, format!("a{c}b"), "{c:?} was not escaped");
+            assert_ne!(
+                escaped,
+                format!("a{character}b"),
+                "{character:?} was not escaped"
+            );
             assert!(escaped.starts_with('a') && escaped.ends_with('b'));
-            if c != '&' {
-                assert!(!escaped.contains(c), "raw {c:?} left in {escaped:?}");
+            if character != '&' {
+                assert!(
+                    !escaped.contains(character),
+                    "raw {character:?} left in {escaped:?}"
+                );
             }
         }
     }
 
     #[test]
-    fn escape_attr_leaves_alphanumerics_unchanged() {
-        assert_eq!(escape_attr("Share42"), "Share42");
+    fn escape_html_attribute_leaves_alphanumerics_unchanged() {
+        assert_eq!(escape_html_attribute("Share42"), "Share42");
     }
 }
