@@ -331,7 +331,8 @@ mod tests {
 
     // Callers must not pass security-scoped ids (e.g. a share's model ids) through
     // `none_if_empty`: an empty list becomes `None`, which the db layer reads as
-    // "no restriction" and answers with every model the user owns.
+    // "no restriction" and answers with every model the user owns. Pass them as
+    // `Some(ids)` instead.
     #[test]
     fn none_if_empty_maps_empty_to_none_and_keeps_values() {
         assert_eq!(none_if_empty(Vec::<i64>::new()), None);

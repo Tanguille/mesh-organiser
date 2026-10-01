@@ -76,10 +76,13 @@ impl GetModelParams {
     }
 }
 
+/// `share_ids` is `Some` on the share path, where the query is scoped to those
+/// ids instead of using the request's `model_ids` as an unrestricted filter.
 async fn get_models_inner(
     app_state: &AppState,
     user: &User,
     params: GetModelParams,
+    share_ids: Option<&[i64]>,
 ) -> Result<Response, ApplicationError> {
     if let Err(e) = query_bounds::validate_model_list_query_bounds(params.paginated_bounds()) {
         return Ok(query_bounds::bad_request(&e));
@@ -87,11 +90,19 @@ async fn get_models_inner(
 
     let flags = params.model_flags;
 
+    // A share's ids stay `Some` even when empty: the db layer answers
+    // `Some(vec![])` with no models, whereas `None` would mean every model the
+    // owner has.
+    let model_ids = match share_ids {
+        Some(share_ids) => Some(share_model_ids(share_ids, &params.model_ids)),
+        None => query_bounds::none_if_empty(params.model_ids),
+    };
+
     let models = model_db::get_models(
         &app_state.db,
         user,
         ModelFilterOptions {
-            model_ids: query_bounds::none_if_empty(params.model_ids),
+            model_ids,
             group_ids: query_bounds::none_if_empty(params.group_ids),
             label_ids: query_bounds::none_if_empty(params.label_ids),
             order_by: params.order_by.as_deref().map(|order_by| {
@@ -114,7 +125,7 @@ pub async fn get_models(
     State(app_state): State<AppState>,
     Query(params): Query<GetModelParams>,
 ) -> Result<Response, ApplicationError> {
-    get_models_inner(&app_state, &user, params).await
+    get_models_inner(&app_state, &user, params, None).await
 }
 
 /// Ids a share request may query: all of the share's ids when nothing specific
@@ -138,18 +149,10 @@ pub async fn get_share_models(
 ) -> Result<Response, ApplicationError> {
     let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
 
-    params.model_ids = share_model_ids(&share.model_ids, &params.model_ids);
-
-    // An empty id list means "no restriction" in `get_models_inner`, which would
-    // expose every model of the share owner instead of none.
-    if params.model_ids.is_empty() {
-        return Ok(Json(Vec::<db::model::Model>::new()).into_response());
-    }
-
     params.group_ids = vec![];
     params.label_ids = vec![];
 
-    get_models_inner(&app_state, &user, params).await
+    get_models_inner(&app_state, &user, params, Some(&share.model_ids)).await
 }
 
 #[derive(Deserialize)]
@@ -356,8 +359,8 @@ mod tests {
         assert_eq!(super::share_model_ids(&[1, 2], &[2, 999]), vec![2]);
     }
 
-    // The leak scenario: an empty result must stay empty here, because
-    // `query_bounds::none_if_empty` would turn it into "no restriction" downstream.
+    // The leak scenario: an empty result must stay empty (and be passed on as
+    // `Some(vec![])`), because `None` would mean "no restriction" downstream.
     #[test]
     fn share_model_ids_only_foreign_ids_requested_returns_empty() {
         assert_eq!(super::share_model_ids(&[1, 2], &[999]), Vec::<i64>::new());

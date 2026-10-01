@@ -260,8 +260,9 @@ async fn get_models_file_type_filter_matches_every_stored_spelling() {
     assert!(none.items.is_empty());
 }
 
-// The share endpoint relies on this contract: `Some(vec![])` means "match nothing",
-// while `None` means "no restriction" and returns every model the user owns.
+// The share endpoint relies on this contract: it passes the share's ids as `Some(..)`,
+// so `Some(vec![])` must match nothing, while `None` means "no restriction" and
+// returns every model the user owns.
 #[tokio::test]
 async fn get_models_empty_model_ids_returns_nothing_while_none_returns_all() {
     let (_dir, db) = test_db().await;

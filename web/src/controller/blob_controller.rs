@@ -61,18 +61,23 @@ async fn extract_user_via_id_and_hash(
     Some(user)
 }
 
+/// A share link only grants the models listed on the share, not everything its owner has.
+fn share_allows_model(share_model_ids: &[i64], model_id: i64) -> bool {
+    share_model_ids.contains(&model_id)
+}
+
 pub async fn download_model(
     Path(blob_sha256): Path<String>,
     State(app_state): State<AppState>,
     Query(params): Query<DownloadModelParams>,
 ) -> Response {
-    let user = match params {
+    let (user, share_model_ids) = match params {
         DownloadModelParams {
             user_id: Some(user_id),
             user_hash: Some(user_hash),
             share_id: None,
         } => match extract_user_via_id_and_hash(&app_state, user_id, &user_hash).await {
-            Some(user) => user,
+            Some(user) => (user, None),
             None => return StatusCode::NOT_FOUND.into_response(),
         },
         DownloadModelParams {
@@ -80,7 +85,7 @@ pub async fn download_model(
             user_hash: None,
             share_id: Some(share_id),
         } => match resolve_share_owner(&app_state, &share_id).await {
-            Ok((_share, user)) => user,
+            Ok((share, user)) => (user, Some(share.model_ids)),
             Err(_) => return StatusCode::NOT_FOUND.into_response(),
         },
         _ => return StatusCode::NOT_FOUND.into_response(),
@@ -91,6 +96,15 @@ pub async fn download_model(
     else {
         return StatusCode::NOT_FOUND.into_response();
     };
+
+    // The sha256 lookup spans all of the owner's models, so a share link must
+    // be checked against the share's own model ids.
+    if share_model_ids
+        .as_deref()
+        .is_some_and(|ids| !share_allows_model(ids, model_id))
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
 
     let Ok(Some(model)) = model_db::get_model_via_id(&app_state.db, &user, model_id).await else {
         return StatusCode::NOT_FOUND.into_response();
@@ -250,4 +264,22 @@ pub async fn create_blobs_zip_download(
             .to_string(),
     )
     .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn share_allows_model_accepts_a_member() {
+        assert!(super::share_allows_model(&[1, 2, 3], 2));
+    }
+
+    #[test]
+    fn share_allows_model_rejects_a_non_member() {
+        assert!(!super::share_allows_model(&[1, 2, 3], 4));
+    }
+
+    #[test]
+    fn share_allows_model_rejects_everything_for_an_empty_share() {
+        assert!(!super::share_allows_model(&[], 1));
+    }
 }
