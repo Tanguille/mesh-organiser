@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use sqlx::SqlitePool;
-use tower_sessions::{
+use tower_sessions_core::{
     session::{Id, Record},
     session_store::{self, Error},
 };
@@ -60,7 +60,7 @@ impl SqliteStore {
 }
 
 #[async_trait]
-impl tower_sessions::ExpiredDeletion for SqliteStore {
+impl tower_sessions_core::ExpiredDeletion for SqliteStore {
     async fn delete_expired(&self) -> session_store::Result<()> {
         sqlx::query("delete from tower_sessions where datetime(expiry_date) < datetime('now')")
             .execute(&self.pool)
@@ -72,7 +72,7 @@ impl tower_sessions::ExpiredDeletion for SqliteStore {
 }
 
 #[async_trait]
-impl tower_sessions::SessionStore for SqliteStore {
+impl tower_sessions_core::SessionStore for SqliteStore {
     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
         let mut transaction = self.pool.begin().await.map_err(backend_error)?;
         while !Self::try_create(&mut transaction, record).await? {
@@ -171,7 +171,9 @@ mod tests {
     }
 
     async fn load_record(store: &super::SqliteStore, id: &super::Id) -> Option<super::Record> {
-        tower_sessions::SessionStore::load(store, id).await.unwrap()
+        tower_sessions_core::SessionStore::load(store, id)
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -188,7 +190,7 @@ mod tests {
         let store = new_store().await;
         let mut record = record_expiring_in(time::Duration::hours(1));
 
-        tower_sessions::SessionStore::create(&store, &mut record)
+        tower_sessions_core::SessionStore::create(&store, &mut record)
             .await
             .unwrap();
         let loaded = load_record(&store, &record.id).await;
@@ -208,7 +210,7 @@ mod tests {
         let store = new_store().await;
         let mut record = record_expiring_in(time::Duration::hours(1));
 
-        tower_sessions::SessionStore::save(&store, &record)
+        tower_sessions_core::SessionStore::save(&store, &record)
             .await
             .unwrap();
         assert_eq!(load_record(&store, &record.id).await, Some(record.clone()));
@@ -217,7 +219,7 @@ mod tests {
             .data
             .insert("user".to_owned(), serde_json::json!("changed"));
         record.expiry_date += time::Duration::hours(1);
-        tower_sessions::SessionStore::save(&store, &record)
+        tower_sessions_core::SessionStore::save(&store, &record)
             .await
             .unwrap();
 
@@ -229,14 +231,14 @@ mod tests {
     async fn delete_removes_record_and_is_idempotent() {
         let store = new_store().await;
         let mut record = record_expiring_in(time::Duration::hours(1));
-        tower_sessions::SessionStore::create(&store, &mut record)
+        tower_sessions_core::SessionStore::create(&store, &mut record)
             .await
             .unwrap();
 
-        tower_sessions::SessionStore::delete(&store, &record.id)
+        tower_sessions_core::SessionStore::delete(&store, &record.id)
             .await
             .unwrap();
-        tower_sessions::SessionStore::delete(&store, &record.id)
+        tower_sessions_core::SessionStore::delete(&store, &record.id)
             .await
             .unwrap();
 
@@ -247,13 +249,13 @@ mod tests {
     async fn create_regenerates_id_on_collision() {
         let store = new_store().await;
         let mut first = record_expiring_in(time::Duration::hours(1));
-        tower_sessions::SessionStore::create(&store, &mut first)
+        tower_sessions_core::SessionStore::create(&store, &mut first)
             .await
             .unwrap();
         let mut second = record_expiring_in(time::Duration::hours(1));
         second.id = first.id;
 
-        tower_sessions::SessionStore::create(&store, &mut second)
+        tower_sessions_core::SessionStore::create(&store, &mut second)
             .await
             .unwrap();
 
@@ -280,7 +282,7 @@ mod tests {
         insert_raw(&store, &expired).await;
         insert_raw(&store, &valid).await;
 
-        tower_sessions::ExpiredDeletion::delete_expired(&store)
+        tower_sessions_core::ExpiredDeletion::delete_expired(&store)
             .await
             .unwrap();
 
