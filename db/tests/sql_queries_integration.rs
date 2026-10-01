@@ -259,3 +259,42 @@ async fn get_models_file_type_filter_matches_every_stored_spelling() {
     .unwrap();
     assert!(none.items.is_empty());
 }
+
+// The share endpoint relies on this contract: `Some(vec![])` means "match nothing",
+// while `None` means "no restriction" and returns every model the user owns.
+#[tokio::test]
+async fn get_models_empty_model_ids_returns_nothing_while_none_returns_all() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+
+    let blob_id = blob_db::add_blob(&db, "one", "stl", 1, None).await.unwrap();
+    for name in ["one", "two"] {
+        model_db::add_model(&db, &user, name, blob_id, None, None)
+            .await
+            .unwrap();
+    }
+
+    let empty_ids = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            model_ids: Some(vec![]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(empty_ids.items.is_empty());
+
+    let unrestricted = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            model_ids: None,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(unrestricted.items.len(), 2);
+}

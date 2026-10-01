@@ -338,3 +338,53 @@ pub async fn add_model(
 
     Ok(Json(model_ids).into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn share_model_ids_empty_request_returns_every_share_id() {
+        assert_eq!(super::share_model_ids(&[1, 2, 3], &[]), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn share_model_ids_subset_request_returns_exactly_that_subset() {
+        assert_eq!(super::share_model_ids(&[1, 2, 3], &[2, 3]), vec![2, 3]);
+    }
+
+    #[test]
+    fn share_model_ids_drops_requested_ids_outside_the_share() {
+        assert_eq!(super::share_model_ids(&[1, 2], &[2, 999]), vec![2]);
+    }
+
+    // The leak scenario: an empty result must stay empty here, because
+    // `query_bounds::none_if_empty` would turn it into "no restriction" downstream.
+    #[test]
+    fn share_model_ids_only_foreign_ids_requested_returns_empty() {
+        assert_eq!(super::share_model_ids(&[1, 2], &[999]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn share_model_ids_disjoint_request_returns_empty() {
+        assert_eq!(super::share_model_ids(&[1, 2], &[3, 4]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn share_model_ids_empty_share_and_empty_request_returns_empty() {
+        assert_eq!(super::share_model_ids(&[], &[]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn share_model_ids_empty_share_with_request_returns_empty() {
+        assert_eq!(super::share_model_ids(&[], &[1]), Vec::<i64>::new());
+    }
+
+    // The result follows the share's order and each shared id appears once,
+    // regardless of the order or repetition of the requested ids.
+    #[test]
+    fn share_model_ids_keeps_share_order_and_ignores_requested_duplicates() {
+        assert_eq!(
+            super::share_model_ids(&[1, 2, 3], &[3, 1, 3, 1]),
+            vec![1, 3]
+        );
+    }
+}
