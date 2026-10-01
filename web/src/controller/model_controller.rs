@@ -28,6 +28,7 @@ use crate::{
     web_import_state::WebImportStateEmitter,
 };
 
+/// Routes for the model endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -63,6 +64,8 @@ pub struct GetModelParams {
 }
 
 impl GetModelParams {
+    /// Borrows the list-query fields that `query_bounds` validates, so the
+    /// bounds check runs before any allocation from request data.
     fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
         query_bounds::PaginatedListQueryBounds {
             model_ids: &self.model_ids,
@@ -228,7 +231,7 @@ pub async fn edit_model(
         &params.model_name,
         params.model_url.as_deref(),
         params.model_description.as_deref(),
-        params.model_flags.unwrap_or(ModelFlags::empty()),
+        params.model_flags.unwrap_or_default(),
         params.model_timestamp.as_deref(),
         params.model_global_id.as_deref(),
     )

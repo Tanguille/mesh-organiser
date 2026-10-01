@@ -118,6 +118,9 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
     Ok(configuration)
 }
 
+/// Resets the local (user 1) account to a fresh random password, scrambles its
+/// validity token and drops dead groups, so no credential from a previous run
+/// survives. Uses `ENV_LOCAL_ACCOUNT_PASSWORD` when set.
 async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>> {
     let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
         let key = Key::generate();

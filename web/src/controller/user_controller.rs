@@ -43,6 +43,7 @@ fn require_admin_or_self(
     require_admin(user, action)
 }
 
+/// Routes for the user management endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",

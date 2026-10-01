@@ -16,6 +16,7 @@ use crate::{
     web_import_state::WebImportStateEmitter,
 };
 
+/// Routes for the 3MF metadata and extraction endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",

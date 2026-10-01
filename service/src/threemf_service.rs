@@ -345,7 +345,7 @@ pub async fn extract_models(
     let safe_model_name = cleanse_evil_from_name(&model.name);
     temp_dir.push(safe_model_name);
 
-    fs::create_dir(&temp_dir)?;
+    fs::create_dir_all(&temp_dir)?;
 
     {
         let temp_dir = temp_dir.clone();

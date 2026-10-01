@@ -11,6 +11,7 @@ use service::AppState;
 
 use crate::{controller::share_controller::resolve_share_owner, error::ApplicationError};
 
+/// Serves the SPA shell for client-side routes; unauthenticated, the SPA handles login itself.
 pub fn router() -> Router<AppState> {
     let index = ServeFile::new("www/index.html");
     let sub_index = ServeFile::new("www/group/1.html");

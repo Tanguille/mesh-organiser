@@ -38,6 +38,7 @@ pub async fn resolve_share_owner(
     Ok((share, user))
 }
 
+/// Routes for the share endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",

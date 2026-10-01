@@ -16,6 +16,8 @@ use crate::{
     path_ext::{is_zip_of, matches_ext},
 };
 
+/// Extruding move (`X.. Y.. E`). Checked before [`REGEX_XY_NO_EXTRUSION`], which
+/// would also match it; only travel moves should fall through to that one.
 static REGEX_XY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap());
 static REGEX_XY_NO_EXTRUSION: LazyLock<Regex> =

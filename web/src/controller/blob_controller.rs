@@ -25,6 +25,7 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
+/// Routes for the blob bytes, thumbnail and download endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -178,6 +179,7 @@ pub async fn get_blob_thumb(
     Ok(Body::from_stream(ReaderStream::new(file)).into_response())
 }
 
+/// Streams a blob's content; shared by `download_model` and `get_blob_bytes`.
 async fn get_blob_bytes_inner(blob: &Blob, app_state: &AppState) -> Response {
     // The plain-file vs first-zip-entry convention lives in the service
     // layer; any open/read failure keeps the previous 500 semantics.

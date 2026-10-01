@@ -19,6 +19,7 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
+/// Routes for the group endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -54,6 +55,8 @@ pub struct GetGroupParams {
 }
 
 impl GetGroupParams {
+    /// Borrows the list-query fields that `query_bounds` validates, so the
+    /// bounds check runs before any allocation from request data.
     fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
         query_bounds::PaginatedListQueryBounds {
             model_ids: &self.model_ids,

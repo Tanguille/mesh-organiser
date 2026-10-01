@@ -14,6 +14,7 @@ use crate::{
     user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
 };
 
+/// Routes for the login, logout and current-user endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -48,6 +49,7 @@ pub async fn password(
     .await
 }
 
+/// Logs in with a user sync token; mirrors [`password`] via [`login_inner`].
 pub async fn token(
     auth_session: AuthSession,
     Json(credentials): Json<TokenCredentials>,
@@ -60,6 +62,8 @@ pub async fn token(
     .await
 }
 
+/// Shared login flow: authenticate, then start the session. Only the 401
+/// message differs between the password and token endpoints, so it is a parameter.
 async fn login_inner(
     mut auth_session: AuthSession,
     credentials: Credentials,
