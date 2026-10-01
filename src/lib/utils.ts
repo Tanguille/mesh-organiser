@@ -131,8 +131,7 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Dedupe by id, preserving first occurrence. O(n) via a Set instead of the
-// O(n^2) `.filter((v, i, a) => a.findIndex(...) === i)` idiom it replaces.
+// Dedupe by id, preserving first occurrence, in O(n) via a Set.
 export function uniqueById<T extends { id: number }>(items: T[]): T[] {
   const seen = new Set<number>();
   return items.filter((item) =>
@@ -143,9 +142,8 @@ export function uniqueById<T extends { id: number }>(items: T[]): T[] {
 // Pick the model with the largest blob as the single representative image
 // for a group/collection.
 export function representativeModel(models: Model[]): Model {
-  // Single-pass max; this runs per group thumbnail in scrolling grid views,
-  // so avoid the copy + O(n log n) sort. Like the sort it replaces, an empty
-  // list yields undefined.
+  // Single-pass max: this runs per group thumbnail in scrolling grid views, so
+  // avoid a copy + O(n log n) sort. An empty list yields undefined.
   let best = models[0];
   for (const model of models) {
     if (model.blob.size > best.blob.size) {

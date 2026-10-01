@@ -6,9 +6,9 @@ interface GridSelectionOptions<T> {
   setSelected: (items: T[]) => void;
   getId: (item: T) => number;
   // Fires right before an interaction (click, right-click, checkbox toggle)
-  // touches the selection — including the shift-range early-return path, so
+  // touches the selection, including the shift-range early-return path, so
   // callers can invalidate derived state (e.g. group-grid's split-view model
-  // sub-selection) exactly where they used to.
+  // sub-selection).
   onBeforeSelect?: () => void;
   getScrollContainer: () => HTMLElement | undefined;
   onEndOfList?: () => void;
