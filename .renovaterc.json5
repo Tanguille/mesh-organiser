@@ -3,7 +3,7 @@
   extends: [
     "abandonments:recommended",
     // Pin every github> preset to the same tag; an unpinned one tracks main.
-    "github>home-operations/renovate-presets#8.1.0"
+    "github>home-operations/renovate-presets#8.1.0",
   ],
   // This repo is a fork; only a committed config makes Renovate process it.
   forkProcessing: "enabled",
@@ -21,7 +21,7 @@
       description: "Auto-merge patch bumps once they have aged 1 day",
       matchUpdateTypes: ["patch"],
       minimumReleaseAge: "1 day",
-      automerge: true
-    }
-  ]
+      automerge: true,
+    },
+  ],
 }
