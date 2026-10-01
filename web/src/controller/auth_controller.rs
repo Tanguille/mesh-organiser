@@ -8,13 +8,14 @@ use axum::{
 
 use db::user_db;
 
+use service::AppState;
+
 use crate::{
     error::ApplicationError,
     user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
-    web_app_state::WebAppState,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -27,9 +28,9 @@ pub fn router() -> Router<WebAppState> {
 
 pub async fn me(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let Some(user) = user_db::get_user_by_id(&app_state.app_state.db, user.id).await? else {
+    let Some(user) = user_db::get_user_by_id(&app_state.db, user.id).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
 

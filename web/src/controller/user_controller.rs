@@ -12,12 +12,11 @@ use db::{
     model::user::{User, UserPermissions},
     user_db,
 };
-use service::export_service;
+use service::{AppState, export_service};
 
 use crate::{
     error::ApplicationError,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
 };
 
 /// Rejects the request unless the caller has the Admin permission.
@@ -44,7 +43,7 @@ fn require_admin_or_self(
     require_admin(user, action)
 }
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -61,11 +60,11 @@ pub fn router() -> Router<WebAppState> {
 
 pub async fn get_users(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
     require_admin(&user, "view users")?;
 
-    let users = user_db::get_users(&app_state.app_state.db).await?;
+    let users = user_db::get_users(&app_state.db).await?;
 
     Ok(Json(users).into_response())
 }
@@ -85,20 +84,20 @@ pub struct PostUserResponse {
 
 pub async fn add_user(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PostUserParams>,
 ) -> Result<Json<PostUserResponse>, ApplicationError> {
     require_admin(&user, "add a new user")?;
 
     let id = user_db::add_user(
-        &app_state.app_state.db,
+        &app_state.db,
         &params.user_name,
         &params.user_email,
         &params.user_password,
     )
     .await?;
 
-    user_db::scramble_validity_token(&app_state.app_state.db, id).await?;
+    user_db::scramble_validity_token(&app_state.db, id).await?;
 
     Ok(Json(PostUserResponse { id }))
 }
@@ -112,13 +111,13 @@ pub struct PutUserParams {
 pub async fn edit_user(
     CurrentUser(user): CurrentUser,
     Path(user_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutUserParams>,
 ) -> Result<StatusCode, ApplicationError> {
     require_admin_or_self(&user, user_id, "change this user's password")?;
 
     user_db::edit_user_min(
-        &app_state.app_state.db,
+        &app_state.db,
         user_id,
         &params.user_name,
         &params.user_email,
@@ -136,14 +135,14 @@ pub struct PutUserPasswordParams {
 pub async fn edit_user_password(
     CurrentUser(user): CurrentUser,
     Path(user_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutUserPasswordParams>,
 ) -> Result<StatusCode, ApplicationError> {
     require_admin_or_self(&user, user_id, "change this user's password")?;
 
-    user_db::edit_user_password(&app_state.app_state.db, user_id, &params.new_password).await?;
+    user_db::edit_user_password(&app_state.db, user_id, &params.new_password).await?;
 
-    user_db::scramble_validity_token(&app_state.app_state.db, user_id).await?;
+    user_db::scramble_validity_token(&app_state.db, user_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -156,12 +155,12 @@ pub struct PutUserPermissionsParams {
 pub async fn edit_user_permissions(
     CurrentUser(user): CurrentUser,
     Path(user_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutUserPermissionsParams>,
 ) -> Result<StatusCode, ApplicationError> {
     require_admin(&user, "change user permissions")?;
 
-    user_db::set_user_permissions(&app_state.app_state.db, user_id, params.permissions).await?;
+    user_db::set_user_permissions(&app_state.db, user_id, params.permissions).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -169,13 +168,13 @@ pub async fn edit_user_permissions(
 pub async fn delete_user(
     CurrentUser(user): CurrentUser,
     Path(user_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
     require_admin_or_self(&user, user_id, "delete this user")?;
 
-    user_db::delete_user(&app_state.app_state.db, user_id).await?;
+    user_db::delete_user(&app_state.db, user_id).await?;
 
-    export_service::delete_dead_blobs(&app_state.app_state).await?;
+    export_service::delete_dead_blobs(&app_state).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -183,11 +182,11 @@ pub async fn delete_user(
 pub async fn generate_new_sync_token(
     CurrentUser(user): CurrentUser,
     Path(user_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
     require_admin_or_self(&user, user_id, "generate a new sync token for this user")?;
 
-    user_db::scramble_login_token(&app_state.app_state.db, user_id).await?;
+    user_db::scramble_login_token(&app_state.db, user_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

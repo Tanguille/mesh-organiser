@@ -7,12 +7,11 @@ use axum::{
 use tokio::fs;
 use tower_http::services::ServeFile;
 
-use crate::{
-    controller::share_controller::resolve_share_owner, error::ApplicationError,
-    web_app_state::WebAppState,
-};
+use service::AppState;
 
-pub fn router() -> Router<WebAppState> {
+use crate::{controller::share_controller::resolve_share_owner, error::ApplicationError};
+
+pub fn router() -> Router<AppState> {
     let index = ServeFile::new("www/index.html");
     let sub_index = ServeFile::new("www/group/1.html");
 
@@ -36,7 +35,7 @@ pub fn router() -> Router<WebAppState> {
 
 async fn serve_share_page(
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Html<String>, ApplicationError> {
     let mut html = fs::read_to_string("www/group/1.html").await?;
 

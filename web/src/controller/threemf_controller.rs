@@ -8,16 +8,15 @@ use axum::{
 use axum_login::login_required;
 
 use db::model_db;
-use service::threemf_service;
+use service::{AppState, threemf_service};
 
 use crate::{
     error::ApplicationError,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
     web_import_state::WebImportStateEmitter,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -33,14 +32,13 @@ pub fn router() -> Router<WebAppState> {
 pub async fn get_threemf_metadata(
     CurrentUser(user): CurrentUser,
     Path(model_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let Some(model) = model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await?
-    else {
+    let Some(model) = model_db::get_model_via_id(&app_state.db, &user, model_id).await? else {
         return Ok((StatusCode::NOT_FOUND, "Model not found").into_response());
     };
 
-    let threemf_metadata = threemf_service::extract_metadata(&model, &app_state.app_state).await?;
+    let threemf_metadata = threemf_service::extract_metadata(&model, &app_state).await?;
 
     Ok(Json(threemf_metadata).into_response())
 }
@@ -48,17 +46,16 @@ pub async fn get_threemf_metadata(
 pub async fn extract_threemf_models(
     CurrentUser(user): CurrentUser,
     Path(model_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let Some(model) = model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await?
-    else {
+    let Some(model) = model_db::get_model_via_id(&app_state.db, &user, model_id).await? else {
         return Ok((StatusCode::NOT_FOUND, "Model not found").into_response());
     };
 
     let group_meta = threemf_service::extract_models_with_thumbnails(
         &model,
         &user,
-        &app_state.app_state,
+        &app_state,
         Some(Box::new(WebImportStateEmitter {})),
     )
     .await?;

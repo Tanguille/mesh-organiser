@@ -16,20 +16,21 @@ use db::{
     share_db, time_now, user_db,
 };
 
+use service::AppState;
+
 use crate::{
     error::ApplicationError,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
 };
 
 /// Resolves a share and its owning user, erroring if the owner no longer exists.
 pub async fn resolve_share_owner(
-    app_state: &WebAppState,
+    app_state: &AppState,
     share_id: &str,
 ) -> Result<(Share, User), ApplicationError> {
-    let share = share_db::get_share_via_id(&app_state.app_state.db, share_id).await?;
+    let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
 
-    let Some(user) = user_db::get_user_by_id(&app_state.app_state.db, share.user_id).await? else {
+    let Some(user) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
         return Err(ApplicationError::InternalError(
             "Share owner user not found.".into(),
         ));
@@ -38,7 +39,7 @@ pub async fn resolve_share_owner(
     Ok((share, user))
 }
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -54,9 +55,9 @@ pub fn router() -> Router<WebAppState> {
 
 pub async fn get_shares(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let shares = share_db::get_shares(&app_state.app_state.db, &user).await?;
+    let shares = share_db::get_shares(&app_state.db, &user).await?;
 
     let shares: Vec<ShareDto> = shares
         .into_iter()
@@ -68,7 +69,7 @@ pub async fn get_shares(
 
 pub async fn get_share(
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
     let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
 
@@ -84,11 +85,10 @@ pub struct CreateShareParams {
 
 pub async fn create_share(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<CreateShareParams>,
 ) -> Result<Response, ApplicationError> {
-    let share_id =
-        share_db::create_share(&app_state.app_state.db, &user, &params.share_name).await?;
+    let share_id = share_db::create_share(&app_state.db, &user, &params.share_name).await?;
 
     Ok(Json(ShareDto {
         id: share_id,
@@ -108,16 +108,10 @@ pub struct EditShareParams {
 pub async fn edit_share(
     CurrentUser(user): CurrentUser,
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<EditShareParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    share_db::rename_share(
-        &app_state.app_state.db,
-        &user,
-        &share_id,
-        &params.share_name,
-    )
-    .await?;
+    share_db::rename_share(&app_state.db, &user, &share_id, &params.share_name).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -125,11 +119,10 @@ pub async fn edit_share(
 pub async fn set_model_ids_on_share(
     CurrentUser(user): CurrentUser,
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    share_db::set_model_ids_on_share(&app_state.app_state.db, &user, &share_id, params.model_ids)
-        .await?;
+    share_db::set_model_ids_on_share(&app_state.db, &user, &share_id, params.model_ids).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -137,9 +130,9 @@ pub async fn set_model_ids_on_share(
 pub async fn delete_share(
     CurrentUser(user): CurrentUser,
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
-    share_db::delete_share(&app_state.app_state.db, &user, &share_id).await?;
+    share_db::delete_share(&app_state.db, &user, &share_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

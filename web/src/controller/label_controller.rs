@@ -11,13 +11,14 @@ use serde::Deserialize;
 
 use db::{label_db, label_keyword_db};
 
+use service::AppState;
+
 use crate::{
     error::ApplicationError,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -45,11 +46,11 @@ pub struct GetLabelsParams {
 
 pub async fn get_labels(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(params): Query<GetLabelsParams>,
 ) -> Result<Response, ApplicationError> {
     let labels = label_db::get_labels(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         params.include_ungrouped_models.unwrap_or(false),
     )
@@ -61,10 +62,9 @@ pub async fn get_labels(
 pub async fn get_keywords_for_label(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let keywords =
-        label_keyword_db::get_keywords_for_label(&app_state.app_state.db, &user, label_id).await?;
+    let keywords = label_keyword_db::get_keywords_for_label(&app_state.db, &user, label_id).await?;
 
     Ok(Json(keywords).into_response())
 }
@@ -77,11 +77,11 @@ pub struct PostLabelParams {
 
 pub async fn add_label(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PostLabelParams>,
 ) -> Result<Response, ApplicationError> {
     let label_meta = label_db::add_label(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         &params.label_name,
         params.label_color,
@@ -95,25 +95,13 @@ pub async fn add_label(
 pub async fn set_label_on_models(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_labels_from_models(
-        &app_state.app_state.db,
-        &user,
-        &[label_id],
-        &params.model_ids,
-        None,
-    )
-    .await?;
-    label_db::add_labels_on_models(
-        &app_state.app_state.db,
-        &user,
-        &[label_id],
-        &params.model_ids,
-        None,
-    )
-    .await?;
+    label_db::remove_labels_from_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
+        .await?;
+    label_db::add_labels_on_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -130,11 +118,11 @@ pub struct PutLabelParams {
 pub async fn edit_label(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutLabelParams>,
 ) -> Result<StatusCode, ApplicationError> {
     label_db::edit_label(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         label_id,
         &params.label_name,
@@ -155,19 +143,12 @@ pub struct SetLabelsOnModelParams {
 pub async fn set_labels_on_model(
     CurrentUser(user): CurrentUser,
     Path(model_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<SetLabelsOnModelParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_all_labels_from_models(&app_state.app_state.db, &user, &[model_id], None)
+    label_db::remove_all_labels_from_models(&app_state.db, &user, &[model_id], None).await?;
+    label_db::add_labels_on_models(&app_state.db, &user, &params.label_ids, &[model_id], None)
         .await?;
-    label_db::add_labels_on_models(
-        &app_state.app_state.db,
-        &user,
-        &params.label_ids,
-        &[model_id],
-        None,
-    )
-    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -180,15 +161,14 @@ pub struct SetChildsOnLabelParams {
 pub async fn set_childs_on_label(
     CurrentUser(user): CurrentUser,
     Path(parent_label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<SetChildsOnLabelParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_all_childs_from_label(&app_state.app_state.db, &user, parent_label_id, None)
-        .await?;
+    label_db::remove_all_childs_from_label(&app_state.db, &user, parent_label_id, None).await?;
 
     if !params.child_label_ids.is_empty() {
         label_db::add_childs_to_label(
-            &app_state.app_state.db,
+            &app_state.db,
             &user,
             parent_label_id,
             params.child_label_ids,
@@ -208,17 +188,11 @@ pub struct SetKeywordsOnLabelParams {
 pub async fn set_keywords_on_label(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<SetKeywordsOnLabelParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_keyword_db::set_keywords_for_label(
-        &app_state.app_state.db,
-        &user,
-        label_id,
-        params.keywords,
-        None,
-    )
-    .await?;
+    label_keyword_db::set_keywords_for_label(&app_state.db, &user, label_id, params.keywords, None)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -226,9 +200,9 @@ pub async fn set_keywords_on_label(
 pub async fn delete_label(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::delete_label(&app_state.app_state.db, &user, label_id).await?;
+    label_db::delete_label(&app_state.db, &user, label_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -236,17 +210,11 @@ pub async fn delete_label(
 pub async fn remove_label_from_models(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_labels_from_models(
-        &app_state.app_state.db,
-        &user,
-        &[label_id],
-        &params.model_ids,
-        None,
-    )
-    .await?;
+    label_db::remove_labels_from_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

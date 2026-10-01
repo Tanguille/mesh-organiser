@@ -46,7 +46,6 @@ use crate::{
         user_controller,
     },
     user::{AuthSession, Backend},
-    web_app_state::WebAppState,
     web_import_state::WebImportStateEmitter,
 };
 
@@ -58,7 +57,8 @@ const ENV_REGENERATE_THUMBNAILS: &str = "REGENERATE_THUMBNAILS";
 const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
 
 pub struct App {
-    app_state: WebAppState,
+    state: AppState,
+    port: u16,
     session_store: SqliteStore,
 }
 
@@ -118,7 +118,7 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
     Ok(configuration)
 }
 
-async fn apply_local_account(web_app_state: &WebAppState) -> Result<(), Box<dyn Error>> {
+async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>> {
     let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
         let key = Key::generate();
         let key_bytes = key.master();
@@ -129,9 +129,9 @@ async fn apply_local_account(web_app_state: &WebAppState) -> Result<(), Box<dyn 
 
         pass
     });
-    user_db::edit_user_password(&web_app_state.app_state.db, 1, &local_pass).await?;
-    user_db::scramble_validity_token(&web_app_state.app_state.db, 1).await?;
-    group_db::delete_dead_groups(&web_app_state.app_state.db).await?;
+    user_db::edit_user_password(&app_state.db, 1, &local_pass).await?;
+    user_db::scramble_validity_token(&app_state.db, 1).await?;
+    group_db::delete_dead_groups(&app_state.db).await?;
 
     Ok(())
 }
@@ -139,7 +139,7 @@ async fn apply_local_account(web_app_state: &WebAppState) -> Result<(), Box<dyn 
 /// Spawns the `REGENERATE_THUMBNAILS=all|missing` pass as a background task so
 /// the TCP listener can bind immediately; a large library's CPU-bound thumbnail
 /// pass would otherwise keep the server unreachable until it finishes.
-fn spawn_thumbnail_regeneration(web_app_state: &WebAppState) {
+fn spawn_thumbnail_regeneration(app_state: &AppState) {
     let regenerate_thumbnails = env::var(ENV_REGENERATE_THUMBNAILS)
         .unwrap_or_else(|_| "none".into())
         .to_lowercase();
@@ -149,7 +149,7 @@ fn spawn_thumbnail_regeneration(web_app_state: &WebAppState) {
         _ => return,
     };
 
-    let app_state = web_app_state.app_state.clone();
+    let app_state = app_state.clone();
     tokio::spawn(async move {
         // Hold the import mutex so regeneration does not race concurrent imports.
         let _import_guard = app_state.import_mutex.clone().lock_owned().await;
@@ -229,28 +229,26 @@ impl App {
         let sqlite_backup_dir = data_dir.join("backups");
         let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
 
-        let web_app_state = WebAppState {
-            app_state: AppState {
-                db: Arc::new(db),
-                configuration: Mutex::new(configuration),
-                app_data_path: data_dir
-                    .to_str()
-                    .ok_or_else(|| {
-                        io::Error::new(ErrorKind::InvalidData, "data_path is not valid UTF-8")
-                    })?
-                    .to_string(),
-                import_mutex: Arc::new(tokio::sync::Mutex::new(())),
-            },
-            port,
+        let app_state = AppState {
+            db: Arc::new(db),
+            configuration: Mutex::new(configuration),
+            app_data_path: data_dir
+                .to_str()
+                .ok_or_else(|| {
+                    io::Error::new(ErrorKind::InvalidData, "data_path is not valid UTF-8")
+                })?
+                .to_string(),
+            import_mutex: Arc::new(tokio::sync::Mutex::new(())),
         };
 
         let session_store = setup_session_store(&sqlite_path).await?;
 
-        apply_local_account(&web_app_state).await?;
-        spawn_thumbnail_regeneration(&web_app_state);
+        apply_local_account(&app_state).await?;
+        spawn_thumbnail_regeneration(&app_state);
 
         Ok(Self {
-            app_state: web_app_state,
+            state: app_state,
+            port,
             session_store,
         })
     }
@@ -264,7 +262,7 @@ impl App {
                 .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
         );
 
-        let signing_key_path = self.app_state.get_signing_key_path();
+        let signing_key_path = PathBuf::from(&self.state.app_data_path).join("signing.key");
         let key = if signing_key_path.exists() {
             let key_bytes = fs::read(&signing_key_path).await?;
             Key::from(&key_bytes)
@@ -279,12 +277,12 @@ impl App {
             .with_expiry(Expiry::OnInactivity(Duration::days(7)))
             .with_signed(key);
 
-        let backend = Backend::new(self.app_state.app_state.db.clone());
+        let backend = Backend::new(self.state.db.clone());
         let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
         let serve_dir = ServeDir::new("www").not_found_service(ServeFile::new("www/index.html"));
-        let db = self.app_state.app_state.db.clone();
-        let port = self.app_state.port;
+        let db = self.state.db.clone();
+        let port = self.port;
 
         let cors_layer = CorsLayer::new()
             .allow_origin([
@@ -321,7 +319,7 @@ impl App {
             .merge(threemf_controller::router())
             .merge(page_controller::router())
             .merge(share_controller::router())
-            .with_state(self.app_state)
+            .with_state(self.state)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(MessagesManagerLayer)

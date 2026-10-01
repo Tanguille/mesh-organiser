@@ -9,15 +9,14 @@ use axum_login::login_required;
 use serde::Deserialize;
 
 use db::{model::resource::ResourceFlags, resource_db};
-use service::resource_service;
+use service::{AppState, resource_service};
 
 use crate::{
     error::ApplicationError,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -36,9 +35,9 @@ pub fn router() -> Router<WebAppState> {
 
 pub async fn get_resources(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let resources = resource_db::get_resources(&app_state.app_state.db, &user).await?;
+    let resources = resource_db::get_resources(&app_state.db, &user).await?;
 
     Ok(Json(resources).into_response())
 }
@@ -46,10 +45,9 @@ pub async fn get_resources(
 pub async fn get_groups_for_resource(
     CurrentUser(user): CurrentUser,
     Path(resource_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let groups =
-        resource_db::get_groups_for_resource(&app_state.app_state.db, &user, resource_id).await?;
+    let groups = resource_db::get_groups_for_resource(&app_state.db, &user, resource_id).await?;
 
     Ok(Json(groups).into_response())
 }
@@ -61,12 +59,11 @@ pub struct PostResourceParams {
 
 pub async fn add_resource(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PostResourceParams>,
 ) -> Result<Response, ApplicationError> {
     let resource_meta =
-        resource_db::add_resource(&app_state.app_state.db, &user, &params.resource_name, None)
-            .await?;
+        resource_db::add_resource(&app_state.db, &user, &params.resource_name, None).await?;
 
     Ok(Json(resource_meta).into_response())
 }
@@ -83,11 +80,11 @@ pub struct PutResourceParams {
 pub async fn edit_resource(
     CurrentUser(user): CurrentUser,
     Path(resource_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutResourceParams>,
 ) -> Result<StatusCode, ApplicationError> {
     resource_db::edit_resource(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         resource_id,
         &params.resource_name,
@@ -108,17 +105,11 @@ pub struct SetResourceOnGroupParams {
 pub async fn set_resource_on_group(
     CurrentUser(user): CurrentUser,
     Path(group_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<SetResourceOnGroupParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    resource_db::set_resource_on_group(
-        &app_state.app_state.db,
-        &user,
-        params.resource_id,
-        group_id,
-        None,
-    )
-    .await?;
+    resource_db::set_resource_on_group(&app_state.db, &user, params.resource_id, group_id, None)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -126,9 +117,9 @@ pub async fn set_resource_on_group(
 pub async fn delete_resource(
     CurrentUser(user): CurrentUser,
     Path(resource_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
-    resource_service::delete_resource(resource_id, &user, &app_state.app_state).await?;
+    resource_service::delete_resource(resource_id, &user, &app_state).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

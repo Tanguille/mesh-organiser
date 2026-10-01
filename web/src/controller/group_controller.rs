@@ -11,15 +11,16 @@ use serde::{Deserialize, Serialize};
 
 use db::{group_db, group_db::GroupFilterOptions, model::blob::FileType};
 
+use service::AppState;
+
 use crate::{
     controller::share_controller::resolve_share_owner,
     error::ApplicationError,
     query_bounds,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -69,7 +70,7 @@ impl GetGroupParams {
 
 pub async fn get_groups(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(params): Query<GetGroupParams>,
 ) -> Result<Response, ApplicationError> {
     if let Err(e) = query_bounds::validate_group_list_query_bounds(
@@ -86,7 +87,7 @@ pub async fn get_groups(
         };
 
     let groups = group_db::get_groups(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         GroupFilterOptions {
             model_ids: if params.model_ids.is_empty() {
@@ -115,7 +116,7 @@ pub async fn get_groups(
 
 pub async fn get_share_groups(
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(params): Query<GetGroupParams>,
 ) -> Result<Response, ApplicationError> {
     let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
@@ -128,7 +129,7 @@ pub async fn get_share_groups(
     }
 
     let groups = group_db::get_groups(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         GroupFilterOptions {
             model_ids: share.model_ids.into(),
@@ -163,11 +164,11 @@ pub struct GetGroupCountResponse {
 
 pub async fn get_group_count(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(params): Query<GetGroupCountParams>,
 ) -> Result<Json<GetGroupCountResponse>, ApplicationError> {
     let count = group_db::get_group_count(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         params.include_ungrouped_models.unwrap_or(false),
     )
@@ -187,11 +188,11 @@ pub struct PutGroupParams {
 pub async fn edit_group(
     CurrentUser(user): CurrentUser,
     Path(group_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutGroupParams>,
 ) -> Result<StatusCode, ApplicationError> {
     group_db::edit_group(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         group_id,
         &params.group_name,
@@ -206,20 +207,19 @@ pub async fn edit_group(
 pub async fn delete_group(
     CurrentUser(user): CurrentUser,
     Path(group_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
-    group_db::delete_group(&app_state.app_state.db, &user, group_id).await?;
+    group_db::delete_group(&app_state.db, &user, group_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_models_from_group(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    group_db::set_group_id_on_models(&app_state.app_state.db, &user, None, params.model_ids, None)
-        .await?;
+    group_db::set_group_id_on_models(&app_state.db, &user, None, params.model_ids, None).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -231,11 +231,11 @@ pub struct PostGroupParams {
 
 pub async fn add_group(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PostGroupParams>,
 ) -> Result<Response, ApplicationError> {
     let group_meta =
-        group_db::add_empty_group(&app_state.app_state.db, &user, &params.group_name, None).await?;
+        group_db::add_empty_group(&app_state.db, &user, &params.group_name, None).await?;
 
     Ok(Json(group_meta).into_response())
 }
@@ -243,17 +243,11 @@ pub async fn add_group(
 pub async fn add_models_to_group(
     CurrentUser(user): CurrentUser,
     Path(group_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    group_db::set_group_id_on_models(
-        &app_state.app_state.db,
-        &user,
-        Some(group_id),
-        params.model_ids,
-        None,
-    )
-    .await?;
+    group_db::set_group_id_on_models(&app_state.db, &user, Some(group_id), params.model_ids, None)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

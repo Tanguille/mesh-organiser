@@ -16,7 +16,7 @@ use db::{
     model_db::ModelFilterOptions,
 };
 use service::{
-    cleanse_evil_from_name, export_service, import_service, import_state::ImportState,
+    AppState, cleanse_evil_from_name, export_service, import_service, import_state::ImportState,
     thumbnail_service,
 };
 
@@ -25,11 +25,10 @@ use crate::{
     error::ApplicationError,
     query_bounds,
     user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
     web_import_state::WebImportStateEmitter,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -78,7 +77,7 @@ impl GetModelParams {
 }
 
 async fn get_models_inner(
-    app_state: &WebAppState,
+    app_state: &AppState,
     user: &User,
     params: GetModelParams,
 ) -> Result<Response, ApplicationError> {
@@ -89,7 +88,7 @@ async fn get_models_inner(
     let flags = params.model_flags;
 
     let models = model_db::get_models(
-        &app_state.app_state.db,
+        &app_state.db,
         user,
         ModelFilterOptions {
             model_ids: query_bounds::none_if_empty(params.model_ids),
@@ -112,7 +111,7 @@ async fn get_models_inner(
 
 pub async fn get_models(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(params): Query<GetModelParams>,
 ) -> Result<Response, ApplicationError> {
     get_models_inner(&app_state, &user, params).await
@@ -134,7 +133,7 @@ fn share_model_ids(share_ids: &[i64], requested: &[i64]) -> Vec<i64> {
 
 pub async fn get_share_models(
     Path(share_id): Path<String>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(mut params): Query<GetModelParams>,
 ) -> Result<Response, ApplicationError> {
     let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
@@ -166,11 +165,11 @@ pub struct GetModelCountResponse {
 
 pub async fn get_model_count(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Query(params): Query<GetModelCountParams>,
 ) -> Result<Json<GetModelCountResponse>, ApplicationError> {
     let count = model_db::get_model_count(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         if params.model_flags.is_empty() {
             None
@@ -191,10 +190,10 @@ pub struct GetModelDiskSpaceUsageResponse {
 
 pub async fn get_model_disk_space_usage(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<Json<GetModelDiskSpaceUsageResponse>, ApplicationError> {
-    let data = model_db::get_size_of_models(&app_state.app_state.db, &user).await?;
-    let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state.app_state)?;
+    let data = model_db::get_size_of_models(&app_state.db, &user).await?;
+    let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state)?;
 
     Ok(Json(GetModelDiskSpaceUsageResponse {
         size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
@@ -216,11 +215,11 @@ pub struct PutModelParams {
 pub async fn edit_model(
     CurrentUser(user): CurrentUser,
     Path(model_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<PutModelParams>,
 ) -> Result<StatusCode, ApplicationError> {
     model_db::edit_model(
-        &app_state.app_state.db,
+        &app_state.db,
         &user,
         model_id,
         &params.model_name,
@@ -238,26 +237,26 @@ pub async fn edit_model(
 pub async fn delete_model(
     CurrentUser(user): CurrentUser,
     Path(model_id): Path<i64>,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
 ) -> Result<StatusCode, ApplicationError> {
-    export_service::delete_models(&app_state.app_state, &user, vec![model_id]).await?;
+    export_service::delete_models(&app_state, &user, vec![model_id]).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_models(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    export_service::delete_models(&app_state.app_state, &user, params.model_ids).await?;
+    export_service::delete_models(&app_state, &user, params.model_ids).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn add_model(
     CurrentUser(user): CurrentUser,
-    State(app_state): State<WebAppState>,
+    State(app_state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Response, ApplicationError> {
     let mut paths = vec![];
@@ -323,18 +322,14 @@ pub async fn add_model(
             user.clone(),
             Box::new(WebImportStateEmitter {}),
         );
-        import_state = import_service::import_path(
-            &path.to_string_lossy(),
-            &app_state.app_state,
-            import_state,
-        )
-        .await?;
+        import_state =
+            import_service::import_path(&path.to_string_lossy(), &app_state, import_state).await?;
 
         model_ids.extend(&import_state.imported_models[0].model_ids);
     }
 
     thumbnail_service::generate_thumbnails_for_model_ids(
-        &app_state.app_state,
+        &app_state,
         &user,
         model_ids.clone(),
         &mut import_state,
