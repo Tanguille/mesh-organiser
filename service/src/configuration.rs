@@ -74,7 +74,7 @@ impl Default for Configuration {
         let parallelism = (thread::available_parallelism().map_or(3, NonZeroUsize::get) / 2).max(1);
 
         Self {
-            data_path: String::new(),
+            data_path: String::default(),
             prusa_deep_link: false,
             cura_deep_link: false,
             bambu_deep_link: false,
@@ -102,23 +102,23 @@ impl Default for Configuration {
             max_size_model_obj_preview: 30,
             max_size_model_step_preview: 10,
             only_show_single_image_in_groups: true,
-            custom_slicer_path: String::new(),
+            custom_slicer_path: String::default(),
             elegoo_deep_link: false,
             group_split_view: String::from("split-left-right"),
             label_exported_model_as_printed: false,
             theme: String::from("default"),
             order_option_models: String::from("modified-desc"),
             order_option_groups: String::from("modified-desc"),
-            ignore_update: String::new(),
+            ignore_update: String::default(),
             show_multiselect_checkboxes: true,
             use_worker_for_model_parsing: true,
             prefer_gcode_thumbnail: true,
             last_user_id: 1,
-            custom_css: String::new(),
+            custom_css: String::default(),
             default_enabled_import_as_path: false,
             thumbnail_rotation: [35, 30, 0],
             watch_downloads_folder: false,
-            startup_page: String::new(),
+            startup_page: String::default(),
         }
     }
 }

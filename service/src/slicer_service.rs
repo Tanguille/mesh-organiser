@@ -103,12 +103,12 @@ fn open_with_args_and_paths(
 fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
     let cmd = cmd.trim();
     if cmd.is_empty() {
-        return (String::new(), Vec::new());
+        return (String::default(), Vec::new());
     }
 
     let mut chars = cmd.chars().peekable();
     let mut args = Vec::new();
-    let mut current_arg = String::new();
+    let mut current_arg = String::default();
     let mut in_quotes = false;
 
     while let Some(char) = chars.next() {
@@ -139,7 +139,7 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
     }
 
     if args.is_empty() {
-        return (String::new(), Vec::new());
+        return (String::default(), Vec::new());
     }
 
     let first_flag_index = args

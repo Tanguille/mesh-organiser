@@ -58,7 +58,7 @@ where
     let mut in_gcode_section = false;
     let mut gcode_img_width = 0;
     let mut gcode_img_height = 0;
-    let mut image = String::new();
+    let mut image = String::default();
 
     for line in buffered_reader.lines().map_while(Result::ok) {
         if line.starts_with("; thumbnail begin") {
@@ -73,7 +73,7 @@ where
 
             gcode_img_width = *pixel_format_unpacked.first().unwrap_or(&0);
             gcode_img_height = *pixel_format_unpacked.get(1).unwrap_or(&0);
-            image = String::new();
+            image = String::default();
 
             in_gcode_section = gcode_img_width > 0 && gcode_img_height > 0;
         } else if line.starts_with("; thumbnail end") {
