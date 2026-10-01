@@ -9,6 +9,19 @@
   forkProcessing: "enabled",
   // Dependabot labelled every update PR.
   labels: ["dependencies"],
+  // Overrides :automergeBranch from the base preset.
+  automergeType: "pr",
+  // main has no required checks, so GitHub native auto-merge would merge before CI finishes;
+  // with this off Renovate merges itself only once every check is green (needs Checks: read).
+  platformAutomerge: false,
   // The operator webhook starts a run on any ticked dashboard checkbox; Renovate resets it on rewrite.
-  dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository"
+  dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
+  packageRules: [
+    {
+      description: "Auto-merge patch bumps once they have aged 3 days",
+      matchUpdateTypes: ["patch"],
+      minimumReleaseAge: "3 days",
+      automerge: true
+    }
+  ]
 }
