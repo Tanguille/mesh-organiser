@@ -85,49 +85,12 @@ fn escape_html_attribute(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    const DANGEROUS: [char; 5] = ['"', '<', '>', '&', '\''];
-
-    /// Raw `&` can legitimately appear as the start of an entity, so for it we only check that
-    /// every `&` is followed by an entity body ending in `;`. The others must be gone entirely.
-    fn assert_attribute_safe(escaped: &str) {
-        for char in ['"', '<', '>', '\''] {
-            assert!(!escaped.contains(char), "raw {char:?} left in {escaped:?}");
-        }
-
-        for (position, _) in escaped.match_indices('&') {
-            assert!(
-                escaped[position..].contains(';'),
-                "bare '&' (not an entity) in {escaped:?}"
-            );
-        }
-    }
-
     #[test]
-    fn escape_html_attribute_neutralises_attribute_injection_payload() {
-        let escaped = super::escape_html_attribute(r#"x" onload="alert(1)"#);
-
-        assert_attribute_safe(&escaped);
-    }
-
-    #[test]
-    fn escape_html_attribute_neutralises_script_tag() {
-        let escaped = super::escape_html_attribute("<script>alert('x')</script>");
-
-        assert_attribute_safe(&escaped);
-        assert!(!escaped.contains("<script"));
-    }
-
-    #[test]
-    fn escape_html_attribute_escapes_every_dangerous_char() {
-        for char in DANGEROUS {
-            let escaped = super::escape_html_attribute(&format!("a{char}b"));
-
-            assert_ne!(escaped, format!("a{char}b"), "{char:?} was not escaped");
-            assert!(escaped.starts_with('a') && escaped.ends_with('b'));
-            if char != '&' {
-                assert!(!escaped.contains(char), "raw {char:?} left in {escaped:?}");
-            }
-        }
+    fn escape_html_attribute_escapes_special_chars() {
+        assert_eq!(
+            super::escape_html_attribute(r#"x" <b>&'"#),
+            "x&quot; &lt;b&gt;&amp;&#39;"
+        );
     }
 
     #[test]

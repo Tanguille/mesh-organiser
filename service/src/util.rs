@@ -1,5 +1,6 @@
 use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::OnceLock};
 
+use percent_encoding::percent_decode_str;
 use regex::Regex;
 use tokio::task::JoinSet;
 
@@ -35,6 +36,18 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     file_name = String::from(file_name.trim());
 
     file_name
+}
+
+/// Percent-decodes `text` into an owned string; fails if the decoded bytes are not valid UTF-8.
+/// A literal `+` is kept as-is and a malformed `%zz` sequence is left untouched.
+///
+/// # Errors
+///
+/// Returns the UTF-8 error if the decoded bytes are not valid UTF-8.
+pub fn percent_decode(text: &str) -> Result<String, std::str::Utf8Error> {
+    percent_decode_str(text)
+        .decode_utf8()
+        .map(std::borrow::Cow::into_owned)
 }
 
 #[must_use]
@@ -267,8 +280,30 @@ mod tests {
 
     use super::{
         cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
-        is_zippable_file_extension, is_zipped_file_extension, prettify_file_name,
+        is_zippable_file_extension, is_zipped_file_extension, percent_decode, prettify_file_name,
     };
+
+    // ---- percent_decode ----
+
+    #[test]
+    fn percent_decode_decodes_multibyte_and_space() {
+        assert_eq!(percent_decode("caf%C3%A9%20bar").unwrap(), "café bar");
+    }
+
+    #[test]
+    fn percent_decode_keeps_plus_literal() {
+        assert_eq!(percent_decode("a+b").unwrap(), "a+b");
+    }
+
+    #[test]
+    fn percent_decode_leaves_malformed_escape_untouched() {
+        assert_eq!(percent_decode("100%zz").unwrap(), "100%zz");
+    }
+
+    #[test]
+    fn percent_decode_rejects_invalid_utf8() {
+        assert!(percent_decode("%FF").is_err());
+    }
 
     // ---- cleanse_evil_from_name ----
 

@@ -4,7 +4,6 @@ use std::{
     sync::OnceLock,
 };
 
-use percent_encoding::percent_decode_str;
 use regex::Regex;
 use reqwest::{Response, header::CONTENT_DISPOSITION};
 use serde::Serialize;
@@ -13,7 +12,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use crate::{
     export_service::{ensure_unique_file_full_filename, get_temp_dir},
     service_error::ServiceError,
-    util::cleanse_evil_from_name,
+    util::{cleanse_evil_from_name, percent_decode},
 };
 
 static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
@@ -44,9 +43,9 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
         if let Some(encoded) = token
             .strip_prefix("UTF-8''")
             .or_else(|| token.strip_prefix("utf-8''"))
-            && let Ok(decoded) = percent_decode_str(encoded).decode_utf8()
+            && let Ok(decoded) = percent_decode(encoded)
         {
-            return Some(decoded.into_owned());
+            return Some(decoded);
         }
     }
     // Fallback: filename="..." or filename=value
@@ -179,12 +178,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     let redirect_url_filename = response_url.split('/').next_back().map_or_else(
         || "model.stl".to_string(),
-        |segment| {
-            percent_decode_str(segment)
-                .decode_utf8()
-                .unwrap_or_default()
-                .into_owned()
-        },
+        |segment| percent_decode(segment).unwrap_or_default(),
     );
 
     // Filename of the file we just downloaded; used as the default in branches that
@@ -213,7 +207,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         source_uri = Some(String::from("https://nexprint.com/"));
         // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
         // quoted-only on purpose — see quoted_filename.
-        let decoded_url = percent_decode_str(url).decode_utf8().unwrap().into_owned();
+        let decoded_url = percent_decode(url).unwrap();
         quoted_filename(&decoded_url)
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| current_filename.clone())

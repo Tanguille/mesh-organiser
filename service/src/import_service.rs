@@ -490,11 +490,10 @@ where
     let mut hasher = Sha256::new();
     hasher.update(&file_contents);
     let bytes = hasher.finalize();
-    // First 128 bits of the digest as 32 hex chars (matches `blob_sha256` / `random_hex_32` shape).
-    let hash = format!(
-        "{:032x}",
-        u128::from_be_bytes(bytes[..16].try_into().expect("slice is 16 bytes"))
-    );
+    // First 128 bits of the digest as 32 hex chars via the shared `db::u128_to_hex_32` (same shape as `db::random_hex_32`).
+    let hash = db::u128_to_hex_32(u128::from_be_bytes(
+        bytes[..16].try_into().expect("slice is 16 bytes"),
+    ));
 
     let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
 

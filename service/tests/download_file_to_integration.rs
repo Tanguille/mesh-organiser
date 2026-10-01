@@ -140,8 +140,9 @@ async fn get_content_disposition_filename_rfc5987_from_header() {
 // and the whole URL (nexprint) to derive the final filename.
 // -----------------------------------------------------------------------------
 
-#[tokio::test]
-async fn download_file_thingiverse_decodes_last_url_segment() {
+/// Downloads `<mock server>/<url_path>` through `download_file` and checks the derived
+/// filename and source uri.
+async fn assert_download(url_path: &str, expected_name: &str, expected_source: &str) {
     let mock_server = MockServer::start().await;
 
     Mock::given(any())
@@ -149,45 +150,36 @@ async fn download_file_thingiverse_decodes_last_url_segment() {
         .mount(&mock_server)
         .await;
 
-    let url = format!("{}/thingiverse/na%C3%AFve%20file.stl", mock_server.uri());
+    let url = format!("{}/{url_path}", mock_server.uri());
     let result = download_file(&url).await.expect("download should succeed");
 
     let path = PathBuf::from(&result.path);
     assert!(path.exists());
     assert_eq!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("naïve file.stl")
+        Some(expected_name)
     );
-    assert_eq!(
-        result.source_uri.as_deref(),
-        Some("https://thingiverse.com/")
-    );
+    assert_eq!(result.source_uri.as_deref(), Some(expected_source));
 
     fs::remove_file(&path).ok();
 }
 
 #[tokio::test]
+async fn download_file_thingiverse_decodes_last_url_segment() {
+    assert_download(
+        "thingiverse/na%C3%AFve%20file.stl",
+        "naïve file.stl",
+        "https://thingiverse.com/",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn download_file_nexprint_decodes_quoted_filename_from_url() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(any())
-        .respond_with(ResponseTemplate::new(200).set_body_string("x"))
-        .mount(&mock_server)
-        .await;
-
-    let url = format!(
-        "{}/nexprint/dl?response-content-disposition=attachment;filename%3D%22na%C3%AFve%20file.stl%22",
-        mock_server.uri()
-    );
-    let result = download_file(&url).await.expect("download should succeed");
-
-    let path = PathBuf::from(&result.path);
-    assert!(path.exists());
-    assert_eq!(
-        path.file_name().and_then(|name| name.to_str()),
-        Some("naïve file.stl")
-    );
-    assert_eq!(result.source_uri.as_deref(), Some("https://nexprint.com/"));
-
-    fs::remove_file(&path).ok();
+    assert_download(
+        "nexprint/dl?response-content-disposition=attachment;filename%3D%22na%C3%AFve%20file.stl%22",
+        "naïve file.stl",
+        "https://nexprint.com/",
+    )
+    .await;
 }

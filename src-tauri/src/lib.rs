@@ -371,11 +371,7 @@ fn extract_deep_link(data: &str) -> Option<String> {
             return Some(encoded.to_string());
         }
 
-        return Some(String::from(
-            percent_encoding::percent_decode_str(encoded)
-                .decode_utf8()
-                .unwrap(),
-        ));
+        return Some(service::percent_decode(encoded).unwrap());
     }
 
     None

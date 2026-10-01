@@ -4,7 +4,13 @@ use crate::DbError;
 
 #[must_use]
 pub fn random_hex_32() -> String {
-    format!("{:032x}", rand::rng().random::<u128>())
+    u128_to_hex_32(rand::rng().random::<u128>())
+}
+
+/// Formats 128 bits as 32 zero-padded lowercase hex chars (the shape of a global id / blob sha256).
+#[must_use]
+pub fn u128_to_hex_32(value: u128) -> String {
+    format!("{value:032x}")
 }
 
 #[must_use]
@@ -44,6 +50,11 @@ mod tests {
                 .all(|char| char.is_ascii_digit() || ('a'..='f').contains(&char)),
             "expected only [0-9a-f], got {hex}"
         );
+    }
+
+    #[test]
+    fn u128_to_hex_32_pads_leading_zeros() {
+        assert_eq!(super::u128_to_hex_32(1), format!("{}1", "0".repeat(31)));
     }
 
     #[test]
