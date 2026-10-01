@@ -71,8 +71,8 @@
     );
   });
 
-  function onSearchInput(e: Event) {
-    debouncedSetNewSearchText(normalizeSearchInput(e));
+  function onSearchInput(event: Event) {
+    debouncedSetNewSearchText(normalizeSearchInput(event));
   }
 
   function onDeleteSelected() {

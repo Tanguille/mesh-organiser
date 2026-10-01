@@ -8,9 +8,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Returns the trimmed value of the search input behind `e`, or null when it is blank. */
-export function normalizeSearchInput(e: Event): string | null {
-  const value = (e.target as HTMLInputElement).value.trim();
+/** Returns the trimmed value of the search input behind `event`, or null when it is blank. */
+export function normalizeSearchInput(event: Event): string | null {
+  const value = (event.target as HTMLInputElement).value.trim();
 
   return value.length === 0 ? null : value;
 }

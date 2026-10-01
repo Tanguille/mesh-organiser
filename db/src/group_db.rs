@@ -14,7 +14,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
+    push_in_i64, random_hex_32, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
@@ -139,7 +139,7 @@ pub async fn get_groups(
     let filtered_on_models = options.model_ids.is_some();
     let filtered_on_file_types = options.file_types.is_some();
 
-    let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
+    let group_resource_map = crate::resource_db::get_group_id_to_resource_map(db, user).await?;
 
     // Fetch the full "fetch all" default window; actual pagination happens in-memory below.
     let models = model_db::get_models(

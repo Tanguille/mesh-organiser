@@ -72,7 +72,7 @@ pub async fn download_model(
             user_hash: Some(user_hash),
             share_id: None,
         } => match extract_user_via_id_and_hash(&app_state, user_id, &user_hash).await {
-            Some(u) => u,
+            Some(user) => user,
             None => return StatusCode::NOT_FOUND.into_response(),
         },
         DownloadModelParams {
@@ -143,7 +143,11 @@ pub async fn get_blob_thumb(
 ) -> Result<Response, ApplicationError> {
     // Validate that the sha256 parameter is a well-formed SHA-256 hex string.
     // Ensures a single, safe filename component (no separators).
-    if sha256.len() != 64 || !sha256.chars().all(|c: char| c.is_ascii_hexdigit()) {
+    if sha256.len() != 64
+        || !sha256
+            .chars()
+            .all(|character: char| character.is_ascii_hexdigit())
+    {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
 

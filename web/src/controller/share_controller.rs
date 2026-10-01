@@ -15,7 +15,6 @@ use db::{
     },
     share_db, time_now, user_db,
 };
-
 use service::AppState;
 
 use crate::{
@@ -61,7 +60,7 @@ pub async fn get_shares(
 
     let shares: Vec<ShareDto> = shares
         .into_iter()
-        .map(|s| s.to_dto(user.username.clone()))
+        .map(|share| share.to_dto(user.username.clone()))
         .collect();
 
     Ok(Json(shares).into_response())

@@ -250,8 +250,6 @@ pub async fn generate_thumbnails(
 mod tests {
     use std::path::PathBuf;
 
-    use db::model::blob::FileType;
-
     use crate::ServiceError;
 
     use super::thumbnail_extension_for_path;
@@ -260,7 +258,7 @@ mod tests {
     fn thumbnail_extension_stl() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("x.stl")).unwrap(),
-            FileType::Stl
+            db::model::blob::FileType::Stl
         );
     }
 
@@ -268,7 +266,7 @@ mod tests {
     fn thumbnail_extension_stl_uppercase() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("x.STL")).unwrap(),
-            FileType::Stl
+            db::model::blob::FileType::Stl
         );
     }
 
@@ -276,7 +274,7 @@ mod tests {
     fn thumbnail_extension_obj() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("model.obj")).unwrap(),
-            FileType::Obj
+            db::model::blob::FileType::Obj
         );
     }
 
@@ -284,7 +282,7 @@ mod tests {
     fn thumbnail_extension_gcode() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("print.gcode")).unwrap(),
-            FileType::Gcode
+            db::model::blob::FileType::Gcode
         );
     }
 
@@ -292,7 +290,7 @@ mod tests {
     fn thumbnail_extension_3mf() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("x.3mf")).unwrap(),
-            FileType::Threemf
+            db::model::blob::FileType::Threemf
         );
     }
 
@@ -300,7 +298,7 @@ mod tests {
     fn thumbnail_extension_stl_zip() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("x.stl.zip")).unwrap(),
-            FileType::ZippedStl
+            db::model::blob::FileType::ZippedStl
         );
     }
 
@@ -308,7 +306,7 @@ mod tests {
     fn thumbnail_extension_obj_zip() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("a/b.obj.zip")).unwrap(),
-            FileType::ZippedObj
+            db::model::blob::FileType::ZippedObj
         );
     }
 
@@ -316,7 +314,7 @@ mod tests {
     fn thumbnail_extension_gcode_zip() {
         assert_eq!(
             thumbnail_extension_for_path(&PathBuf::from("out.gcode.zip")).unwrap(),
-            FileType::ZippedGcode
+            db::model::blob::FileType::ZippedGcode
         );
     }
 

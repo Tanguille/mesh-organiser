@@ -2,8 +2,6 @@
 //!
 //! Limits are expressed in UTF-8 bytes for strings (`str::len()`).
 
-use std::str::FromStr;
-
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -189,12 +187,12 @@ fn validate_list_query_strings(
 /// `FromStr` work stays bounded even if validation is skipped by mistake. Oversized or
 /// unknown values fall back to `default`.
 #[must_use]
-pub fn parse_order_by_bounded<T: FromStr>(str: &str, default: T) -> T {
-    if str.len() > MAX_ORDER_BY_BYTES {
+pub fn parse_order_by_bounded<T: std::str::FromStr>(order_by: &str, default: T) -> T {
+    if order_by.len() > MAX_ORDER_BY_BYTES {
         return default;
     }
 
-    T::from_str(str).unwrap_or(default)
+    T::from_str(order_by).unwrap_or(default)
 }
 
 /// Rejects pagination parameters that would allow unbounded allocations or overflow in offset math.

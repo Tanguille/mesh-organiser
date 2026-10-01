@@ -145,8 +145,8 @@
     selection.destroy();
   });
 
-  function onSearchInput(e: Event) {
-    debouncedSetNewSearchText(normalizeSearchInput(e));
+  function onSearchInput(event: Event) {
+    debouncedSetNewSearchText(normalizeSearchInput(event));
   }
 
   const modelsInSelectedGroups = $derived(selected.flatMap((g) => g.models));

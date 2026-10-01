@@ -67,11 +67,11 @@ where
     for line in reader.lines() {
         let line = line?;
         if line.starts_with("G1") || line.starts_with("G0") {
-            if let Some(caps) = REGEX_Z.captures(&line) {
-                last_z = caps.get(1).unwrap().as_str().parse::<f32>()?;
+            if let Some(captures) = REGEX_Z.captures(&line) {
+                last_z = captures.get(1).unwrap().as_str().parse::<f32>()?;
             }
 
-            if let Some(caps) = REGEX_XY.captures(&line) {
+            if let Some(captures) = REGEX_XY.captures(&line) {
                 if position_unsafe {
                     entries.push(Point {
                         v: Vec3::new(last_x, last_y, last_z),
@@ -80,16 +80,16 @@ where
                     position_unsafe = false;
                 }
 
-                last_x = caps.get(1).unwrap().as_str().parse::<f32>()?;
-                last_y = caps.get(2).unwrap().as_str().parse::<f32>()?;
+                last_x = captures.get(1).unwrap().as_str().parse::<f32>()?;
+                last_y = captures.get(2).unwrap().as_str().parse::<f32>()?;
 
                 entries.push(Point {
                     v: Vec3::new(last_x, last_y, last_z),
                     use_line: true,
                 });
-            } else if let Some(caps) = REGEX_XY_NO_EXTRUSION.captures(&line) {
-                last_x = caps.get(1).unwrap().as_str().parse::<f32>()?;
-                last_y = caps.get(2).unwrap().as_str().parse::<f32>()?;
+            } else if let Some(captures) = REGEX_XY_NO_EXTRUSION.captures(&line) {
+                last_x = captures.get(1).unwrap().as_str().parse::<f32>()?;
+                last_y = captures.get(2).unwrap().as_str().parse::<f32>()?;
                 position_unsafe = true;
             }
         }

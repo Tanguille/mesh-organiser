@@ -10,10 +10,10 @@ use axum_login::login_required;
 use serde::Deserialize;
 
 use db::{label_db, label_keyword_db};
-
 use service::AppState;
 
 use crate::{
+    controller::ModelIdsParams,
     error::ApplicationError,
     user::{Backend, CurrentUser},
 };
@@ -96,7 +96,7 @@ pub async fn set_label_on_models(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
     State(app_state): State<AppState>,
-    Json(params): Json<crate::controller::ModelIdsParams>,
+    Json(params): Json<ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
     label_db::remove_labels_from_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
         .await?;
@@ -211,7 +211,7 @@ pub async fn remove_label_from_models(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
     State(app_state): State<AppState>,
-    Json(params): Json<crate::controller::ModelIdsParams>,
+    Json(params): Json<ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
     label_db::remove_labels_from_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
         .await?;

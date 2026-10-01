@@ -10,11 +10,10 @@ use axum_login::login_required;
 use serde::{Deserialize, Serialize};
 
 use db::{group_db, group_db::GroupFilterOptions, model::blob::FileType};
-
 use service::AppState;
 
 use crate::{
-    controller::share_controller::resolve_share_owner,
+    controller::{ModelIdsParams, share_controller::resolve_share_owner},
     error::ApplicationError,
     query_bounds,
     user::{Backend, CurrentUser},
@@ -82,7 +81,7 @@ pub async fn get_groups(
 
     let model_ids =
         match query_bounds::optional_comma_separated_model_ids(params.model_ids_str.as_deref()) {
-            Ok(v) => v,
+            Ok(model_ids) => model_ids,
             Err(e) => return Ok(query_bounds::bad_request(&e)),
         };
 
@@ -217,7 +216,7 @@ pub async fn delete_group(
 pub async fn remove_models_from_group(
     CurrentUser(user): CurrentUser,
     State(app_state): State<AppState>,
-    Json(params): Json<crate::controller::ModelIdsParams>,
+    Json(params): Json<ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
     group_db::set_group_id_on_models(&app_state.db, &user, None, params.model_ids, None).await?;
 
@@ -244,7 +243,7 @@ pub async fn add_models_to_group(
     CurrentUser(user): CurrentUser,
     Path(group_id): Path<i64>,
     State(app_state): State<AppState>,
-    Json(params): Json<crate::controller::ModelIdsParams>,
+    Json(params): Json<ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
     group_db::set_group_id_on_models(&app_state.db, &user, Some(group_id), params.model_ids, None)
         .await?;

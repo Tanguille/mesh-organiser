@@ -17,7 +17,7 @@ use crate::{error::ApplicationError, tauri_app_state::TauriAppState, tauri_impor
 use service::{
     download_file_service,
     export_service::get_temp_dir,
-    import_service::{self, DirectoryScanModel},
+    import_service::DirectoryScanModel,
     import_state::{ImportState, ImportStatus},
 };
 
@@ -316,7 +316,7 @@ pub async fn upload_models_to_remote_server(
     let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
 
     let client = login(&token, &base_url).await?;
-    let mut scan = import_service::expand_paths(&paths, recursive).await?;
+    let mut scan = service::import_service::expand_paths(&paths, recursive).await?;
     let import_state = process_uploads(
         &client,
         &base_url,

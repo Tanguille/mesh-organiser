@@ -7,7 +7,6 @@ use axum::{
 };
 
 use db::user_db;
-
 use service::AppState;
 
 use crate::{
@@ -39,26 +38,34 @@ pub async fn me(
 
 pub async fn password(
     auth_session: AuthSession,
-    Json(creds): Json<PasswordCredentials>,
+    Json(credentials): Json<PasswordCredentials>,
 ) -> Response {
     login_inner(
         auth_session,
-        Credentials::Password(creds),
+        Credentials::Password(credentials),
         "Invalid username or password",
     )
     .await
 }
 
-pub async fn token(auth_session: AuthSession, Json(creds): Json<TokenCredentials>) -> Response {
-    login_inner(auth_session, Credentials::Token(creds), "Invalid token").await
+pub async fn token(
+    auth_session: AuthSession,
+    Json(credentials): Json<TokenCredentials>,
+) -> Response {
+    login_inner(
+        auth_session,
+        Credentials::Token(credentials),
+        "Invalid token",
+    )
+    .await
 }
 
 async fn login_inner(
     mut auth_session: AuthSession,
-    creds: Credentials,
+    credentials: Credentials,
     invalid_message: &'static str,
 ) -> Response {
-    let user = match auth_session.authenticate(creds).await {
+    let user = match auth_session.authenticate(credentials).await {
         Ok(Some(user)) => user,
         Ok(None) => return (StatusCode::UNAUTHORIZED, invalid_message).into_response(),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
