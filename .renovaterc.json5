@@ -24,7 +24,7 @@
       description: "Use deps(<manager>): commits so dependency updates never bump the app major/minor",
       matchPackageNames: ["*"],
       semanticCommitType: "deps",
-      commitMessagePrefix: "deps({{manager}}):"
+      commitMessagePrefix: "deps({{manager}}):",
     },
     {
       description: "Auto-merge patch bumps once they have aged 1 day",
