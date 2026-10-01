@@ -18,6 +18,15 @@
   dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
   packageRules: [
     {
+      // The base preset titles majors `feat(scope)!:` and minors `feat(scope):`, which release-please
+      // reads as app major/minor bumps. `deps(<manager>):` (the Dependabot-era convention) bumps the
+      // app patch version and lands under "Dependencies" in CHANGELOG.md instead.
+      description: "Use deps(<manager>): commits so dependency updates never bump the app major/minor",
+      matchPackageNames: ["*"],
+      semanticCommitType: "deps",
+      commitMessagePrefix: "deps({{manager}}):"
+    },
+    {
       description: "Auto-merge patch bumps once they have aged 1 day",
       matchUpdateTypes: ["patch"],
       minimumReleaseAge: "1 day",
