@@ -146,16 +146,11 @@ mod put {
         Ok(StatusCode::NO_CONTENT.into_response())
     }
 
-    #[derive(Deserialize)]
-    pub struct SetModelIdsOnShareParams {
-        pub model_ids: Vec<i64>,
-    }
-
     pub async fn set_model_ids_on_share(
         CurrentUser(user): CurrentUser,
         Path(share_id): Path<String>,
         State(app_state): State<WebAppState>,
-        Json(params): Json<SetModelIdsOnShareParams>,
+        Json(params): Json<crate::controller::ModelIdsParams>,
     ) -> Result<Response, ApplicationError> {
         share_db::set_model_ids_on_share(
             &app_state.app_state.db,

@@ -109,10 +109,9 @@ mod get {
                 },
                 group_ids: query_bounds::none_if_empty(params.group_ids),
                 label_ids: query_bounds::none_if_empty(params.label_ids),
-                order_by: params
-                    .order_by
-                    .as_deref()
-                    .map(query_bounds::parse_group_order_by_bounded),
+                order_by: params.order_by.as_deref().map(|order_by| {
+                    query_bounds::parse_order_by_bounded(order_by, group_db::GroupOrderBy::NameAsc)
+                }),
                 text_search: params.text_search,
                 file_types: query_bounds::none_if_empty(params.file_types),
                 page: params.page,
@@ -148,10 +147,9 @@ mod get {
                 model_ids: share.model_ids.into(),
                 group_ids: query_bounds::none_if_empty(params.group_ids),
                 label_ids: None,
-                order_by: params
-                    .order_by
-                    .as_deref()
-                    .map(query_bounds::parse_group_order_by_bounded),
+                order_by: params.order_by.as_deref().map(|order_by| {
+                    query_bounds::parse_order_by_bounded(order_by, group_db::GroupOrderBy::NameAsc)
+                }),
                 text_search: params.text_search,
                 file_types: query_bounds::none_if_empty(params.file_types),
                 page: params.page,
@@ -228,8 +226,8 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
-        StatusCode, WebAppState, group_db,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, StatusCode,
+        WebAppState, group_db,
     };
 
     pub async fn delete_group(
@@ -242,15 +240,10 @@ mod delete {
         Ok(StatusCode::NO_CONTENT.into_response())
     }
 
-    #[derive(Deserialize)]
-    pub struct RemoveModelsFromGroupParams {
-        pub model_ids: Vec<i64>,
-    }
-
     pub async fn remove_models_from_group(
         CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
-        Json(params): Json<RemoveModelsFromGroupParams>,
+        Json(params): Json<crate::controller::ModelIdsParams>,
     ) -> Result<Response, ApplicationError> {
         group_db::set_group_id_on_models(
             &app_state.app_state.db,
@@ -288,16 +281,11 @@ mod post {
         Ok(Json(group_meta).into_response())
     }
 
-    #[derive(Deserialize)]
-    pub struct AddModelsToGroupParams {
-        pub model_ids: Vec<i64>,
-    }
-
     pub async fn add_models_to_group(
         CurrentUser(user): CurrentUser,
         Path(group_id): Path<i64>,
         State(app_state): State<WebAppState>,
-        Json(params): Json<AddModelsToGroupParams>,
+        Json(params): Json<crate::controller::ModelIdsParams>,
     ) -> Result<Response, ApplicationError> {
         group_db::set_group_id_on_models(
             &app_state.app_state.db,

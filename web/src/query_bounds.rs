@@ -10,7 +10,7 @@ use axum::{
 };
 use thiserror::Error;
 
-use db::{MAX_PAGE_SIZE, group_db::GroupOrderBy, model_db::ModelOrderBy};
+use db::MAX_PAGE_SIZE;
 
 /// Maximum number of `i64` IDs accepted per repeated query parameter (`?model_ids=1&model_ids=2`).
 pub const MAX_ID_LIST_ITEMS: usize = 10_000;
@@ -186,24 +186,15 @@ fn validate_list_query_strings(
 }
 
 /// Parses `order_by` query values only when UTF-8 length is within [`MAX_ORDER_BY_BYTES`], so
-/// `FromStr` work stays bounded even if validation is skipped by mistake.
+/// `FromStr` work stays bounded even if validation is skipped by mistake. Oversized or
+/// unknown values fall back to `default`.
 #[must_use]
-pub fn parse_model_order_by_bounded(str: &str) -> ModelOrderBy {
+pub fn parse_order_by_bounded<T: FromStr>(str: &str, default: T) -> T {
     if str.len() > MAX_ORDER_BY_BYTES {
-        return ModelOrderBy::AddedDesc;
+        return default;
     }
 
-    ModelOrderBy::from_str(str).unwrap_or(ModelOrderBy::AddedDesc)
-}
-
-/// Same as [`parse_model_order_by_bounded`] for group list `order_by`.
-#[must_use]
-pub fn parse_group_order_by_bounded(str: &str) -> GroupOrderBy {
-    if str.len() > MAX_ORDER_BY_BYTES {
-        return GroupOrderBy::NameAsc;
-    }
-
-    GroupOrderBy::from_str(str).unwrap_or(GroupOrderBy::NameAsc)
+    T::from_str(str).unwrap_or(default)
 }
 
 /// Rejects pagination parameters that would allow unbounded allocations or overflow in offset math.
@@ -350,31 +341,37 @@ mod tests {
     }
 
     #[test]
-    fn parse_model_order_by_bounded_rejects_oversized_without_parsing() {
+    fn parse_order_by_bounded_model_rejects_oversized_without_parsing() {
         let junk = "AddedDesc".repeat(100);
         assert!(junk.len() > MAX_ORDER_BY_BYTES);
-        assert_eq!(parse_model_order_by_bounded(&junk), ModelOrderBy::AddedDesc);
+        assert_eq!(
+            parse_order_by_bounded(&junk, ModelOrderBy::AddedDesc),
+            ModelOrderBy::AddedDesc
+        );
     }
 
     #[test]
-    fn parse_model_order_by_bounded_accepts_known_variant() {
+    fn parse_order_by_bounded_model_accepts_known_variant() {
         assert_eq!(
-            parse_model_order_by_bounded("NameAsc"),
+            parse_order_by_bounded("NameAsc", ModelOrderBy::AddedDesc),
             ModelOrderBy::NameAsc
         );
     }
 
     #[test]
-    fn parse_group_order_by_bounded_rejects_oversized() {
+    fn parse_order_by_bounded_group_rejects_oversized() {
         let junk = "NameAsc".repeat(100);
         assert!(junk.len() > MAX_ORDER_BY_BYTES);
-        assert_eq!(parse_group_order_by_bounded(&junk), GroupOrderBy::NameAsc);
+        assert_eq!(
+            parse_order_by_bounded(&junk, GroupOrderBy::NameAsc),
+            GroupOrderBy::NameAsc
+        );
     }
 
     #[test]
-    fn parse_group_order_by_bounded_accepts_known_variant() {
+    fn parse_order_by_bounded_group_accepts_known_variant() {
         assert_eq!(
-            parse_group_order_by_bounded("CreatedDesc"),
+            parse_order_by_bounded("CreatedDesc", GroupOrderBy::NameAsc),
             GroupOrderBy::CreatedDesc
         );
     }

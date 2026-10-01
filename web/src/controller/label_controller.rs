@@ -113,16 +113,11 @@ mod post {
         Ok(Json(label_meta).into_response())
     }
 
-    #[derive(Deserialize)]
-    pub struct SetLabelOnModelsParams {
-        pub model_ids: Vec<i64>,
-    }
-
     pub async fn set_label_on_models(
         CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
-        Json(params): Json<SetLabelOnModelsParams>,
+        Json(params): Json<crate::controller::ModelIdsParams>,
     ) -> Result<Response, ApplicationError> {
         label_db::remove_labels_from_models(
             &app_state.app_state.db,
@@ -264,8 +259,8 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
-        StatusCode, WebAppState, label_db,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, StatusCode,
+        WebAppState, label_db,
     };
 
     pub async fn delete_label(
@@ -278,16 +273,11 @@ mod delete {
         Ok(StatusCode::NO_CONTENT.into_response())
     }
 
-    #[derive(Deserialize)]
-    pub struct RemoveLabelFromModelsParams {
-        pub model_ids: Vec<i64>,
-    }
-
     pub async fn remove_label_from_models(
         CurrentUser(user): CurrentUser,
         Path(label_id): Path<i64>,
         State(app_state): State<WebAppState>,
-        Json(params): Json<RemoveLabelFromModelsParams>,
+        Json(params): Json<crate::controller::ModelIdsParams>,
     ) -> Result<Response, ApplicationError> {
         label_db::remove_labels_from_models(
             &app_state.app_state.db,

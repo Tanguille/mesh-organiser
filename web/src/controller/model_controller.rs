@@ -97,10 +97,12 @@ mod get {
                 model_ids: query_bounds::none_if_empty(params.model_ids),
                 group_ids: query_bounds::none_if_empty(params.group_ids),
                 label_ids: query_bounds::none_if_empty(params.label_ids),
-                order_by: params
-                    .order_by
-                    .as_deref()
-                    .map(query_bounds::parse_model_order_by_bounded),
+                order_by: params.order_by.as_deref().map(|order_by| {
+                    query_bounds::parse_order_by_bounded(
+                        order_by,
+                        model_db::ModelOrderBy::AddedDesc,
+                    )
+                }),
                 model_flags: if flags.is_empty() { None } else { Some(flags) },
                 file_types: query_bounds::none_if_empty(params.file_types),
                 text_search: params.text_search,
@@ -237,8 +239,8 @@ mod put {
 
 mod delete {
     use super::{
-        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
-        StatusCode, WebAppState, export_service,
+        ApplicationError, CurrentUser, IntoResponse, Json, Path, Response, State, StatusCode,
+        WebAppState, export_service,
     };
 
     pub async fn delete_model(
@@ -251,15 +253,10 @@ mod delete {
         Ok(StatusCode::NO_CONTENT.into_response())
     }
 
-    #[derive(Deserialize)]
-    pub struct DeleteModelsParams {
-        pub model_ids: Vec<i64>,
-    }
-
     pub async fn delete_models(
         CurrentUser(user): CurrentUser,
         State(app_state): State<WebAppState>,
-        Json(params): Json<DeleteModelsParams>,
+        Json(params): Json<crate::controller::ModelIdsParams>,
     ) -> Result<Response, ApplicationError> {
         export_service::delete_models(&app_state.app_state, &user, params.model_ids).await?;
 
