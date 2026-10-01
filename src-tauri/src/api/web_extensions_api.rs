@@ -7,7 +7,7 @@ use std::{
 use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
 use futures::future::try_join_all;
 use serde::Serialize;
-use tauri::{AppHandle, State, http::header::CONTENT_TYPE, ipc::Response};
+use tauri::{AppHandle, State, http::header::CONTENT_TYPE};
 use tauri_plugin_http::reqwest;
 use tokio::{fs::File, io::BufReader, task::JoinSet};
 use tokio_util::{compat::TokioAsyncReadCompatExt, io::ReaderStream};
@@ -17,7 +17,7 @@ use crate::{error::ApplicationError, tauri_app_state::TauriAppState, tauri_impor
 use service::{
     download_file_service,
     export_service::get_temp_dir,
-    import_service::{self, DirectoryScanModel, is_importable_upload},
+    import_service::{self, DirectoryScanModel},
     import_state::{ImportState, ImportStatus},
 };
 
@@ -341,29 +341,4 @@ pub async fn upload_models_to_remote_server(
         import_state,
         uploaded_models: scan,
     })
-}
-
-#[tauri::command]
-pub async fn expand_paths(
-    paths: Vec<String>,
-    recursive: bool,
-) -> Result<Vec<DirectoryScanModel>, ApplicationError> {
-    let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-
-    Ok(import_service::expand_paths(&paths, recursive).await?)
-}
-
-#[tauri::command]
-pub async fn get_file_bytes(path: String) -> Result<Response, ApplicationError> {
-    let path = PathBuf::from(path);
-
-    if !is_importable_upload(&path) {
-        return Err(ApplicationError::InternalError(
-            "Unsupported file extension for getting bytes".into(),
-        ));
-    }
-
-    let bytes = tokio::fs::read(&path).await?;
-
-    Ok(Response::new(bytes))
 }
