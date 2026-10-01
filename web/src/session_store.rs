@@ -123,3 +123,164 @@ impl SessionStore for SqliteStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use serde_json::json;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use time::{Duration, OffsetDateTime};
+    use tower_sessions::{
+        ExpiredDeletion, SessionStore,
+        session::{Id, Record},
+    };
+
+    use super::SqliteStore;
+
+    // One connection so every query sees the same in-memory database.
+    async fn new_store() -> SqliteStore {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let store = SqliteStore::new(pool);
+        store.migrate().await.unwrap();
+
+        store
+    }
+
+    fn record_expiring_in(offset: Duration) -> Record {
+        let mut record = Record {
+            id: Id::default(),
+            data: HashMap::default(),
+            expiry_date: OffsetDateTime::now_utc() + offset,
+        };
+        record.data.insert("user".to_owned(), json!({ "id": 7 }));
+
+        record
+    }
+
+    // Writes a row the way `tower-sessions-sqlx-store` does: msgpack blob, expiry bound as
+    // `OffsetDateTime`.
+    async fn insert_raw(store: &SqliteStore, record: &Record) {
+        sqlx::query("insert into tower_sessions (id, data, expiry_date) values (?, ?, ?)")
+            .bind(record.id.to_string())
+            .bind(rmp_serde::to_vec(record).unwrap())
+            .bind(record.expiry_date)
+            .execute(&store.pool)
+            .await
+            .unwrap();
+    }
+
+    async fn row_count(store: &SqliteStore) -> i64 {
+        sqlx::query_scalar("select count(*) from tower_sessions")
+            .fetch_one(&store.pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn migrate_is_idempotent() {
+        let store = new_store().await;
+
+        store.migrate().await.unwrap();
+
+        assert_eq!(row_count(&store).await, 0);
+    }
+
+    #[tokio::test]
+    async fn create_then_load_round_trips() {
+        let store = new_store().await;
+        let mut record = record_expiring_in(Duration::hours(1));
+
+        store.create(&mut record).await.unwrap();
+        let loaded = store.load(&record.id).await.unwrap();
+
+        assert_eq!(loaded, Some(record));
+    }
+
+    #[tokio::test]
+    async fn load_unknown_id_returns_none() {
+        let store = new_store().await;
+
+        assert_eq!(store.load(&Id::default()).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn save_inserts_then_updates() {
+        let store = new_store().await;
+        let mut record = record_expiring_in(Duration::hours(1));
+
+        store.save(&record).await.unwrap();
+        assert_eq!(store.load(&record.id).await.unwrap(), Some(record.clone()));
+
+        record.data.insert("user".to_owned(), json!("changed"));
+        record.expiry_date += Duration::hours(1);
+        store.save(&record).await.unwrap();
+
+        assert_eq!(row_count(&store).await, 1);
+        assert_eq!(store.load(&record.id).await.unwrap(), Some(record));
+    }
+
+    #[tokio::test]
+    async fn delete_removes_record_and_is_idempotent() {
+        let store = new_store().await;
+        let mut record = record_expiring_in(Duration::hours(1));
+        store.create(&mut record).await.unwrap();
+
+        store.delete(&record.id).await.unwrap();
+        store.delete(&record.id).await.unwrap();
+
+        assert_eq!(store.load(&record.id).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn create_regenerates_id_on_collision() {
+        let store = new_store().await;
+        let mut first = record_expiring_in(Duration::hours(1));
+        store.create(&mut first).await.unwrap();
+        let mut second = record_expiring_in(Duration::hours(1));
+        second.id = first.id;
+
+        store.create(&mut second).await.unwrap();
+
+        assert_ne!(second.id, first.id);
+        assert_eq!(row_count(&store).await, 2);
+        assert_eq!(store.load(&first.id).await.unwrap(), Some(first));
+        assert_eq!(store.load(&second.id).await.unwrap(), Some(second));
+    }
+
+    #[tokio::test]
+    async fn load_ignores_expired_record() {
+        let store = new_store().await;
+        let expired = record_expiring_in(Duration::hours(-1));
+        insert_raw(&store, &expired).await;
+
+        assert_eq!(store.load(&expired.id).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn delete_expired_removes_only_expired_rows() {
+        let store = new_store().await;
+        let expired = record_expiring_in(Duration::hours(-1));
+        let valid = record_expiring_in(Duration::hours(1));
+        insert_raw(&store, &expired).await;
+        insert_raw(&store, &valid).await;
+
+        store.delete_expired().await.unwrap();
+
+        assert_eq!(row_count(&store).await, 1);
+        assert_eq!(store.load(&valid.id).await.unwrap(), Some(valid));
+    }
+
+    #[tokio::test]
+    async fn loads_row_written_in_old_crate_layout() {
+        let store = new_store().await;
+        let record = record_expiring_in(Duration::days(1));
+        insert_raw(&store, &record).await;
+
+        assert_eq!(store.load(&record.id).await.unwrap(), Some(record));
+    }
+}
