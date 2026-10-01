@@ -29,12 +29,7 @@ pub fn router() -> Router<WebAppState> {
                 "/labels/{label_id}/models",
                 delete(delete::remove_label_from_models),
             )
-            .route("/labels/{label_id}/childs", post(post::add_childs_to_label))
             .route("/labels/{label_id}/childs", put(put::set_childs_on_label))
-            .route(
-                "/labels/{label_id}/childs",
-                delete(delete::remove_childs_from_label),
-            )
             .route(
                 "/labels/{label_id}/keywords",
                 get(get::get_keywords_for_label),
@@ -142,29 +137,6 @@ mod post {
             &user,
             &[label_id],
             &params.model_ids,
-            None,
-        )
-        .await?;
-
-        Ok(StatusCode::NO_CONTENT.into_response())
-    }
-
-    #[derive(Deserialize)]
-    pub struct AddChildsToLabelParams {
-        pub child_label_ids: Vec<i64>,
-    }
-
-    pub async fn add_childs_to_label(
-        CurrentUser(user): CurrentUser,
-        Path(parent_label_id): Path<i64>,
-        State(app_state): State<WebAppState>,
-        Json(params): Json<AddChildsToLabelParams>,
-    ) -> Result<Response, ApplicationError> {
-        label_db::add_childs_to_label(
-            &app_state.app_state.db,
-            &user,
-            parent_label_id,
-            params.child_label_ids,
             None,
         )
         .await?;
@@ -322,29 +294,6 @@ mod delete {
             &user,
             &[label_id],
             &params.model_ids,
-            None,
-        )
-        .await?;
-
-        Ok(StatusCode::NO_CONTENT.into_response())
-    }
-
-    #[derive(Deserialize)]
-    pub struct RemoveChildsFromLabelParams {
-        pub child_label_ids: Vec<i64>,
-    }
-
-    pub async fn remove_childs_from_label(
-        CurrentUser(user): CurrentUser,
-        Path(parent_label_id): Path<i64>,
-        State(app_state): State<WebAppState>,
-        Json(params): Json<RemoveChildsFromLabelParams>,
-    ) -> Result<Response, ApplicationError> {
-        label_db::remove_childs_from_label(
-            &app_state.app_state.db,
-            &user,
-            parent_label_id,
-            params.child_label_ids,
             None,
         )
         .await?;

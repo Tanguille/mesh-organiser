@@ -12,7 +12,6 @@ db = { workspace = true }
 axum = { workspace = true, features = ["multipart"] }
 axum-extra = { workspace = true, features = ["query"] }
 tokio = { workspace = true, features = [
-    "process",
     "rt-multi-thread",
     "signal",
 ] }

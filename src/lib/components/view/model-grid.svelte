@@ -13,7 +13,7 @@
   import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
   import { configuration } from "$lib/configuration.svelte";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
-  import { debounce, wait } from "$lib/utils";
+  import { debounce, normalizeSearchInput, wait } from "$lib/utils";
   import { untrack } from "svelte";
   import Button from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -35,12 +35,8 @@
   let busyLoadingNext = $state.raw<boolean>(false);
 
   const isMobile = new IsMobile();
-  const showLeftSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length <= 0),
-  );
-  const showRightSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length > 0),
-  );
+  const showLeftSide = $derived(!isMobile.current || selected.length <= 0);
+  const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
   async function fetchNextModelSet() {
     if (busyLoadingNext) return;
@@ -76,10 +72,7 @@
   });
 
   function onSearchInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    debouncedSetNewSearchText(
-      target.value.trim().length === 0 ? null : target.value.trim(),
-    );
+    debouncedSetNewSearchText(normalizeSearchInput(e));
   }
 
   function onDeleteSelected() {

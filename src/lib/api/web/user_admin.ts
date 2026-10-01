@@ -54,16 +54,7 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   }
 
   async editUser(user: User): Promise<void> {
-    const dataUserEdit = {
-      user_name: user.username,
-      user_email: user.email,
-    };
-
-    await this.requestApi.request<void>(
-      `/users/${user.id}`,
-      HttpMethod.PUT,
-      dataUserEdit,
-    );
+    await this.editSelf(user);
 
     const dataPermissionsEdit = {
       permissions: permissionsToStringArray(user.permissions),

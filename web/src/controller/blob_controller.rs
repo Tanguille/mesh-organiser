@@ -28,7 +28,6 @@ pub fn router() -> Router<WebAppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
-            .route("/models/{model_id}/bytes", get(get::get_model_bytes))
             .route("/blobs/{sha256}/bytes", get(get::get_blob_bytes))
             .route("/blobs/download", post(post::create_blobs_zip_download))
             .route_layer(login_required!(Backend))
@@ -132,20 +131,6 @@ mod get {
         );
 
         response
-    }
-
-    pub async fn get_model_bytes(
-        CurrentUser(user): CurrentUser,
-        Path(model_id): Path<i64>,
-        State(app_state): State<WebAppState>,
-    ) -> Response {
-        let Ok(Some(model)) =
-            model_db::get_model_via_id(&app_state.app_state.db, &user, model_id).await
-        else {
-            return StatusCode::NOT_FOUND.into_response();
-        };
-
-        get_blob_bytes_inner(&model.blob, &app_state).await
     }
 
     pub async fn get_blob_bytes(
