@@ -124,9 +124,8 @@ impl Default for Configuration {
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests: lock in Configuration::default() and the serde deserialization
-// path that replaced stored_to_configuration, so defaults and the slicer-stays-None
-// behaviour for missing/null keys don't regress.
+// Tests for Configuration::default() and serde deserialization: defaults apply
+// and the slicer stays None for missing/null keys.
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -199,8 +198,7 @@ mod tests {
         assert_eq!(config.group_split_view, default.group_split_view);
     }
 
-    // Rewritten from the former stored_to_configuration_overrides_single_field:
-    // a single overridden field wins; everything else falls back to default.
+    // A single overridden field wins; everything else falls back to default.
     #[test]
     fn deserialize_overrides_single_field() {
         let default = Configuration::default();

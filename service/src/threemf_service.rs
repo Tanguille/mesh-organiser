@@ -404,8 +404,7 @@ pub async fn extract_models_with_thumbnails(
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests: lock in parse_model_settings_config (regex, part id/name,
-// unwrap_or(u32::MAX)) after clippy refactors.
+// Tests for parse_model_settings_config (regex, part id/name, unwrap_or(u32::MAX)).
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -450,8 +449,8 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Zip-reading behaviour for fetch_model_settings_config_from_3mf (DRY
-    // refactor guard: read_zip_entry_by_suffix + callers).
+    // Zip-reading behaviour for fetch_model_settings_config_from_3mf
+    // (read_zip_entry_by_suffix + callers).
     // -------------------------------------------------------------------------
 
     fn write_zip_with_entries(path: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
