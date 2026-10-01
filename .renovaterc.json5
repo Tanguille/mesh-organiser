@@ -1,17 +1,14 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["config:recommended"],
-  // Matches the old Dependabot open-pull-requests-limit.
-  prConcurrentLimit: 5,
-  // A fork is only processed with a committed config; this keeps it that way if the file moves.
+  extends: [
+    "abandonments:recommended",
+    // Pin every github> preset to the same tag; an unpinned one tracks main.
+    "github>home-operations/renovate-presets#8.1.0"
+  ],
+  // This repo is a fork; only a committed config makes Renovate process it.
   forkProcessing: "enabled",
-  // Dependabot's labels and `deps(<ecosystem>):` commit prefixes, kept so history and filters stay the same.
+  // Dependabot labelled every update PR.
   labels: ["dependencies"],
-  semanticCommits: "disabled",
-  packageRules: [
-    { matchManagers: ["npm"], addLabels: ["npm"], commitMessagePrefix: "deps(npm):" },
-    { matchManagers: ["cargo"], addLabels: ["rust"], commitMessagePrefix: "deps(rust):" },
-    { matchManagers: ["github-actions"], addLabels: ["github-actions"], commitMessagePrefix: "deps(ci):" },
-    { matchManagers: ["dockerfile"], addLabels: ["docker"], commitMessagePrefix: "deps(docker):" }
-  ]
+  // The operator webhook starts a run on any ticked dashboard checkbox; Renovate resets it on rewrite.
+  dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository"
 }
