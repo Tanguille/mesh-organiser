@@ -10,9 +10,7 @@ use std::{fs, path::PathBuf};
 use tempfile::tempdir;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 
-use service::download_file_service::{
-    download_file, download_file_to, get_content_disposition_filename,
-};
+use service::download_file_service::{download_file_to, get_content_disposition_filename};
 
 #[tokio::test]
 async fn download_file_to_writes_file_with_content_disposition() {
@@ -151,7 +149,9 @@ async fn assert_download(url_path: &str, expected_name: &str, expected_source: &
         .await;
 
     let url = format!("{}/{url_path}", mock_server.uri());
-    let result = download_file(&url).await.expect("download should succeed");
+    let result = service::download_file_service::download_file(&url)
+        .await
+        .expect("download should succeed");
 
     let path = PathBuf::from(&result.path);
     assert!(path.exists());
