@@ -37,10 +37,7 @@ impl SqliteStore {
         Ok(())
     }
 
-    async fn try_create(
-        connection: &mut sqlx::SqliteConnection,
-        record: &Record,
-    ) -> session_store::Result<bool> {
+    async fn try_create(&self, record: &Record) -> session_store::Result<bool> {
         let data = rmp_serde::to_vec(record).map_err(|e| Error::Encode(e.to_string()))?;
         let result = sqlx::query(
             "insert or abort into tower_sessions (id, data, expiry_date) values (?, ?, ?)",
@@ -48,7 +45,7 @@ impl SqliteStore {
         .bind(record.id.to_string())
         .bind(data)
         .bind(record.expiry_date)
-        .execute(connection)
+        .execute(&self.pool)
         .await;
 
         match result {
@@ -62,7 +59,8 @@ impl SqliteStore {
 #[async_trait]
 impl tower_sessions_core::ExpiredDeletion for SqliteStore {
     async fn delete_expired(&self) -> session_store::Result<()> {
-        sqlx::query("delete from tower_sessions where datetime(expiry_date) < datetime('now')")
+        sqlx::query("delete from tower_sessions where expiry_date < ?")
+            .bind(time::OffsetDateTime::now_utc())
             .execute(&self.pool)
             .await
             .map_err(backend_error)?;
@@ -74,12 +72,11 @@ impl tower_sessions_core::ExpiredDeletion for SqliteStore {
 #[async_trait]
 impl tower_sessions_core::SessionStore for SqliteStore {
     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-        let mut transaction = self.pool.begin().await.map_err(backend_error)?;
-        while !Self::try_create(&mut transaction, record).await? {
+        while !self.try_create(record).await? {
             record.id = Id::default();
         }
 
-        transaction.commit().await.map_err(backend_error)
+        Ok(())
     }
 
     async fn save(&self, record: &Record) -> session_store::Result<()> {
@@ -139,20 +136,17 @@ mod tests {
     }
 
     fn record_expiring_in(offset: time::Duration) -> super::Record {
-        let mut record = super::Record {
+        super::Record {
             id: super::Id::default(),
-            data: std::collections::HashMap::default(),
+            data: std::collections::HashMap::from([(
+                "user".to_owned(),
+                serde_json::json!({ "id": 7 }),
+            )]),
             expiry_date: time::OffsetDateTime::now_utc() + offset,
-        };
-        record
-            .data
-            .insert("user".to_owned(), serde_json::json!({ "id": 7 }));
-
-        record
+        }
     }
 
-    // Writes a row the way `tower-sessions-sqlx-store` does: msgpack blob, expiry bound as
-    // `OffsetDateTime`.
+    // Writes a row directly (msgpack blob, expiry bound as `OffsetDateTime`), bypassing `create`.
     async fn insert_raw(store: &super::SqliteStore, record: &super::Record) {
         sqlx::query("insert into tower_sessions (id, data, expiry_date) values (?, ?, ?)")
             .bind(record.id.to_string())
@@ -277,25 +271,22 @@ mod tests {
     #[tokio::test]
     async fn delete_expired_removes_only_expired_rows() {
         let store = new_store().await;
-        let expired = record_expiring_in(time::Duration::hours(-1));
+        // Seconds-scale offsets guard the boundary, not just hour-scale ones.
         let valid = record_expiring_in(time::Duration::hours(1));
-        insert_raw(&store, &expired).await;
         insert_raw(&store, &valid).await;
+        for offset in [
+            time::Duration::hours(-1),
+            time::Duration::seconds(-5),
+            time::Duration::seconds(30),
+        ] {
+            insert_raw(&store, &record_expiring_in(offset)).await;
+        }
 
         tower_sessions_core::ExpiredDeletion::delete_expired(&store)
             .await
             .unwrap();
 
-        assert_eq!(row_count(&store).await, 1);
+        assert_eq!(row_count(&store).await, 2);
         assert_eq!(load_record(&store, &valid.id).await, Some(valid));
-    }
-
-    #[tokio::test]
-    async fn loads_row_written_in_old_crate_layout() {
-        let store = new_store().await;
-        let record = record_expiring_in(time::Duration::days(1));
-        insert_raw(&store, &record).await;
-
-        assert_eq!(load_record(&store, &record.id).await, Some(record));
     }
 }

@@ -24,9 +24,9 @@
       automerge: true,
     },
     {
-      description: "Hold tower-sessions until axum-login publishes tower-sessions 0.15 support",
-      matchPackageNames: ["tower-sessions"],
-      enabled: false,
+      description: "Hold tower-sessions below 0.15 until axum-login publishes tower-sessions 0.15 support",
+      matchPackageNames: ["tower-sessions", "tower-sessions-core"],
+      allowedVersions: "<0.15",
     },
   ],
 }
