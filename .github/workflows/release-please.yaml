@@ -1,0 +1,38 @@
+name: release-please
+
+# Creates (and keeps up to date) a release PR from conventional commits.
+# Merging that PR bumps `package.json` + `Cargo.toml` (+ CHANGELOG.md), which
+# then triggers the existing `release-tag` workflow to tag `vX.Y.Z`, create
+# the GitHub Release, and dispatch `publish` to build the Tauri binaries.
+#
+# Tagging/releases are intentionally left to `release-tag`:
+# `skip-github-release: true` in `release-please-config.json` stops
+# release-please from tagging, avoiding a race with `release-tag` (which
+# would otherwise skip its publish dispatch because the tag already exists).
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          # Prefer a PAT so CI runs on the release PRs it opens.
+          # `GITHUB_TOKEN`-created PRs do not trigger other workflows.
+          # See `.github/RELEASE.md` for the `RELEASE_PLEASE_TOKEN` setup.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
