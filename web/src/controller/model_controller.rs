@@ -118,6 +118,20 @@ pub async fn get_models(
     get_models_inner(&app_state, &user, params).await
 }
 
+/// Ids a share request may query: all of the share's ids when nothing specific
+/// was requested, otherwise only the requested ids that belong to the share.
+fn share_model_ids(share_ids: &[i64], requested: &[i64]) -> Vec<i64> {
+    if requested.is_empty() {
+        return share_ids.to_vec();
+    }
+
+    share_ids
+        .iter()
+        .copied()
+        .filter(|id| requested.contains(id))
+        .collect()
+}
+
 pub async fn get_share_models(
     Path(share_id): Path<String>,
     State(app_state): State<WebAppState>,
@@ -125,15 +139,13 @@ pub async fn get_share_models(
 ) -> Result<Response, ApplicationError> {
     let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
 
-    params.model_ids = if params.model_ids.is_empty() {
-        vec![]
-    } else {
-        share
-            .model_ids
-            .into_iter()
-            .filter(|x| params.model_ids.contains(x))
-            .collect()
-    };
+    params.model_ids = share_model_ids(&share.model_ids, &params.model_ids);
+
+    // An empty id list means "no restriction" in `get_models_inner`, which would
+    // expose every model of the share owner instead of none.
+    if params.model_ids.is_empty() {
+        return Ok(Json(Vec::<db::model::Model>::new()).into_response());
+    }
 
     params.group_ids = vec![];
     params.label_ids = vec![];
