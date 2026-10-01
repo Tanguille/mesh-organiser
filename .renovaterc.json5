@@ -18,9 +18,9 @@
   dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
   packageRules: [
     {
-      description: "Auto-merge patch bumps once they have aged 3 days",
+      description: "Auto-merge patch bumps once they have aged 1 day",
       matchUpdateTypes: ["patch"],
-      minimumReleaseAge: "3 days",
+      minimumReleaseAge: "1 day",
       automerge: true
     }
   ]
