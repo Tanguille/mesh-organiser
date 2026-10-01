@@ -179,8 +179,8 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     let redirect_url_filename = response_url.split('/').next_back().map_or_else(
         || "model.stl".to_string(),
-        |seg| {
-            percent_decode_str(seg)
+        |segment| {
+            percent_decode_str(segment)
                 .decode_utf8()
                 .unwrap_or_default()
                 .into_owned()

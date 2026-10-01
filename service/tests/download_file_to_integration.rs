@@ -7,11 +7,12 @@
 
 use std::{fs, path::PathBuf};
 
+use tempfile::tempdir;
+use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
+
 use service::download_file_service::{
     download_file, download_file_to, get_content_disposition_filename,
 };
-use tempfile::tempdir;
-use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 
 #[tokio::test]
 async fn download_file_to_writes_file_with_content_disposition() {
