@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Cursor, Read},
     path::Path,
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
 use regex::Regex;
@@ -16,9 +16,11 @@ use crate::{
     path_ext::{is_zip_of, matches_ext},
 };
 
-static REGEX_XY: OnceLock<Regex> = OnceLock::new();
-static REGEX_XY_NO_EXTRUSION: OnceLock<Regex> = OnceLock::new();
-static REGEX_Z: OnceLock<Regex> = OnceLock::new();
+static REGEX_XY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap());
+static REGEX_XY_NO_EXTRUSION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)").unwrap());
+static REGEX_Z: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"Z([\d.]+)").unwrap());
 
 pub fn handle_gcode(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     if matches_ext(path, "gcode") {
@@ -60,20 +62,16 @@ where
     let mut last_x = 0f32;
     let mut last_y = 0f32;
     let mut last_z = 0f32;
-    let regex_xy = REGEX_XY.get_or_init(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap());
-    let regex_xy_no_extrusion =
-        REGEX_XY_NO_EXTRUSION.get_or_init(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)").unwrap());
-    let regex_z = REGEX_Z.get_or_init(|| Regex::new(r"Z([\d.]+)").unwrap());
     let mut position_unsafe = false;
 
     for line in reader.lines() {
         let line = line?;
         if line.starts_with("G1") || line.starts_with("G0") {
-            if let Some(caps) = regex_z.captures(&line) {
+            if let Some(caps) = REGEX_Z.captures(&line) {
                 last_z = caps.get(1).unwrap().as_str().parse::<f32>()?;
             }
 
-            if let Some(caps) = regex_xy.captures(&line) {
+            if let Some(caps) = REGEX_XY.captures(&line) {
                 if position_unsafe {
                     entries.push(Point {
                         v: Vec3::new(last_x, last_y, last_z),
@@ -89,7 +87,7 @@ where
                     v: Vec3::new(last_x, last_y, last_z),
                     use_line: true,
                 });
-            } else if let Some(caps) = regex_xy_no_extrusion.captures(&line) {
+            } else if let Some(caps) = REGEX_XY_NO_EXTRUSION.captures(&line) {
                 last_x = caps.get(1).unwrap().as_str().parse::<f32>()?;
                 last_y = caps.get(2).unwrap().as_str().parse::<f32>()?;
                 position_unsafe = true;

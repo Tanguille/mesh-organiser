@@ -1,11 +1,11 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Cursor, Read},
+    io::{BufRead, BufReader, Read},
     path::Path,
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use image::{DynamicImage, ImageReader};
+use image::DynamicImage;
 
 use crate::{
     error::MeshThumbnailError,
@@ -106,9 +106,5 @@ where
         )));
     };
 
-    let step1 = ImageReader::new(Cursor::new(&largest_image.data))
-        .with_guessed_format()?
-        .decode()?;
-
-    Ok(step1)
+    Ok(image::load_from_memory(&largest_image.data)?)
 }
