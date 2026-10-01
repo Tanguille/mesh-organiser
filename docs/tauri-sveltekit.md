@@ -7,7 +7,7 @@ This repo follows the [Tauri 2 SvelteKit guide](https://v2.tauri.app/start/front
 - **Vite** listens on **`http://127.0.0.1:9435`** with **`strictPort: true`** when **`TAURI_DEV_HOST`** is unset ([`vite.config.js`](../vite.config.js)), matching Tauri’s **`devUrl`** probe. That avoids a **blank WebView** (hostname/`::1` mismatch) and avoids **`tauri dev`** hanging on “Waiting for … `127.0.0.1:9435`” when Vite was only bound in a way that did not accept IPv4 loopback.
 - **`src-tauri/tauri.conf.json`** sets **`devUrl`** to **`http://127.0.0.1:9435`**. Override **`TAURI_DEV_HOST`** for LAN/device testing and align **`devUrl`**, HMR, and CSP as described below.
 - **`beforeDevCommand`** is `pnpm run dev:web`.
-- **`pnpm run dev`** runs **`dev:cleanup`** (`kill-port 9435`, then **1s** pause for the OS to release the port) then **`tauri dev`**, so a stuck process on 9435 is less likely to block startup.
+- **`pnpm run dev`** runs **`tauri dev`**. If port **9435** is busy, Vite fails fast (`strictPort`); free the port manually.
 
 ### Debugging a blank window in dev
 
