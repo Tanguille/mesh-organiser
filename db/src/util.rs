@@ -33,3 +33,25 @@ pub fn parse_concat_ids(csv: &str) -> Vec<i64> {
         .filter_map(|segment| segment.parse::<i64>().ok())
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::random_hex_32;
+
+    #[test]
+    fn random_hex_32_is_32_lowercase_hex_chars() {
+        let hex = random_hex_32();
+
+        assert_eq!(hex.len(), 32);
+        assert!(
+            hex.chars()
+                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+            "expected only [0-9a-f], got {hex}"
+        );
+    }
+
+    #[test]
+    fn random_hex_32_calls_differ() {
+        assert_ne!(random_hex_32(), random_hex_32());
+    }
+}

@@ -7,7 +7,9 @@
 
 use std::{fs, path::PathBuf};
 
-use service::download_file_service::{download_file_to, get_content_disposition_filename};
+use service::download_file_service::{
+    download_file, download_file_to, get_content_disposition_filename,
+};
 use tempfile::tempdir;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 
@@ -130,4 +132,61 @@ async fn get_content_disposition_filename_rfc5987_from_header() {
     let response = reqwest::get(&url).await.expect("GET should succeed");
     let name = get_content_disposition_filename(&response);
     assert_eq!(name.as_deref(), Some("my percent file.stl"));
+}
+
+// -----------------------------------------------------------------------------
+// `download_file` percent-decodes the last response-URL segment (thingiverse)
+// and the whole URL (nexprint) to derive the final filename.
+// -----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn download_file_thingiverse_decodes_last_url_segment() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("x"))
+        .mount(&mock_server)
+        .await;
+
+    let url = format!("{}/thingiverse/na%C3%AFve%20file.stl", mock_server.uri());
+    let result = download_file(&url).await.expect("download should succeed");
+
+    let path = PathBuf::from(&result.path);
+    assert!(path.exists());
+    assert_eq!(
+        path.file_name().and_then(|n| n.to_str()),
+        Some("naïve file.stl")
+    );
+    assert_eq!(
+        result.source_uri.as_deref(),
+        Some("https://thingiverse.com/")
+    );
+
+    fs::remove_file(&path).ok();
+}
+
+#[tokio::test]
+async fn download_file_nexprint_decodes_quoted_filename_from_url() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("x"))
+        .mount(&mock_server)
+        .await;
+
+    let url = format!(
+        "{}/nexprint/dl?response-content-disposition=attachment;filename%3D%22na%C3%AFve%20file.stl%22",
+        mock_server.uri()
+    );
+    let result = download_file(&url).await.expect("download should succeed");
+
+    let path = PathBuf::from(&result.path);
+    assert!(path.exists());
+    assert_eq!(
+        path.file_name().and_then(|n| n.to_str()),
+        Some("naïve file.stl")
+    );
+    assert_eq!(result.source_uri.as_deref(), Some("https://nexprint.com/"));
+
+    fs::remove_file(&path).ok();
 }

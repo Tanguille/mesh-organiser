@@ -64,3 +64,61 @@ async fn serve_share_page(
 
     Ok(Html(html))
 }
+
+#[cfg(test)]
+mod tests {
+    // The implementer repoints this wrapper when swapping out `htmlescape`.
+    fn escape_attr(s: &str) -> String {
+        htmlescape::encode_attribute(s)
+    }
+
+    const DANGEROUS: [char; 5] = ['"', '<', '>', '&', '\''];
+
+    /// Raw `&` can legitimately appear as the start of an entity, so for it we only check that
+    /// every `&` is followed by an entity body ending in `;`. The others must be gone entirely.
+    fn assert_attribute_safe(escaped: &str) {
+        for c in ['"', '<', '>', '\''] {
+            assert!(!escaped.contains(c), "raw {c:?} left in {escaped:?}");
+        }
+
+        for (i, _) in escaped.match_indices('&') {
+            assert!(
+                escaped[i..].contains(';'),
+                "bare '&' (not an entity) in {escaped:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn escape_attr_neutralises_attribute_injection_payload() {
+        let escaped = escape_attr(r#"x" onload="alert(1)"#);
+
+        assert_attribute_safe(&escaped);
+    }
+
+    #[test]
+    fn escape_attr_neutralises_script_tag() {
+        let escaped = escape_attr("<script>alert('x')</script>");
+
+        assert_attribute_safe(&escaped);
+        assert!(!escaped.contains("<script"));
+    }
+
+    #[test]
+    fn escape_attr_escapes_every_dangerous_char() {
+        for c in DANGEROUS {
+            let escaped = escape_attr(&format!("a{c}b"));
+
+            assert_ne!(escaped, format!("a{c}b"), "{c:?} was not escaped");
+            assert!(escaped.starts_with('a') && escaped.ends_with('b'));
+            if c != '&' {
+                assert!(!escaped.contains(c), "raw {c:?} left in {escaped:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn escape_attr_leaves_alphanumerics_unchanged() {
+        assert_eq!(escape_attr("Share42"), "Share42");
+    }
+}

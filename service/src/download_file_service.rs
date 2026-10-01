@@ -379,4 +379,38 @@ mod tests {
             Some("HTTPS://WWW.MAKERWORLD.COM/EN/models/999-ABC".to_string())
         );
     }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_multibyte_and_space() {
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''na%C3%AFve%20file.stl"),
+            Some("naïve file.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_plus_stays_literal() {
+        // Percent-decoding, not form-decoding: `+` is not a space.
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''a+b.stl"),
+            Some("a+b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_malformed_escape_left_untouched() {
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''bad%zzname.stl"),
+            Some("bad%zzname.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_invalid_utf8_returns_none() {
+        // %FF is not valid UTF-8; decoding fails and `filename*=` has no plain fallback.
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''bad%FF.stl"),
+            None
+        );
+    }
 }

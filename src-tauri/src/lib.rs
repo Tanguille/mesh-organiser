@@ -657,3 +657,55 @@ pub fn run() {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::extract_deep_link;
+
+    #[test]
+    fn extract_deep_link_percent_decodes_file() {
+        assert_eq!(
+            extract_deep_link(
+                "prusaslicer://open/?file=https%3A%2F%2Fex.com%2Fna%C3%AFve%20file.stl"
+            ),
+            Some("https://ex.com/naïve file.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_accepts_no_slash_before_query() {
+        assert_eq!(
+            extract_deep_link("cura://open?file=a%20b.stl"),
+            Some("a b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_plus_stays_literal() {
+        assert_eq!(
+            extract_deep_link("orcaslicer://open/?file=a+b.stl"),
+            Some("a+b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_malformed_escape_left_untouched() {
+        assert_eq!(
+            extract_deep_link("bambustudio://open/?file=bad%zz.stl"),
+            Some("bad%zz.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_elegooslicer_is_not_decoded() {
+        assert_eq!(
+            extract_deep_link("elegooslicer://open/?file=a%20b.stl"),
+            Some("a%20b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_unknown_scheme_returns_none() {
+        assert_eq!(extract_deep_link("evil://open/?file=a.stl"), None);
+    }
+}
