@@ -7,11 +7,11 @@ This repo uses GitHub Actions to build the Tauri desktop app. You can create a p
 Pushes to `main` run the **release-please** workflow. It reads
 [Conventional Commits](https://www.conventionalcommits.org/) since the last
 release (`fix:` → patch, `feat:` → minor, breaking `!` → major) and keeps a
-release PR up to date. The PR bumps `package.json` and `Cargo.toml` together
-plus `CHANGELOG.md`; merging it triggers `release-tag` below, which tags,
-creates the GitHub Release, and dispatches `publish`. No manual version bump
-or tag push is needed. (`Cargo.lock` catches up on the next `cargo` build;
-nothing in CI uses `--locked`.)
+release PR up to date. The PR bumps `package.json`, `Cargo.toml` and the
+workspace crates in `Cargo.lock` (every `[[package]]` without a `source`)
+together plus `CHANGELOG.md`; merging it triggers `release-tag` below, which
+tags, creates the GitHub Release, and dispatches `publish`. No manual version
+bump or tag push is needed.
 
 Config: `release-please-config.json` + `.release-please-manifest.json`.
 Tagging stays with `release-tag` (`skip-github-release: true`).
