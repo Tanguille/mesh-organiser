@@ -96,14 +96,6 @@ pub async fn add_blob(
     Ok(result.last_insert_rowid())
 }
 
-pub async fn delete_blob(db: &DbContext, blob_id: i64) -> Result<(), DbError> {
-    sqlx::query!("DELETE FROM blobs WHERE blob_id = ?", blob_id)
-        .execute(db)
-        .await?;
-
-    Ok(())
-}
-
 pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let dead_blob_rows = sqlx::query!(
         "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs

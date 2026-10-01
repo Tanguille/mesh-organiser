@@ -402,32 +402,6 @@ pub async fn get_group_count(
     Ok(base + ungrouped)
 }
 
-pub async fn get_group_via_id(
-    db: &DbContext,
-    user: &User,
-    group_id: i64,
-) -> Result<Option<ModelGroup>, DbError> {
-    let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
-
-    let models = model_db::get_models(
-        db,
-        user,
-        ModelFilterOptions {
-            group_ids: Some(vec![group_id]),
-            ..Default::default()
-        },
-    )
-    .await?;
-
-    let mut groups = convert_model_list_to_groups(models.items, false, &group_resource_map);
-
-    if groups.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(groups.remove(0)))
-}
-
 pub async fn set_last_updated_on_groups(
     db: &DbContext,
     user: &User,
