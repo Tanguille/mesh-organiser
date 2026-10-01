@@ -4,9 +4,7 @@ use crate::DbError;
 
 #[must_use]
 pub fn random_hex_32() -> String {
-    let mut bytes = [0u8; 16];
-    rand::rng().fill(&mut bytes);
-    hex::encode(bytes)
+    format!("{:032x}", rand::rng().random::<u128>())
 }
 
 #[must_use]

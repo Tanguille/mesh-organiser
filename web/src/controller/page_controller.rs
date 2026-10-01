@@ -47,16 +47,13 @@ async fn serve_share_page(
     html = html
         .replace(
             "content=\"Mesh Organiser\"",
-            &format!(
-                "content=\"Share: {}\"",
-                htmlescape::encode_attribute(&share.share_name)
-            ),
+            &format!("content=\"Share: {}\"", escape_attr(&share.share_name)),
         )
         .replace(
             "content=\"A personal 3d printing model library.\"",
             &format!(
                 "content=\"Shared by user {}. Contains {} model{}.\"",
-                htmlescape::encode_attribute(&user.username),
+                escape_attr(&user.username),
                 share.model_ids.len(),
                 if share.model_ids.len() >= 2 { "s" } else { "" }
             ),
@@ -65,12 +62,27 @@ async fn serve_share_page(
     Ok(Html(html))
 }
 
+/// Share and user names are user-controlled and get spliced into `<meta content="...">`
+/// attributes, so every character that could break out of the attribute or the tag is escaped.
+fn escape_attr(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(c),
+        }
+    }
+
+    escaped
+}
+
 #[cfg(test)]
 mod tests {
-    // The implementer repoints this wrapper when swapping out `htmlescape`.
-    fn escape_attr(s: &str) -> String {
-        htmlescape::encode_attribute(s)
-    }
+    use super::escape_attr;
 
     const DANGEROUS: [char; 5] = ['"', '<', '>', '&', '\''];
 

@@ -491,7 +491,10 @@ where
     hasher.update(&file_contents);
     let bytes = hasher.finalize();
     // First 128 bits of the digest as 32 hex chars (matches `blob_sha256` / `random_hex_32` shape).
-    let hash = hex::encode(&bytes[..16]);
+    let hash = format!(
+        "{:032x}",
+        u128::from_be_bytes(bytes[..16].try_into().expect("slice is 16 bytes"))
+    );
 
     let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
 

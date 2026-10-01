@@ -7,6 +7,7 @@ use std::{
 };
 
 use arboard::Clipboard;
+use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 use tauri::{
@@ -14,7 +15,6 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
-use urlencoding::decode;
 
 use db::{
     group_db,
@@ -372,7 +372,9 @@ fn extract_deep_link(data: &str) -> Option<String> {
             return Some(encoded.to_string());
         }
 
-        return Some(String::from(decode(encoded).unwrap()));
+        return Some(String::from(
+            percent_decode_str(encoded).decode_utf8().unwrap(),
+        ));
     }
 
     None

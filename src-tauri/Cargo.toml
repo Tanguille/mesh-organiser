@@ -24,7 +24,7 @@ futures = { workspace = true }
 thiserror = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-deep-link = { workspace = true }
-urlencoding = { workspace = true }
+percent-encoding = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-process = { workspace = true }

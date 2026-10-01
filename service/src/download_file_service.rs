@@ -4,11 +4,11 @@ use std::{
     sync::OnceLock,
 };
 
+use percent_encoding::percent_decode_str;
 use regex::Regex;
 use reqwest::{Response, header::CONTENT_DISPOSITION};
 use serde::Serialize;
 use tokio::{fs::File, io::AsyncWriteExt};
-use urlencoding::decode;
 
 use crate::{
     export_service::{ensure_unique_file_full_filename, get_temp_dir},
@@ -44,7 +44,7 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
         if let Some(encoded) = token
             .strip_prefix("UTF-8''")
             .or_else(|| token.strip_prefix("utf-8''"))
-            && let Ok(decoded) = decode(encoded)
+            && let Ok(decoded) = percent_decode_str(encoded).decode_utf8()
         {
             return Some(decoded.into_owned());
         }
@@ -179,7 +179,12 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     let redirect_url_filename = response_url.split('/').next_back().map_or_else(
         || "model.stl".to_string(),
-        |seg| decode(seg).unwrap_or_default().into_owned(),
+        |seg| {
+            percent_decode_str(seg)
+                .decode_utf8()
+                .unwrap_or_default()
+                .into_owned()
+        },
     );
 
     // Filename of the file we just downloaded; used as the default in branches that
@@ -208,7 +213,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         source_uri = Some(String::from("https://nexprint.com/"));
         // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
         // quoted-only on purpose — see quoted_filename.
-        let decoded_url = decode(url).unwrap().into_owned();
+        let decoded_url = percent_decode_str(url).decode_utf8().unwrap().into_owned();
         quoted_filename(&decoded_url)
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| current_filename.clone())
