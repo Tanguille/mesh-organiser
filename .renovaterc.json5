@@ -1,0 +1,8 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended"],
+  // Matches the old Dependabot open-pull-requests-limit.
+  prConcurrentLimit: 5,
+  // A fork is only processed with a committed config; this keeps it that way if the file moves.
+  forkProcessing: "enabled"
+}
