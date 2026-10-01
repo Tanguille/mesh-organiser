@@ -23,5 +23,10 @@
       minimumReleaseAge: "1 day",
       automerge: true,
     },
+    {
+      description: "Hold tower-sessions until axum-login publishes tower-sessions 0.15 support",
+      matchPackageNames: ["tower-sessions"],
+      enabled: false,
+    },
   ],
 }
