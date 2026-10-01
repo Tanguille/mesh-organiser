@@ -256,10 +256,6 @@ impl App {
     }
 
     pub async fn serve(self) -> Result<(), Box<dyn Error>> {
-        // Session layer.
-        //
-        // This uses `tower-sessions` to establish a layer that will provide the session
-        // as a request extension.
         let session_store = self.session_store;
 
         let deletion_task = tokio::task::spawn(
@@ -283,10 +279,6 @@ impl App {
             .with_expiry(Expiry::OnInactivity(Duration::days(7)))
             .with_signed(key);
 
-        // Auth service.
-        //
-        // This combines the session layer with our backend to establish the auth
-        // service which will provide the auth session as a request extension.
         let backend = Backend::new(self.app_state.app_state.db.clone());
         let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
@@ -294,7 +286,6 @@ impl App {
         let db = self.app_state.app_state.db.clone();
         let port = self.app_state.port;
 
-        // Configure CORS with restricted origins
         let cors_layer = CorsLayer::new()
             .allow_origin([
                 "http://localhost:3000".parse().unwrap(),
@@ -307,7 +298,6 @@ impl App {
             .allow_headers(AllowHeaders::mirror_request())
             .allow_credentials(true);
 
-        // Configure rate limiting for auth endpoints
         let governor_config = Arc::new(
             GovernorConfigBuilder::default()
                 .per_second(5)
@@ -344,13 +334,13 @@ impl App {
 
         println!("Server running on port {port}");
 
-        // Ensure we use a shutdown signal to abort the deletion task.
         // Connect info is required by the auth rate limiter: tower_governor's
         // default PeerIpKeyExtractor 500s every request without a peer address.
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
+        // The shutdown signal also aborts the session deletion task.
         .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
         .await?;
 

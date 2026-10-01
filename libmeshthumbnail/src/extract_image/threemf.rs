@@ -13,7 +13,6 @@ pub fn handle_threemf(input_path: &Path) -> Result<Option<DynamicImage>, MeshThu
 }
 
 fn extract_image_from_3mf(input_path: &Path) -> Result<DynamicImage, MeshThumbnailError> {
-    // Open 3mf path as zip file
     let buffer = find_zip_entry_bytes(
         input_path,
         |name| name.ends_with("thumbnail_middle.png"),

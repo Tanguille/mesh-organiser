@@ -145,15 +145,13 @@ where
 // before calling), so `diff / length` is safe here.
 fn edge_transform(p1: Vec3<f32>, p2: Vec3<f32>, length: f32) -> Mat4<f32> {
     let diff = p2 - p1;
-    let direction = diff / length; // Manual normalization to avoid potential issues
+    let direction = diff / length;
 
     let x_axis = Vec3::<f32>::new(1.0, 0.0, 0.0);
 
-    // Handle the case where direction is parallel to x_axis
     let rotation: Quaternion<f32> = if (direction - x_axis).magnitude() < 0.001 {
         Quaternion::identity()
     } else if (direction + x_axis).magnitude() < 0.001 {
-        // 180 degree rotation around y-axis
         Quaternion::rotation_y(PI)
     } else {
         Quaternion::rotation_from_to_3d(x_axis, direction)
@@ -185,7 +183,6 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
         }
     }
 
-    // Create side triangles
     for i in 0..length_subdivisions {
         for j in 0..angle_subdivisions {
             let next_j = (j + 1) % angle_subdivisions;
@@ -195,7 +192,6 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
             let v2 = i * angle_subdivisions + next_j;
             let v3 = (i + 1) * angle_subdivisions + next_j;
 
-            // Two triangles per quad
             indices.push(v0);
             indices.push(v1);
             indices.push(v2);
