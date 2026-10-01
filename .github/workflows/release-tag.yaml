@@ -23,6 +23,8 @@ on:
 permissions:
   contents: write
   actions: write # gh workflow run
+  issues: write # relabel the merged release-please PR (labels live on the issue API)
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -85,3 +87,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run release.yaml --ref "${{ steps.version.outputs.tag }}" -f releaseType=publish
+
+      # release-please runs with `skip-github-release`, so it never relabels its
+      # merged PR itself. A merged PR left on `autorelease: pending` makes every
+      # later run abort ("untagged, merged release PRs outstanding"), so mark it
+      # tagged here, where the tag is actually created.
+      - name: Mark merged release-please PR as tagged
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # REST rather than `gh pr edit`: adding a label this way creates it if
+        # missing, and avoids gh's GraphQL edit path needing extra scopes.
+        run: |
+          for pr in $(gh pr list --state merged --label "autorelease: pending" --json number --jq '.[].number'); do
+            gh api -X DELETE "repos/{owner}/{repo}/issues/$pr/labels/autorelease:%20pending" >/dev/null
+            gh api "repos/{owner}/{repo}/issues/$pr/labels" -f "labels[]=autorelease: tagged" >/dev/null
+          done

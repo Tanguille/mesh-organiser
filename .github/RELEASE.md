@@ -14,7 +14,8 @@ tags, creates the GitHub Release, and dispatches `publish`. No manual version
 bump or tag push is needed.
 
 Config: `release-please-config.json` + `.release-please-manifest.json`.
-Tagging stays with `release-tag` (`skip-github-release: true`).
+Tagging stays with `release-tag` (`skip-github-release: true`), which also
+relabels the merged release PR `autorelease: tagged` so the next one can open.
 
 > Recommended: add a `RELEASE_PLEASE_TOKEN` secret (PAT with `repo` scope) so
 > CI runs on release-please PRs — `GITHUB_TOKEN`-created PRs don't trigger
