@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use sqlx::SqlitePool;
+use time::OffsetDateTime;
 use tower_sessions_core::{
     session::{Id, Record},
     session_store::{self, Error},
@@ -60,7 +61,7 @@ impl SqliteStore {
 impl tower_sessions_core::ExpiredDeletion for SqliteStore {
     async fn delete_expired(&self) -> session_store::Result<()> {
         sqlx::query("delete from tower_sessions where expiry_date < ?")
-            .bind(time::OffsetDateTime::now_utc())
+            .bind(OffsetDateTime::now_utc())
             .execute(&self.pool)
             .await
             .map_err(backend_error)?;
@@ -100,7 +101,7 @@ impl tower_sessions_core::SessionStore for SqliteStore {
         let row: Option<(Vec<u8>,)> =
             sqlx::query_as("select data from tower_sessions where id = ? and expiry_date > ?")
                 .bind(session_id.to_string())
-                .bind(time::OffsetDateTime::now_utc())
+                .bind(OffsetDateTime::now_utc())
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(backend_error)?;
