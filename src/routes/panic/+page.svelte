@@ -4,7 +4,7 @@
 </script>
 
 <div class="flex h-full w-full flex-col items-center justify-center">
-  <div class="color-primary-foreground mb-4 rounded-md bg-primary p-2">
+  <div class="mb-4 rounded-md bg-primary p-2">
     <Bomb />
   </div>
   <h1 class="mb-2 text-2xl font-bold">Application Error</h1>

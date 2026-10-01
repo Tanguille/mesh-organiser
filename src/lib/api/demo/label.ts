@@ -191,11 +191,4 @@ export class DemoLabelApi implements ILabelApi {
   ): Promise<void> {
     throw new Error("Demo mode: Cannot modify label hierarchy");
   }
-
-  async removeChildrenFromLabel(
-    _label: LabelMeta,
-    _children: LabelMeta[],
-  ): Promise<void> {
-    throw new Error("Demo mode: Cannot modify label hierarchy");
-  }
 }
