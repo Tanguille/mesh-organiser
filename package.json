@@ -1,7 +1,7 @@
 {
   "name": "mesh-organiser",
   "version": "4.0.2",
-  "packageManager": "pnpm@12.4.1",
+  "packageManager": "pnpm@12.8.1",
   "type": "module",
   "scripts": {
     "dev": "pnpm run dev:cleanup && tauri dev",
