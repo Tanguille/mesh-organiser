@@ -24,6 +24,11 @@
       automerge: true,
     },
     {
+      description: "Hold tower-sessions below 0.15 until axum-login publishes tower-sessions 0.15 support",
+      matchPackageNames: ["tower-sessions", "tower-sessions-core"],
+      allowedVersions: "<0.15",
+    },
+    {
       description: "adapter-static 4 requires SvelteKit 3, so the two major bumps must land together",
       matchPackageNames: ["@sveltejs/kit", "@sveltejs/adapter-static"],
       groupName: "sveltekit",
