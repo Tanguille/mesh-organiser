@@ -28,5 +28,10 @@
       matchPackageNames: ["tower-sessions", "tower-sessions-core"],
       allowedVersions: "<0.15",
     },
+    {
+      description: "adapter-static 4 requires SvelteKit 3, so the two major bumps must land together",
+      matchPackageNames: ["@sveltejs/kit", "@sveltejs/adapter-static"],
+      groupName: "sveltekit",
+    },
   ],
 }

@@ -33,7 +33,6 @@ tower-http = { workspace = true, features = ["compression-gzip", "cors", "fs"] }
 tower-sessions = { workspace = true, features = ["signed"] }
 # `deletion-task` adds `ExpiredDeletion::continuously_delete_expired`.
 tower-sessions-core = { workspace = true, features = ["deletion-task"] }
-htmlescape = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

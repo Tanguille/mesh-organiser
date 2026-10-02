@@ -12,7 +12,6 @@ bitflags = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }
 rand = { workspace = true }
-hex = { workspace = true }
 chrono = { workspace = true }
 sqlx = { workspace = true, features = [
     "chrono",
