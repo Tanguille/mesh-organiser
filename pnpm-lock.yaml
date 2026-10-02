@@ -189,10 +189,10 @@ importers:
         version: 2.12.0
       '@threlte/core':
         specifier: ^8.6.0
-        version: 8.6.1(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.0)
+        version: 8.6.1(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.1)
       '@threlte/extras':
         specifier: ^9.21.1
-        version: 9.22.0(@types/three@0.186.0)(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.0)
+        version: 9.22.0(@types/three@0.186.0)(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.1)
       '@types/qs':
         specifier: ^6.15.1
         version: 6.15.1
@@ -206,8 +206,8 @@ importers:
         specifier: ^6.16.0
         version: 6.16.0
       three:
-        specifier: 0.186.0
-        version: 0.186.0
+        specifier: 0.186.1
+        version: 0.186.1
       threejs-webworker-3mf-loader:
         specifier: github:manyfold3d/threejs-webworker-3mf-loader
         version: https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/d65e59e7e3955912efcd96576382ee736a62a36f
@@ -1838,8 +1838,8 @@ packages:
     peerDependencies:
       three: '>=0.162.0 <1.0.0'
 
-  three@0.186.0:
-    resolution: {integrity: sha512-cr/fIM2ddMSVbYVgkfD4jLJv7Fh/8ZTjvo+7gQeSVGUZHxpx9FDwoL5iC7hUz/LiRA8wMbqfnb90xKfm1/HHkQ==}
+  three@0.186.1:
+    resolution: {integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==}
 
   threejs-webworker-3mf-loader@https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/d65e59e7e3955912efcd96576382ee736a62a36f:
     resolution: {gitHosted: true, integrity: sha512-nl7o7NnvTr42jDaQIN9/2OVhCGIoo+P7XfyZqr3+Lph7OyqRGTucuZU7zNcr+R1XwXxprQByOIrThZyKPPsWTA==, tarball: https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/d65e59e7e3955912efcd96576382ee736a62a36f}
@@ -2385,32 +2385,32 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.11.1
 
-  '@threejs-kit/instanced-sprite-mesh@2.5.1(@types/three@0.186.0)(three@0.186.0)':
+  '@threejs-kit/instanced-sprite-mesh@2.5.1(@types/three@0.186.0)(three@0.186.1)':
     dependencies:
       diet-sprite: 0.0.1
       earcut: 2.2.4
-      maath: 0.10.8(@types/three@0.186.0)(three@0.186.0)
-      three: 0.186.0
-      three-instanced-uniforms-mesh: 0.52.5(three@0.186.0)
-      troika-three-utils: 0.52.5(three@0.186.0)
+      maath: 0.10.8(@types/three@0.186.0)(three@0.186.1)
+      three: 0.186.1
+      three-instanced-uniforms-mesh: 0.52.5(three@0.186.1)
+      troika-three-utils: 0.52.5(three@0.186.1)
     transitivePeerDependencies:
       - '@types/three'
 
-  '@threlte/core@8.6.1(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.0)':
+  '@threlte/core@8.6.1(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.1)':
     dependencies:
       svelte: 5.57.1(@typescript-eslint/types@8.70.0)
-      three: 0.186.0
+      three: 0.186.1
 
-  '@threlte/extras@9.22.0(@types/three@0.186.0)(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.0)':
+  '@threlte/extras@9.22.0(@types/three@0.186.0)(svelte@5.57.1(@typescript-eslint/types@8.70.0))(three@0.186.1)':
     dependencies:
-      '@threejs-kit/instanced-sprite-mesh': 2.5.1(@types/three@0.186.0)(three@0.186.0)
-      camera-controls: 3.1.2(three@0.186.0)
+      '@threejs-kit/instanced-sprite-mesh': 2.5.1(@types/three@0.186.0)(three@0.186.1)
+      camera-controls: 3.1.2(three@0.186.1)
       svelte: 5.57.1(@typescript-eslint/types@8.70.0)
-      three: 0.186.0
-      three-mesh-bvh: 0.9.15(three@0.186.0)
-      three-perf: 1.0.11(three@0.186.0)
-      three-viewport-gizmo: 2.2.0(three@0.186.0)
-      troika-three-text: 0.52.5(three@0.186.0)
+      three: 0.186.1
+      three-mesh-bvh: 0.9.15(three@0.186.1)
+      three-perf: 1.0.11(three@0.186.1)
+      three-viewport-gizmo: 2.2.0(three@0.186.1)
+      troika-three-text: 0.52.5(three@0.186.1)
     transitivePeerDependencies:
       - '@types/three'
 
@@ -2648,9 +2648,9 @@ snapshots:
       call-bind-apply-helpers: 1.0.2
       get-intrinsic: 1.3.0
 
-  camera-controls@3.1.2(three@0.186.0):
+  camera-controls@3.1.2(three@0.186.1):
     dependencies:
-      three: 0.186.0
+      three: 0.186.1
 
   chai@6.2.2: {}
 
@@ -3051,10 +3051,10 @@ snapshots:
 
   lz-string@1.5.0: {}
 
-  maath@0.10.8(@types/three@0.186.0)(three@0.186.0):
+  maath@0.10.8(@types/three@0.186.0)(three@0.186.1):
     dependencies:
       '@types/three': 0.186.0
-      three: 0.186.0
+      three: 0.186.1
 
   magic-string@0.30.21:
     dependencies:
@@ -3353,31 +3353,31 @@ snapshots:
 
   tapable@2.3.3: {}
 
-  three-instanced-uniforms-mesh@0.52.5(three@0.186.0):
+  three-instanced-uniforms-mesh@0.52.5(three@0.186.1):
     dependencies:
-      three: 0.186.0
-      troika-three-utils: 0.52.5(three@0.186.0)
+      three: 0.186.1
+      troika-three-utils: 0.52.5(three@0.186.1)
 
-  three-mesh-bvh@0.9.15(three@0.186.0):
+  three-mesh-bvh@0.9.15(three@0.186.1):
     dependencies:
-      three: 0.186.0
+      three: 0.186.1
 
-  three-perf@1.0.11(three@0.186.0):
+  three-perf@1.0.11(three@0.186.1):
     dependencies:
-      three: 0.186.0
-      troika-three-text: 0.52.5(three@0.186.0)
+      three: 0.186.1
+      troika-three-text: 0.52.5(three@0.186.1)
       tweakpane: 3.1.10
 
-  three-viewport-gizmo@2.2.0(three@0.186.0):
+  three-viewport-gizmo@2.2.0(three@0.186.1):
     dependencies:
-      three: 0.186.0
+      three: 0.186.1
 
-  three@0.186.0: {}
+  three@0.186.1: {}
 
   threejs-webworker-3mf-loader@https://codeload.github.com/manyfold3d/threejs-webworker-3mf-loader/tar.gz/d65e59e7e3955912efcd96576382ee736a62a36f:
     dependencies:
       '@xmldom/xmldom': 0.9.12
-      three: 0.186.0
+      three: 0.186.1
 
   tinybench@6.1.4: {}
 
@@ -3390,17 +3390,17 @@ snapshots:
 
   totalist@3.0.1: {}
 
-  troika-three-text@0.52.5(three@0.186.0):
+  troika-three-text@0.52.5(three@0.186.1):
     dependencies:
       bidi-js: 1.1.0
-      three: 0.186.0
-      troika-three-utils: 0.52.5(three@0.186.0)
+      three: 0.186.1
+      troika-three-utils: 0.52.5(three@0.186.1)
       troika-worker-utils: 0.52.0
       webgl-sdf-generator: 1.1.1
 
-  troika-three-utils@0.52.5(three@0.186.0):
+  troika-three-utils@0.52.5(three@0.186.1):
     dependencies:
-      three: 0.186.0
+      three: 0.186.1
 
   troika-worker-utils@0.52.0: {}
 
