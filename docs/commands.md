@@ -28,13 +28,13 @@ npm run tauri:build  # Build production desktop app
 
 ### Port 9435 already in use
 
-`pnpm run dev` runs **`dev:cleanup`**: `kill-port 9435` plus a **1 second** pause so the OS can release the socket (Windows often needs this right after the old process exits). If you still see **`Port 9435 is already in use`**, something else is bound to the port: another terminal with **`pnpm run dev:web`** or **`vite preview`**, or a stuck **Node** process. Stop it or run:
+Vite uses **`strictPort: true`**, so if **9435** is busy the dev server fails fast with **`Port 9435 is already in use`**. Free the port manually: another terminal with **`pnpm run dev:web`** or **`vite preview`**, or a stuck **Node** process. On Windows, run:
 
 `Get-NetTCPConnection -LocalPort 9435 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }` (PowerShell).
 
 ### Dev server hang / `transport invoke timed out` in dev
 
-The UI is **client-only** (`ssr = false`), but SvelteKit’s **dev server** still uses Vite’s internal SSR machinery to boot. If you see **`transport invoke timed out after 60000ms`** or a **blank WebView** until the timeout, the Vite **module runner** is not getting responses (startup ordering, port conflict, antivirus on `node_modules`, or a very busy first compile). Try: free port **9435**, run **`pnpm run dev:web`** and wait until Vite prints **ready**, then run **`pnpm tauri dev`** in another terminal (or use **`pnpm run dev`**, which runs **`dev:cleanup`** then starts Tauri). Reload the window once both are up.
+The UI is **client-only** (`ssr = false`), but SvelteKit’s **dev server** still uses Vite’s internal SSR machinery to boot. If you see **`transport invoke timed out after 60000ms`** or a **blank WebView** until the timeout, the Vite **module runner** is not getting responses (startup ordering, port conflict, antivirus on `node_modules`, or a very busy first compile). Try: free port **9435**, run **`pnpm run dev:web`** and wait until Vite prints **ready**, then run **`pnpm tauri dev`** in another terminal (or use **`pnpm run dev`**, which starts Tauri). Reload the window once both are up.
 
 ## Rust Backend (entire workspace)
 
