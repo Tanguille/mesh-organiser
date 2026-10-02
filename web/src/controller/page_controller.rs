@@ -49,18 +49,52 @@ async fn serve_share_page(
             "content=\"Mesh Organiser\"",
             &format!(
                 "content=\"Share: {}\"",
-                htmlescape::encode_attribute(&share.share_name)
+                escape_html_attribute(&share.share_name)
             ),
         )
         .replace(
             "content=\"A personal 3d printing model library.\"",
             &format!(
                 "content=\"Shared by user {}. Contains {} model{}.\"",
-                htmlescape::encode_attribute(&user.username),
+                escape_html_attribute(&user.username),
                 share.model_ids.len(),
                 if share.model_ids.len() >= 2 { "s" } else { "" }
             ),
         );
 
     Ok(Html(html))
+}
+
+/// Share and user names are user-controlled and get spliced into `<meta content="...">`
+/// attributes, so every character that could break out of the attribute or the tag is escaped.
+fn escape_html_attribute(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for char in text.chars() {
+        match char {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(char),
+        }
+    }
+
+    escaped
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn escape_html_attribute_escapes_special_chars() {
+        assert_eq!(
+            super::escape_html_attribute(r#"x" <b>&'"#),
+            "x&quot; &lt;b&gt;&amp;&#39;"
+        );
+    }
+
+    #[test]
+    fn escape_html_attribute_leaves_alphanumerics_unchanged() {
+        assert_eq!(super::escape_html_attribute("Share42"), "Share42");
+    }
 }

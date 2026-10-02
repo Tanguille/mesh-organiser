@@ -1324,7 +1324,6 @@ dependencies = [
  "bitflags 2.13.2",
  "chrono",
  "futures",
- "hex",
  "indexmap 2.14.2",
  "itertools",
  "password-auth",
@@ -2521,12 +2520,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "htmlescape"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9025058dae765dee5070ec375f591e2ba14638c63feff74f13805a72e523163"
-
-[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3333,7 +3326,6 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
- "urlencoding",
  "winreg 0.56.0",
 ]
 
@@ -5293,11 +5285,11 @@ dependencies = [
  "db",
  "fake",
  "futures",
- "hex",
  "image",
  "indexmap 2.14.2",
  "itertools",
  "libmeshthumbnail",
+ "percent-encoding",
  "proptest",
  "regex",
  "reqwest 0.13.5",
@@ -5311,7 +5303,6 @@ dependencies = [
  "threemf",
  "tokio",
  "tokio-util",
- "urlencoding",
  "vek",
  "winreg 0.56.0",
  "wiremock",
@@ -7497,7 +7488,6 @@ dependencies = [
  "axum-login",
  "axum-messages",
  "db",
- "htmlescape",
  "password-auth",
  "serde",
  "serde_json",
