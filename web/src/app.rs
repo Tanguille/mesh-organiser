@@ -58,7 +58,6 @@ const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
 
 pub struct App {
     state: AppState,
-    port: u16,
     session_store: SqliteStore,
 }
 
@@ -214,7 +213,9 @@ async fn setup_session_store(sqlite_path: &Path) -> Result<SqliteStore, Box<dyn 
 
 impl App {
     pub async fn new() -> Result<Self, Box<dyn Error>> {
-        let port = parse_port()?;
+        // Fail fast on a bad PORT before touching the database. The port is parsed again in
+        // `serve` rather than stored, so it stays out of the struct that also carries the state.
+        parse_port()?;
         let config_path = env::var(ENV_APP_CONFIG_PATH)
             .map_err(|_| {
                 io::Error::new(
@@ -251,7 +252,6 @@ impl App {
 
         Ok(Self {
             state: app_state,
-            port,
             session_store,
         })
     }
@@ -285,7 +285,7 @@ impl App {
 
         let serve_dir = ServeDir::new("www").not_found_service(ServeFile::new("www/index.html"));
         let db = self.state.db.clone();
-        let port = self.port;
+        let port = parse_port()?;
 
         let cors_layer = CorsLayer::new()
             .allow_origin([
