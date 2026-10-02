@@ -55,8 +55,8 @@ sha2 = "0.11.0"
 sqlx = { version = "0.9.0", default-features = false }
 stl_io = "0.11.0"
 strum = "0.28.0"
-tauri = { version = "2.11.6", features = ["wry"], default-features = false }
-tauri-build = { version = "2.6.3", default-features = false }
+tauri = { version = "2.12.1", features = ["wry"], default-features = false }
+tauri-build = { version = "2.7.1", default-features = false }
 tauri-plugin-deep-link = "2.4.10"
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-fs = "2.5.2"
