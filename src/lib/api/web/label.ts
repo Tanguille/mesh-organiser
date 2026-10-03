@@ -161,19 +161,4 @@ export class WebLabelApi implements ILabelApi {
       data,
     );
   }
-
-  async removeChildrenFromLabel(
-    label: LabelMeta,
-    children: LabelMeta[],
-  ): Promise<void> {
-    const data = {
-      child_label_ids: children.map((child) => child.id),
-    };
-
-    await this.requestApi.request<void>(
-      `/labels/${label.id}/childs`,
-      HttpMethod.DELETE,
-      data,
-    );
-  }
 }

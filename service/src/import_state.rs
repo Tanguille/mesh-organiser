@@ -203,8 +203,7 @@ impl ImportState {
     pub async fn create_groups_from_all_sets(
         &mut self,
         state: &AppState,
-    ) -> Result<Vec<i64>, ServiceError> {
-        let mut ids = Vec::new();
+    ) -> Result<(), ServiceError> {
         let user = &self.user;
         for set in &mut self.imported_models {
             if set.group_id.is_some() || set.group_name.is_none() || set.model_ids.is_empty() {
@@ -226,10 +225,9 @@ impl ImportState {
             .await?;
 
             set.group_id = Some(group_id);
-            ids.push(group_id);
         }
 
-        Ok(ids)
+        Ok(())
     }
 
     pub fn emit_all(&self) {

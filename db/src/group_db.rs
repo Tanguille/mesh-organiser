@@ -14,7 +14,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
+    push_in_i64, random_hex_32, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
@@ -139,7 +139,7 @@ pub async fn get_groups(
     let filtered_on_models = options.model_ids.is_some();
     let filtered_on_file_types = options.file_types.is_some();
 
-    let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
+    let group_resource_map = crate::resource_db::get_group_id_to_resource_map(db, user).await?;
 
     // Fetch the full "fetch all" default window; actual pagination happens in-memory below.
     let models = model_db::get_models(
@@ -400,32 +400,6 @@ pub async fn get_group_count(
     };
 
     Ok(base + ungrouped)
-}
-
-pub async fn get_group_via_id(
-    db: &DbContext,
-    user: &User,
-    group_id: i64,
-) -> Result<Option<ModelGroup>, DbError> {
-    let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
-
-    let models = model_db::get_models(
-        db,
-        user,
-        ModelFilterOptions {
-            group_ids: Some(vec![group_id]),
-            ..Default::default()
-        },
-    )
-    .await?;
-
-    let mut groups = convert_model_list_to_groups(models.items, false, &group_resource_map);
-
-    if groups.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(groups.remove(0)))
 }
 
 pub async fn set_last_updated_on_groups(

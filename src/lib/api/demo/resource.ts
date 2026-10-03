@@ -3,7 +3,6 @@ import type { Group } from "../shared/group_api";
 
 export class DemoResourceApi implements IResourceApi {
   async getResources(): Promise<ResourceMeta[]> {
-    // No resources in demo
     return [];
   }
 

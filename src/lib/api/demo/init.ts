@@ -48,11 +48,9 @@ export async function initDemoApis(): Promise<void> {
   const downloadApi = new DefaultDownloadApi(blob);
   const internalBrowserApi = new WebBrowserApi();
 
-  // Load configuration
   const config = await settings.getConfiguration();
   Object.assign(configuration, config);
 
-  // Register all services
   container.addSingleton(IBlobApi, blob);
   container.addSingleton(IDiskUsageInfoApi, diskUsageInfo);
   container.addSingleton(IGroupApi, group);

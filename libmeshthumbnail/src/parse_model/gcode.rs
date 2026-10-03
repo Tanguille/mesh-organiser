@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Cursor, Read},
     path::Path,
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
 use regex::Regex;
@@ -16,9 +16,13 @@ use crate::{
     path_ext::{is_zip_of, matches_ext},
 };
 
-static REGEX_XY: OnceLock<Regex> = OnceLock::new();
-static REGEX_XY_NO_EXTRUSION: OnceLock<Regex> = OnceLock::new();
-static REGEX_Z: OnceLock<Regex> = OnceLock::new();
+/// Extruding move (`X.. Y.. E`). Checked before [`REGEX_XY_NO_EXTRUSION`], which
+/// would also match it; only travel moves should fall through to that one.
+static REGEX_XY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap());
+static REGEX_XY_NO_EXTRUSION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)").unwrap());
+static REGEX_Z: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"Z([\d.]+)").unwrap());
 
 pub fn handle_gcode(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
     if matches_ext(path, "gcode") {
@@ -60,20 +64,16 @@ where
     let mut last_x = 0f32;
     let mut last_y = 0f32;
     let mut last_z = 0f32;
-    let regex_xy = REGEX_XY.get_or_init(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)\s+E").unwrap());
-    let regex_xy_no_extrusion =
-        REGEX_XY_NO_EXTRUSION.get_or_init(|| Regex::new(r"X([\d.]+)\s+Y([\d.]+)").unwrap());
-    let regex_z = REGEX_Z.get_or_init(|| Regex::new(r"Z([\d.]+)").unwrap());
     let mut position_unsafe = false;
 
     for line in reader.lines() {
         let line = line?;
         if line.starts_with("G1") || line.starts_with("G0") {
-            if let Some(caps) = regex_z.captures(&line) {
-                last_z = caps.get(1).unwrap().as_str().parse::<f32>()?;
+            if let Some(captures) = REGEX_Z.captures(&line) {
+                last_z = captures.get(1).unwrap().as_str().parse::<f32>()?;
             }
 
-            if let Some(caps) = regex_xy.captures(&line) {
+            if let Some(captures) = REGEX_XY.captures(&line) {
                 if position_unsafe {
                     entries.push(Point {
                         v: Vec3::new(last_x, last_y, last_z),
@@ -82,16 +82,16 @@ where
                     position_unsafe = false;
                 }
 
-                last_x = caps.get(1).unwrap().as_str().parse::<f32>()?;
-                last_y = caps.get(2).unwrap().as_str().parse::<f32>()?;
+                last_x = captures.get(1).unwrap().as_str().parse::<f32>()?;
+                last_y = captures.get(2).unwrap().as_str().parse::<f32>()?;
 
                 entries.push(Point {
                     v: Vec3::new(last_x, last_y, last_z),
                     use_line: true,
                 });
-            } else if let Some(caps) = regex_xy_no_extrusion.captures(&line) {
-                last_x = caps.get(1).unwrap().as_str().parse::<f32>()?;
-                last_y = caps.get(2).unwrap().as_str().parse::<f32>()?;
+            } else if let Some(captures) = REGEX_XY_NO_EXTRUSION.captures(&line) {
+                last_x = captures.get(1).unwrap().as_str().parse::<f32>()?;
+                last_y = captures.get(2).unwrap().as_str().parse::<f32>()?;
                 position_unsafe = true;
             }
         }
@@ -147,15 +147,13 @@ where
 // before calling), so `diff / length` is safe here.
 fn edge_transform(p1: Vec3<f32>, p2: Vec3<f32>, length: f32) -> Mat4<f32> {
     let diff = p2 - p1;
-    let direction = diff / length; // Manual normalization to avoid potential issues
+    let direction = diff / length;
 
     let x_axis = Vec3::<f32>::new(1.0, 0.0, 0.0);
 
-    // Handle the case where direction is parallel to x_axis
     let rotation: Quaternion<f32> = if (direction - x_axis).magnitude() < 0.001 {
         Quaternion::identity()
     } else if (direction + x_axis).magnitude() < 0.001 {
-        // 180 degree rotation around y-axis
         Quaternion::rotation_y(PI)
     } else {
         Quaternion::rotation_from_to_3d(x_axis, direction)
@@ -187,7 +185,6 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
         }
     }
 
-    // Create side triangles
     for i in 0..length_subdivisions {
         for j in 0..angle_subdivisions {
             let next_j = (j + 1) % angle_subdivisions;
@@ -197,7 +194,6 @@ fn cylinder(angle_subdivisions: u32) -> Mesh {
             let v2 = i * angle_subdivisions + next_j;
             let v3 = (i + 1) * angle_subdivisions + next_j;
 
-            // Two triangles per quad
             indices.push(v0);
             indices.push(v1);
             indices.push(v2);

@@ -61,7 +61,6 @@ pub fn open_custom_slicer(paths: Vec<PathBuf>, app_state: &AppState) -> Result<(
         )));
     }
 
-    // Parse the command string to separate executable from arguments
     let (executable_path, args) = parse_command_string(&path);
     let pathbuf = PathBuf::from(&executable_path);
 
@@ -104,26 +103,23 @@ fn open_with_args_and_paths(
 fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
     let cmd = cmd.trim();
     if cmd.is_empty() {
-        return (String::new(), Vec::new());
+        return (String::default(), Vec::new());
     }
 
     let mut chars = cmd.chars().peekable();
     let mut args = Vec::new();
-    let mut current_arg = String::new();
+    let mut current_arg = String::default();
     let mut in_quotes = false;
 
-    // Parse the entire command line into arguments using shell-like quoting rules
     while let Some(char) = chars.next() {
         match char {
             '"' => {
                 in_quotes = !in_quotes;
-                // Don't include quotes in the parsed value
             }
             ' ' | '\t' if !in_quotes => {
                 if !current_arg.is_empty() {
                     args.push(std::mem::take(&mut current_arg));
                 }
-                // Skip consecutive whitespace
                 while let Some(&next_char) = chars.peek() {
                     if next_char == ' ' || next_char == '\t' {
                         chars.next();
@@ -138,17 +134,14 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
         }
     }
 
-    // Handle the last argument
     if !current_arg.is_empty() {
         args.push(current_arg);
     }
 
     if args.is_empty() {
-        return (String::new(), Vec::new());
+        return (String::default(), Vec::new());
     }
 
-    // Now determine where the executable ends and arguments begin
-    // Look for the first argument that starts with '-' or '/'
     let first_flag_index = args
         .iter()
         .position(|arg| arg.starts_with('-') || arg.starts_with('/'));

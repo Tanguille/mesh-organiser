@@ -63,8 +63,8 @@
     return label;
   });
 
-  // Lookup map so LabelTree resolves an entry by id in O(1) instead of a linear
-  // scan per node (the tree recurses, so the scan was O(nodes * labels)).
+  // Lookup map so LabelTree resolves an entry by id in O(1); the tree recurses,
+  // so a linear scan per node would be O(nodes * labels).
   const labelsById = $derived(
     new Map(sidebarState.labels.map((l) => [l.meta.id, l])),
   );

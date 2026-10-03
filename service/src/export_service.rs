@@ -159,7 +159,7 @@ pub async fn export_to_temp_folder(
     })
     .await;
 
-    // Keep only the Ok(PathBuf) outputs, matching the previous loop.
+    // Keep only the Ok(PathBuf) outputs; models whose export failed are skipped.
     paths.extend(results.into_iter().flatten());
 
     Ok((temp_dir, paths))
@@ -415,12 +415,11 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests: lock in ensure_unique_file / ensure_unique_file_full_filename
-// after clippy refactors (control flow, Option/Result).
+// Tests for ensure_unique_file / ensure_unique_file_full_filename.
 // -----------------------------------------------------------------------------
 //
-// Blob content reading tests: lock in get_bytes_from_blob (and get_path_from_model
-// for non-zip, lazy=false) before DRY refactor introducing open_blob_content_reader.
+// Blob content reading tests for get_bytes_from_blob (and get_path_from_model
+// for non-zip, lazy=false).
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]

@@ -48,10 +48,6 @@ impl TauriAppState {
         self.app_state.get_configuration()
     }
 
-    pub fn get_model_dir(&self) -> PathBuf {
-        self.app_state.get_model_dir()
-    }
-
     pub fn get_current_user(&self) -> User {
         let user = self.current_user.lock().unwrap();
         user.clone()

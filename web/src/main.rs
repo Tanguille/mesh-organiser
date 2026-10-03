@@ -14,7 +14,6 @@ mod path_safety;
 mod query_bounds;
 mod session_store;
 mod user;
-mod web_app_state;
 mod web_import_state;
 
 const ENV_RUST_LOG: &str = "RUST_LOG";

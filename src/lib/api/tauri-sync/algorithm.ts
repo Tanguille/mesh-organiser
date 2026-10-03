@@ -22,8 +22,8 @@ export function resolveDirection<T>(
   };
 }
 
-// Shared DiffableExtractor for items that carry their sync fields on `.meta`
-// (groups and labels), replacing the per-file fieldExtractor copies.
+// DiffableExtractor for items that carry their sync fields on `.meta`
+// (groups and labels).
 export function metaFieldExtractor<T extends { meta: DiffableItem }>(
   item: T,
 ): DiffableItem {
@@ -65,8 +65,7 @@ export interface SyncResultHandlers<T> {
   deleteLocal: (toDelete: T[]) => Promise<void>;
 }
 
-// Runs the six conditional sync steps in the exact order the three identical
-// sync files used inline (groups, labels, resources), each gated by its
+// Runs the six conditional sync steps in a fixed order, each gated by its
 // `.length > 0` guard. sync-models stays inline because it interleaves extra
 // steps between toDownload and syncToServer.
 export async function applySyncResult<T>(
@@ -98,8 +97,7 @@ export async function applySyncResult<T>(
   }
 }
 
-// Shared SyncStep.Delete progress loop; the per-entity delete call is the only
-// part that differed between the three sync files' deleteFromRemote copies.
+// SyncStep.Delete progress loop; the caller supplies the per-entity delete call.
 export async function stepDelete<T>(
   toDelete: T[],
   deleteItem: (item: T) => Promise<void>,

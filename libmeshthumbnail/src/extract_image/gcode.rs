@@ -1,11 +1,11 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Cursor, Read},
+    io::{BufRead, BufReader, Read},
     path::Path,
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use image::{DynamicImage, ImageReader};
+use image::DynamicImage;
 
 use crate::{
     error::MeshThumbnailError,
@@ -58,7 +58,7 @@ where
     let mut in_gcode_section = false;
     let mut gcode_img_width = 0;
     let mut gcode_img_height = 0;
-    let mut image = String::new();
+    let mut image = String::default();
 
     for line in buffered_reader.lines().map_while(Result::ok) {
         if line.starts_with("; thumbnail begin") {
@@ -73,7 +73,7 @@ where
 
             gcode_img_width = *pixel_format_unpacked.first().unwrap_or(&0);
             gcode_img_height = *pixel_format_unpacked.get(1).unwrap_or(&0);
-            image = String::new();
+            image = String::default();
 
             in_gcode_section = gcode_img_width > 0 && gcode_img_height > 0;
         } else if line.starts_with("; thumbnail end") {
@@ -106,9 +106,5 @@ where
         )));
     };
 
-    let step1 = ImageReader::new(Cursor::new(&largest_image.data))
-        .with_guessed_format()?
-        .decode()?;
-
-    Ok(step1)
+    Ok(image::load_from_memory(&largest_image.data)?)
 }

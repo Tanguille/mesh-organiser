@@ -97,25 +97,6 @@ impl FileType {
         }
     }
 
-    /// # Panics
-    /// Panics if `self` is `FileType::Unknown` (cannot convert to an extension).
-    #[must_use]
-    pub fn to_extension(&self) -> String {
-        match self {
-            Self::Stl => "stl",
-            Self::ZippedStl => "stl.zip",
-            Self::Obj => "obj",
-            Self::ZippedObj => "obj.zip",
-            Self::Gcode => "gcode",
-            Self::ZippedGcode => "gcode.zip",
-            Self::Step => "step",
-            Self::ZippedStep => "step.zip",
-            Self::Threemf => "3mf",
-            Self::Unknown => panic!("Cannot convert Unknown FileType to extension"),
-        }
-        .to_string()
-    }
-
     /// Returns the lowercase storage extensions considered equivalent to this file type.
     ///
     /// Zipped and unzipped variants share the same set of extensions. Unknown types return an

@@ -30,7 +30,7 @@
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
-  import { debounce, wait, uniqueById } from "$lib/utils";
+  import { debounce, normalizeSearchInput, wait, uniqueById } from "$lib/utils";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -50,12 +50,8 @@
   let selected = $state.raw<Group[]>([]);
 
   const isMobile = new IsMobile();
-  const showLeftSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length <= 0),
-  );
-  const showRightSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length > 0),
-  );
+  const showLeftSide = $derived(!isMobile.current || selected.length <= 0);
+  const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
   let gridSizeMonitor = new IsSplitGridSize();
 
@@ -149,11 +145,8 @@
     selection.destroy();
   });
 
-  function onSearchInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    debouncedSetNewSearchText(
-      target.value.trim().length === 0 ? null : target.value.trim(),
-    );
+  function onSearchInput(event: Event) {
+    debouncedSetNewSearchText(normalizeSearchInput(event));
   }
 
   const modelsInSelectedGroups = $derived(selected.flatMap((g) => g.models));

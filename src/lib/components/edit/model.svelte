@@ -142,7 +142,7 @@
     props.onDelete?.();
   }
 
-  async function onOpenInSlicer() {
+  async function markPrintedIfConfigured() {
     if (configuration.label_exported_model_as_printed && !model.flags.printed) {
       model.flags.printed = true;
       await onUpdateModel();
@@ -154,11 +154,7 @@
       return;
     }
 
-    if (configuration.label_exported_model_as_printed && !model.flags.printed) {
-      model.flags.printed = true;
-      await onUpdateModel();
-    }
-
+    await markPrintedIfConfigured();
     await localApi.openInFolder([model], false);
   }
 
@@ -376,7 +372,7 @@
         <OpenInSlicerButton
           models={model}
           class="grow"
-          onOpen={onOpenInSlicer}
+          onOpen={markPrintedIfConfigured}
         />
       </div>
 
