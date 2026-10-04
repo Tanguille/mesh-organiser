@@ -21,7 +21,7 @@ use service::{
 };
 
 use crate::{
-    controller::share_controller::resolve_share_owner,
+    controller::share_controller::ShareScope,
     error::ApplicationError,
     query_bounds,
     user::{Backend, CurrentUser},
@@ -79,13 +79,13 @@ impl GetModelParams {
     }
 }
 
-/// `share_ids` is `Some` on the share path, where the query is scoped to those
+/// `share` is `Some` on the share path, where the query is scoped to the share's
 /// ids instead of using the request's `model_ids` as an unrestricted filter.
 async fn get_models_inner(
     app_state: &AppState,
     user: &User,
     params: GetModelParams,
-    share_ids: Option<&[i64]>,
+    share: Option<&ShareScope>,
 ) -> Result<Response, ApplicationError> {
     if let Err(e) = query_bounds::validate_model_list_query_bounds(params.paginated_bounds()) {
         return Ok(query_bounds::bad_request(&e));
@@ -96,8 +96,8 @@ async fn get_models_inner(
     // A share's ids stay `Some` even when empty: the db layer answers
     // `Some(vec![])` with no models, whereas `None` would mean every model the
     // owner has.
-    let model_ids = match share_ids {
-        Some(share_ids) => Some(share_model_ids(share_ids, &params.model_ids)),
+    let model_ids = match share {
+        Some(share) => Some(share.restrict(&params.model_ids)),
         None => query_bounds::none_if_empty(params.model_ids),
     };
 
@@ -131,31 +131,17 @@ pub async fn get_models(
     get_models_inner(&app_state, &user, params, None).await
 }
 
-/// Ids a share request may query: all of the share's ids when nothing specific
-/// was requested, otherwise only the requested ids that belong to the share.
-fn share_model_ids(share_ids: &[i64], requested: &[i64]) -> Vec<i64> {
-    if requested.is_empty() {
-        return share_ids.to_vec();
-    }
-
-    share_ids
-        .iter()
-        .copied()
-        .filter(|id| requested.contains(id))
-        .collect()
-}
-
 pub async fn get_share_models(
     Path(share_id): Path<String>,
     State(app_state): State<AppState>,
     Query(mut params): Query<GetModelParams>,
 ) -> Result<Response, ApplicationError> {
-    let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
+    let scope = ShareScope::resolve(&app_state, &share_id).await?;
 
     params.group_ids = vec![];
     params.label_ids = vec![];
 
-    get_models_inner(&app_state, &user, params, Some(&share.model_ids)).await
+    get_models_inner(&app_state, &scope.owner, params, Some(&scope)).await
 }
 
 #[derive(Deserialize)]
@@ -343,54 +329,4 @@ pub async fn add_model(
     .await?;
 
     Ok(Json(model_ids).into_response())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn share_model_ids_empty_request_returns_every_share_id() {
-        assert_eq!(super::share_model_ids(&[1, 2, 3], &[]), vec![1, 2, 3]);
-    }
-
-    #[test]
-    fn share_model_ids_subset_request_returns_exactly_that_subset() {
-        assert_eq!(super::share_model_ids(&[1, 2, 3], &[2, 3]), vec![2, 3]);
-    }
-
-    #[test]
-    fn share_model_ids_drops_requested_ids_outside_the_share() {
-        assert_eq!(super::share_model_ids(&[1, 2], &[2, 999]), vec![2]);
-    }
-
-    // The leak scenario: an empty result must stay empty (and be passed on as
-    // `Some(vec![])`), because `None` would mean "no restriction" downstream.
-    #[test]
-    fn share_model_ids_only_foreign_ids_requested_returns_empty() {
-        assert_eq!(super::share_model_ids(&[1, 2], &[999]), Vec::<i64>::new());
-    }
-
-    #[test]
-    fn share_model_ids_disjoint_request_returns_empty() {
-        assert_eq!(super::share_model_ids(&[1, 2], &[3, 4]), Vec::<i64>::new());
-    }
-
-    #[test]
-    fn share_model_ids_empty_share_and_empty_request_returns_empty() {
-        assert_eq!(super::share_model_ids(&[], &[]), Vec::<i64>::new());
-    }
-
-    #[test]
-    fn share_model_ids_empty_share_with_request_returns_empty() {
-        assert_eq!(super::share_model_ids(&[], &[1]), Vec::<i64>::new());
-    }
-
-    // The result follows the share's order and each shared id appears once,
-    // regardless of the order or repetition of the requested ids.
-    #[test]
-    fn share_model_ids_keeps_share_order_and_ignores_requested_duplicates() {
-        assert_eq!(
-            super::share_model_ids(&[1, 2, 3], &[3, 1, 3, 1]),
-            vec![1, 3]
-        );
-    }
 }

@@ -19,7 +19,7 @@ use db::{
 use service::{AppState, cleanse_evil_from_name, convert_zip_to_extension, export_service};
 
 use crate::{
-    controller::share_controller::resolve_share_owner,
+    controller::share_controller::ShareScope,
     error::ApplicationError,
     path_safety::resolve_path_under_base,
     user::{Backend, CurrentUser},
@@ -62,52 +62,53 @@ async fn extract_user_via_id_and_hash(
     Some(user)
 }
 
-/// A share link only grants the models listed on the share, not everything its owner has.
-fn share_allows_model(share_model_ids: &[i64], model_id: i64) -> bool {
-    share_model_ids.contains(&model_id)
-}
-
 pub async fn download_model(
     Path(blob_sha256): Path<String>,
     State(app_state): State<AppState>,
     Query(params): Query<DownloadModelParams>,
 ) -> Response {
-    let (user, share_model_ids) = match params {
+    // Each branch owns its value here so `user` can borrow from either.
+    let hash_user;
+    let share_scope;
+    let (user, scope) = match params {
         DownloadModelParams {
             user_id: Some(user_id),
             user_hash: Some(user_hash),
             share_id: None,
         } => match extract_user_via_id_and_hash(&app_state, user_id, &user_hash).await {
-            Some(user) => (user, None),
+            Some(user) => {
+                hash_user = user;
+                (&hash_user, None)
+            }
             None => return StatusCode::NOT_FOUND.into_response(),
         },
         DownloadModelParams {
             user_id: None,
             user_hash: None,
             share_id: Some(share_id),
-        } => match resolve_share_owner(&app_state, &share_id).await {
-            Ok((share, user)) => (user, Some(share.model_ids)),
+        } => match ShareScope::resolve(&app_state, &share_id).await {
+            Ok(scope) => {
+                share_scope = scope;
+                (&share_scope.owner, Some(&share_scope))
+            }
             Err(_) => return StatusCode::NOT_FOUND.into_response(),
         },
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
     let Ok(Some(model_id)) =
-        model_db::get_model_id_via_sha256(&app_state.db, &user, &blob_sha256).await
+        model_db::get_model_id_via_sha256(&app_state.db, user, &blob_sha256).await
     else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
     // The sha256 lookup spans all of the owner's models, so a share link must
     // be checked against the share's own model ids.
-    if share_model_ids
-        .as_deref()
-        .is_some_and(|ids| !share_allows_model(ids, model_id))
-    {
+    if scope.is_some_and(|scope| !scope.allows(model_id)) {
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    let Ok(Some(model)) = model_db::get_model_via_id(&app_state.db, &user, model_id).await else {
+    let Ok(Some(model)) = model_db::get_model_via_id(&app_state.db, user, model_id).await else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
@@ -266,22 +267,4 @@ pub async fn create_blobs_zip_download(
             .to_string(),
     )
     .into_response())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn share_allows_model_accepts_a_member() {
-        assert!(super::share_allows_model(&[1, 2, 3], 2));
-    }
-
-    #[test]
-    fn share_allows_model_rejects_a_non_member() {
-        assert!(!super::share_allows_model(&[1, 2, 3], 4));
-    }
-
-    #[test]
-    fn share_allows_model_rejects_everything_for_an_empty_share() {
-        assert!(!super::share_allows_model(&[], 1));
-    }
 }

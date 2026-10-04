@@ -13,7 +13,7 @@ use db::{group_db, group_db::GroupFilterOptions, model::blob::FileType};
 use service::AppState;
 
 use crate::{
-    controller::{ModelIdsParams, share_controller::resolve_share_owner},
+    controller::{ModelIdsParams, share_controller::ShareScope},
     error::ApplicationError,
     query_bounds,
     user::{Backend, CurrentUser},
@@ -121,7 +121,7 @@ pub async fn get_share_groups(
     State(app_state): State<AppState>,
     Query(params): Query<GetGroupParams>,
 ) -> Result<Response, ApplicationError> {
-    let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
+    let scope = ShareScope::resolve(&app_state, &share_id).await?;
 
     if let Err(e) = query_bounds::validate_group_list_query_bounds(
         params.paginated_bounds(),
@@ -132,9 +132,9 @@ pub async fn get_share_groups(
 
     let groups = group_db::get_groups(
         &app_state.db,
-        &user,
+        &scope.owner,
         GroupFilterOptions {
-            model_ids: share.model_ids.into(),
+            model_ids: Some(scope.share.model_ids),
             group_ids: query_bounds::none_if_empty(params.group_ids),
             label_ids: None,
             order_by: params.order_by.as_deref().map(|order_by| {

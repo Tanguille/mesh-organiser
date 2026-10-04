@@ -22,20 +22,51 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
-/// Resolves a share and its owning user, erroring if the owner no longer exists.
-pub async fn resolve_share_owner(
-    app_state: &AppState,
-    share_id: &str,
-) -> Result<(Share, User), ApplicationError> {
-    let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
+/// A share resolved together with its owning user, plus the model scoping that
+/// every share endpoint must apply: a share link only grants the models listed
+/// on the share, never everything its owner has.
+pub struct ShareScope {
+    pub share: Share,
+    pub owner: User,
+}
 
-    let Some(user) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
-        return Err(ApplicationError::InternalError(
-            "Share owner user not found.".into(),
-        ));
-    };
+impl ShareScope {
+    /// Resolves a share and its owning user, erroring if the owner no longer exists.
+    pub async fn resolve(app_state: &AppState, share_id: &str) -> Result<Self, ApplicationError> {
+        let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
 
-    Ok((share, user))
+        let Some(owner) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
+            return Err(ApplicationError::InternalError(
+                "Share owner user not found.".into(),
+            ));
+        };
+
+        Ok(Self { share, owner })
+    }
+
+    /// Whether `model_id` is one of the share's models.
+    pub fn allows(&self, model_id: i64) -> bool {
+        self.share.model_ids.contains(&model_id)
+    }
+
+    /// Ids a share request may query: all of the share's ids when nothing
+    /// specific was requested, otherwise only the requested ids that belong to
+    /// the share, in the share's order. Callers must pass the result on as
+    /// `Some(..)` even when empty, never through `none_if_empty`.
+    pub fn restrict(&self, requested: &[i64]) -> Vec<i64> {
+        if requested.is_empty() {
+            return self.share.model_ids.clone();
+        }
+
+        let requested: std::collections::HashSet<i64> = requested.iter().copied().collect();
+
+        self.share
+            .model_ids
+            .iter()
+            .copied()
+            .filter(|model_id| requested.contains(model_id))
+            .collect()
+    }
 }
 
 /// Routes for the share endpoints; `login_required!` guards only those registered before it.
@@ -71,9 +102,9 @@ pub async fn get_share(
     Path(share_id): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
+    let scope = ShareScope::resolve(&app_state, &share_id).await?;
 
-    let share = share.to_dto(user.username);
+    let share = scope.share.to_dto(scope.owner.username);
 
     Ok(Json(share).into_response())
 }
@@ -135,4 +166,52 @@ pub async fn delete_share(
     share_db::delete_share(&app_state.db, &user, &share_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    fn scope(model_ids: Vec<i64>) -> super::ShareScope {
+        super::ShareScope {
+            share: db::model::share::Share {
+                id: String::new(),
+                created_at: String::new(),
+                share_name: String::new(),
+                user_id: 1,
+                model_ids,
+            },
+            owner: db::model::user::User::default(),
+        }
+    }
+
+    #[test]
+    fn allows_only_members_of_the_share() {
+        assert!(scope(vec![1, 2, 3]).allows(2));
+        assert!(!scope(vec![1, 2, 3]).allows(4));
+        assert!(!scope(vec![]).allows(1));
+    }
+
+    #[test]
+    fn restrict_empty_request_returns_every_share_id() {
+        assert_eq!(scope(vec![1, 2, 3]).restrict(&[]), vec![1, 2, 3]);
+        assert_eq!(scope(vec![]).restrict(&[]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn restrict_subset_request_returns_only_shared_ids() {
+        assert_eq!(scope(vec![1, 2, 3]).restrict(&[2, 3]), vec![2, 3]);
+        assert_eq!(scope(vec![1, 2]).restrict(&[2, 999]), vec![2]);
+    }
+
+    // The leak scenario: an empty result must stay empty (and be passed on as
+    // `Some(vec![])`), because `None` would mean "no restriction" downstream.
+    #[test]
+    fn restrict_foreign_ids_return_empty() {
+        assert_eq!(scope(vec![1, 2]).restrict(&[3, 4]), Vec::<i64>::new());
+        assert_eq!(scope(vec![]).restrict(&[1]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn restrict_keeps_share_order_and_ignores_requested_duplicates() {
+        assert_eq!(scope(vec![1, 2, 3]).restrict(&[3, 1, 3, 1]), vec![1, 3]);
+    }
 }

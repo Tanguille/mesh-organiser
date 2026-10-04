@@ -9,7 +9,7 @@ use tower_http::services::ServeFile;
 
 use service::AppState;
 
-use crate::{controller::share_controller::resolve_share_owner, error::ApplicationError};
+use crate::{controller::share_controller::ShareScope, error::ApplicationError};
 
 /// Serves the SPA shell for client-side routes; unauthenticated, the SPA handles login itself.
 pub fn router() -> Router<AppState> {
@@ -40,7 +40,7 @@ async fn serve_share_page(
 ) -> Result<Html<String>, ApplicationError> {
     let mut html = fs::read_to_string("www/group/1.html").await?;
 
-    let Ok((share, user)) = resolve_share_owner(&app_state, &share_id).await else {
+    let Ok(ShareScope { share, owner }) = ShareScope::resolve(&app_state, &share_id).await else {
         return Ok(Html(html));
     };
 
@@ -56,7 +56,7 @@ async fn serve_share_page(
             "content=\"A personal 3d printing model library.\"",
             &format!(
                 "content=\"Shared by user {}. Contains {} model{}.\"",
-                escape_html_attribute(&user.username),
+                escape_html_attribute(&owner.username),
                 share.model_ids.len(),
                 if share.model_ids.len() >= 2 { "s" } else { "" }
             ),
