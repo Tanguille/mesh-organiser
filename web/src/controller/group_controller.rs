@@ -92,11 +92,7 @@ pub async fn get_groups(
         &app_state.db,
         &user,
         GroupFilterOptions {
-            model_ids: if params.model_ids.is_empty() {
-                model_ids
-            } else {
-                Some(params.model_ids)
-            },
+            model_ids: query_bounds::none_if_empty(params.model_ids).or(model_ids),
             group_ids: query_bounds::none_if_empty(params.group_ids),
             label_ids: query_bounds::none_if_empty(params.label_ids),
             order_by: params.order_by.as_deref().map(|order_by| {
