@@ -226,7 +226,7 @@ impl App {
             import_mutex: Arc::new(tokio::sync::Mutex::new(())),
         };
 
-        let session_store = SqliteStore::new(web_app_state.app_state.db.as_ref().clone());
+        let session_store = SqliteStore::new(app_state.db.as_ref().clone());
         session_store.migrate().await?;
 
         apply_local_account(&app_state).await?;
