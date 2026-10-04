@@ -34,7 +34,7 @@ Also try:
 ## SPA shell vs prerender
 
 - Root [`src/routes/+layout.ts`](../src/routes/+layout.ts) uses **`export const ssr = false`** (no Node SSR in the WebView).
-- **`@sveltejs/adapter-static`** is configured with **`fallback: 'index.html'`** in [`svelte.config.js`](../svelte.config.js) so **deep links** (e.g. `/group/123`, `/share/...`) work when served as static files inside Tauri.
+- **`@sveltejs/adapter-static`** is configured with **`fallback: 'index.html'`** in the `sveltekit({ ... })` plugin call in [`vite.config.js`](../vite.config.js) (SvelteKit 3 no longer reads `svelte.config.js`) so **deep links** (e.g. `/group/123`, `/share/...`) work when served as static files inside Tauri.
 - Dynamic `[slug]` routes do **not** use stub `entries()` for build-time paths; the client router resolves params at runtime.
 
 ## Content-Security-Policy (dev vs release)

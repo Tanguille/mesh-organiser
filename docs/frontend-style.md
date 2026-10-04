@@ -43,7 +43,7 @@ type FileType = "stl" | "obj" | "3mf" | "step" | "gcode";
 
 ## Imports & Path Aliases
 
-Defined in `svelte.config.js`:
+Defined via the `alias` option of the `sveltekit({ ... })` plugin in `vite.config.js`. SvelteKit 3 dropped the built-in `$lib` (in favour of `#lib` subpath imports) and deprecated `alias`, so this re-adds `$lib` explicitly:
 
 ```typescript
 import { cn } from "$lib/utils"; // $lib -> ./src/lib
