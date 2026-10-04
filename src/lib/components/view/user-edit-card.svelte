@@ -1,27 +1,27 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IAdminUserApi, type User } from "$lib/api/shared/user_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IAdminUserApi, type User } from "#lib/api/shared/user_api";
   import {
     Card,
     CardContent,
     CardHeader,
     CardTitle,
-  } from "$lib/components/ui/card";
-  import * as Popover from "$lib/components/ui/popover/index.js";
+  } from "#lib/components/ui/card";
+  import * as Popover from "#lib/components/ui/popover/index.js";
   import { onMount } from "svelte";
   import Trash from "@lucide/svelte/icons/trash";
   import Button, {
     buttonVariants,
-  } from "$lib/components/ui/button/button.svelte";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  } from "#lib/components/ui/button/button.svelte";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import Pencil from "@lucide/svelte/icons/pencil";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
   import Plus from "@lucide/svelte/icons/plus";
-  import { IHostApi, isCurrentPlatformDesktop } from "$lib/api/shared/host_api";
+  import { IHostApi, isCurrentPlatformDesktop } from "#lib/api/shared/host_api";
   import { toast } from "svelte-sonner";
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
-  import { currentUser } from "$lib/configuration.svelte";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index.js";
+  import { currentUser } from "#lib/configuration.svelte";
   import KeyRound from "@lucide/svelte/icons/key-round";
 
   const userAdminApi = getContainer().require<IAdminUserApi>(IAdminUserApi);

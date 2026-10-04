@@ -1,11 +1,11 @@
 <script lang="ts">
-  import ModelImg from "$lib/components/view/model-img.svelte";
+  import ModelImg from "#lib/components/view/model-img.svelte";
   import type { ClassValue } from "svelte/elements";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import FlagBadges from "$lib/components/view/flag-badges.svelte";
-  import type { Group } from "$lib/api/shared/group_api";
-  import { configuration } from "$lib/configuration.svelte";
-  import { representativeModel } from "$lib/utils";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import FlagBadges from "#lib/components/view/flag-badges.svelte";
+  import type { Group } from "#lib/api/shared/group_api";
+  import { configuration } from "#lib/configuration.svelte";
+  import { representativeModel } from "#lib/utils";
 
   const props: { group: Group; class?: ClassValue } = $props();
 </script>

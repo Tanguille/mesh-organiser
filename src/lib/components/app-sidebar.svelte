@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.js";
   import Box from "@lucide/svelte/icons/box";
   import Boxes from "@lucide/svelte/icons/boxes";
   import FolderInput from "@lucide/svelte/icons/folder-input";
@@ -15,18 +15,18 @@
   import Tags from "@lucide/svelte/icons/tags";
   import Bomb from "@lucide/svelte/icons/bomb";
 
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import ImportProgressIndicator from "$lib/components/view/tauri-import-progress-indicator.svelte";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import ImportProgressIndicator from "#lib/components/view/tauri-import-progress-indicator.svelte";
 
-  import { getThisLabelOnly, resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "#lib/paths";
   import { page } from "$app/state";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
-  import { ImportStatus } from "$lib/api/shared/tauri_import_api";
-  import AddLabelPopover from "$lib/components/view/add-label-popover.svelte";
-  import { configuration, panicState } from "$lib/configuration.svelte";
-  import { importState } from "$lib/import.svelte";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
+  import { ImportStatus } from "#lib/api/shared/tauri_import_api";
+  import AddLabelPopover from "#lib/components/view/add-label-popover.svelte";
+  import { configuration, panicState } from "#lib/configuration.svelte";
+  import { importState } from "#lib/import.svelte";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
   import Check from "@lucide/svelte/icons/check";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
@@ -34,13 +34,13 @@
   import Slice from "@lucide/svelte/icons/slice";
   import { onMount } from "svelte";
   import NavUser from "./view/nav-user.svelte";
-  import { IHostApi, Platform } from "$lib/api/shared/host_api";
+  import { IHostApi, Platform } from "#lib/api/shared/host_api";
   import DemoMode from "./view/demo-mode.svelte";
   import Share2 from "@lucide/svelte/icons/share-2";
-  import { IShareApi } from "$lib/api/shared/share_api";
-  import { ISyncApi } from "$lib/api/shared/sync_api";
+  import { IShareApi } from "#lib/api/shared/share_api";
+  import { ISyncApi } from "#lib/api/shared/sync_api";
   import SyncProgressIndicator from "./view/sync-progress-indicator.svelte";
-  import { globalSyncState, SyncStage } from "$lib/sync.svelte";
+  import { globalSyncState, SyncStage } from "#lib/sync.svelte";
 
   const shareApi = getContainer().optional<IShareApi>(IShareApi);
 

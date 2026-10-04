@@ -5,9 +5,9 @@
     addModelsToLabelId,
     state as dragState,
     stopDragging,
-  } from "$lib/drag-selected-models.svelte";
+  } from "#lib/drag-selected-models.svelte";
   import Boxes from "@lucide/svelte/icons/boxes";
-  import Badge from "$lib/components/ui/badge/badge.svelte";
+  import Badge from "#lib/components/ui/badge/badge.svelte";
 
   const props: { children: Snippet; class?: ClassValue } = $props();
 

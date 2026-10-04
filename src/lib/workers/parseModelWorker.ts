@@ -7,7 +7,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 // @ts-expect-error - threejs-webworker-3mf-loader has no type definitions
 import { ThreeMFLoader } from "threejs-webworker-3mf-loader";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import { FileType } from "$lib/api/shared/blob_api";
+import { FileType } from "#lib/api/shared/blob_api";
 import { isValidWorkerMessage } from "./parseModelWorkerMessage.js";
 
 function convertGeometry(group: Group): BufferGeometry | null {

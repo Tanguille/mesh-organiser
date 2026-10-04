@@ -5,7 +5,7 @@ import {
   importState,
   navigateToImportPage,
   resetImportState,
-} from "$lib/import.svelte";
+} from "#lib/import.svelte";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   ImportStatus,
@@ -16,10 +16,10 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "svelte-sonner";
 import { invoke } from "@tauri-apps/api/core";
-import { updateSidebarState } from "$lib/sidebar_data.svelte";
-import { configuration } from "$lib/configuration.svelte";
+import { updateSidebarState } from "#lib/sidebar_data.svelte";
+import { configuration } from "#lib/configuration.svelte";
 import { open } from "@tauri-apps/plugin-dialog";
-import { accountLinkData } from "$lib/account_link_data.svelte";
+import { accountLinkData } from "#lib/account_link_data.svelte";
 import { BaseDirectory, watch, type WatchEvent } from "@tauri-apps/plugin-fs";
 
 interface DeepLinkEmit {

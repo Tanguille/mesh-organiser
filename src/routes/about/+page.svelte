@@ -1,7 +1,7 @@
 <script lang="ts">
   import Link from "@lucide/svelte/icons/link";
   import Heart from "@lucide/svelte/icons/heart";
-  import AppHeader from "$lib/components/view/app-header.svelte";
+  import AppHeader from "#lib/components/view/app-header.svelte";
 
   let repositoryLinks = [
     {

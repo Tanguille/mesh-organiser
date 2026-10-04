@@ -1,11 +1,11 @@
-import { currentUser } from "$lib/configuration.svelte";
+import { currentUser } from "#lib/configuration.svelte";
 import {
   beginSyncStep,
   globalSyncState,
   resetSyncState,
   SyncStage,
   SyncStep,
-} from "$lib/sync.svelte";
+} from "#lib/sync.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { getContainer } from "../dependency_injection";
 import { IModelApi, type Model } from "../shared/model_api";
@@ -13,7 +13,7 @@ import type {
   UploadResult,
   DirectoryScanModel,
 } from "../tauri-online/tauri_import";
-import { importState } from "$lib/import.svelte";
+import { importState } from "#lib/import.svelte";
 import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
 import { IGroupApi } from "../shared/group_api";
 import type { IBlobApi } from "../shared/blob_api";
@@ -24,7 +24,7 @@ import {
   type ResourceSet,
 } from "./algorithm";
 import { getAllModels } from "../shared/model_api";
-import { runWithLimit } from "$lib/utils";
+import { runWithLimit } from "#lib/utils";
 
 interface BlobPath {
   blob_id: number;

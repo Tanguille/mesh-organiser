@@ -1,7 +1,7 @@
 // Stuff like labels, counts
 
-import { getContainer } from "$lib/api/dependency_injection";
-import { configuration } from "$lib/configuration.svelte";
+import { getContainer } from "#lib/api/dependency_injection";
+import { configuration } from "#lib/configuration.svelte";
 import { IGroupApi } from "./group_api";
 import { ILabelApi, type Label } from "./label_api";
 import { IModelApi } from "./model_api";

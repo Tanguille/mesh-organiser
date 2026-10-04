@@ -1,5 +1,5 @@
-import { configuration } from "$lib/configuration.svelte";
-import { triggerDownload } from "$lib/utils";
+import { configuration } from "#lib/configuration.svelte";
+import { triggerDownload } from "#lib/utils";
 import type { IBlobApi } from "./blob_api";
 import type { Model } from "./model_api";
 

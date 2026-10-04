@@ -1,4 +1,4 @@
-import { handleGridItemKeyDown } from "$lib/utils";
+import { handleGridItemKeyDown } from "#lib/utils";
 
 interface GridSelectionOptions<T> {
   getItems: () => T[];

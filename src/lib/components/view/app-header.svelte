@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IHostApi } from "$lib/api/shared/host_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IHostApi } from "#lib/api/shared/host_api";
 
   let version = $state("");
 

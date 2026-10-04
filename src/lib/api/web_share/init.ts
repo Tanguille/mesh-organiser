@@ -1,4 +1,4 @@
-import { configuration, configurationMeta } from "$lib/configuration.svelte";
+import { configuration, configurationMeta } from "#lib/configuration.svelte";
 import { getContainer, resetContainer } from "../dependency_injection";
 import { IBlobApi } from "../shared/blob_api";
 import { DefaultDownloadApi, IDownloadApi } from "../shared/download_api";

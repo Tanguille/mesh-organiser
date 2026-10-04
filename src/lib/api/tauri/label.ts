@@ -13,7 +13,7 @@ import {
   type RawLabelKeyword,
   type RawLabelMeta,
 } from "../shared/raw_model";
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 
 export class LabelApi implements ILabelApi {
   async getLabels(includeUngroupedModels: boolean): Promise<Label[]> {

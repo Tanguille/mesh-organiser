@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import Button from "$lib/components/ui/button/button.svelte";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import Button from "#lib/components/ui/button/button.svelte";
   import type { ClassValue } from "svelte/elements";
 
   function generateRandomColor() {

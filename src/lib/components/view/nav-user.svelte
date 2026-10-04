@@ -1,28 +1,28 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { redirectAfterUserSwitch } from "$lib/paths";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { redirectAfterUserSwitch } from "#lib/paths";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
     IDiskUsageInfoApi,
     type DiskUsageInfo,
-  } from "$lib/api/shared/disk_usage_info_api";
+  } from "#lib/api/shared/disk_usage_info_api";
   import {
     ISwitchUserApi,
     IUserLogoutApi,
     IUserManageSelfApi,
     IUserTokenApi,
     type User,
-  } from "$lib/api/shared/user_api";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import { toReadableSize } from "$lib/utils";
+  } from "#lib/api/shared/user_api";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.js";
+  import { toReadableSize } from "#lib/utils";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
   import CircleUser from "@lucide/svelte/icons/circle-user";
   import LogOutIcon from "@lucide/svelte/icons/log-out";
   import { onMount } from "svelte";
-  import { IHostApi, isCurrentPlatformDesktop } from "$lib/api/shared/host_api";
-  import { currentUser } from "$lib/configuration.svelte";
+  import { IHostApi, isCurrentPlatformDesktop } from "#lib/api/shared/host_api";
+  import { currentUser } from "#lib/configuration.svelte";
   import Settings from "@lucide/svelte/icons/settings";
   import CircleHelp from "@lucide/svelte/icons/circle-help";
   import UserPen from "@lucide/svelte/icons/user-pen";

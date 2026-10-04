@@ -4,7 +4,7 @@ import {
 } from "../shared/server_request_api";
 import type { IUserApi, IUserTokenApi, User } from "../shared/user_api";
 import { parseRawUser, type RawUser } from "../shared/raw_model";
-import { triggerDownload } from "$lib/utils";
+import { triggerDownload } from "#lib/utils";
 
 export class WebUserApi implements IUserApi, IUserTokenApi {
   private requestApi: IServerRequestApi;

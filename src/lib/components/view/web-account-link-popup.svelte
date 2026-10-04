@@ -4,29 +4,29 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  } from "#lib/components/ui/card";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import FolderSync from "@lucide/svelte/icons/folder-sync";
   import Globe from "@lucide/svelte/icons/globe";
 
   import { toast } from "svelte-sonner";
-  import type { AccountLinkData } from "$lib/account_link_data.svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import type { AccountLinkData } from "#lib/account_link_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
     IAdminUserApi,
     ISwitchUserApi,
     IUserApi,
     type User,
-  } from "$lib/api/shared/user_api";
+  } from "#lib/api/shared/user_api";
   import { onMount } from "svelte";
   import Input from "../ui/input/input.svelte";
-  import * as Select from "$lib/components/ui/select/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { Label } from "../ui/label";
-  import { IUserSyncApi } from "$lib/api/shared/user_sync_api";
+  import { IUserSyncApi } from "#lib/api/shared/user_sync_api";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { redirectAfterUserSwitch } from "$lib/paths";
+  import { redirectAfterUserSwitch } from "#lib/paths";
 
   let props: { data: AccountLinkData; onDismiss?: () => void } = $props();
   const userApi = getContainer().optional<IUserApi>(IUserApi);

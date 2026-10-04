@@ -1,12 +1,12 @@
 <script lang="ts">
-  import * as Card from "$lib/components/ui/card/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-  import { globalSyncState, SyncStage, SyncStep } from "$lib/sync.svelte";
+  import { globalSyncState, SyncStage, SyncStep } from "#lib/sync.svelte";
   import Button from "../ui/button/button.svelte";
-  import { currentUser } from "$lib/configuration.svelte";
-  import { timeSinceDate } from "$lib/utils";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ISyncApi } from "$lib/api/shared/sync_api";
+  import { currentUser } from "#lib/configuration.svelte";
+  import { timeSinceDate } from "#lib/utils";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ISyncApi } from "#lib/api/shared/sync_api";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { onDestroy } from "svelte";
 

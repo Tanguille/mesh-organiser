@@ -3,6 +3,10 @@
   "version": "4.0.2",
   "packageManager": "pnpm@12.8.1",
   "type": "module",
+  "imports": {
+    "#lib": "./src/lib",
+    "#lib/*": "./src/lib/*"
+  },
   "scripts": {
     "dev": "tauri dev",
     "dev:web": "vite dev",

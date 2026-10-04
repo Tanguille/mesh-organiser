@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IShareApi, type Share } from "$lib/api/shared/share_api";
-  import ShareEdit from "$lib/components/edit/share.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IShareApi, type Share } from "#lib/api/shared/share_api";
+  import ShareEdit from "#lib/components/edit/share.svelte";
   import { onMount } from "svelte";
   import Share2 from "@lucide/svelte/icons/share-2";
 
