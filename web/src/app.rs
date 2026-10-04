@@ -57,7 +57,7 @@ pub struct App {
     session_store: SqliteStore,
 }
 
-fn parse_port() -> Result<u16, Box<dyn Error>> {
+pub fn parse_port() -> Result<u16, Box<dyn Error>> {
     env::var(ENV_SERVER_PORT)
         .unwrap_or_else(|_| "3000".into())
         .parse::<u16>()
@@ -194,9 +194,6 @@ async fn update_session_middleware(
 
 impl App {
     pub async fn new() -> Result<Self, Box<dyn Error>> {
-        // Fail fast on a bad PORT before touching the database. The port is parsed again in
-        // `serve` rather than stored, so it stays out of the struct that also carries the state.
-        parse_port()?;
         let config_path = env::var(ENV_APP_CONFIG_PATH)
             .map_err(|_| {
                 io::Error::new(
@@ -238,7 +235,8 @@ impl App {
         })
     }
 
-    pub async fn serve(self) -> Result<(), Box<dyn Error>> {
+    /// `port` is passed in rather than stored on `App`, keeping it apart from the state.
+    pub async fn serve(self, port: u16) -> Result<(), Box<dyn Error>> {
         let session_store = self.session_store;
 
         let deletion_task = tokio::task::spawn(
@@ -267,7 +265,6 @@ impl App {
 
         let serve_dir = ServeDir::new("www").not_found_service(ServeFile::new("www/index.html"));
         let db = self.state.db.clone();
-        let port = parse_port()?;
 
         let cors_layer = CorsLayer::new()
             .allow_origin([

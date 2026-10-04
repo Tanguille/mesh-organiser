@@ -36,7 +36,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
 
     tokio::spawn(loop_remove_temp_paths());
 
-    App::new().await?.serve().await
+    // Fail fast on a bad PORT before touching the database.
+    let port = app::parse_port()?;
+
+    App::new().await?.serve(port).await
 }
 
 fn main() {
