@@ -16,7 +16,6 @@ use axum::{
     response::Response,
 };
 use axum_login::AuthManagerLayerBuilder;
-use axum_messages::MessagesManagerLayer;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
@@ -26,10 +25,6 @@ use tower_http::{
     services::{ServeDir, ServeFile},
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
-use tower_sessions_sqlx_store::{
-    SqliteStore,
-    sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-};
 
 use db::{
     db_context::{self, DbContext},
@@ -45,6 +40,7 @@ use crate::{
         page_controller, resource_controller, share_controller, threemf_controller,
         user_controller,
     },
+    session_store::SqliteStore,
     user::{AuthSession, Backend},
     web_import_state::WebImportStateEmitter,
 };
@@ -196,21 +192,6 @@ async fn update_session_middleware(
     next.run(request).await
 }
 
-async fn setup_session_store(sqlite_path: &Path) -> Result<SqliteStore, Box<dyn Error>> {
-    let connect_options = SqliteConnectOptions::new()
-        .filename(sqlite_path)
-        .create_if_missing(false)
-        .busy_timeout(std::time::Duration::from_secs(15));
-    let pool = SqlitePoolOptions::new()
-        .max_connections(2)
-        .connect_with(connect_options)
-        .await?;
-    let store = SqliteStore::new(pool);
-    store.migrate().await?;
-
-    Ok(store)
-}
-
 impl App {
     pub async fn new() -> Result<Self, Box<dyn Error>> {
         // Fail fast on a bad PORT before touching the database. The port is parsed again in
@@ -245,7 +226,8 @@ impl App {
             import_mutex: Arc::new(tokio::sync::Mutex::new(())),
         };
 
-        let session_store = setup_session_store(&sqlite_path).await?;
+        let session_store = SqliteStore::new(web_app_state.app_state.db.as_ref().clone());
+        session_store.migrate().await?;
 
         apply_local_account(&app_state).await?;
         spawn_thumbnail_regeneration(&app_state);
@@ -325,7 +307,6 @@ impl App {
             .with_state(self.state)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
-            .layer(MessagesManagerLayer)
             .layer(auth_layer)
             .layer(DefaultBodyLimit::disable())
             .layer(CompressionLayer::new())

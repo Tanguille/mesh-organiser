@@ -14,7 +14,6 @@ db = { workspace = true }
 libmeshthumbnail = { workspace = true }
 
 futures = { workspace = true }
-hex = { workspace = true }
 image = { workspace = true, features = ["jpeg", "png"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
@@ -30,7 +29,7 @@ threemf = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util = { workspace = true, features = ["io"] }
-urlencoding = { workspace = true }
+percent-encoding = { workspace = true }
 vek = { workspace = true }
 async_zip = { workspace = true, features = [
     "deflate",
