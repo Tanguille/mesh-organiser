@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
-import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 
@@ -37,7 +36,6 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       // SvelteKit 3 reads its config from this plugin call (svelte.config.js is no longer supported).
       sveltekit({
-        preprocess: vitePreprocess(),
         // Tauri: static build with SPA fallback so client routing works for any deep link
         // (dynamic [slug] routes, share links, etc.). See:
         // https://v2.tauri.app/start/frontend/sveltekit/
@@ -45,9 +43,7 @@ export default defineConfig(({ mode }) => {
         // SvelteKit 3 removed the built-in `$lib` alias in favour of `#lib` subpath imports;
         // re-adding it here keeps the existing imports working (`alias` is deprecated, logs a warning).
         alias: {
-          "@/*": "./src/lib/*",
           $lib: "./src/lib",
-          "$lib/*": "./src/lib/*",
         },
       }),
     ],
