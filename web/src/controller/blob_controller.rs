@@ -25,6 +25,10 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
+/// `ReaderStream::new` reads 4 KiB at a time; bigger chunks mean far fewer
+/// blocking-pool round trips per file.
+const STREAM_CHUNK_SIZE: usize = 64 * 1024;
+
 /// Routes for the blob bytes, thumbnail and download endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
@@ -177,7 +181,7 @@ pub async fn get_blob_thumb(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
 
-    Ok(Body::from_stream(ReaderStream::new(file)).into_response())
+    Ok(Body::from_stream(ReaderStream::with_capacity(file, STREAM_CHUNK_SIZE)).into_response())
 }
 
 /// Streams a blob's content; shared by `download_model` and `get_blob_bytes`.
@@ -188,7 +192,7 @@ async fn get_blob_bytes_inner(blob: &Blob, app_state: &AppState) -> Response {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
-    Body::from_stream(ReaderStream::new(reader)).into_response()
+    Body::from_stream(ReaderStream::with_capacity(reader, STREAM_CHUNK_SIZE)).into_response()
 }
 
 pub async fn get_blobs_zip_download(
@@ -226,7 +230,8 @@ pub async fn get_blobs_zip_download(
     }
 
     let file = File::open(path).await?;
-    let mut response = Body::from_stream(ReaderStream::new(file)).into_response();
+    let mut response =
+        Body::from_stream(ReaderStream::with_capacity(file, STREAM_CHUNK_SIZE)).into_response();
 
     response.headers_mut().insert(
         axum::http::header::CONTENT_DISPOSITION,
