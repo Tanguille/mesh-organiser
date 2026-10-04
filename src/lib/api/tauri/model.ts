@@ -10,7 +10,7 @@ import {
   convertModelFlagsToRaw,
   parseRawModel,
 } from "../shared/raw_model";
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 
 export class ModelApi implements IModelApi {
   async getModels(

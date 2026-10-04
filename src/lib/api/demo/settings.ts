@@ -1,4 +1,4 @@
-import { getAvailableThemes } from "$lib/theme";
+import { getAvailableThemes } from "#lib/theme";
 import {
   configurationDefault,
   SettingSection,

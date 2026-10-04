@@ -1,5 +1,5 @@
-import { updateSidebarState } from "$lib/sidebar_data.svelte";
-import { nameCollectionOfModels } from "$lib/utils";
+import { updateSidebarState } from "#lib/sidebar_data.svelte";
+import { nameCollectionOfModels } from "#lib/utils";
 import { toast } from "svelte-sonner";
 import type { Model } from "./model_api";
 

@@ -4,28 +4,28 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
 
-  import { Label } from "$lib/components/ui/label";
-  import { Input } from "$lib/components/ui/input";
+  import { Label } from "#lib/components/ui/label";
+  import { Input } from "#lib/components/ui/input";
   import { goto } from "$app/navigation";
-  import { getThisLabelOnly, resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "#lib/paths";
   import { page } from "$app/state";
 
-  import { debounce } from "$lib/utils";
+  import { debounce } from "#lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import LabelSelect from "$lib/components/view/label-select.svelte";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import EditListPopover from "$lib/components/view/edit-list-popover.svelte";
+  import LabelSelect from "#lib/components/view/label-select.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import EditListPopover from "#lib/components/view/edit-list-popover.svelte";
   import {
     ILabelApi,
     type Label as LabelClass,
-  } from "$lib/api/shared/label_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
+  } from "#lib/api/shared/label_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
 
   const props: {
     label: LabelClass;

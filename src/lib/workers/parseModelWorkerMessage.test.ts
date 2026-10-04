@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FileType } from "$lib/api/shared/blob_api";
+import { FileType } from "#lib/api/shared/blob_api";
 import { isValidWorkerMessage } from "./parseModelWorkerMessage";
 
 describe("isValidWorkerMessage", () => {

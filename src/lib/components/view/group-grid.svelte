@@ -1,37 +1,37 @@
 <script lang="ts">
-  import { resolve } from "$lib/paths";
+  import { resolve } from "#lib/paths";
   import {
     createGroupMetaInstance,
     type Group,
     type GroupMeta,
     type IGroupStreamManager,
-  } from "$lib/api/shared/group_api";
-  import type { Model } from "$lib/api/shared/model_api";
+  } from "#lib/api/shared/group_api";
+  import type { Model } from "#lib/api/shared/model_api";
   import {
     convertOrderOptionGroupsToEnum,
     GROUP_ORDER_LABELS,
-  } from "$lib/api/shared/settings_api";
-  import { SizeOptionClasses } from "$lib/components/view/size-classes";
-  import EditGroup from "$lib/components/edit/group.svelte";
-  import ModelEdit from "$lib/components/edit/model.svelte";
-  import EditMultiModel from "$lib/components/edit/multi-model.svelte";
-  import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
-  import { Input } from "$lib/components/ui/input";
-  import DragSelectedModels from "$lib/components/view/drag-selected-models.svelte";
-  import FileTypeFilter from "$lib/components/view/file-type-filter.svelte";
-  import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
-  import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
-  import RightClickModels from "$lib/components/view/right-click-models.svelte";
-  import SortFilter from "$lib/components/view/sort-filter.svelte";
-  import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
-  import { configuration } from "$lib/configuration.svelte";
-  import { IsSplitGridSize } from "$lib/hooks/is-split-grid-size.svelte";
+  } from "#lib/api/shared/settings_api";
+  import { SizeOptionClasses } from "#lib/components/view/size-classes";
+  import EditGroup from "#lib/components/edit/group.svelte";
+  import ModelEdit from "#lib/components/edit/model.svelte";
+  import EditMultiModel from "#lib/components/edit/multi-model.svelte";
+  import Checkbox from "#lib/components/ui/checkbox/checkbox.svelte";
+  import { Input } from "#lib/components/ui/input";
+  import DragSelectedModels from "#lib/components/view/drag-selected-models.svelte";
+  import FileTypeFilter from "#lib/components/view/file-type-filter.svelte";
+  import { createGridSelection } from "#lib/components/view/grid-selection.svelte";
+  import ModelGridInner from "#lib/components/view/model-grid-inner.svelte";
+  import RightClickModels from "#lib/components/view/right-click-models.svelte";
+  import SortFilter from "#lib/components/view/sort-filter.svelte";
+  import UiSizeFilter from "#lib/components/view/ui-size-filter.svelte";
+  import { configuration } from "#lib/configuration.svelte";
+  import { IsSplitGridSize } from "#lib/hooks/is-split-grid-size.svelte";
   import { onDestroy, untrack } from "svelte";
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
-  import { debounce, wait, uniqueById } from "$lib/utils";
-  import { IsMobile } from "$lib/hooks/is-mobile.svelte";
+  import { debounce, wait, uniqueById } from "#lib/utils";
+  import { IsMobile } from "#lib/hooks/is-mobile.svelte";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
 

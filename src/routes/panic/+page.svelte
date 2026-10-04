@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { panicState } from "$lib/configuration.svelte";
+  import { panicState } from "#lib/configuration.svelte";
   import Bomb from "@lucide/svelte/icons/bomb";
 </script>
 

@@ -40,11 +40,6 @@ export default defineConfig(({ mode }) => {
         // (dynamic [slug] routes, share links, etc.). See:
         // https://v2.tauri.app/start/frontend/sveltekit/
         adapter: adapter({ fallback: "index.html" }),
-        // SvelteKit 3 removed the built-in `$lib` alias in favour of `#lib` subpath imports;
-        // re-adding it here keeps the existing imports working (`alias` is deprecated, logs a warning).
-        alias: {
-          $lib: "./src/lib",
-        },
       }),
     ],
 

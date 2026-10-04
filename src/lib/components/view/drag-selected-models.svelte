@@ -5,8 +5,8 @@
     state as dragState,
     startDragging,
     stopDragging,
-  } from "$lib/drag-selected-models.svelte";
-  import type { Model } from "$lib/api/shared/model_api";
+  } from "#lib/drag-selected-models.svelte";
+  import type { Model } from "#lib/api/shared/model_api";
 
   const props: { children: Snippet; models: Model[]; class?: ClassValue } =
     $props();

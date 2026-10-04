@@ -1,14 +1,14 @@
 <script lang="ts">
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IUserApi, IUserLoginApi } from "$lib/api/shared/user_api";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IUserApi, IUserLoginApi } from "#lib/api/shared/user_api";
   import { toast } from "svelte-sonner";
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import AsyncButton from "$lib/components/ui/button/async-button.svelte";
+  import AsyncButton from "#lib/components/ui/button/async-button.svelte";
 
   let email = $state<string>("");
   let password = $state<string>("");

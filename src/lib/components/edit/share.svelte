@@ -4,20 +4,20 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
 
-  import { Label } from "$lib/components/ui/label";
-  import { Input } from "$lib/components/ui/input";
+  import { Label } from "#lib/components/ui/label";
+  import { Input } from "#lib/components/ui/input";
 
-  import { countWriter, debounce } from "$lib/utils";
+  import { countWriter, debounce } from "#lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import { buttonVariants } from "../ui/button/button.svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { updateSidebarState } from "$lib/sidebar_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { updateSidebarState } from "#lib/sidebar_data.svelte";
   import { untrack } from "svelte";
-  import { IShareApi, type Share } from "$lib/api/shared/share_api";
+  import { IShareApi, type Share } from "#lib/api/shared/share_api";
   import { toast } from "svelte-sonner";
   import AsyncButton from "../ui/button/async-button.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";

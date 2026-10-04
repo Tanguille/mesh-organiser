@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { configuration } from "$lib/configuration.svelte";
+  import { configuration } from "#lib/configuration.svelte";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import AppHeader from "$lib/components/view/app-header.svelte";
+  import AppHeader from "#lib/components/view/app-header.svelte";
 
   switch (configuration.startup_page) {
     case "models":

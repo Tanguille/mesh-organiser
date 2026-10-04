@@ -52,7 +52,7 @@ export default [
           destructuredArrayIgnorePattern: "^_",
         },
       ],
-      // We use resolve from $lib/paths (wraps $app/paths) for dynamic routes; rule only accepts $app/paths
+      // We use resolve from #lib/paths (wraps $app/paths) for dynamic routes; rule only accepts $app/paths
       "svelte/no-navigation-without-resolve": "off",
     },
   },

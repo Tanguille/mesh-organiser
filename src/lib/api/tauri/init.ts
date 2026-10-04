@@ -22,10 +22,10 @@ import {
   configuration,
   currentUser as globalCurrentUser,
   panicState,
-} from "$lib/configuration.svelte";
+} from "#lib/configuration.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { debounce } from "$lib/utils";
+import { debounce } from "#lib/utils";
 import {
   DefaultSidebarStateApi,
   EmptySidebarStateApi,
@@ -34,7 +34,7 @@ import {
 import { HostApi } from "./host";
 import { IHostApi } from "../shared/host_api";
 import { check } from "@tauri-apps/plugin-updater";
-import { updateState } from "$lib/update_data.svelte";
+import { updateState } from "#lib/update_data.svelte";
 import { toast } from "svelte-sonner";
 import { DiskUsageInfoApi } from "./disk_usage_info";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";

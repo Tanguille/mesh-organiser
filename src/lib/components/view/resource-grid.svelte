@@ -1,31 +1,31 @@
 <script lang="ts">
-  import { resolve } from "$lib/paths";
-  import { Input } from "$lib/components/ui/input";
+  import { resolve } from "#lib/paths";
+  import { Input } from "#lib/components/ui/input";
   import GroupTinyList from "./group-tiny-list.svelte";
   import SortFilter from "./sort-filter.svelte";
-  import { AsyncButton, buttonVariants } from "$lib/components/ui/button";
-  import EditResource from "$lib/components/edit/resource.svelte";
+  import { AsyncButton, buttonVariants } from "#lib/components/ui/button";
+  import EditResource from "#lib/components/edit/resource.svelte";
   import NotebookText from "@lucide/svelte/icons/notebook-text";
   import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
   import Button from "../ui/button/button.svelte";
   import {
     IResourceApi,
     type ResourceMeta,
-  } from "$lib/api/shared/resource_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import type { Group } from "$lib/api/shared/group_api";
-  import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import { configuration } from "$lib/configuration.svelte";
+  } from "#lib/api/shared/resource_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import type { Group } from "#lib/api/shared/group_api";
+  import { updateSidebarState } from "#lib/sidebar_data.svelte";
+  import { ILocalApi } from "#lib/api/shared/local_api";
+  import { configuration } from "#lib/configuration.svelte";
   import OpenInSlicerButton from "./open-in-slicer-button.svelte";
-  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
-  import { handleGridItemKeyDown } from "$lib/utils";
+  import { downloadModels, IDownloadApi } from "#lib/api/shared/download_api";
+  import { handleGridItemKeyDown } from "#lib/utils";
   import Download from "@lucide/svelte/icons/download";
   import ExportModelsButton from "./export-models-button.svelte";
   import {
     GROUP_ORDER_LABELS,
     type OrderOptionGroups,
-  } from "$lib/api/shared/settings_api";
+  } from "#lib/api/shared/settings_api";
 
   const props: { resources: ResourceMeta[] } = $props();
   let selected = $state.raw<ResourceMeta | null>(null);

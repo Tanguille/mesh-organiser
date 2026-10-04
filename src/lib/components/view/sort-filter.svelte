@@ -1,5 +1,5 @@
 <script lang="ts" generics="O extends string">
-  import * as Select from "$lib/components/ui/select/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import ArrowDownWideNarrow from "@lucide/svelte/icons/arrow-down-wide-narrow";
   import ArrowDownNarrowWide from "@lucide/svelte/icons/arrow-down-narrow-wide";
 

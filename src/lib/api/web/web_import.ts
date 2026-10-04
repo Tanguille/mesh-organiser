@@ -1,6 +1,6 @@
-import { importState, resetImportState } from "$lib/import.svelte";
-import { updateSidebarState } from "$lib/sidebar_data.svelte";
-import { runWithLimit } from "$lib/utils";
+import { importState, resetImportState } from "#lib/import.svelte";
+import { updateSidebarState } from "#lib/sidebar_data.svelte";
+import { runWithLimit } from "#lib/utils";
 import {
   HttpMethod,
   type IServerRequestApi,

@@ -4,33 +4,33 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
 
-  import { Label } from "$lib/components/ui/label";
-  import { Input } from "$lib/components/ui/input";
+  import { Label } from "#lib/components/ui/label";
+  import { Input } from "#lib/components/ui/input";
 
-  import { debounce } from "$lib/utils";
+  import { debounce } from "#lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import Ungroup from "@lucide/svelte/icons/ungroup";
-  import LinkButton from "$lib/components/view/link-button.svelte";
+  import LinkButton from "#lib/components/view/link-button.svelte";
   import Button from "../ui/button/button.svelte";
-  import ResourceSelect from "$lib/components/view/resource-select.svelte";
+  import ResourceSelect from "#lib/components/view/resource-select.svelte";
   import NotebookText from "@lucide/svelte/icons/notebook-text";
   import NotebookPen from "@lucide/svelte/icons/notebook-pen";
   import Edit from "@lucide/svelte/icons/edit";
-  import { type Group, IGroupApi } from "$lib/api/shared/group_api";
+  import { type Group, IGroupApi } from "#lib/api/shared/group_api";
   import {
     IResourceApi,
     type ResourceMeta,
-  } from "$lib/api/shared/resource_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { IModelApi } from "$lib/api/shared/model_api";
-  import { IResourceFolderApi } from "$lib/api/shared/resource_folder_api";
+  } from "#lib/api/shared/resource_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { updateSidebarState } from "#lib/sidebar_data.svelte";
+  import { IModelApi } from "#lib/api/shared/model_api";
+  import { IResourceFolderApi } from "#lib/api/shared/resource_folder_api";
   import { onMount } from "svelte";
-  import { configurationMeta } from "$lib/configuration.svelte";
+  import { configurationMeta } from "#lib/configuration.svelte";
 
   const props: {
     group: Group;

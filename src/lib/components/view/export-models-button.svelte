@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import type { Model } from "$lib/api/shared/model_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ILocalApi } from "#lib/api/shared/local_api";
+  import type { Model } from "#lib/api/shared/model_api";
   import type { ClassValue } from "svelte/elements";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import Package from "@lucide/svelte/icons/package";
   import Boxes from "@lucide/svelte/icons/boxes";
 

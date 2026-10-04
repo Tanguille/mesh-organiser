@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IInternalBrowserApi } from "$lib/api/shared/internal_browser_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IInternalBrowserApi } from "#lib/api/shared/internal_browser_api";
   import {
     buttonVariants,
     Button,
     type ButtonVariant,
-  } from "$lib/components/ui/button/index.js";
-  import { configuration } from "$lib/configuration.svelte";
+  } from "#lib/components/ui/button/index.js";
+  import { configuration } from "#lib/configuration.svelte";
   import Link from "@lucide/svelte/icons/link";
   import type { ClassValue } from "svelte/elements";
 

@@ -1,16 +1,16 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
     defaultGroupFilter,
     GroupOrderBy,
     IGroupApi,
     PredefinedGroupStreamManager,
     type Group,
-  } from "$lib/api/shared/group_api";
-  import { IShareApi, type Share } from "$lib/api/shared/share_api";
-  import GroupGrid from "$lib/components/view/group-grid.svelte";
-  import Spinner from "$lib/components/view/spinner.svelte";
+  } from "#lib/api/shared/group_api";
+  import { IShareApi, type Share } from "#lib/api/shared/share_api";
+  import GroupGrid from "#lib/components/view/group-grid.svelte";
+  import Spinner from "#lib/components/view/spinner.svelte";
   import { onMount } from "svelte";
 
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);

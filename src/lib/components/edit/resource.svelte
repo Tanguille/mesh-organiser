@@ -4,24 +4,24 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
 
-  import { Label } from "$lib/components/ui/label";
-  import { Input } from "$lib/components/ui/input";
+  import { Label } from "#lib/components/ui/label";
+  import { Input } from "#lib/components/ui/input";
 
-  import { debounce } from "$lib/utils";
+  import { debounce } from "#lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index.js";
   import {
     IResourceApi,
     type ResourceMeta,
-  } from "$lib/api/shared/resource_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IResourceFolderApi } from "$lib/api/shared/resource_folder_api";
+  } from "#lib/api/shared/resource_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IResourceFolderApi } from "#lib/api/shared/resource_folder_api";
 
   const props: {
     resource: ResourceMeta;
