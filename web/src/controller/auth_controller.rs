@@ -49,7 +49,6 @@ pub async fn password(
     .await
 }
 
-/// Logs in with a user sync token; mirrors [`password`] via [`login_inner`].
 pub async fn token(
     auth_session: AuthSession,
     Json(credentials): Json<TokenCredentials>,

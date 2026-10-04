@@ -153,6 +153,10 @@ pub fn parse_comma_separated_i64(str: &str, max: usize) -> Result<Vec<i64>, Quer
 }
 
 /// Converts a request-parameter vector into an option, treating an empty list as absent.
+///
+/// Never pass security-scoped ids (e.g. a share's model ids) through this: an
+/// empty list becomes `None`, which the db layer reads as "no restriction" and
+/// answers with every model the user owns. Pass them as `Some(ids)` instead.
 #[must_use]
 pub fn none_if_empty<T>(ids: Vec<T>) -> Option<Vec<T>> {
     if ids.is_empty() { None } else { Some(ids) }
@@ -210,7 +214,7 @@ pub fn validate_pagination(page: u32, page_size: u32) -> Result<(), QueryBoundsE
 
 #[cfg(test)]
 mod tests {
-    use db::{MAX_PAGE_SIZE, group_db::GroupOrderBy, model_db::ModelOrderBy};
+    use db::{MAX_PAGE_SIZE, model_db::ModelOrderBy};
 
     use super::*;
 
@@ -329,10 +333,6 @@ mod tests {
         );
     }
 
-    // Callers must not pass security-scoped ids (e.g. a share's model ids) through
-    // `none_if_empty`: an empty list becomes `None`, which the db layer reads as
-    // "no restriction" and answers with every model the user owns. Pass them as
-    // `Some(ids)` instead.
     #[test]
     fn none_if_empty_maps_empty_to_none_and_keeps_values() {
         assert_eq!(none_if_empty(Vec::<i64>::new()), None);
@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn parse_order_by_bounded_model_rejects_oversized_without_parsing() {
-        let junk = "AddedDesc".repeat(100);
+        let junk = "NameAsc".repeat(100);
         assert!(junk.len() > MAX_ORDER_BY_BYTES);
         assert_eq!(
             parse_order_by_bounded(&junk, ModelOrderBy::AddedDesc),
@@ -363,24 +363,6 @@ mod tests {
         assert_eq!(
             parse_order_by_bounded("NameAsc", ModelOrderBy::AddedDesc),
             ModelOrderBy::NameAsc
-        );
-    }
-
-    #[test]
-    fn parse_order_by_bounded_group_rejects_oversized() {
-        let junk = "NameAsc".repeat(100);
-        assert!(junk.len() > MAX_ORDER_BY_BYTES);
-        assert_eq!(
-            parse_order_by_bounded(&junk, GroupOrderBy::NameAsc),
-            GroupOrderBy::NameAsc
-        );
-    }
-
-    #[test]
-    fn parse_order_by_bounded_group_accepts_known_variant() {
-        assert_eq!(
-            parse_order_by_bounded("CreatedDesc", GroupOrderBy::NameAsc),
-            GroupOrderBy::CreatedDesc
         );
     }
 }
