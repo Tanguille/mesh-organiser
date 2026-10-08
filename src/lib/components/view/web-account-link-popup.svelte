@@ -28,19 +28,13 @@
   import { resolve } from "$app/paths";
   import { redirectAfterUserSwitch } from "$lib/paths";
 
-  let props: { data: AccountLinkData; onDismiss?: () => void } = $props();
+  let props: { data: AccountLinkData; onDismiss: () => void } = $props();
   const userApi = getContainer().optional<IUserApi>(IUserApi);
   const userAdminApi = getContainer().optional<IAdminUserApi>(IAdminUserApi);
   const userSyncApi = getContainer().optional<IUserSyncApi>(IUserSyncApi);
   const userSwitchApi = getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
   let users = $state<User[]>([]);
   let currentUser = $state<User | null>(null);
-
-  function dismiss() {
-    if (props.onDismiss) {
-      props.onDismiss();
-    }
-  }
 
   async function linkLocalAccount() {
     if (!userSyncApi || !userSwitchApi) {
@@ -66,7 +60,7 @@
 
       await redirectAfterUserSwitch();
 
-      dismiss();
+      props.onDismiss();
       location.reload();
     } catch (e) {
       toast.error("Failed to link local account: " + e);
@@ -99,7 +93,7 @@
       await userSwitchApi.switchUser(newUser);
       await goto(resolve("/"));
 
-      dismiss();
+      props.onDismiss();
       location.reload();
     } catch (e) {
       toast.error("Failed to create online account: " + e);
@@ -129,7 +123,7 @@
     <CardHeader>
       <div class="flex flex-row items-center gap-4">
         <CardTitle class="grow">Link account to {props.data.baseUrl}</CardTitle>
-        <Button size="sm" onclick={dismiss}>Dismiss</Button>
+        <Button size="sm" onclick={props.onDismiss}>Dismiss</Button>
       </div>
       <p>
         Using online accounts inside the desktop application gives you access to

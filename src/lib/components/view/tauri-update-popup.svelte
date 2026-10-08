@@ -19,7 +19,7 @@
   import { relaunch } from "@tauri-apps/plugin-process";
   import { configuration } from "$lib/configuration.svelte";
 
-  let props: { update: Update; onDismiss?: () => void } = $props();
+  let props: { update: Update; onDismiss: () => void } = $props();
   let currentPlatform = platform();
   let automaticUpdatePlatforms = ["windows"];
 
@@ -39,7 +39,7 @@
 
   function ignore(version: string) {
     configuration.ignore_update = version;
-    props.onDismiss!();
+    props.onDismiss();
   }
 </script>
 
@@ -68,9 +68,7 @@
       <Separator />
 
       <div class="flex w-full justify-end gap-4">
-        <Button variant="outline" onclick={() => props.onDismiss!()}
-          >Dismiss</Button
-        >
+        <Button variant="outline" onclick={props.onDismiss}>Dismiss</Button>
         <Button variant="outline" onclick={() => ignore(props.update.version)}
           >Ignore this update</Button
         >
