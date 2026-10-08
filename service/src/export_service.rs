@@ -489,6 +489,57 @@ mod tests {
         assert_eq!(second.file_name().unwrap(), "a_1.stl");
     }
 
+    #[test]
+    fn ensure_unique_file_skips_all_taken_suffixes() {
+        let dir = tempdir().unwrap();
+        for taken in ["model.stl", "model_1.stl", "model_2.stl"] {
+            std::fs::File::create(dir.path().join(taken)).unwrap();
+        }
+
+        let path = ensure_unique_file(dir.path(), "model", "stl");
+
+        assert_eq!(path.file_name().unwrap(), "model_3.stl");
+    }
+
+    #[test]
+    fn ensure_unique_file_full_filename_without_extension_appends_counter() {
+        let dir = tempdir().unwrap();
+
+        let first = ensure_unique_file_full_filename(dir.path(), "foo");
+        std::fs::File::create(&first).unwrap();
+        let second = ensure_unique_file_full_filename(dir.path(), "foo");
+        std::fs::File::create(&second).unwrap();
+        let third = ensure_unique_file_full_filename(dir.path(), "foo");
+
+        assert_eq!(first.file_name().unwrap(), "foo");
+        assert_eq!(second.file_name().unwrap(), "foo_1");
+        assert_eq!(third.file_name().unwrap(), "foo_2");
+    }
+
+    #[test]
+    fn ensure_unique_file_full_filename_skips_all_taken_suffixes() {
+        let dir = tempdir().unwrap();
+        for taken in ["a.stl", "a_1.stl", "a_2.stl"] {
+            std::fs::File::create(dir.path().join(taken)).unwrap();
+        }
+
+        let path = ensure_unique_file_full_filename(dir.path(), "a.stl");
+
+        assert_eq!(path.file_name().unwrap(), "a_3.stl");
+    }
+
+    #[test]
+    fn ensure_unique_file_full_filename_splits_on_last_dot() {
+        let dir = tempdir().unwrap();
+
+        let first = ensure_unique_file_full_filename(dir.path(), "a.b.stl");
+        std::fs::File::create(&first).unwrap();
+        let second = ensure_unique_file_full_filename(dir.path(), "a.b.stl");
+
+        assert_eq!(first.file_name().unwrap(), "a.b.stl");
+        assert_eq!(second.file_name().unwrap(), "a.b_1.stl");
+    }
+
     /// Builds an `AppState` with a temp data dir and real DB; model dir is `data_path/models`.
     async fn app_state_with_temp_model_dir() -> (tempfile::TempDir, AppState) {
         let dir = tempdir().unwrap();

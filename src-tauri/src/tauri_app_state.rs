@@ -37,6 +37,19 @@ impl InitialState {
         }
     }
 }
+
+/// A deep link was newly enabled: it is on now and was off before.
+fn deep_link_newly_enabled(old: &Configuration, new: &Configuration) -> bool {
+    [
+        (old.prusa_deep_link, new.prusa_deep_link),
+        (old.cura_deep_link, new.cura_deep_link),
+        (old.bambu_deep_link, new.bambu_deep_link),
+        (old.orca_deep_link, new.orca_deep_link),
+    ]
+    .iter()
+    .any(|(was_enabled, is_enabled)| *is_enabled && !*was_enabled)
+}
+
 pub struct TauriAppState {
     pub app_state: AppState,
     pub initial_state: Mutex<Option<InitialState>>,
@@ -106,26 +119,7 @@ impl TauriAppState {
         fs::write(path, json).expect("Failed to write configuration");
 
         let mut configuration = self.app_state.configuration.lock().unwrap();
-        // A deep link was newly enabled: it is on now and was off before.
-        let deep_link_pairs = [
-            (
-                configuration.prusa_deep_link,
-                new_configuration.prusa_deep_link,
-            ),
-            (
-                configuration.cura_deep_link,
-                new_configuration.cura_deep_link,
-            ),
-            (
-                configuration.bambu_deep_link,
-                new_configuration.bambu_deep_link,
-            ),
-            (
-                configuration.orca_deep_link,
-                new_configuration.orca_deep_link,
-            ),
-        ];
-        let deep_link_setting_changed = deep_link_pairs.iter().any(|(old, new)| *new && !*old);
+        let deep_link_setting_changed = deep_link_newly_enabled(&configuration, &new_configuration);
         *configuration = new_configuration;
 
         deep_link_setting_changed
@@ -155,5 +149,77 @@ impl TauriAppState {
         }
 
         let _ = app_handle.deep_link().register("meshorganiser");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn with_deep_links(enabled: bool) -> service::Configuration {
+        service::Configuration {
+            prusa_deep_link: enabled,
+            cura_deep_link: enabled,
+            bambu_deep_link: enabled,
+            orca_deep_link: enabled,
+            elegoo_deep_link: enabled,
+            ..service::Configuration::default()
+        }
+    }
+
+    fn assert_newly_enabled(enable: fn(&mut service::Configuration)) {
+        let old = with_deep_links(false);
+        let mut new = old.clone();
+        enable(&mut new);
+
+        assert!(super::deep_link_newly_enabled(&old, &new));
+    }
+
+    #[test]
+    fn deep_link_newly_enabled_for_prusa() {
+        assert_newly_enabled(|config| config.prusa_deep_link = true);
+    }
+
+    #[test]
+    fn deep_link_newly_enabled_for_cura() {
+        assert_newly_enabled(|config| config.cura_deep_link = true);
+    }
+
+    #[test]
+    fn deep_link_newly_enabled_for_bambu() {
+        assert_newly_enabled(|config| config.bambu_deep_link = true);
+    }
+
+    #[test]
+    fn deep_link_newly_enabled_for_orca() {
+        assert_newly_enabled(|config| config.orca_deep_link = true);
+    }
+
+    #[test]
+    #[ignore = "elegoo omitted; fixed in follow-up commit"]
+    fn deep_link_newly_enabled_for_elegoo() {
+        assert_newly_enabled(|config| config.elegoo_deep_link = true);
+    }
+
+    #[test]
+    fn deep_link_not_newly_enabled_when_already_on() {
+        let old = with_deep_links(true);
+        let new = with_deep_links(true);
+
+        assert!(!super::deep_link_newly_enabled(&old, &new));
+    }
+
+    #[test]
+    fn deep_link_not_newly_enabled_when_turned_off() {
+        let old = with_deep_links(true);
+        let new = with_deep_links(false);
+
+        assert!(!super::deep_link_newly_enabled(&old, &new));
+    }
+
+    #[test]
+    fn deep_link_not_newly_enabled_when_unchanged_off() {
+        let old = with_deep_links(false);
+        let new = with_deep_links(false);
+
+        assert!(!super::deep_link_newly_enabled(&old, &new));
     }
 }

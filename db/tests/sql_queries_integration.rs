@@ -299,3 +299,107 @@ async fn get_models_empty_model_ids_returns_nothing_while_none_returns_all() {
     .unwrap();
     assert_eq!(unrestricted.items.len(), 2);
 }
+
+/// Replaces a label's children the way both the Tauri command and the web controller do
+/// today: remove all, then add the new set when non-empty. Swap the body for a single
+/// `label_db::set_childs_on_label` call once it exists; the tests below must stay green.
+async fn set_childs_on_label(
+    db: &db_context::DbContext,
+    user: &User,
+    parent_label_id: i64,
+    child_label_ids: Vec<i64>,
+) {
+    label_db::remove_all_childs_from_label(db, user, parent_label_id, None)
+        .await
+        .unwrap();
+
+    if !child_label_ids.is_empty() {
+        label_db::add_childs_to_label(db, user, parent_label_id, child_label_ids, None)
+            .await
+            .unwrap();
+    }
+}
+
+// Reads `labels_labels` directly: `label_db::get_labels` binds `user.id` once for two `?`
+// placeholders, so it currently returns no labels at all and cannot observe children.
+async fn child_ids_of(db: &db_context::DbContext, parent_label_id: i64) -> Vec<i64> {
+    sqlx::query_scalar(
+        "SELECT child_label_id FROM labels_labels WHERE parent_label_id = ? ORDER BY child_label_id",
+    )
+    .bind(parent_label_id)
+    .fetch_all(db)
+    .await
+    .unwrap()
+}
+
+async fn add_labels(db: &db_context::DbContext, user: &User, names: &[&str]) -> Vec<i64> {
+    let mut ids = Vec::new();
+    for name in names {
+        ids.push(
+            label_db::add_label(db, user, name, 0, None)
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+
+    ids
+}
+
+#[tokio::test]
+async fn set_childs_on_label_replaces_existing_children() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "a", "b", "c"]).await;
+    let (parent, first_child, second_child, third_child) = (ids[0], ids[1], ids[2], ids[3]);
+    set_childs_on_label(&db, &user, parent, vec![first_child, second_child]).await;
+
+    set_childs_on_label(&db, &user, parent, vec![third_child]).await;
+
+    assert_eq!(child_ids_of(&db, parent).await, vec![third_child]);
+}
+
+#[tokio::test]
+async fn set_childs_on_label_with_empty_set_clears_children() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "a", "b"]).await;
+    let (parent, first_child, second_child) = (ids[0], ids[1], ids[2]);
+    set_childs_on_label(&db, &user, parent, vec![first_child, second_child]).await;
+
+    set_childs_on_label(&db, &user, parent, vec![]).await;
+
+    assert_eq!(child_ids_of(&db, parent).await, Vec::<i64>::new());
+}
+
+#[tokio::test]
+async fn set_childs_on_label_with_overlapping_set_keeps_no_duplicates() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "a", "b", "c"]).await;
+    let (parent, first_child, second_child, third_child) = (ids[0], ids[1], ids[2], ids[3]);
+    set_childs_on_label(&db, &user, parent, vec![first_child, second_child]).await;
+
+    set_childs_on_label(&db, &user, parent, vec![second_child, third_child]).await;
+
+    assert_eq!(
+        child_ids_of(&db, parent).await,
+        vec![second_child, third_child]
+    );
+}
+
+#[tokio::test]
+async fn set_childs_on_label_leaves_other_labels_children_untouched() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["first", "second", "a", "b", "c"]).await;
+    let (first_parent, second_parent, first_child, second_child, third_child) =
+        (ids[0], ids[1], ids[2], ids[3], ids[4]);
+    set_childs_on_label(&db, &user, first_parent, vec![first_child]).await;
+    set_childs_on_label(&db, &user, second_parent, vec![second_child]).await;
+
+    set_childs_on_label(&db, &user, first_parent, vec![third_child]).await;
+
+    assert_eq!(child_ids_of(&db, first_parent).await, vec![third_child]);
+    assert_eq!(child_ids_of(&db, second_parent).await, vec![second_child]);
+}
