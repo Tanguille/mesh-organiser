@@ -45,6 +45,7 @@ fn deep_link_newly_enabled(old: &Configuration, new: &Configuration) -> bool {
         (old.cura_deep_link, new.cura_deep_link),
         (old.bambu_deep_link, new.bambu_deep_link),
         (old.orca_deep_link, new.orca_deep_link),
+        (old.elegoo_deep_link, new.elegoo_deep_link),
     ]
     .iter()
     .any(|(was_enabled, is_enabled)| *is_enabled && !*was_enabled)
@@ -194,7 +195,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "elegoo omitted; fixed in follow-up commit"]
     fn deep_link_newly_enabled_for_elegoo() {
         assert_newly_enabled(|config| config.elegoo_deep_link = true);
     }
