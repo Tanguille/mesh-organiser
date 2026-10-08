@@ -11,8 +11,7 @@
 
   import { debounce } from "$lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import CardActionMenu from "./card-action-menu.svelte";
   import Ungroup from "@lucide/svelte/icons/ungroup";
   import LinkButton from "$lib/components/view/link-button.svelte";
   import Button from "../ui/button/button.svelte";
@@ -135,16 +134,11 @@
 
       <div class="absolute top-5 right-0 mr-8">
         {#if editMode && !configurationMeta.applicationReadOnly}
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              <Ellipsis />
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content side="right" align="start">
-              <DropdownMenu.Item onclick={onUngroup}>
-                <Ungroup /> Ungroup models
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+          <CardActionMenu
+            label="Ungroup models"
+            icon={Ungroup}
+            onclick={onUngroup}
+          />
         {:else if !configurationMeta.applicationReadOnly}
           <Button
             size="sm"
