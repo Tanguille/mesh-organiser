@@ -320,8 +320,7 @@ async fn set_childs_on_label(
     }
 }
 
-// Reads `labels_labels` directly: `label_db::get_labels` binds `user.id` once for two `?`
-// placeholders, so it currently returns no labels at all and cannot observe children.
+// Reads `labels_labels` directly so these assertions don't depend on `label_db::get_labels`.
 async fn child_ids_of(db: &db_context::DbContext, parent_label_id: i64) -> Vec<i64> {
     sqlx::query_scalar(
         "SELECT child_label_id FROM labels_labels WHERE parent_label_id = ? ORDER BY child_label_id",
@@ -402,4 +401,31 @@ async fn set_childs_on_label_leaves_other_labels_children_untouched() {
 
     assert_eq!(child_ids_of(&db, first_parent).await, vec![third_child]);
     assert_eq!(child_ids_of(&db, second_parent).await, vec![second_child]);
+}
+
+#[tokio::test]
+async fn get_labels_returns_labels_with_children_attached() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "child", "standalone"]).await;
+    let (parent, child, standalone) = (ids[0], ids[1], ids[2]);
+    set_childs_on_label(&db, &user, parent, vec![child]).await;
+
+    let labels = label_db::get_labels(&db, &user, false).await.unwrap();
+
+    let mut label_ids: Vec<i64> = labels.iter().map(|label| label.meta.id).collect();
+    label_ids.sort_unstable();
+    assert_eq!(label_ids, vec![parent, child, standalone]);
+    let parent_label = labels.iter().find(|label| label.meta.id == parent).unwrap();
+    assert_eq!(
+        parent_label
+            .children
+            .iter()
+            .map(|label| label.id)
+            .collect::<Vec<_>>(),
+        vec![child]
+    );
+    let child_label = labels.iter().find(|label| label.meta.id == child).unwrap();
+    assert!(child_label.has_parent);
+    assert!(child_label.children.is_empty());
 }

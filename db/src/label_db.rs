@@ -119,6 +119,7 @@ pub async fn get_labels(
           ORDER BY parent_labels.label_name ASC"
     )
     .bind(user.id)
+    .bind(user.id)
     .fetch_all(db)
     .await?;
 
