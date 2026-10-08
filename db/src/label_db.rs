@@ -21,19 +21,16 @@ pub async fn get_labels_min(db: &DbContext, user: &User) -> Result<Vec<LabelMeta
         .fetch_all(db)
         .await?;
 
-    let mut labels = Vec::new();
-
-    for row in rows {
-        labels.push(LabelMeta {
+    Ok(rows
+        .into_iter()
+        .map(|row| LabelMeta {
             id: row.label_id,
             name: row.label_name,
             color: row.label_color,
             unique_global_id: row.label_unique_global_id,
             last_modified: row.label_last_modified,
-        });
-    }
-
-    Ok(labels)
+        })
+        .collect())
 }
 
 fn get_effective_labels(

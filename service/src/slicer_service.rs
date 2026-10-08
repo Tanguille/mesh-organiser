@@ -76,7 +76,6 @@ pub fn open_custom_slicer(paths: Vec<PathBuf>, app_state: &AppState) -> Result<(
     open_with_args_and_paths(&executable_path, args.as_slice(), paths)
 }
 
-/// Open with custom arguments and model paths
 fn open_with_args_and_paths(
     program: &str,
     args: &[String],

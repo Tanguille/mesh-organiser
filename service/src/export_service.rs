@@ -145,22 +145,18 @@ pub async fn export_to_temp_folder(
         serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 
-    let mut paths = Vec::with_capacity(models.len());
     let max = configuration.core_parallelism * ASYNC_MULT;
 
     let results = util::run_bounded(models, max, |model| {
         let temp_dir = temp_dir.clone();
         let app_state = app_state.clone();
 
-        async move {
-            let model = model;
-            get_path_from_model(&temp_dir, &model, &app_state, lazy).await
-        }
+        async move { get_path_from_model(&temp_dir, &model, &app_state, lazy).await }
     })
     .await;
 
     // Keep only the Ok(PathBuf) outputs; models whose export failed are skipped.
-    paths.extend(results.into_iter().flatten());
+    let paths = results.into_iter().flatten().collect();
 
     Ok((temp_dir, paths))
 }

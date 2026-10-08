@@ -175,11 +175,9 @@ impl ImportState {
 
     #[must_use]
     pub fn get_last_group_name(&self) -> Option<String> {
-        if let Some(last) = self.imported_models.last() {
-            return last.group_name.clone();
-        }
-
-        None
+        self.imported_models
+            .last()
+            .and_then(|last_set| last_set.group_name.clone())
     }
 
     /// Collects every imported model id across all import sets.

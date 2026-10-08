@@ -633,7 +633,6 @@ pub fn run() {
 
     app.run(|app_handle, e| {
         if matches!(e, tauri::RunEvent::ExitRequested { .. }) {
-            // Close sqlite db
             tauri::async_runtime::block_on(async move {
                 let app_state = app_handle.state::<TauriAppState>();
                 app_state.app_state.db.close().await;
