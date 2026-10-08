@@ -17,7 +17,6 @@
     // extensionless `#lib/...` specifiers need these paths; Vite resolves them natively. Keep in sync with
     // `imports` in package.json (SvelteKit 3.0.0 only generates `paths` from the deprecated `alias` option).
     "paths": {
-      "#lib": ["./src/lib"],
       "#lib/*": ["./src/lib/*"]
     }
   }
