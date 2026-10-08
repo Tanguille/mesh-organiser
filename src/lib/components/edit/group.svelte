@@ -65,8 +65,6 @@
   }
 
   const save_group_debounced = debounce(async (edited_group: Group) => {
-    console.log("Saving Group");
-    console.log(edited_group);
     await groupApi.editGroup(edited_group.meta);
   }, 1000);
 
@@ -81,8 +79,6 @@
 
   const save_link_on_models_debounced = debounce(
     async (group: Group, link: string | null) => {
-      console.log("Saving Link on Models");
-
       for (const model of group.models) {
         model.link = link;
       }

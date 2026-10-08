@@ -35,7 +35,6 @@
 
   const saveResourceDebounced = debounce(
     async (editedResource: ResourceMeta) => {
-      console.log("Saving Resource");
       await resourceApi.editResource(editedResource);
     },
     1000,

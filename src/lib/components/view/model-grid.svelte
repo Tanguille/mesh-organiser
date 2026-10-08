@@ -175,7 +175,6 @@
           <Undo2 /> Close model preview
         </Button>
       {/if}
-      <!-- TODO: Implement ondelete for all of these-->
       {#if selected.length >= 2}
         <MultiModelEdit
           models={selected}
