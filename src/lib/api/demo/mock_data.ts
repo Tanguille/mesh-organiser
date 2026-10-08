@@ -171,7 +171,6 @@ mockModelDataList.forEach((data, index) => {
     new Date(baseDate.getTime() + index * 86400000).toISOString(), // Add a day for each model
   );
 
-  // Store model URL and thumbnail URL on blob for later use
   (blob as DemoBlob)._modelUrl = data.modelUrl;
   (blob as DemoBlob)._thumbnailUrl = data.thumbnailUrl;
 

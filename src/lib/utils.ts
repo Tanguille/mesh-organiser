@@ -235,7 +235,6 @@ export function handleGridItemKeyDown<T>(
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     if (useSyntheticMouseEvent) {
-      // Create a synthetic click event for grid items that expect mouse events
       const syntheticEvent = new MouseEvent("click", {
         ctrlKey: event.ctrlKey || event.metaKey,
         shiftKey: event.shiftKey,
