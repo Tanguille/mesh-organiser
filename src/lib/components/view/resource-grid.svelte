@@ -19,6 +19,7 @@
   import OpenInSlicerButton from "./open-in-slicer-button.svelte";
   import { handleGridItemKeyDown } from "$lib/utils";
   import ExportModelsButton from "./export-models-button.svelte";
+  import EmptyState from "./empty-state.svelte";
   import {
     GROUP_ORDER_LABELS,
     type OrderOptionGroups,
@@ -214,11 +215,7 @@
         >
       </div>
     {:else}
-      <div
-        class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-      >
-        <span class="text-xl">No project selected</span>
-      </div>
+      <EmptyState>No project selected</EmptyState>
     {/if}
   </div>
 </div>
