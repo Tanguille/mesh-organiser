@@ -97,12 +97,8 @@ describe("ExportModelsButton", () => {
     });
   });
 
-  // Today the download fallback lives in resource-grid.svelte / multi-model.svelte
-  // (`{:else if downloadApi}` -> "Download model(s)" AsyncButton -> downloadModels()),
-  // and ExportModelsButton throws because it `require`s ILocalApi. Once the fallback
-  // is folded into ExportModelsButton, these flip: change `it.fails` to `it`.
-  describe("with only a download API (fallback, not yet in this component)", () => {
-    it.fails("renders a download button and no 'Open in folder' button", () => {
+  describe("without a local API", () => {
+    it("renders a download button and no 'Open in folder' button", () => {
       provideDownloadApi();
 
       render(ExportModelsButton, { models, class: "" });
@@ -113,31 +109,25 @@ describe("ExportModelsButton", () => {
       ).toBeNull();
     });
 
-    it.fails(
-      "download button calls downloadModelsAsZip for multiple models",
-      async () => {
-        const downloadApi = provideDownloadApi();
-        render(ExportModelsButton, { models, class: "" });
+    it("download button calls downloadModelsAsZip for multiple models", async () => {
+      const downloadApi = provideDownloadApi();
+      render(ExportModelsButton, { models, class: "" });
 
-        await fireEvent.click(screen.getByRole("button", { name: /Download/ }));
+      await fireEvent.click(screen.getByRole("button", { name: /Download/ }));
 
-        expect(downloadApi.downloadModelsAsZip).toHaveBeenCalledWith(models);
-      },
-    );
+      expect(downloadApi.downloadModelsAsZip).toHaveBeenCalledWith(models);
+    });
 
-    it.fails(
-      "download button calls downloadModel for a single model",
-      async () => {
-        const downloadApi = provideDownloadApi();
-        render(ExportModelsButton, { models: [models[0]], class: "" });
+    it("download button calls downloadModel for a single model", async () => {
+      const downloadApi = provideDownloadApi();
+      render(ExportModelsButton, { models: [models[0]], class: "" });
 
-        await fireEvent.click(screen.getByRole("button", { name: /Download/ }));
+      await fireEvent.click(screen.getByRole("button", { name: /Download/ }));
 
-        expect(downloadApi.downloadModel).toHaveBeenCalledWith(models[0]);
-      },
-    );
+      expect(downloadApi.downloadModel).toHaveBeenCalledWith(models[0]);
+    });
 
-    it.fails("renders nothing without a local or download API", () => {
+    it("renders nothing without a local or download API", () => {
       const { container } = render(ExportModelsButton, { models, class: "" });
 
       expect(container.querySelector("button")).toBeNull();
