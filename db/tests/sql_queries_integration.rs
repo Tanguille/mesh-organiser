@@ -300,24 +300,15 @@ async fn get_models_empty_model_ids_returns_nothing_while_none_returns_all() {
     assert_eq!(unrestricted.items.len(), 2);
 }
 
-/// Replaces a label's children the way both the Tauri command and the web controller do
-/// today: remove all, then add the new set when non-empty. Swap the body for a single
-/// `label_db::set_childs_on_label` call once it exists; the tests below must stay green.
 async fn set_childs_on_label(
     db: &db_context::DbContext,
     user: &User,
     parent_label_id: i64,
     child_label_ids: Vec<i64>,
 ) {
-    label_db::remove_all_childs_from_label(db, user, parent_label_id, None)
+    label_db::set_childs_on_label(db, user, parent_label_id, &child_label_ids)
         .await
         .unwrap();
-
-    if !child_label_ids.is_empty() {
-        label_db::add_childs_to_label(db, user, parent_label_id, child_label_ids, None)
-            .await
-            .unwrap();
-    }
 }
 
 // Reads `labels_labels` directly so these assertions don't depend on `label_db::get_labels`.

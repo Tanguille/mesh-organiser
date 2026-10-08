@@ -165,18 +165,13 @@ pub async fn set_childs_on_label(
     State(app_state): State<AppState>,
     Json(params): Json<SetChildsOnLabelParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_all_childs_from_label(&app_state.db, &user, parent_label_id, None).await?;
-
-    if !params.child_label_ids.is_empty() {
-        label_db::add_childs_to_label(
-            &app_state.db,
-            &user,
-            parent_label_id,
-            params.child_label_ids,
-            None,
-        )
-        .await?;
-    }
+    label_db::set_childs_on_label(
+        &app_state.db,
+        &user,
+        parent_label_id,
+        &params.child_label_ids,
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

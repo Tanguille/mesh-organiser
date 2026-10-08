@@ -436,16 +436,24 @@ async fn check_parent_and_children_access(
     Ok(())
 }
 
-pub async fn add_childs_to_label(
+/// Replaces the children of `parent_label_id` with `child_label_ids`. The delete and insert
+/// share one transaction, so a failed insert keeps the previous children instead of leaving
+/// the label with none.
+pub async fn set_childs_on_label(
     db: &DbContext,
     user: &User,
     parent_label_id: i64,
-    child_label_ids: Vec<i64>,
-    update_timestamp: Option<&str>,
+    child_label_ids: &[i64],
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
-    check_parent_and_children_access(db, user, parent_label_id, &child_label_ids).await?;
+    check_parent_and_children_access(db, user, parent_label_id, child_label_ids).await?;
+
+    let mut transaction = db.begin().await?;
+    sqlx::query!(
+        "DELETE FROM labels_labels WHERE parent_label_id = ?",
+        parent_label_id
+    )
+    .execute(&mut *transaction)
+    .await?;
 
     if !child_label_ids.is_empty() {
         let mut query_builder =
@@ -454,34 +462,12 @@ pub async fn add_childs_to_label(
             builder.push_bind(parent_label_id);
             builder.push_bind(child_id);
         });
-        query_builder.build().execute(db).await?;
+        query_builder.build().execute(&mut *transaction).await?;
     }
 
-    set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
+    transaction.commit().await?;
 
-    Ok(())
-}
-
-pub async fn remove_all_childs_from_label(
-    db: &DbContext,
-    user: &User,
-    parent_label_id: i64,
-    update_timestamp: Option<&str>,
-) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
-    let _unique_global_id = get_unique_id_from_label_id(db, user, parent_label_id).await?;
-
-    sqlx::query!(
-        "DELETE FROM labels_labels WHERE parent_label_id = ?",
-        parent_label_id
-    )
-    .execute(db)
-    .await?;
-
-    set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
-
-    Ok(())
+    set_last_updated_on_label(db, user, parent_label_id, &time_now()).await
 }
 
 pub async fn set_last_updated_on_label(
