@@ -80,16 +80,6 @@ export class WebShareApi implements IShareApi {
     );
   }
 
-  async addModelsToShare(share: Share, models: Model[]): Promise<void> {
-    const currentModelIds = new Set<number>(share.modelIds);
-
-    for (const model of models) {
-      currentModelIds.add(model.id);
-    }
-
-    await this.putModelIds(share, Array.from(currentModelIds));
-  }
-
   async setModelsOnShare(share: Share, models: Model[]): Promise<void> {
     await this.putModelIds(
       share,
