@@ -1,6 +1,5 @@
 import { dateToString } from "$lib/utils";
 import {
-  buildGetGroupsQuery,
   type Group,
   type GroupFilter,
   type GroupMeta,
@@ -12,9 +11,8 @@ import {
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import {
-  parseRawGroup,
+  fetchGroupPage,
   parseRawGroupMeta,
-  type RawGroup,
   type RawGroupMeta,
 } from "../shared/raw_model";
 
@@ -30,14 +28,7 @@ export class WebGroupApi implements IGroupApi {
     page: number,
     pageSize: number,
   ): Promise<Group[]> {
-    const data = buildGetGroupsQuery(filter, page, pageSize);
-
-    const response = await this.requestApi.request<RawGroup[]>(
-      "/groups",
-      HttpMethod.GET,
-      data,
-    );
-    return response.map((rawGroup) => parseRawGroup(rawGroup));
+    return fetchGroupPage(this.requestApi, "/groups", filter, page, pageSize);
   }
 
   async addGroup(name: string): Promise<GroupMeta> {
