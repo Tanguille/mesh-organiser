@@ -1,7 +1,6 @@
 use vek::Vec3;
 
 pub struct Mesh {
-    // Positions in space
     pub vertices: Vec<Vec3<f32>>,
     // Indices into the vertex array, 3 per triangle
     pub indices: Vec<u32>,

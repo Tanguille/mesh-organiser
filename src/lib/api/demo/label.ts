@@ -26,7 +26,6 @@ export class DemoLabelApi implements ILabelApi {
       let selfGroupCount = 0;
       const seenGroups = new Set<number>();
 
-      // Count models with this label
       mockModels.forEach((_model, modelId) => {
         const modelLabelIds = modelLabelsMap.get(modelId) || [];
         if (modelLabelIds.includes(labelMeta.id)) {
@@ -64,7 +63,6 @@ export class DemoLabelApi implements ILabelApi {
   }
 
   async addLabel(name: string, color: string): Promise<LabelMeta> {
-    // Find the highest label ID
     let maxId = 0;
     mockLabels.forEach((_label, id) => {
       if (id > maxId) maxId = id;
@@ -88,16 +86,13 @@ export class DemoLabelApi implements ILabelApi {
       throw new Error(`Label with id ${label.id} not found`);
     }
 
-    // Update mutable properties
     existingLabel.name = label.name;
     existingLabel.color = label.color;
   }
 
   async deleteLabel(label: LabelMeta): Promise<void> {
-    // Remove label
     mockLabels.delete(label.id);
 
-    // Remove this label from all models
     mockModels.forEach((model, modelId) => {
       const labelIds = modelLabelsMap.get(modelId) || [];
       const filteredIds = labelIds.filter((id) => id !== label.id);
@@ -118,10 +113,8 @@ export class DemoLabelApi implements ILabelApi {
       throw new Error(`Model with id ${model.id} not found`);
     }
 
-    // Update the model's labels
     existingModel.labels = [...labels];
 
-    // Update the labels map
     if (labels.length > 0) {
       modelLabelsMap.set(
         model.id,
@@ -137,10 +130,8 @@ export class DemoLabelApi implements ILabelApi {
       const existingModel = mockModels.get(model.id);
       if (!existingModel) return;
 
-      // Get current labels
       const currentLabelIds = modelLabelsMap.get(model.id) || [];
 
-      // Add label if not already present
       if (!currentLabelIds.includes(label.id)) {
         const newLabelIds = [...currentLabelIds, label.id];
         modelLabelsMap.set(model.id, newLabelIds);
@@ -158,10 +149,8 @@ export class DemoLabelApi implements ILabelApi {
       const existingModel = mockModels.get(model.id);
       if (!existingModel) return;
 
-      // Get current labels
       const currentLabelIds = modelLabelsMap.get(model.id) || [];
 
-      // Remove label
       const newLabelIds = currentLabelIds.filter((id) => id !== label.id);
 
       if (newLabelIds.length > 0) {
@@ -186,13 +175,6 @@ export class DemoLabelApi implements ILabelApi {
   }
 
   async setChildrenOnLabel(
-    _label: LabelMeta,
-    _children: LabelMeta[],
-  ): Promise<void> {
-    throw new Error("Demo mode: Cannot modify label hierarchy");
-  }
-
-  async removeChildrenFromLabel(
     _label: LabelMeta,
     _children: LabelMeta[],
   ): Promise<void> {

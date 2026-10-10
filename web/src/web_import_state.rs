@@ -1,18 +1,10 @@
-use service::import_state::{ImportState, ImportStateEmitter, ImportStatus};
+use service::import_state::{ImportState, ImportStateEmitter};
 
 pub struct WebImportStateEmitter;
 
 impl ImportStateEmitter for WebImportStateEmitter {
     fn status_event(&self, status: &ImportState) {
-        match status.status {
-            ImportStatus::ProcessingThumbnails => println!("Import Status: Processing Thumbnails"),
-            ImportStatus::Finished => println!("Import Status: Finished"),
-            ImportStatus::Failure => println!("Import Status: Failure"),
-            ImportStatus::FinishedModels => println!("Import Status: Finished Models"),
-            ImportStatus::ProcessingModels => println!("Import Status: Processing Models"),
-            ImportStatus::Idle => println!("Import Status: Idle"),
-            ImportStatus::FinishedThumbnails => println!("Import Status: Finished Thumbnails"),
-        }
+        println!("Import Status: {}", status.status);
     }
 
     fn model_total_event(&self, status: &ImportState) {

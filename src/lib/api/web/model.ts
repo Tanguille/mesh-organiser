@@ -5,12 +5,7 @@ import type {
   ModelFilter,
   ModelFlags,
 } from "../shared/model_api";
-import {
-  buildGetModelsQuery,
-  convertModelFlagsToRaw,
-  parseRawModel,
-  type RawModel,
-} from "../shared/raw_model";
+import { convertModelFlagsToRaw, fetchModelPage } from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -28,14 +23,7 @@ export class WebModelApi implements IModelApi {
     page: number,
     pageSize: number,
   ): Promise<Model[]> {
-    const data = buildGetModelsQuery(filter, page, pageSize);
-
-    const response = await this.requestApi.request<RawModel[]>(
-      "/models",
-      HttpMethod.GET,
-      data,
-    );
-    return response.map((rawModel) => parseRawModel(rawModel));
+    return fetchModelPage(this.requestApi, "/models", filter, page, pageSize);
   }
 
   async editModel(

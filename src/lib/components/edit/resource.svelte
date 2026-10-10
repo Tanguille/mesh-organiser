@@ -11,8 +11,7 @@
 
   import { debounce } from "$lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import CardActionMenu from "./card-action-menu.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Button from "$lib/components/ui/button/button.svelte";
   import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
@@ -35,7 +34,6 @@
 
   const saveResourceDebounced = debounce(
     async (editedResource: ResourceMeta) => {
-      console.log("Saving Resource");
       await resourceApi.editResource(editedResource);
     },
     1000,
@@ -68,16 +66,11 @@
     </div>
 
     <div class="absolute top-5 right-0 mr-8 flex gap-5">
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          <Ellipsis />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content side="right" align="start">
-          <DropdownMenu.Item onclick={onDeleteResource}>
-            <Trash2 /> Delete project
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <CardActionMenu
+        label="Delete project"
+        icon={Trash2}
+        onclick={onDeleteResource}
+      />
     </div>
   </CardHeader>
   <CardContent class="text-sm">

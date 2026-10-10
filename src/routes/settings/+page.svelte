@@ -62,11 +62,9 @@
     thumbnail_regen_button_enabled = false;
     importState.model_count = sidebarState.modelCount;
 
-    let promise = overwrite
+    await (overwrite
       ? thumbnailApi.generateAllThumbnails()
-      : thumbnailApi.generateMissingThumbnails();
-
-    await promise;
+      : thumbnailApi.generateMissingThumbnails());
 
     resetImportState();
     thumbnail_regen_button_enabled = true;

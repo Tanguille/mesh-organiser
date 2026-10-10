@@ -175,11 +175,9 @@ impl ImportState {
 
     #[must_use]
     pub fn get_last_group_name(&self) -> Option<String> {
-        if let Some(last) = self.imported_models.last() {
-            return last.group_name.clone();
-        }
-
-        None
+        self.imported_models
+            .last()
+            .and_then(|last_set| last_set.group_name.clone())
     }
 
     /// Collects every imported model id across all import sets.
@@ -203,8 +201,7 @@ impl ImportState {
     pub async fn create_groups_from_all_sets(
         &mut self,
         state: &AppState,
-    ) -> Result<Vec<i64>, ServiceError> {
-        let mut ids = Vec::new();
+    ) -> Result<(), ServiceError> {
         let user = &self.user;
         for set in &mut self.imported_models {
             if set.group_id.is_some() || set.group_name.is_none() || set.model_ids.is_empty() {
@@ -226,10 +223,9 @@ impl ImportState {
             .await?;
 
             set.group_id = Some(group_id);
-            ids.push(group_id);
         }
 
-        Ok(ids)
+        Ok(())
     }
 
     pub fn emit_all(&self) {

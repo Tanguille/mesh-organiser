@@ -10,7 +10,7 @@ use serde::Serialize;
 use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::{
-    export_service::{ensure_unique_file_full_filename, get_temp_dir},
+    export_service::{ensure_unique_file, get_temp_dir},
     service_error::ServiceError,
     util::{cleanse_evil_from_name, percent_decode},
 };
@@ -130,7 +130,7 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
     let response_url = response.url().to_string();
     let filename = filename_from_response_or_url(&response);
     let cleansed = cleanse_evil_from_name(&filename);
-    let file_path = ensure_unique_file_full_filename(dir, &cleansed);
+    let file_path = ensure_unique_file(dir, &cleansed);
 
     // Stream to disk chunk by chunk instead of buffering the whole response;
     // callers fire these concurrently, so full-body buffering multiplies.
@@ -218,7 +218,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     let cleansed_desired = cleanse_evil_from_name(&desired_filename);
     let current_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if cleansed_desired != current_name {
-        let new_path = ensure_unique_file_full_filename(&temp_dir, &cleansed_desired);
+        let new_path = ensure_unique_file(&temp_dir, &cleansed_desired);
         fs::rename(&file_path, &new_path)?;
         file_path = new_path;
     }

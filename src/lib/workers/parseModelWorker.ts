@@ -105,7 +105,6 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
     const geometry = loadModel(buffer, fileType);
 
     if (geometry) {
-      // Check if geometry has valid position data
       if (geometry.attributes.position) {
         const position = geometry.attributes.position.array.buffer;
         const normal = geometry.attributes.normal?.array?.buffer || null;

@@ -9,20 +9,19 @@ pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     .fetch_all(db)
     .await?;
 
-    let mut blobs = Vec::with_capacity(rows.len());
-
-    for row in rows {
-        blobs.push(Blob::from_parts(
-            row.blob_id,
-            row.blob_sha256,
-            row.blob_filetype,
-            row.blob_size,
-            row.blob_added,
-            row.blob_path,
-        ));
-    }
-
-    Ok(blobs)
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            Blob::from_parts(
+                row.blob_id,
+                row.blob_sha256,
+                row.blob_filetype,
+                row.blob_size,
+                row.blob_added,
+                row.blob_path,
+            )
+        })
+        .collect())
 }
 
 pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob>, DbError> {
@@ -36,20 +35,19 @@ pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob
     push_in_i64(&mut query_builder, &ids);
     let rows = query_builder.build().fetch_all(db).await?;
 
-    let mut blobs = Vec::with_capacity(rows.len());
-
-    for row in rows {
-        blobs.push(Blob::from_parts(
-            row.get("blob_id"),
-            row.get("blob_sha256"),
-            row.get("blob_filetype"),
-            row.get("blob_size"),
-            row.get("blob_added"),
-            row.get("blob_path"),
-        ));
-    }
-
-    Ok(blobs)
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            Blob::from_parts(
+                row.get("blob_id"),
+                row.get("blob_sha256"),
+                row.get("blob_filetype"),
+                row.get("blob_size"),
+                row.get("blob_added"),
+                row.get("blob_path"),
+            )
+        })
+        .collect())
 }
 
 pub async fn get_blob_via_sha256(db: &DbContext, sha256: &str) -> Result<Option<Blob>, DbError> {
@@ -96,14 +94,6 @@ pub async fn add_blob(
     Ok(result.last_insert_rowid())
 }
 
-pub async fn delete_blob(db: &DbContext, blob_id: i64) -> Result<(), DbError> {
-    sqlx::query!("DELETE FROM blobs WHERE blob_id = ?", blob_id)
-        .execute(db)
-        .await?;
-
-    Ok(())
-}
-
 pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     let dead_blob_rows = sqlx::query!(
         "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs
@@ -115,18 +105,19 @@ pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbEr
     .fetch_all(db)
     .await?;
 
-    let mut dead_blobs = Vec::with_capacity(dead_blob_rows.len());
-
-    for row in dead_blob_rows {
-        dead_blobs.push(Blob::from_parts(
-            row.blob_id,
-            row.blob_sha256,
-            row.blob_filetype,
-            row.blob_size,
-            row.blob_added,
-            row.blob_path,
-        ));
-    }
+    let dead_blobs: Vec<Blob> = dead_blob_rows
+        .into_iter()
+        .map(|row| {
+            Blob::from_parts(
+                row.blob_id,
+                row.blob_sha256,
+                row.blob_filetype,
+                row.blob_size,
+                row.blob_added,
+                row.blob_path,
+            )
+        })
+        .collect();
 
     if !dead_blobs.is_empty() {
         let dead_ids: Vec<i64> = dead_blobs.iter().map(|blob| blob.id).collect();

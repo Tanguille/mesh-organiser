@@ -36,12 +36,10 @@ export class DemoModelApi implements IModelApi {
     } = filter;
     let models = Array.from(mockModels.values());
 
-    // Filter by model IDs
     if (model_ids) {
       models = models.filter((m) => model_ids.includes(m.id));
     }
 
-    // Filter by group IDs
     if (group_ids) {
       models = models.filter((m) => {
         const groupId = modelGroupMap.get(m.id);
@@ -49,7 +47,6 @@ export class DemoModelApi implements IModelApi {
       });
     }
 
-    // Filter by label IDs
     if (label_ids) {
       models = models.filter((m) => {
         const modelLabelIds = modelLabelsMap.get(m.id) || [];
@@ -57,36 +54,30 @@ export class DemoModelApi implements IModelApi {
       });
     }
 
-    // Filter by text search
     if (text_search) {
       const searchLower = text_search.toLowerCase();
       models = models.filter((m) => modelMatchesSearch(m, searchLower));
     }
 
-    // Filter by flags
     models = this.filterByFlags(models, flags);
 
     if (file_types) {
       models = models.filter((m) => file_types.includes(m.blob.filetype));
     }
 
-    // Sort models
     models.sort(modelOrderByComparator(order_by));
 
-    // Apply pagination
     const start = (page - 1) * page_size;
     const end = start + page_size;
     return models.slice(start, end);
   }
 
   async editModel(model: Model): Promise<void> {
-    // Update the model in the mock data
     const existingModel = mockModels.get(model.id);
     if (!existingModel) {
       throw new Error(`Model with id ${model.id} not found`);
     }
 
-    // Update mutable properties
     existingModel.name = model.name;
     existingModel.link = model.link;
     existingModel.description = model.description;
@@ -94,10 +85,8 @@ export class DemoModelApi implements IModelApi {
   }
 
   async deleteModel(model: Model): Promise<void> {
-    // Remove model from mock data
     mockModels.delete(model.id);
 
-    // Clean up relationships
     modelGroupMap.delete(model.id);
     modelLabelsMap.delete(model.id);
   }

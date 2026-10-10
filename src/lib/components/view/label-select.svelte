@@ -3,7 +3,6 @@
   import LabelBadge from "$lib/components/view/label-badge.svelte";
   import Tag from "@lucide/svelte/icons/tag";
   import type { ClassValue } from "svelte/elements";
-  import { countWriter } from "$lib/utils";
   import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
   import AddLabelPopover from "./add-label-popover.svelte";
   import { buttonVariants } from "../ui/button";
@@ -17,14 +16,12 @@
     availableLabels = [],
     clazz = undefined,
     placeholder = "Select some labels",
-    onlyShowLabelCount = false,
     onchange = () => {},
   }: {
     value: LabelMeta[];
     availableLabels: LabelMeta[];
     clazz?: ClassValue;
     placeholder?: string;
-    onlyShowLabelCount?: boolean;
     onchange?: VoidFunction;
   } = $props();
 
@@ -58,13 +55,9 @@
       {placeholder}
     {:else}
       <div class="flex h-fit flex-wrap justify-start gap-2">
-        {#if onlyShowLabelCount}
-          {countWriter("label", value)} selected
-        {:else}
-          {#each value as label (label.id)}
-            <LabelBadge label={label!} />
-          {/each}
-        {/if}
+        {#each value as label (label.id)}
+          <LabelBadge label={label!} />
+        {/each}
       </div>
     {/if}
   </Select.Trigger>

@@ -33,8 +33,6 @@ export class LimitedWebShareApi implements IShareApi {
     throw new Error("Method not implemented.");
   }
 
-  async addModelsToShare(_share: Share, _models: Model[]): Promise<void> {}
-
   async setModelsOnShare(_share: Share, _models: Model[]): Promise<void> {}
 
   async editShare(_share: Share): Promise<void> {}

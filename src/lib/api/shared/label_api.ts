@@ -81,8 +81,4 @@ export interface ILabelApi {
   setKeywordsOnLabel(label: LabelMeta, keywords: string[]): Promise<void>;
   getKeywordsForLabel(label: LabelMeta): Promise<string[]>;
   setChildrenOnLabel(label: LabelMeta, children: LabelMeta[]): Promise<void>;
-  removeChildrenFromLabel(
-    label: LabelMeta,
-    children: LabelMeta[],
-  ): Promise<void>;
 }

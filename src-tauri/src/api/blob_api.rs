@@ -9,19 +9,6 @@ use service::export_service;
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 
 #[tauri::command]
-pub async fn get_model_bytes(
-    model_id: i64,
-    state: State<'_, TauriAppState>,
-) -> Result<Response, ApplicationError> {
-    let model = state.require_model(model_id).await?;
-
-    // Todo: This is not a streamed response. Less efficient than the streaming we did before!
-    let bytes = export_service::get_bytes_from_blob(&model.blob, &state.app_state).await?;
-
-    Ok(Response::new(bytes))
-}
-
-#[tauri::command]
 pub async fn get_blob_bytes(
     sha256: &str,
     state: State<'_, TauriAppState>,

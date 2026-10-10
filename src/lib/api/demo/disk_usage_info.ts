@@ -6,7 +6,6 @@ import { mockModels } from "./mock_data";
 
 export class DemoDiskUsageInfoApi implements IDiskUsageInfoApi {
   async getDiskUsageInfo(): Promise<DiskUsageInfo> {
-    // Calculate total size from all mock models
     let totalSize = 0;
     for (const model of mockModels.values()) {
       totalSize += model.blob.size;
