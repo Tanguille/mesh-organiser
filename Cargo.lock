@@ -614,9 +614,9 @@ dependencies = [
 
 [[package]]
 name = "cadrum"
-version = "0.8.20"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c666eb59f8fdf88e484dfa929e59d7d9f2ba4b7ff1dddd73a66d43c2720f6962"
+checksum = "f52f817c2f8ca69199ad0845b5be49b5d87ca94d23d0c3fcc839720d62e76723"
 dependencies = [
  "cc",
  "cmake",
