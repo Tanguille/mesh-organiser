@@ -31,7 +31,7 @@ pub(crate) fn with_zip_entry<R>(
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        if matches(file.name()) {
+        if matches(file.name()?.as_ref()) {
             return read_entry(file.size(), &mut file);
         }
     }
