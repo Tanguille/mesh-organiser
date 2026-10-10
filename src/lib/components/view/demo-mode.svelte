@@ -4,11 +4,11 @@
     CardContent,
     CardHeader,
     CardTitle,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
   import Link from "@lucide/svelte/icons/link";
   import { onMount } from "svelte";
   import { buttonVariants } from "../ui/button/button.svelte";
-  import { wait } from "$lib/utils";
+  import { wait } from "#lib/utils";
 
   let visible = $state(false);
 

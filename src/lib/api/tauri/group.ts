@@ -12,7 +12,7 @@ import {
   type RawGroup,
   type RawGroupMeta,
 } from "../shared/raw_model";
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 
 export class GroupApi implements IGroupApi {
   async getGroups(

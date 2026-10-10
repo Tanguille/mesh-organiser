@@ -1,6 +1,6 @@
-import { currentUser } from "$lib/configuration.svelte";
-import { resetSyncState } from "$lib/sync.svelte";
-import { dateToString } from "$lib/utils";
+import { currentUser } from "#lib/configuration.svelte";
+import { resetSyncState } from "#lib/sync.svelte";
+import { dateToString } from "#lib/utils";
 import { invoke } from "@tauri-apps/api/core";
 import { getAllModels, IModelApi } from "../shared/model_api";
 import type { IServerRequestApi } from "../shared/server_request_api";
@@ -10,13 +10,13 @@ import { WebBlobApi } from "../web/blob";
 import { WebGroupApi } from "../web/group";
 import { WebModelApi } from "../web/model";
 import { syncModels } from "./sync-models";
-import { updateSidebarState } from "$lib/sidebar_data.svelte";
+import { updateSidebarState } from "#lib/sidebar_data.svelte";
 import { syncGroups } from "./sync-groups";
 import { WebResourceApi } from "../web/resource";
 import { syncResources } from "./sync-resources";
 import { syncLabels } from "./sync-labels";
 import { WebLabelApi } from "../web/label";
-import { resetImportState } from "$lib/import.svelte";
+import { resetImportState } from "#lib/import.svelte";
 import { getContainer } from "../dependency_injection";
 
 export class SyncApi implements ISyncApi {

@@ -4,20 +4,20 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
   import { platform } from "@tauri-apps/plugin-os";
   import {
     Button,
     AsyncButton,
     buttonVariants,
-  } from "$lib/components/ui/button/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  } from "#lib/components/ui/button/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import Link from "@lucide/svelte/icons/link";
 
   import { type Update } from "@tauri-apps/plugin-updater";
   import { toast } from "svelte-sonner";
   import { relaunch } from "@tauri-apps/plugin-process";
-  import { configuration } from "$lib/configuration.svelte";
+  import { configuration } from "#lib/configuration.svelte";
 
   let props: { update: Update; onDismiss?: () => void } = $props();
   let currentPlatform = platform();

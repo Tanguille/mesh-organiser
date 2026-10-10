@@ -3,7 +3,7 @@
     Progress as ProgressPrimitive,
     type WithoutChildrenOrChild,
   } from "bits-ui";
-  import { cn } from "$lib/utils.js";
+  import { cn } from "#lib/utils.js";
 
   let {
     ref = $bindable(null),

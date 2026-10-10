@@ -1,4 +1,4 @@
-import type { SizeOptionModels } from "$lib/api/shared/settings_api";
+import type { SizeOptionModels } from "#lib/api/shared/settings_api";
 
 // Tailwind size classes per grid/list item size. group-grid layers extra
 // `[&_.imglist]:w-[...]` widths on top of the List_* entries for its image strip.

@@ -4,43 +4,43 @@
     CardContent,
     CardHeader,
     CardTitle,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
 
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
-  import { Label } from "$lib/components/ui/label";
-  import LabelSelect from "$lib/components/view/label-select.svelte";
-  import { countWriter, uniqueById } from "$lib/utils";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index.js";
+  import { Label } from "#lib/components/ui/label";
+  import LabelSelect from "#lib/components/view/label-select.svelte";
+  import { countWriter, uniqueById } from "#lib/utils";
 
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
+  import { resolve } from "#lib/paths";
 
   import {
     AsyncButton,
     Button,
     buttonVariants,
-  } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import { toast } from "svelte-sonner";
   import type { ClassValue } from "svelte/elements";
 
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { type GroupMeta, IGroupApi } from "$lib/api/shared/group_api";
-  import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import { IModelApi, type Model } from "$lib/api/shared/model_api";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { type GroupMeta, IGroupApi } from "#lib/api/shared/group_api";
+  import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
+  import { ILocalApi } from "#lib/api/shared/local_api";
+  import { IModelApi, type Model } from "#lib/api/shared/model_api";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
   import Boxes from "@lucide/svelte/icons/boxes";
   import Component from "@lucide/svelte/icons/component";
   import Group from "@lucide/svelte/icons/group";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Ungroup from "@lucide/svelte/icons/ungroup";
-  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
+  import { downloadModels, IDownloadApi } from "#lib/api/shared/download_api";
   import Download from "@lucide/svelte/icons/download";
   import OpenInSlicerButton from "../view/open-in-slicer-button.svelte";
-  import { createShare, IShareApi } from "$lib/api/shared/share_api";
+  import { createShare, IShareApi } from "#lib/api/shared/share_api";
   import Share2 from "@lucide/svelte/icons/share-2";
-  import { configurationMeta } from "$lib/configuration.svelte";
+  import { configurationMeta } from "#lib/configuration.svelte";
   import ExportModelsButton from "../view/export-models-button.svelte";
 
   const props: {

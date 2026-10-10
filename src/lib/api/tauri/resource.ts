@@ -8,7 +8,7 @@ import {
   type RawGroup,
   type RawResourceMeta,
 } from "../shared/raw_model";
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 
 export class ResourceApi implements IResourceApi {
   async getResources(): Promise<ResourceMeta[]> {

@@ -43,11 +43,11 @@ type FileType = "stl" | "obj" | "3mf" | "step" | "gcode";
 
 ## Imports & Path Aliases
 
-Defined in `svelte.config.js`:
+`#lib` -> `./src/lib` is a Node subpath import defined in the `imports` field of `package.json` (SvelteKit 3 removed `$lib`).
 
 ```typescript
-import { cn } from "$lib/utils"; // $lib -> ./src/lib
-import { Model } from "$lib/api/shared/model_api";
+import { cn } from "#lib/utils"; // #lib -> ./src/lib
+import { Model } from "#lib/api/shared/model_api";
 ```
 
 ## Naming Conventions
@@ -76,9 +76,9 @@ try {
 
 ## TailwindCSS
 
-Use utility classes; use `cn()` from `$lib/utils` for conditional classes:
+Use utility classes; use `cn()` from `#lib/utils` for conditional classes:
 
 ```typescript
-import { cn } from '$lib/utils';
+import { cn } from '#lib/utils';
 <div class={cn("base-class", isActive && "active-class")}>
 ```

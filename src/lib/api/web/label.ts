@@ -1,4 +1,4 @@
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 import {
   stringColorToNumber,
   type ILabelApi,

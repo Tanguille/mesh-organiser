@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, AsyncButton } from "$lib/components/ui/button/index.js";
+  import { Button, AsyncButton } from "#lib/components/ui/button/index.js";
   import { onDestroy, onMount, untrack } from "svelte";
   import {
     Card,
@@ -7,38 +7,38 @@
     CardTitle,
     CardContent,
     CardDescription,
-  } from "$lib/components/ui/card";
-  import GroupPage from "$lib/components/view/group-page.svelte";
-  import ModelGrid from "$lib/components/view/model-grid.svelte";
+  } from "#lib/components/ui/card";
+  import GroupPage from "#lib/components/view/group-page.svelte";
+  import ModelGrid from "#lib/components/view/model-grid.svelte";
 
   import File from "@lucide/svelte/icons/file";
   import Folder from "@lucide/svelte/icons/folder";
   import Undo2 from "@lucide/svelte/icons/undo-2";
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index";
-  import { countWriter } from "$lib/utils";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index";
+  import { countWriter } from "#lib/utils";
   import Flame from "@lucide/svelte/icons/flame";
   import {
     globalImportSettings,
     importState,
     resetImportState,
-  } from "$lib/import.svelte";
+  } from "#lib/import.svelte";
   import {
     defaultGroupFilter,
     type Group,
     GroupOrderBy,
     IGroupApi,
-  } from "$lib/api/shared/group_api";
+  } from "#lib/api/shared/group_api";
   import {
     ImportStatus,
     ITauriImportApi,
-  } from "$lib/api/shared/tauri_import_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { configuration } from "$lib/configuration.svelte";
-  import { IInternalBrowserApi } from "$lib/api/shared/internal_browser_api";
-  import { PredefinedModelStreamManager } from "$lib/api/shared/model_api";
-  import Spinner from "$lib/components/view/spinner.svelte";
-  import { IWebImportApi } from "$lib/api/shared/web_import_api";
-  import { IHostApi, isCurrentPlatformDesktop } from "$lib/api/shared/host_api";
+  } from "#lib/api/shared/tauri_import_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { configuration } from "#lib/configuration.svelte";
+  import { IInternalBrowserApi } from "#lib/api/shared/internal_browser_api";
+  import { PredefinedModelStreamManager } from "#lib/api/shared/model_api";
+  import Spinner from "#lib/components/view/spinner.svelte";
+  import { IWebImportApi } from "#lib/api/shared/web_import_api";
+  import { IHostApi, isCurrentPlatformDesktop } from "#lib/api/shared/host_api";
 
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
   const tauriImportApi =

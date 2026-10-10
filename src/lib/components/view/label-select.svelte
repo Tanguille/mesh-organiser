@@ -1,14 +1,14 @@
 <script lang="ts">
-  import * as Select from "$lib/components/ui/select/index.js";
-  import LabelBadge from "$lib/components/view/label-badge.svelte";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import LabelBadge from "#lib/components/view/label-badge.svelte";
   import Tag from "@lucide/svelte/icons/tag";
   import type { ClassValue } from "svelte/elements";
-  import { countWriter } from "$lib/utils";
-  import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
+  import { countWriter } from "#lib/utils";
+  import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
   import AddLabelPopover from "./add-label-popover.svelte";
   import { buttonVariants } from "../ui/button";
   import Plus from "@lucide/svelte/icons/plus";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { getContainer } from "#lib/api/dependency_injection";
 
   const labelApi = getContainer().optional<ILabelApi>(ILabelApi);
 

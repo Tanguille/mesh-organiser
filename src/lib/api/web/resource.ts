@@ -1,4 +1,4 @@
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 import type { Group } from "../shared/group_api";
 import type { IResourceApi, ResourceMeta } from "../shared/resource_api";
 import {

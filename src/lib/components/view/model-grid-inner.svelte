@@ -1,16 +1,16 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import type { ClassValue } from "svelte/elements";
-  import RightClickModels from "$lib/components/view/right-click-models.svelte";
-  import ModelTiny from "$lib/components/view/model-tiny.svelte";
-  import ModelTinyList from "$lib/components/view/model-tiny-list.svelte";
-  import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
+  import RightClickModels from "#lib/components/view/right-click-models.svelte";
+  import ModelTiny from "#lib/components/view/model-tiny.svelte";
+  import ModelTinyList from "#lib/components/view/model-tiny-list.svelte";
+  import Checkbox from "#lib/components/ui/checkbox/checkbox.svelte";
   import DragSelectedModels from "./drag-selected-models.svelte";
-  import type { Model } from "$lib/api/shared/model_api";
-  import type { SizeOptionModels } from "$lib/api/shared/settings_api";
-  import { SizeOptionClasses } from "$lib/components/view/size-classes";
-  import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
-  import { configuration } from "$lib/configuration.svelte";
+  import type { Model } from "#lib/api/shared/model_api";
+  import type { SizeOptionModels } from "#lib/api/shared/settings_api";
+  import { SizeOptionClasses } from "#lib/components/view/size-classes";
+  import { createGridSelection } from "#lib/components/view/grid-selection.svelte";
+  import { configuration } from "#lib/configuration.svelte";
 
   let {
     value = $bindable(),

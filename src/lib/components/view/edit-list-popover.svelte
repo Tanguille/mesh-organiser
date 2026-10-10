@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { Input } from "$lib/components/ui/input/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
   import type { ClassValue } from "svelte/elements";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import Trash from "@lucide/svelte/icons/trash";
   import Button from "../ui/button/button.svelte";
   import type { Snippet } from "svelte";

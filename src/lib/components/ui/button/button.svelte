@@ -45,8 +45,8 @@
 </script>
 
 <script lang="ts">
-  import { resolve } from "$lib/paths";
-  import { cn } from "$lib/utils.js";
+  import { resolve } from "#lib/paths";
+  import { cn } from "#lib/utils.js";
 
   let {
     class: className,

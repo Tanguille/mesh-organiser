@@ -1,11 +1,11 @@
-import { currentUser } from "$lib/configuration.svelte";
+import { currentUser } from "#lib/configuration.svelte";
 import {
   beginSyncStep,
   globalSyncState,
   resetSyncState,
   SyncStage,
   SyncStep,
-} from "$lib/sync.svelte";
+} from "#lib/sync.svelte";
 import { getContainer } from "../dependency_injection";
 import { ILabelApi, type Label } from "../shared/label_api";
 import { getAllModels, IModelApi, type Model } from "../shared/model_api";

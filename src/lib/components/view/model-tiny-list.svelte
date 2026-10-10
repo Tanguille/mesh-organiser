@@ -1,9 +1,9 @@
 <script lang="ts">
-  import ModelImg from "$lib/components/view/model-img.svelte";
+  import ModelImg from "#lib/components/view/model-img.svelte";
   import type { ClassValue } from "svelte/elements";
-  import FlagBadges from "$lib/components/view/flag-badges.svelte";
-  import type { Model } from "$lib/api/shared/model_api";
-  import { configuration } from "$lib/configuration.svelte";
+  import FlagBadges from "#lib/components/view/flag-badges.svelte";
+  import type { Model } from "#lib/api/shared/model_api";
+  import { configuration } from "#lib/configuration.svelte";
 
   const props: { model: Model; class?: ClassValue } = $props();
 </script>
