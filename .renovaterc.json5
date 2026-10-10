@@ -17,6 +17,28 @@
   // The operator webhook starts a run on any ticked dashboard checkbox; Renovate resets it on rewrite.
   dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
   packageRules: [
+    // The base preset titles majors and 0.x minors `type(scope)!:`, other minors `feat(scope):` and
+    // patches `fix(scope):`; release-please reads `!` (even on hidden ci:/chore: types) as an app
+    // major bump, `feat` as minor and `fix` as patch. Only shipped npm/cargo deps may cut a release.
+    {
+      description: "Hidden chore: type without ! for non-shipped updates (tools, images)",
+      matchPackageNames: ["*"],
+      semanticCommitType: "chore",
+      commitMessagePrefix: "{{semanticCommitType}}({{semanticCommitScope}}):",
+    },
+    {
+      description: "Keep ci: for GitHub Actions updates",
+      matchManagers: ["github-actions"],
+      semanticCommitType: "ci",
+    },
+    {
+      // `deps(<manager>):` (the Dependabot-era convention) bumps the app patch version and lands
+      // under "Dependencies" in CHANGELOG.md.
+      description: "Use deps(<manager>): commits for shipped npm and cargo dependencies",
+      matchManagers: ["npm", "cargo"],
+      semanticCommitType: "deps",
+      commitMessagePrefix: "deps({{manager}}):",
+    },
     {
       description: "Auto-merge patch bumps once they have aged 1 day",
       matchUpdateTypes: ["patch"],
