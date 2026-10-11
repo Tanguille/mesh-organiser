@@ -11,7 +11,7 @@
 </script>
 
 <DropdownMenu.Root>
-  <DropdownMenu.Trigger>
+  <DropdownMenu.Trigger aria-label={label}>
     <Ellipsis />
   </DropdownMenu.Trigger>
   <DropdownMenu.Content side="right" align="start">
