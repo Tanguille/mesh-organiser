@@ -5,7 +5,6 @@ use vek::{Mat4, Rgba, Vec3, Vec4};
 /// normalized; points straight at the camera so shading stays defined.
 const FALLBACK_NORMAL: Vec3<f32> = Vec3::new(0.0, 0.0, 1.0);
 
-// Vertex data that will be interpolated across the triangle
 #[derive(Clone, Copy, Debug)]
 pub struct VertexData {
     world_pos: Vec3<f32>,
@@ -29,7 +28,7 @@ impl euc::math::WeightedSum for VertexData {
     }
 }
 
-// Rendering pipeline with derivative-based normal calculation and rim lighting
+// Rendering pipeline with flat per-face normals and rim lighting
 pub struct Scene {
     model_view_projection: Mat4<f32>,
     model: Mat4<f32>,
@@ -55,7 +54,7 @@ impl Scene {
 }
 
 impl Pipeline<'_> for Scene {
-    type Vertex = Vec3<f32>; // Just position
+    type Vertex = Vec3<f32>;
     type VertexData = VertexData;
     type Primitives = TriangleList;
     type Fragment = Rgba<f32>;
@@ -104,10 +103,9 @@ impl Pipeline<'_> for Scene {
     }
 
     fn fragment(&self, data: Self::VertexData) -> Self::Fragment {
-        // Normalize the interpolated normal (simulates the derivative-based normal computation)
+        // Re-normalize: interpolating between vertices does not preserve unit length
         let normal = data.normal.try_normalized().unwrap_or(FALLBACK_NORMAL);
 
-        // View direction calculation
         let view_dir = (self.camera_position - data.world_pos)
             .try_normalized()
             .unwrap_or(FALLBACK_NORMAL);
@@ -122,7 +120,6 @@ impl Pipeline<'_> for Scene {
         // rim = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0)
         let rim = (1.0 - view_dir.dot(normal).abs()).powi(3);
 
-        // Merge colors
         let base_color = Vec3::new(
             self.surface_color.r,
             self.surface_color.g,

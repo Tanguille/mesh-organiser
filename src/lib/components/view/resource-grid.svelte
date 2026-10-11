@@ -3,7 +3,7 @@
   import { Input } from "$lib/components/ui/input";
   import GroupTinyList from "./group-tiny-list.svelte";
   import SortFilter from "./sort-filter.svelte";
-  import { AsyncButton, buttonVariants } from "$lib/components/ui/button";
+  import { buttonVariants } from "$lib/components/ui/button";
   import EditResource from "$lib/components/edit/resource.svelte";
   import NotebookText from "@lucide/svelte/icons/notebook-text";
   import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
@@ -15,13 +15,11 @@
   import { getContainer } from "$lib/api/dependency_injection";
   import type { Group } from "$lib/api/shared/group_api";
   import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { ILocalApi } from "$lib/api/shared/local_api";
   import { configuration } from "$lib/configuration.svelte";
   import OpenInSlicerButton from "./open-in-slicer-button.svelte";
-  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
   import { handleGridItemKeyDown } from "$lib/utils";
-  import Download from "@lucide/svelte/icons/download";
   import ExportModelsButton from "./export-models-button.svelte";
+  import EmptyState from "./empty-state.svelte";
   import {
     GROUP_ORDER_LABELS,
     type OrderOptionGroups,
@@ -33,8 +31,6 @@
   let newName = $state<string>("");
 
   const resourceApi = getContainer().require<IResourceApi>(IResourceApi);
-  const localApi = getContainer().optional<ILocalApi>(ILocalApi);
-  const downloadApi = getContainer().optional<IDownloadApi>(IDownloadApi);
 
   let scrollContainer: HTMLElement;
 
@@ -203,16 +199,7 @@
             Open group
           </a>
           <div class="mx-3 mt-2 mb-4 grid grid-cols-2 gap-4">
-            {#if localApi}
-              <ExportModelsButton models={group.models} class="grow" />
-            {:else if downloadApi}
-              <AsyncButton
-                class="grow"
-                onclick={() => downloadModels(group.models, downloadApi)}
-                ><Download /> Download model</AsyncButton
-              >
-            {/if}
-
+            <ExportModelsButton models={group.models} class="grow" />
             <OpenInSlicerButton models={group.models} class="grow" />
           </div>
         </div>
@@ -228,11 +215,7 @@
         >
       </div>
     {:else}
-      <div
-        class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-      >
-        <span class="text-xl">No project selected</span>
-      </div>
+      <EmptyState>No project selected</EmptyState>
     {/if}
   </div>
 </div>

@@ -2,15 +2,13 @@
 //!
 //! Limits are expressed in UTF-8 bytes for strings (`str::len()`).
 
-use std::str::FromStr;
-
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use thiserror::Error;
 
-use db::{MAX_PAGE_SIZE, group_db::GroupOrderBy, model_db::ModelOrderBy};
+use db::MAX_PAGE_SIZE;
 
 /// Maximum number of `i64` IDs accepted per repeated query parameter (`?model_ids=1&model_ids=2`).
 pub const MAX_ID_LIST_ITEMS: usize = 10_000;
@@ -155,6 +153,10 @@ pub fn parse_comma_separated_i64(str: &str, max: usize) -> Result<Vec<i64>, Quer
 }
 
 /// Converts a request-parameter vector into an option, treating an empty list as absent.
+///
+/// Never pass security-scoped ids (e.g. a share's model ids) through this: an
+/// empty list becomes `None`, which the db layer reads as "no restriction" and
+/// answers with every model the user owns. Pass them as `Some(ids)` instead.
 #[must_use]
 pub fn none_if_empty<T>(ids: Vec<T>) -> Option<Vec<T>> {
     if ids.is_empty() { None } else { Some(ids) }
@@ -186,24 +188,15 @@ fn validate_list_query_strings(
 }
 
 /// Parses `order_by` query values only when UTF-8 length is within [`MAX_ORDER_BY_BYTES`], so
-/// `FromStr` work stays bounded even if validation is skipped by mistake.
+/// `FromStr` work stays bounded even if validation is skipped by mistake. Oversized or
+/// unknown values fall back to `default`.
 #[must_use]
-pub fn parse_model_order_by_bounded(str: &str) -> ModelOrderBy {
-    if str.len() > MAX_ORDER_BY_BYTES {
-        return ModelOrderBy::AddedDesc;
+pub fn parse_order_by_bounded<T: std::str::FromStr>(order_by: &str, default: T) -> T {
+    if order_by.len() > MAX_ORDER_BY_BYTES {
+        return default;
     }
 
-    ModelOrderBy::from_str(str).unwrap_or(ModelOrderBy::AddedDesc)
-}
-
-/// Same as [`parse_model_order_by_bounded`] for group list `order_by`.
-#[must_use]
-pub fn parse_group_order_by_bounded(str: &str) -> GroupOrderBy {
-    if str.len() > MAX_ORDER_BY_BYTES {
-        return GroupOrderBy::NameAsc;
-    }
-
-    GroupOrderBy::from_str(str).unwrap_or(GroupOrderBy::NameAsc)
+    T::from_str(order_by).unwrap_or(default)
 }
 
 /// Rejects pagination parameters that would allow unbounded allocations or overflow in offset math.
@@ -221,7 +214,7 @@ pub fn validate_pagination(page: u32, page_size: u32) -> Result<(), QueryBoundsE
 
 #[cfg(test)]
 mod tests {
-    use db::{MAX_PAGE_SIZE, group_db::GroupOrderBy, model_db::ModelOrderBy};
+    use db::{MAX_PAGE_SIZE, model_db::ModelOrderBy};
 
     use super::*;
 
@@ -341,6 +334,12 @@ mod tests {
     }
 
     #[test]
+    fn none_if_empty_maps_empty_to_none_and_keeps_values() {
+        assert_eq!(none_if_empty(Vec::<i64>::new()), None);
+        assert_eq!(none_if_empty(vec![1, 2]), Some(vec![1, 2]));
+    }
+
+    #[test]
     fn optional_comma_separated_model_ids_none_and_some() {
         assert_eq!(optional_comma_separated_model_ids(None).unwrap(), None);
         assert_eq!(
@@ -350,32 +349,20 @@ mod tests {
     }
 
     #[test]
-    fn parse_model_order_by_bounded_rejects_oversized_without_parsing() {
-        let junk = "AddedDesc".repeat(100);
+    fn parse_order_by_bounded_model_rejects_oversized_without_parsing() {
+        let junk = "NameAsc".repeat(100);
         assert!(junk.len() > MAX_ORDER_BY_BYTES);
-        assert_eq!(parse_model_order_by_bounded(&junk), ModelOrderBy::AddedDesc);
-    }
-
-    #[test]
-    fn parse_model_order_by_bounded_accepts_known_variant() {
         assert_eq!(
-            parse_model_order_by_bounded("NameAsc"),
-            ModelOrderBy::NameAsc
+            parse_order_by_bounded(&junk, ModelOrderBy::AddedDesc),
+            ModelOrderBy::AddedDesc
         );
     }
 
     #[test]
-    fn parse_group_order_by_bounded_rejects_oversized() {
-        let junk = "NameAsc".repeat(100);
-        assert!(junk.len() > MAX_ORDER_BY_BYTES);
-        assert_eq!(parse_group_order_by_bounded(&junk), GroupOrderBy::NameAsc);
-    }
-
-    #[test]
-    fn parse_group_order_by_bounded_accepts_known_variant() {
+    fn parse_order_by_bounded_model_accepts_known_variant() {
         assert_eq!(
-            parse_group_order_by_bounded("CreatedDesc"),
-            GroupOrderBy::CreatedDesc
+            parse_order_by_bounded("NameAsc", ModelOrderBy::AddedDesc),
+            ModelOrderBy::NameAsc
         );
     }
 }

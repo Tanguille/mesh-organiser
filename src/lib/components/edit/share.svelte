@@ -11,8 +11,7 @@
 
   import { countWriter, debounce } from "$lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import CardActionMenu from "./card-action-menu.svelte";
   import { buttonVariants } from "../ui/button/button.svelte";
   import { getContainer } from "$lib/api/dependency_injection";
   import { updateSidebarState } from "$lib/sidebar_data.svelte";
@@ -86,16 +85,11 @@
     </p>
 
     <div class="absolute top-5 right-0 mr-8">
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          <Ellipsis />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content side="right" align="start">
-          <DropdownMenu.Item onclick={deleteShare}>
-            <Trash2 /> Delete share
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <CardActionMenu
+        label="Delete share"
+        icon={Trash2}
+        onclick={deleteShare}
+      />
     </div>
   </CardHeader>
   <CardContent class="flex flex-col gap-4">

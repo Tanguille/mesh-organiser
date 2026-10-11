@@ -14,8 +14,7 @@
 
   import { debounce } from "$lib/utils";
   import type { ClassValue } from "svelte/elements";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import CardActionMenu from "./card-action-menu.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import LabelSelect from "$lib/components/view/label-select.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
@@ -102,16 +101,11 @@
           >Keywords {keywords.length > 0 ? `(${keywords.length})` : ""}</Button
         >
       </EditListPopover>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          <Ellipsis />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content side="right" align="start">
-          <DropdownMenu.Item onclick={onDeleteLabel}>
-            <Trash2 /> Delete label
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <CardActionMenu
+        label="Delete label"
+        icon={Trash2}
+        onclick={onDeleteLabel}
+      />
     </div>
   </CardHeader>
   <CardContent class="text-sm">

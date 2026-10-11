@@ -1,6 +1,6 @@
-use std::{io::Cursor, path::Path};
+use std::path::Path;
 
-use image::{DynamicImage, ImageReader};
+use image::DynamicImage;
 
 use crate::{error::MeshThumbnailError, parse_model::find_zip_entry_bytes, path_ext::matches_ext};
 
@@ -13,16 +13,11 @@ pub fn handle_threemf(input_path: &Path) -> Result<Option<DynamicImage>, MeshThu
 }
 
 fn extract_image_from_3mf(input_path: &Path) -> Result<DynamicImage, MeshThumbnailError> {
-    // Open 3mf path as zip file
     let buffer = find_zip_entry_bytes(
         input_path,
         |name| name.ends_with("thumbnail_middle.png"),
         "thumbnail_middle.png not found in 3mf file",
     )?;
 
-    let step1 = ImageReader::new(Cursor::new(buffer))
-        .with_guessed_format()?
-        .decode()?;
-
-    Ok(step1)
+    Ok(image::load_from_memory(&buffer)?)
 }

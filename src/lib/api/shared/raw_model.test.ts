@@ -3,13 +3,18 @@
  * after moving this code from tauri-specific to shared (used by web, web_share, tauri).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { FileType } from "./blob_api";
+import { buildGetGroupsQuery, defaultGroupFilter } from "./group_api";
 import type { ResourceFlags } from "./resource_api";
-import type { ModelFlags } from "./model_api";
+import { defaultModelFilter, type ModelFlags } from "./model_api";
+import { HttpMethod, type IServerRequestApi } from "./server_request_api";
 import {
+  buildGetModelsQuery,
   convertModelFlagsToRaw,
   convertResourceFlagsToRaw,
+  fetchGroupPage,
+  fetchModelPage,
   parseRawBlob,
   parseRawGroup,
   parseRawGroupMeta,
@@ -298,5 +303,61 @@ describe("parseRawGroup", () => {
     expect(group.models[0].group).toBe(group.meta);
     expect(group.resource?.name).toBe("resource");
     expect(group.flags).toEqual({ printed: false, favorite: true });
+  });
+});
+
+function mockRequestApi(response: unknown) {
+  const request = vi.fn().mockResolvedValue(response);
+  return { request, requestApi: { request } as unknown as IServerRequestApi };
+}
+
+describe("fetchModelPage", () => {
+  it("requests the given path with model query params and parses models", async () => {
+    // Arrange
+    const { request, requestApi } = mockRequestApi([sampleRawModel]);
+    const filter = defaultModelFilter({ groupIds: [7] });
+    // Act
+    const models = await fetchModelPage(
+      requestApi,
+      "/shares/s1/models",
+      filter,
+      2,
+      25,
+    );
+    // Assert
+    expect(request).toHaveBeenCalledWith(
+      "/shares/s1/models",
+      HttpMethod.GET,
+      buildGetModelsQuery(filter, 2, 25),
+    );
+    expect(request.mock.calls[0][2]).toMatchObject({
+      group_ids: [7],
+      page: 2,
+      page_size: 25,
+    });
+    expect(models).toHaveLength(1);
+    expect(models[0].id).toBe(50);
+  });
+});
+
+describe("fetchGroupPage", () => {
+  it("requests the given path with group query params and parses groups", async () => {
+    // Arrange
+    const { request, requestApi } = mockRequestApi([]);
+    const filter = defaultGroupFilter({ modelIds: [1, 2] });
+    // Act
+    const groups = await fetchGroupPage(requestApi, "/groups", filter, 0, 10);
+    // Assert
+    expect(request).toHaveBeenCalledWith(
+      "/groups",
+      HttpMethod.GET,
+      buildGetGroupsQuery(filter, 0, 10),
+    );
+    expect(request.mock.calls[0][2]).toMatchObject({
+      model_ids_str: "1,2",
+      page: 0,
+      page_size: 10,
+    });
+    expect(groups).toEqual([]);
   });
 });

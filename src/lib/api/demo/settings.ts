@@ -11,7 +11,6 @@ export class DemoSettingsApi implements ISettingsApi {
 
   constructor() {
     this.config = configurationDefault();
-    // Override some settings for demo
     this.config.data_path = "/demo/data";
     this.config.slicer = "OrcaSlicer";
     this.config.show_multiselect_checkboxes = true;
@@ -34,7 +33,6 @@ export class DemoSettingsApi implements ISettingsApi {
   }
 
   availableSections(): SettingSection[] {
-    // Return only relevant sections for demo
     return [
       SettingSection.ModelPreview,
       SettingSection.UserInterface,

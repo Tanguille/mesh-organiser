@@ -108,14 +108,4 @@ export class LabelApi implements ILabelApi {
       childLabelIds: children.map((child) => child.id),
     });
   }
-
-  async removeChildrenFromLabel(
-    label: LabelMeta,
-    children: LabelMeta[],
-  ): Promise<void> {
-    return await invoke("remove_childs_from_label", {
-      parentLabelId: label.id,
-      childLabelIds: children.map((child) => child.id),
-    });
-  }
 }

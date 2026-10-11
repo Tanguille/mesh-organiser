@@ -1,8 +1,10 @@
 import { createBlobInstance, type Blob } from "./blob_api";
 import {
+  buildGetGroupsQuery,
   createGroupInstance,
   createGroupMetaInstance,
   type Group,
+  type GroupFilter,
   type GroupMeta,
 } from "./group_api";
 import {
@@ -22,6 +24,7 @@ import {
   type ResourceFlags,
   type ResourceMeta,
 } from "./resource_api";
+import { HttpMethod, type IServerRequestApi } from "./server_request_api";
 import { createUserInstance, type User } from "./user_api";
 
 /** Raw blob shape (matches tauri blob response). */
@@ -255,4 +258,36 @@ export function parseRawUser(raw: RawUser): User {
     raw.sync_token,
     raw.last_sync,
   );
+}
+
+/** Fetches one page of models from a web or web-share model endpoint. */
+export async function fetchModelPage(
+  requestApi: IServerRequestApi,
+  path: string,
+  filter: ModelFilter,
+  page: number,
+  pageSize: number,
+): Promise<Model[]> {
+  const response = await requestApi.request<RawModel[]>(
+    path,
+    HttpMethod.GET,
+    buildGetModelsQuery(filter, page, pageSize),
+  );
+  return response.map((rawModel) => parseRawModel(rawModel));
+}
+
+/** Fetches one page of groups from a web or web-share group endpoint. */
+export async function fetchGroupPage(
+  requestApi: IServerRequestApi,
+  path: string,
+  filter: GroupFilter,
+  page: number,
+  pageSize: number,
+): Promise<Group[]> {
+  const response = await requestApi.request<RawGroup[]>(
+    path,
+    HttpMethod.GET,
+    buildGetGroupsQuery(filter, page, pageSize),
+  );
+  return response.map((rawGroup) => parseRawGroup(rawGroup));
 }

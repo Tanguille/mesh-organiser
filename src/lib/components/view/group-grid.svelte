@@ -16,13 +16,14 @@
   import ModelEdit from "$lib/components/edit/model.svelte";
   import EditMultiModel from "$lib/components/edit/multi-model.svelte";
   import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
-  import { Input } from "$lib/components/ui/input";
   import DragSelectedModels from "$lib/components/view/drag-selected-models.svelte";
   import FileTypeFilter from "$lib/components/view/file-type-filter.svelte";
   import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
   import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
   import RightClickModels from "$lib/components/view/right-click-models.svelte";
+  import SearchInput from "$lib/components/view/search-input.svelte";
   import SortFilter from "$lib/components/view/sort-filter.svelte";
+  import EmptyState from "$lib/components/view/empty-state.svelte";
   import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
   import { configuration } from "$lib/configuration.svelte";
   import { IsSplitGridSize } from "$lib/hooks/is-split-grid-size.svelte";
@@ -30,7 +31,7 @@
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
-  import { debounce, wait, uniqueById } from "$lib/utils";
+  import { wait, uniqueById } from "$lib/utils";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -50,12 +51,8 @@
   let selected = $state.raw<Group[]>([]);
 
   const isMobile = new IsMobile();
-  const showLeftSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length <= 0),
-  );
-  const showRightSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length > 0),
-  );
+  const showLeftSide = $derived(!isMobile.current || selected.length <= 0);
+  const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
   let gridSizeMonitor = new IsSplitGridSize();
 
@@ -96,8 +93,6 @@
     props.groupStream.setSearchText(newText);
     await resetGroupSet();
   }
-
-  let debouncedSetNewSearchText = debounce(setNewSearchText, 200);
 
   // Reuse the shared item size classes, layering on the image-strip widths the
   // list view needs for its `.imglist` container.
@@ -148,13 +143,6 @@
   onDestroy(() => {
     selection.destroy();
   });
-
-  function onSearchInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    debouncedSetNewSearchText(
-      target.value.trim().length === 0 ? null : target.value.trim(),
-    );
-  }
 
   const modelsInSelectedGroups = $derived(selected.flatMap((g) => g.models));
   const modelsInLoadedGroups = $derived(loadedGroups.flatMap((g) => g.models));
@@ -250,11 +238,7 @@
   {#if showLeftSide}
     <div class="flex flex-1 flex-col gap-1" style="min-width: 0;">
       <div class="flex flex-row justify-center gap-3 px-5 py-3">
-        <Input
-          oninput={onSearchInput}
-          class="grow border-primary"
-          placeholder="Search"
-        />
+        <SearchInput onsearch={setNewSearchText} />
 
         <FileTypeFilter
           onchange={(x) => {
@@ -341,11 +325,7 @@
           onGroupDelete={() => onGroupDeleteViaModels(modelsInLoadedGroups)}
         />
       {:else}
-        <div
-          class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-        >
-          <span class="text-xl">No group selected</span>
-        </div>
+        <EmptyState>No group selected</EmptyState>
       {/if}
     </div>
   {/if}
@@ -379,11 +359,7 @@
         clazz={innerClazz}
       />
     {:else}
-      <div
-        class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-      >
-        <span class="text-xl">No models in group to display</span>
-      </div>
+      <EmptyState>No models in group to display</EmptyState>
     {/if}
   </span>
 {/snippet}

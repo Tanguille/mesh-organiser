@@ -38,7 +38,6 @@ export interface IShareApi {
   getShare(shareId: string): Promise<Share>;
   getShareLink(share: Share): Promise<string>;
   createShare(shareName: string): Promise<Share>;
-  addModelsToShare(share: Share, models: Model[]): Promise<void>;
   setModelsOnShare(share: Share, models: Model[]): Promise<void>;
   editShare(share: Share): Promise<void>;
   deleteShare(share: Share): Promise<void>;

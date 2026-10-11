@@ -145,22 +145,18 @@ pub async fn export_to_temp_folder(
         serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 
-    let mut paths = Vec::with_capacity(models.len());
     let max = configuration.core_parallelism * ASYNC_MULT;
 
     let results = util::run_bounded(models, max, |model| {
         let temp_dir = temp_dir.clone();
         let app_state = app_state.clone();
 
-        async move {
-            let model = model;
-            get_path_from_model(&temp_dir, &model, &app_state, lazy).await
-        }
+        async move { get_path_from_model(&temp_dir, &model, &app_state, lazy).await }
     })
     .await;
 
-    // Keep only the Ok(PathBuf) outputs, matching the previous loop.
-    paths.extend(results.into_iter().flatten());
+    // Keep only the Ok(PathBuf) outputs; models whose export failed are skipped.
+    let paths = results.into_iter().flatten().collect();
 
     Ok((temp_dir, paths))
 }
@@ -257,29 +253,15 @@ pub async fn get_bytes_from_blob(
 }
 
 /// Ensures a unique path for the given filename in the base path (adds _1, _2, … if needed).
-/// If `file_name` has no `.`, the whole string is treated as the base name with no extension.
+/// The counter goes before the last `.`; if `file_name` has no `.`, it is appended.
 #[must_use]
-pub fn ensure_unique_file_full_filename(base_path: &Path, file_name: &str) -> PathBuf {
-    if let Some((base_file_name, extension)) = file_name.rsplit_once('.') {
-        ensure_unique_file(base_path, base_file_name, extension)
-    } else {
-        let mut counter = 1;
-        let mut new_file_name = base_path.join(file_name);
-        while new_file_name.exists() {
-            new_file_name = base_path.join(format!("{file_name}_{counter}"));
-            counter += 1;
-        }
-        new_file_name
-    }
-}
-
-#[must_use]
-pub fn ensure_unique_file(base_path: &Path, file_name: &str, extension: &str) -> PathBuf {
+pub fn ensure_unique_file(base_path: &Path, file_name: &str) -> PathBuf {
+    let (stem, extension) = file_name.split_at(file_name.rfind('.').unwrap_or(file_name.len()));
     let mut counter = 1;
-    let mut new_file_name = base_path.join(format!("{file_name}.{extension}"));
+    let mut new_file_name = base_path.join(file_name);
 
     while new_file_name.exists() {
-        new_file_name = base_path.join(format!("{file_name}_{counter}.{extension}"));
+        new_file_name = base_path.join(format!("{stem}_{counter}{extension}"));
         counter += 1;
     }
 
@@ -300,7 +282,7 @@ pub async fn get_path_from_model(
     let src_file_path = get_model_path_for_blob(&model.blob, app_state);
     let cleansed_name = cleanse_evil_from_name(&model.name);
     let extension = convert_zip_to_extension(&model.blob.filetype);
-    let dst_file_path = ensure_unique_file(temp_dir, &cleansed_name, &extension);
+    let dst_file_path = ensure_unique_file(temp_dir, &format!("{cleansed_name}.{extension}"));
 
     if is_zipped_file_extension(&model.blob.filetype) {
         let mut reader = open_blob_content_reader(&model.blob, app_state).await?;
@@ -415,12 +397,11 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests: lock in ensure_unique_file / ensure_unique_file_full_filename
-// after clippy refactors (control flow, Option/Result).
+// Tests for ensure_unique_file.
 // -----------------------------------------------------------------------------
 //
-// Blob content reading tests: lock in get_bytes_from_blob (and get_path_from_model
-// for non-zip, lazy=false) before DRY refactor introducing open_blob_content_reader.
+// Blob content reading tests for get_bytes_from_blob (and get_path_from_model
+// for non-zip, lazy=false).
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -440,10 +421,7 @@ mod tests {
 
     use crate::{app_state::AppState, configuration::Configuration};
 
-    use super::{
-        ensure_unique_file, ensure_unique_file_full_filename, get_bytes_from_blob,
-        get_path_from_model,
-    };
+    use super::{ensure_unique_file, get_bytes_from_blob, get_path_from_model};
 
     /// Returns a deterministic 32-character hex string (sha256-like) for tests.
     fn fake_sha256_hex() -> String {
@@ -459,7 +437,7 @@ mod tests {
     #[test]
     fn ensure_unique_file_returns_path_when_no_existing_file() {
         let dir = tempdir().unwrap();
-        let path = ensure_unique_file(dir.path(), "model", "stl");
+        let path = ensure_unique_file(dir.path(), "model.stl");
         assert_eq!(path.file_name().unwrap(), "model.stl");
         assert!(!path.exists());
     }
@@ -467,27 +445,50 @@ mod tests {
     #[test]
     fn ensure_unique_file_adds_suffix_when_file_exists() {
         let dir = tempdir().unwrap();
-        let first = ensure_unique_file(dir.path(), "model", "stl");
+        let first = ensure_unique_file(dir.path(), "model.stl");
         std::fs::File::create(&first).unwrap();
-        let second = ensure_unique_file(dir.path(), "model", "stl");
+        let second = ensure_unique_file(dir.path(), "model.stl");
         assert_eq!(second.file_name().unwrap(), "model_1.stl");
         assert!(!second.exists());
     }
 
     #[test]
-    fn ensure_unique_file_full_filename_uses_extension_and_base_name() {
+    fn ensure_unique_file_skips_all_taken_suffixes() {
         let dir = tempdir().unwrap();
-        let path = ensure_unique_file_full_filename(dir.path(), "foo.bar");
-        assert_eq!(path.file_name().unwrap(), "foo.bar");
+        for taken in ["model.stl", "model_1.stl", "model_2.stl"] {
+            std::fs::File::create(dir.path().join(taken)).unwrap();
+        }
+
+        let path = ensure_unique_file(dir.path(), "model.stl");
+
+        assert_eq!(path.file_name().unwrap(), "model_3.stl");
     }
 
     #[test]
-    fn ensure_unique_file_full_filename_adds_suffix_when_exists() {
+    fn ensure_unique_file_without_extension_appends_counter() {
         let dir = tempdir().unwrap();
-        let first = ensure_unique_file_full_filename(dir.path(), "a.stl");
+
+        let first = ensure_unique_file(dir.path(), "foo");
         std::fs::File::create(&first).unwrap();
-        let second = ensure_unique_file_full_filename(dir.path(), "a.stl");
-        assert_eq!(second.file_name().unwrap(), "a_1.stl");
+        let second = ensure_unique_file(dir.path(), "foo");
+        std::fs::File::create(&second).unwrap();
+        let third = ensure_unique_file(dir.path(), "foo");
+
+        assert_eq!(first.file_name().unwrap(), "foo");
+        assert_eq!(second.file_name().unwrap(), "foo_1");
+        assert_eq!(third.file_name().unwrap(), "foo_2");
+    }
+
+    #[test]
+    fn ensure_unique_file_splits_on_last_dot() {
+        let dir = tempdir().unwrap();
+
+        let first = ensure_unique_file(dir.path(), "a.b.stl");
+        std::fs::File::create(&first).unwrap();
+        let second = ensure_unique_file(dir.path(), "a.b.stl");
+
+        assert_eq!(first.file_name().unwrap(), "a.b.stl");
+        assert_eq!(second.file_name().unwrap(), "a.b_1.stl");
     }
 
     /// Builds an `AppState` with a temp data dir and real DB; model dir is `data_path/models`.

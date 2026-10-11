@@ -340,18 +340,6 @@ async fn edit_model_global_id(
     Ok(())
 }
 
-pub async fn delete_model(db: &DbContext, user: &User, id: i64) -> Result<(), DbError> {
-    sqlx::query!(
-        "DELETE FROM models WHERE model_id = ? AND model_user_id = ?",
-        id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
-}
-
 pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(), DbError> {
     if ids.is_empty() {
         return Ok(());

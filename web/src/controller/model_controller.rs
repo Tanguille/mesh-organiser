@@ -5,366 +5,328 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
+use axum_extra::extract::Query;
 use axum_login::login_required;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
+use tokio::{fs, io::AsyncWriteExt};
 
-use db::{model::ModelFlags, model_db, model_db::ModelFilterOptions};
-use service::{cleanse_evil_from_name, export_service, import_service, import_state::ImportState};
-
-use crate::{
-    error::ApplicationError,
-    user::{Backend, CurrentUser},
-    web_app_state::WebAppState,
+use db::{
+    model::{ModelFlags, blob::FileType, user::User},
+    model_db,
+    model_db::ModelFilterOptions,
+};
+use service::{
+    AppState, cleanse_evil_from_name, export_service, import_service, import_state::ImportState,
+    thumbnail_service,
 };
 
-pub fn router() -> Router<WebAppState> {
+use crate::{
+    controller::share_controller::ShareScope,
+    error::ApplicationError,
+    query_bounds,
+    user::{Backend, CurrentUser},
+    web_import_state::WebImportStateEmitter,
+};
+
+/// Routes for the model endpoints; `login_required!` guards only those registered before it.
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
-            .route("/models", post(post::add_model))
-            .route("/models", get(get::get_models))
-            .route("/models", delete(delete::delete_models))
-            .route("/models/count", get(get::get_model_count))
-            .route("/models/disk_usage", get(get::get_model_disk_space_usage))
-            .route("/models/{model_id}", put(put::edit_model))
-            .route("/models/{model_id}", delete(delete::delete_model))
+            .route("/models", post(add_model))
+            .route("/models", get(get_models))
+            .route("/models", delete(delete_models))
+            .route("/models/count", get(get_model_count))
+            .route("/models/disk_usage", get(get_model_disk_space_usage))
+            .route("/models/{model_id}", put(edit_model))
+            .route("/models/{model_id}", delete(delete_model))
             .route_layer(login_required!(Backend))
-            .route("/shares/{share_id}/models", get(get::get_share_models)),
+            .route("/shares/{share_id}/models", get(get_share_models)),
     )
 }
 
-mod get {
-    use axum_extra::extract::Query;
-    use db::model::user::User;
+#[derive(Deserialize)]
+pub struct GetModelParams {
+    #[serde(default)]
+    pub model_ids: Vec<i64>,
+    #[serde(default)]
+    pub group_ids: Vec<i64>,
+    #[serde(default)]
+    pub label_ids: Vec<i64>,
+    pub order_by: Option<String>,
+    pub text_search: Option<String>,
+    #[serde(default)]
+    pub model_flags: ModelFlags,
+    #[serde(default)]
+    pub file_types: Vec<FileType>,
+    pub page: u32,
+    pub page_size: u32,
+}
 
-    use crate::{controller::share_controller::resolve_share_owner, query_bounds};
+impl GetModelParams {
+    /// Borrows the list-query fields that `query_bounds` validates, so the
+    /// bounds check runs before any allocation from request data.
+    fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
+        query_bounds::PaginatedListQueryBounds {
+            model_ids: &self.model_ids,
+            group_ids: &self.group_ids,
+            label_ids: &self.label_ids,
+            text_search: self.text_search.as_deref(),
+            order_by: self.order_by.as_deref(),
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
+}
 
-    use db::model::blob::FileType;
+/// `share` is `Some` on the share path, where the query is scoped to the share's
+/// ids instead of using the request's `model_ids` as an unrestricted filter.
+async fn get_models_inner(
+    app_state: &AppState,
+    user: &User,
+    params: GetModelParams,
+    share: Option<&ShareScope>,
+) -> Result<Response, ApplicationError> {
+    if let Err(e) = query_bounds::validate_model_list_query_bounds(params.paginated_bounds()) {
+        return Ok(query_bounds::bad_request(&e));
+    }
 
-    use super::{
-        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, ModelFilterOptions,
-        ModelFlags, Path, Response, Serialize, State, WebAppState, export_service, model_db,
+    let flags = params.model_flags;
+
+    // A share's ids stay `Some` even when empty: the db layer answers
+    // `Some(vec![])` with no models, whereas `None` would mean every model the
+    // owner has.
+    let model_ids = match share {
+        Some(share) => Some(share.restrict(&params.model_ids)),
+        None => query_bounds::none_if_empty(params.model_ids),
     };
 
-    #[derive(Deserialize)]
-    pub struct GetModelParams {
-        #[serde(default)]
-        pub model_ids: Vec<i64>,
-        #[serde(default)]
-        pub group_ids: Vec<i64>,
-        #[serde(default)]
-        pub label_ids: Vec<i64>,
-        pub order_by: Option<String>,
-        pub text_search: Option<String>,
-        #[serde(default)]
-        pub model_flags: ModelFlags,
-        #[serde(default)]
-        pub file_types: Vec<FileType>,
-        pub page: u32,
-        pub page_size: u32,
-    }
+    let models = model_db::get_models(
+        &app_state.db,
+        user,
+        ModelFilterOptions {
+            model_ids,
+            group_ids: query_bounds::none_if_empty(params.group_ids),
+            label_ids: query_bounds::none_if_empty(params.label_ids),
+            order_by: params.order_by.as_deref().map(|order_by| {
+                query_bounds::parse_order_by_bounded(order_by, model_db::ModelOrderBy::AddedDesc)
+            }),
+            model_flags: if flags.is_empty() { None } else { Some(flags) },
+            file_types: query_bounds::none_if_empty(params.file_types),
+            text_search: params.text_search,
+            page: params.page,
+            page_size: params.page_size,
+        },
+    )
+    .await?;
 
-    impl GetModelParams {
-        fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
-            query_bounds::PaginatedListQueryBounds {
-                model_ids: &self.model_ids,
-                group_ids: &self.group_ids,
-                label_ids: &self.label_ids,
-                text_search: self.text_search.as_deref(),
-                order_by: self.order_by.as_deref(),
-                page: self.page,
-                page_size: self.page_size,
-            }
-        }
-    }
+    Ok(Json(models.items).into_response())
+}
 
-    async fn get_models_inner(
-        app_state: &WebAppState,
-        user: &User,
-        params: GetModelParams,
-    ) -> Result<Response, ApplicationError> {
-        if let Err(e) = query_bounds::validate_model_list_query_bounds(params.paginated_bounds()) {
-            return Ok(query_bounds::bad_request(&e));
-        }
+pub async fn get_models(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+    Query(params): Query<GetModelParams>,
+) -> Result<Response, ApplicationError> {
+    get_models_inner(&app_state, &user, params, None).await
+}
 
-        let flags = params.model_flags;
+pub async fn get_share_models(
+    Path(share_id): Path<String>,
+    State(app_state): State<AppState>,
+    Query(mut params): Query<GetModelParams>,
+) -> Result<Response, ApplicationError> {
+    let scope = ShareScope::resolve(&app_state, &share_id).await?;
 
-        let models = model_db::get_models(
-            &app_state.app_state.db,
-            user,
-            ModelFilterOptions {
-                model_ids: query_bounds::none_if_empty(params.model_ids),
-                group_ids: query_bounds::none_if_empty(params.group_ids),
-                label_ids: query_bounds::none_if_empty(params.label_ids),
-                order_by: params
-                    .order_by
-                    .as_deref()
-                    .map(query_bounds::parse_model_order_by_bounded),
-                model_flags: if flags.is_empty() { None } else { Some(flags) },
-                file_types: query_bounds::none_if_empty(params.file_types),
-                text_search: params.text_search,
-                page: params.page,
-                page_size: params.page_size,
-            },
-        )
-        .await?;
+    params.group_ids = vec![];
+    params.label_ids = vec![];
 
-        Ok(Json(models.items).into_response())
-    }
+    get_models_inner(&app_state, &scope.owner, params, Some(&scope)).await
+}
 
-    pub async fn get_models(
-        CurrentUser(user): CurrentUser,
-        State(app_state): State<WebAppState>,
-        Query(params): Query<GetModelParams>,
-    ) -> Result<Response, ApplicationError> {
-        get_models_inner(&app_state, &user, params).await
-    }
+#[derive(Deserialize)]
+pub struct GetModelCountParams {
+    #[serde(default)]
+    pub model_flags: ModelFlags,
+}
 
-    pub async fn get_share_models(
-        Path(share_id): Path<String>,
-        State(app_state): State<WebAppState>,
-        Query(mut params): Query<GetModelParams>,
-    ) -> Result<Response, ApplicationError> {
-        let (share, user) = resolve_share_owner(&app_state, &share_id).await?;
+#[derive(Serialize)]
+pub struct GetModelCountResponse {
+    pub count: usize,
+}
 
-        params.model_ids = if params.model_ids.is_empty() {
-            vec![]
+pub async fn get_model_count(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+    Query(params): Query<GetModelCountParams>,
+) -> Result<Json<GetModelCountResponse>, ApplicationError> {
+    let count = model_db::get_model_count(
+        &app_state.db,
+        &user,
+        if params.model_flags.is_empty() {
+            None
         } else {
-            share
-                .model_ids
-                .into_iter()
-                .filter(|x| params.model_ids.contains(x))
-                .collect()
+            Some(params.model_flags)
+        },
+    )
+    .await?;
+
+    Ok(Json(GetModelCountResponse { count }))
+}
+
+#[derive(Serialize)]
+pub struct GetModelDiskSpaceUsageResponse {
+    pub size_compressed: u64,
+    pub size_uncompressed: u64,
+}
+
+pub async fn get_model_disk_space_usage(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+) -> Result<Json<GetModelDiskSpaceUsageResponse>, ApplicationError> {
+    let data = model_db::get_size_of_models(&app_state.db, &user).await?;
+    let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state)?;
+
+    Ok(Json(GetModelDiskSpaceUsageResponse {
+        size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
+        size_compressed: local,
+    }))
+}
+
+#[derive(Deserialize)]
+#[allow(clippy::struct_field_names)] // field names match API
+pub struct PutModelParams {
+    pub model_name: String,
+    pub model_url: Option<String>,
+    pub model_description: Option<String>,
+    pub model_flags: Option<ModelFlags>,
+    pub model_timestamp: Option<String>,
+    pub model_global_id: Option<String>,
+}
+
+pub async fn edit_model(
+    CurrentUser(user): CurrentUser,
+    Path(model_id): Path<i64>,
+    State(app_state): State<AppState>,
+    Json(params): Json<PutModelParams>,
+) -> Result<StatusCode, ApplicationError> {
+    model_db::edit_model(
+        &app_state.db,
+        &user,
+        model_id,
+        &params.model_name,
+        params.model_url.as_deref(),
+        params.model_description.as_deref(),
+        params.model_flags.unwrap_or_default(),
+        params.model_timestamp.as_deref(),
+        params.model_global_id.as_deref(),
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_model(
+    CurrentUser(user): CurrentUser,
+    Path(model_id): Path<i64>,
+    State(app_state): State<AppState>,
+) -> Result<StatusCode, ApplicationError> {
+    export_service::delete_models(&app_state, &user, vec![model_id]).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_models(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+    Json(params): Json<crate::controller::ModelIdsParams>,
+) -> Result<StatusCode, ApplicationError> {
+    export_service::delete_models(&app_state, &user, params.model_ids).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn add_model(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Response, ApplicationError> {
+    let mut paths = vec![];
+
+    let temp_dir = export_service::get_temp_dir("import");
+
+    let mut link = None;
+
+    while let Some(mut field) = multipart.next_field().await? {
+        if field.name() == Some("source_url") {
+            link = Some(field.text().await?);
+            continue;
+        }
+
+        let file_name = match field.file_name() {
+            Some(name) => name.to_string(),
+            None => continue,
         };
 
-        params.group_ids = vec![];
-        params.label_ids = vec![];
+        let file_path = temp_dir.join(cleanse_evil_from_name(&file_name));
 
-        get_models_inner(&app_state, &user, params).await
-    }
-
-    #[derive(Deserialize)]
-    pub struct GetModelCountParams {
-        #[serde(default)]
-        pub model_flags: ModelFlags,
-    }
-
-    #[derive(Serialize)]
-    pub struct GetModelCountResponse {
-        pub count: usize,
-    }
-
-    pub async fn get_model_count(
-        CurrentUser(user): CurrentUser,
-        State(app_state): State<WebAppState>,
-        Query(params): Query<GetModelCountParams>,
-    ) -> Result<Response, ApplicationError> {
-        let count = model_db::get_model_count(
-            &app_state.app_state.db,
-            &user,
-            if params.model_flags.is_empty() {
-                None
-            } else {
-                Some(params.model_flags)
-            },
-        )
-        .await?;
-
-        Ok(Json(GetModelCountResponse { count }).into_response())
-    }
-
-    #[derive(Serialize)]
-    pub struct GetModelDiskSpaceUsageResponse {
-        pub size_compressed: u64,
-        pub size_uncompressed: u64,
-    }
-
-    pub async fn get_model_disk_space_usage(
-        CurrentUser(user): CurrentUser,
-        State(app_state): State<WebAppState>,
-    ) -> Result<Response, ApplicationError> {
-        let data = model_db::get_size_of_models(&app_state.app_state.db, &user).await?;
-        let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state.app_state)?;
-
-        Ok(Json(GetModelDiskSpaceUsageResponse {
-            size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
-            size_compressed: local,
-        })
-        .into_response())
-    }
-}
-
-mod put {
-    use super::{
-        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, ModelFlags, Path, Response,
-        State, StatusCode, WebAppState, model_db,
-    };
-
-    #[derive(Deserialize)]
-    #[allow(clippy::struct_field_names)] // field names match API
-    pub struct PutModelParams {
-        pub model_name: String,
-        pub model_url: Option<String>,
-        pub model_description: Option<String>,
-        pub model_flags: Option<ModelFlags>,
-        pub model_timestamp: Option<String>,
-        pub model_global_id: Option<String>,
-    }
-
-    pub async fn edit_model(
-        CurrentUser(user): CurrentUser,
-        Path(model_id): Path<i64>,
-        State(app_state): State<WebAppState>,
-        Json(params): Json<PutModelParams>,
-    ) -> Result<Response, ApplicationError> {
-        model_db::edit_model(
-            &app_state.app_state.db,
-            &user,
-            model_id,
-            &params.model_name,
-            params.model_url.as_deref(),
-            params.model_description.as_deref(),
-            params.model_flags.unwrap_or(ModelFlags::empty()),
-            params.model_timestamp.as_deref(),
-            params.model_global_id.as_deref(),
-        )
-        .await?;
-
-        Ok(StatusCode::NO_CONTENT.into_response())
-    }
-}
-
-mod delete {
-    use super::{
-        ApplicationError, CurrentUser, Deserialize, IntoResponse, Json, Path, Response, State,
-        StatusCode, WebAppState, export_service,
-    };
-
-    pub async fn delete_model(
-        CurrentUser(user): CurrentUser,
-        Path(model_id): Path<i64>,
-        State(app_state): State<WebAppState>,
-    ) -> Result<Response, ApplicationError> {
-        export_service::delete_models(&app_state.app_state, &user, vec![model_id]).await?;
-
-        Ok(StatusCode::NO_CONTENT.into_response())
-    }
-
-    #[derive(Deserialize)]
-    pub struct DeleteModelsParams {
-        pub model_ids: Vec<i64>,
-    }
-
-    pub async fn delete_models(
-        CurrentUser(user): CurrentUser,
-        State(app_state): State<WebAppState>,
-        Json(params): Json<DeleteModelsParams>,
-    ) -> Result<Response, ApplicationError> {
-        export_service::delete_models(&app_state.app_state, &user, params.model_ids).await?;
-
-        Ok(StatusCode::NO_CONTENT.into_response())
-    }
-}
-
-mod post {
-    use tokio::io::AsyncWriteExt;
-
-    use service::thumbnail_service;
-
-    use crate::web_import_state::WebImportStateEmitter;
-
-    use super::{
-        ApplicationError, CurrentUser, ImportState, IntoResponse, Json, Multipart, Response, State,
-        StatusCode, WebAppState, cleanse_evil_from_name, export_service, fs, import_service,
-    };
-
-    pub async fn add_model(
-        CurrentUser(user): CurrentUser,
-        State(app_state): State<WebAppState>,
-        mut multipart: Multipart,
-    ) -> Result<Response, ApplicationError> {
-        let mut paths = vec![];
-
-        let temp_dir = export_service::get_temp_dir("import");
-
-        let mut link = None;
-
-        while let Some(mut field) = multipart.next_field().await? {
-            if field.name() == Some("source_url") {
-                link = Some(field.text().await?);
-                continue;
-            }
-
-            let file_name = match field.file_name() {
-                Some(name) => name.to_string(),
-                None => continue,
-            };
-
-            let file_path = temp_dir.join(cleanse_evil_from_name(&file_name));
-
-            if !import_service::is_importable_upload(&file_path) {
-                continue;
-            }
-
-            let mut file = fs::File::create(&file_path).await?;
-
-            while let Some(chunk) = field.chunk().await? {
-                #[cfg(debug_assertions)]
-                println!("Writing chunk of size {} for file {file_name}", chunk.len());
-                file.write_all(&chunk).await?;
-            }
-
-            file.flush().await?;
-
-            paths.push(file_path);
+        if !import_service::is_importable_upload(&file_path) {
+            continue;
         }
 
-        drop(multipart);
+        let mut file = fs::File::create(&file_path).await?;
 
-        if paths.is_empty() {
-            return Ok((StatusCode::BAD_REQUEST, "No files uploaded").into_response());
+        while let Some(chunk) = field.chunk().await? {
+            #[cfg(debug_assertions)]
+            println!("Writing chunk of size {} for file {file_name}", chunk.len());
+            file.write_all(&chunk).await?;
         }
 
-        let mut model_ids: Vec<i64> = vec![];
+        file.flush().await?;
 
-        let mut import_state = ImportState::new_with_emitter(
-            None,
+        paths.push(file_path);
+    }
+
+    drop(multipart);
+
+    if paths.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "No files uploaded").into_response());
+    }
+
+    let mut model_ids: Vec<i64> = vec![];
+
+    let mut import_state = ImportState::new_with_emitter(
+        None,
+        false,
+        true,
+        false,
+        user.clone(),
+        Box::new(WebImportStateEmitter {}),
+    );
+
+    for path in paths {
+        println!("Importing file: {}", path.to_string_lossy());
+        import_state = ImportState::new_with_emitter(
+            link.clone(),
             false,
             true,
             false,
             user.clone(),
             Box::new(WebImportStateEmitter {}),
         );
+        import_state =
+            import_service::import_path(&path.to_string_lossy(), &app_state, import_state).await?;
 
-        for path in paths {
-            println!("Importing file: {}", path.to_string_lossy());
-            import_state = ImportState::new_with_emitter(
-                link.clone(),
-                false,
-                true,
-                false,
-                user.clone(),
-                Box::new(WebImportStateEmitter {}),
-            );
-            import_state = import_service::import_path(
-                &path.to_string_lossy(),
-                &app_state.app_state,
-                import_state,
-            )
-            .await?;
-
-            model_ids.extend(&import_state.imported_models[0].model_ids);
-        }
-
-        thumbnail_service::generate_thumbnails_for_model_ids(
-            &app_state.app_state,
-            &user,
-            model_ids.clone(),
-            &mut import_state,
-        )
-        .await?;
-
-        Ok(Json(model_ids).into_response())
+        model_ids.extend(&import_state.imported_models[0].model_ids);
     }
+
+    thumbnail_service::generate_thumbnails_for_model_ids(
+        &app_state,
+        &user,
+        model_ids.clone(),
+        &mut import_state,
+    )
+    .await?;
+
+    Ok(Json(model_ids).into_response())
 }

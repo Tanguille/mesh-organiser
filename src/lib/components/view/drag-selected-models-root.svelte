@@ -47,11 +47,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-  class={props.class}
-  onmousemove={(e) => onmousemove(e)}
-  onmouseup={(e) => onmouseup(e)}
->
+<div class={props.class} {onmousemove} {onmouseup}>
   {#if dragState.dragging}
     <div
       class="pointer-events-none fixed z-50 rounded-lg border-2 border-primary p-2 opacity-95"
