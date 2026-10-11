@@ -18,6 +18,7 @@
     withText?: boolean;
     withFallback?: boolean;
   } = $props();
+  const variant = $derived(props.variant ?? "default");
   let internalBrowserApi =
     getContainer().optional<IInternalBrowserApi>(IInternalBrowserApi);
 
@@ -28,38 +29,30 @@
   }
 </script>
 
+{#snippet body()}
+  <Link />
+  {#if props.withText ?? true}
+    Open Link
+  {/if}
+{/snippet}
+
 {#if props.visible ?? !!props.link}
   {#if configuration.open_links_in_external_browser || !internalBrowserApi}
     <a
       href={props.link}
       rel="external"
       target="_blank"
-      class="{buttonVariants({
-        variant: props.variant ?? 'default',
-      })} {props.class}"
+      class="{buttonVariants({ variant })} {props.class}"
     >
-      <Link />
-      {#if props.withText ?? true}
-        Open Link
-      {/if}
+      {@render body()}
     </a>
   {:else}
-    <Button
-      variant={props.variant ?? "default"}
-      class={props.class}
-      onclick={openLink}
-    >
-      <Link />
-      {#if props.withText ?? true}
-        Open Link
-      {/if}
+    <Button {variant} class={props.class} onclick={openLink}>
+      {@render body()}
     </Button>
   {/if}
 {:else if props.withFallback}
-  <Button variant={props.variant ?? "default"} class={props.class} disabled>
-    <Link />
-    {#if props.withText ?? true}
-      Open Link
-    {/if}
+  <Button {variant} class={props.class} disabled>
+    {@render body()}
   </Button>
 {/if}

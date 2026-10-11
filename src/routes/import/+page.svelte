@@ -190,7 +190,7 @@
       {/if}
     </div>
   {:else if importState.status == ImportStatus.Idle}
-    <div class="max-w-xxl my-auto flex h-fit flex-col gap-5">
+    <div class="my-auto flex h-fit flex-col gap-5">
       {#if tauriImportApi}
         <Card>
           <CardHeader>

@@ -89,19 +89,6 @@ pub fn open_folder_in_explorer(path: &Path) {
     }
 }
 
-/// Returns the total size of all files in the directory (non-recursive).
-///
-/// # Panics
-///
-/// Panics if the directory cannot be read or a metadata call fails.
-#[must_use]
-pub fn get_folder_size(path: &Path) -> u64 {
-    std::fs::read_dir(path)
-        .unwrap()
-        .map(|f| f.unwrap().metadata().unwrap().len())
-        .sum()
-}
-
 #[must_use]
 pub fn is_zippable_file_extension(extension: &str) -> bool {
     FileType::from_extension(extension).is_zippable()
@@ -183,10 +170,8 @@ where
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests for run_bounded: lock in the current behaviour shared by the
-// import and export JoinSet loops before/after the dedup refactor — every task
-// output is returned, at most `max` tasks run concurrently, and a panicking task
-// propagates as a panic (resume_unwind).
+// Tests for run_bounded: every task output is returned, at most `max` tasks run
+// concurrently, and a panicking task propagates as a panic (resume_unwind).
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -264,11 +249,8 @@ mod run_bounded_tests {
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests for service::util pure helpers.
-// We test these after consolidating util so that src-tauri uses service::util;
-// the goal is to lock in behaviour and catch regressions from deduplication.
-// Only pure functions are unit-tested here; IO (get_folder_size,
-// open_folder_in_explorer) is left out unless tested via temp dir.
+// Tests for service::util pure helpers; IO (open_folder_in_explorer) is left
+// out unless tested via temp dir.
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]

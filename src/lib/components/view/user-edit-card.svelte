@@ -36,7 +36,6 @@
     const lower = "abcdefghijklmnopqrstuvwxyz";
     const upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const numChars = "0123456789";
-    //const specialChars = "!@#$%^&*()-_=+[]{}|;:,.<>?";
     const specialChars = "!$%^&()=+[]{}|;:,.<>?";
     let chars = lower;
     chars += upperChars;

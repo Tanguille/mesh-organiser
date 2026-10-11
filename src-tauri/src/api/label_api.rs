@@ -146,65 +146,18 @@ pub async fn delete_label(
 }
 
 #[tauri::command]
-pub async fn add_childs_to_label(
-    parent_label_id: i64,
-    child_label_ids: Vec<i64>,
-    state: State<'_, TauriAppState>,
-) -> Result<(), ApplicationError> {
-    label_db::add_childs_to_label(
-        &state.app_state.db,
-        &state.get_current_user(),
-        parent_label_id,
-        child_label_ids,
-        None,
-    )
-    .await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn remove_childs_from_label(
-    parent_label_id: i64,
-    child_label_ids: Vec<i64>,
-    state: State<'_, TauriAppState>,
-) -> Result<(), ApplicationError> {
-    label_db::remove_childs_from_label(
-        &state.app_state.db,
-        &state.get_current_user(),
-        parent_label_id,
-        child_label_ids,
-        None,
-    )
-    .await?;
-
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn set_childs_on_label(
     parent_label_id: i64,
     child_label_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    label_db::remove_all_childs_from_label(
+    label_db::set_childs_on_label(
         &state.app_state.db,
         &state.get_current_user(),
         parent_label_id,
-        None,
+        &child_label_ids,
     )
     .await?;
-
-    if !child_label_ids.is_empty() {
-        label_db::add_childs_to_label(
-            &state.app_state.db,
-            &state.get_current_user(),
-            parent_label_id,
-            child_label_ids,
-            None,
-        )
-        .await?;
-    }
 
     Ok(())
 }

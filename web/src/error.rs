@@ -11,8 +11,6 @@ pub enum ApplicationError {
     FileSystemFault(#[from] std::io::Error),
     #[error("Internal error")]
     InternalError(String),
-    #[error("Failed to process JSON")]
-    JsonError(#[from] serde_json::Error),
     #[error("Database error")]
     DatabaseError(#[from] db::DbError),
     #[error("Service error")]
@@ -32,7 +30,6 @@ impl Serialize for ApplicationError {
             Self::ServiceError(inner) => return inner.serialize(serializer),
             Self::FileSystemFault(inner) => ("FileSystemFault", inner.to_string()),
             Self::InternalError(s) => ("InternalError", s.clone()),
-            Self::JsonError(inner) => ("JsonError", inner.to_string()),
             Self::DatabaseError(inner) => ("DatabaseError", inner.to_string()),
             Self::TaskJoinError(inner) => ("TaskJoinError", inner.to_string()),
             Self::MultipartError(inner) => ("MultipartError", inner.to_string()),

@@ -67,7 +67,6 @@ fn parse_inner(obj: &ObjSet) -> Result<Mesh, MeshThumbnailError> {
                     indices.push(u32::try_from(index).unwrap_or(0));
                 };
                 for shape in &mesh.shapes {
-                    // All triangles with same material
                     if let obj::Primitive::Triangle(i0, i1, i2) = shape.primitive {
                         process(i0);
                         process(i1);

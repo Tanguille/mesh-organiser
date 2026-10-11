@@ -378,7 +378,7 @@ async fn import_models_from_dir(
 
     let max = configuration.core_parallelism * ASYNC_MULT;
 
-    // Task outputs are discarded, matching the previous loop which ignored task results.
+    // Per-entry task results are intentionally ignored.
     let _ = util::run_bounded(entries, max, |entry| {
         let app_state = app_state.clone();
         let import_state_mutex = Arc::clone(&import_state);
@@ -686,8 +686,7 @@ pub async fn expand_paths(
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests: lock in get_model_count error paths (zip as path,
-// unsupported file type) after clippy refactors.
+// Tests for get_model_count error paths (zip as path, unsupported file type).
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]

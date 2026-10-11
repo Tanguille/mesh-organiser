@@ -71,7 +71,7 @@ fn render(
 }
 
 /// Returns the file type for the path if thumbnail generation is supported, or an error if unsupported.
-/// Used by `process` and by tests (via `.to_extension()`) to lock in extension behaviour.
+/// Used by `process` to gate which file types get a thumbnail.
 fn thumbnail_extension_for_path(path: &Path) -> Result<FileType, ServiceError> {
     let file_type = FileType::from_pathbuf(path);
     // Reject unsupported types and Step (thumbnail render does not support it);
@@ -257,80 +257,64 @@ mod tests {
     #[test]
     fn thumbnail_extension_stl() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("x.stl"))
-                .unwrap()
-                .to_extension(),
-            "stl"
+            thumbnail_extension_for_path(&PathBuf::from("x.stl")).unwrap(),
+            db::model::blob::FileType::Stl
         );
     }
 
     #[test]
     fn thumbnail_extension_stl_uppercase() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("x.STL"))
-                .unwrap()
-                .to_extension(),
-            "stl"
+            thumbnail_extension_for_path(&PathBuf::from("x.STL")).unwrap(),
+            db::model::blob::FileType::Stl
         );
     }
 
     #[test]
     fn thumbnail_extension_obj() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("model.obj"))
-                .unwrap()
-                .to_extension(),
-            "obj"
+            thumbnail_extension_for_path(&PathBuf::from("model.obj")).unwrap(),
+            db::model::blob::FileType::Obj
         );
     }
 
     #[test]
     fn thumbnail_extension_gcode() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("print.gcode"))
-                .unwrap()
-                .to_extension(),
-            "gcode"
+            thumbnail_extension_for_path(&PathBuf::from("print.gcode")).unwrap(),
+            db::model::blob::FileType::Gcode
         );
     }
 
     #[test]
     fn thumbnail_extension_3mf() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("x.3mf"))
-                .unwrap()
-                .to_extension(),
-            "3mf"
+            thumbnail_extension_for_path(&PathBuf::from("x.3mf")).unwrap(),
+            db::model::blob::FileType::Threemf
         );
     }
 
     #[test]
     fn thumbnail_extension_stl_zip() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("x.stl.zip"))
-                .unwrap()
-                .to_extension(),
-            "stl.zip"
+            thumbnail_extension_for_path(&PathBuf::from("x.stl.zip")).unwrap(),
+            db::model::blob::FileType::ZippedStl
         );
     }
 
     #[test]
     fn thumbnail_extension_obj_zip() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("a/b.obj.zip"))
-                .unwrap()
-                .to_extension(),
-            "obj.zip"
+            thumbnail_extension_for_path(&PathBuf::from("a/b.obj.zip")).unwrap(),
+            db::model::blob::FileType::ZippedObj
         );
     }
 
     #[test]
     fn thumbnail_extension_gcode_zip() {
         assert_eq!(
-            thumbnail_extension_for_path(&PathBuf::from("out.gcode.zip"))
-                .unwrap()
-                .to_extension(),
-            "gcode.zip"
+            thumbnail_extension_for_path(&PathBuf::from("out.gcode.zip")).unwrap(),
+            db::model::blob::FileType::ZippedGcode
         );
     }
 

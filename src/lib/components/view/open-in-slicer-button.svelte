@@ -36,9 +36,7 @@
     }
 
     await slicerApi.openInSlicer(models);
-    if (componentProps.onOpen) {
-      componentProps.onOpen();
-    }
+    componentProps.onOpen?.();
   }
 
   onMount(async () => {

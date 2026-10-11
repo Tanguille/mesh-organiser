@@ -157,9 +157,6 @@ impl AuthnBackend for Backend {
     }
 }
 
-// We use a type alias for convenience.
-//
-// Note that we've supplied our concrete backend here.
 pub type AuthSession = axum_login::AuthSession<Backend>;
 
 /// Extracts the domain [`User`] for the authenticated session, so handlers

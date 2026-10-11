@@ -87,8 +87,6 @@
   }
 
   onMount(async () => {
-    initializationDone = false;
-
     try {
       await initApi();
       configurationMeta.configurationLoaded = true;
@@ -116,12 +114,7 @@
     } catch (e) {
       console.error("Application initialization failed:", e);
       toast.error("Application failed to initialize", {
-        description:
-          e instanceof Error
-            ? e.message
-            : typeof e === "string"
-              ? e
-              : String(e),
+        description: rejectionPlainMessage(e),
       });
     }
   });
