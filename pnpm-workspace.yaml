@@ -1,4 +1,5 @@
 minimumReleaseAgeExclude:
+  - "@tauri-apps/plugin-fs@2.7.0"
   - "@tauri-apps/plugin-updater@2.12.0"
 onlyBuiltDependencies:
   - esbuild
