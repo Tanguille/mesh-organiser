@@ -259,3 +259,164 @@ async fn get_models_file_type_filter_matches_every_stored_spelling() {
     .unwrap();
     assert!(none.items.is_empty());
 }
+
+// The share endpoint relies on this contract: it passes the share's ids as `Some(..)`,
+// so `Some(vec![])` must match nothing, while `None` means "no restriction" and
+// returns every model the user owns.
+#[tokio::test]
+async fn get_models_empty_model_ids_returns_nothing_while_none_returns_all() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+
+    let blob_id = blob_db::add_blob(&db, "one", "stl", 1, None).await.unwrap();
+    for name in ["one", "two"] {
+        model_db::add_model(&db, &user, name, blob_id, None, None)
+            .await
+            .unwrap();
+    }
+
+    let empty_ids = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            model_ids: Some(vec![]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(empty_ids.items.is_empty());
+
+    let unrestricted = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            model_ids: None,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(unrestricted.items.len(), 2);
+}
+
+async fn set_childs_on_label(
+    db: &db_context::DbContext,
+    user: &User,
+    parent_label_id: i64,
+    child_label_ids: Vec<i64>,
+) {
+    label_db::set_childs_on_label(db, user, parent_label_id, &child_label_ids)
+        .await
+        .unwrap();
+}
+
+// Reads `labels_labels` directly so these assertions don't depend on `label_db::get_labels`.
+async fn child_ids_of(db: &db_context::DbContext, parent_label_id: i64) -> Vec<i64> {
+    sqlx::query_scalar(
+        "SELECT child_label_id FROM labels_labels WHERE parent_label_id = ? ORDER BY child_label_id",
+    )
+    .bind(parent_label_id)
+    .fetch_all(db)
+    .await
+    .unwrap()
+}
+
+async fn add_labels(db: &db_context::DbContext, user: &User, names: &[&str]) -> Vec<i64> {
+    let mut ids = Vec::new();
+    for name in names {
+        ids.push(
+            label_db::add_label(db, user, name, 0, None)
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+
+    ids
+}
+
+#[tokio::test]
+async fn set_childs_on_label_replaces_existing_children() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "a", "b", "c"]).await;
+    let (parent, first_child, second_child, third_child) = (ids[0], ids[1], ids[2], ids[3]);
+    set_childs_on_label(&db, &user, parent, vec![first_child, second_child]).await;
+
+    set_childs_on_label(&db, &user, parent, vec![third_child]).await;
+
+    assert_eq!(child_ids_of(&db, parent).await, vec![third_child]);
+}
+
+#[tokio::test]
+async fn set_childs_on_label_with_empty_set_clears_children() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "a", "b"]).await;
+    let (parent, first_child, second_child) = (ids[0], ids[1], ids[2]);
+    set_childs_on_label(&db, &user, parent, vec![first_child, second_child]).await;
+
+    set_childs_on_label(&db, &user, parent, vec![]).await;
+
+    assert_eq!(child_ids_of(&db, parent).await, Vec::<i64>::new());
+}
+
+#[tokio::test]
+async fn set_childs_on_label_with_overlapping_set_keeps_no_duplicates() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "a", "b", "c"]).await;
+    let (parent, first_child, second_child, third_child) = (ids[0], ids[1], ids[2], ids[3]);
+    set_childs_on_label(&db, &user, parent, vec![first_child, second_child]).await;
+
+    set_childs_on_label(&db, &user, parent, vec![second_child, third_child]).await;
+
+    assert_eq!(
+        child_ids_of(&db, parent).await,
+        vec![second_child, third_child]
+    );
+}
+
+#[tokio::test]
+async fn set_childs_on_label_leaves_other_labels_children_untouched() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["first", "second", "a", "b", "c"]).await;
+    let (first_parent, second_parent, first_child, second_child, third_child) =
+        (ids[0], ids[1], ids[2], ids[3], ids[4]);
+    set_childs_on_label(&db, &user, first_parent, vec![first_child]).await;
+    set_childs_on_label(&db, &user, second_parent, vec![second_child]).await;
+
+    set_childs_on_label(&db, &user, first_parent, vec![third_child]).await;
+
+    assert_eq!(child_ids_of(&db, first_parent).await, vec![third_child]);
+    assert_eq!(child_ids_of(&db, second_parent).await, vec![second_child]);
+}
+
+#[tokio::test]
+async fn get_labels_returns_labels_with_children_attached() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let ids = add_labels(&db, &user, &["parent", "child", "standalone"]).await;
+    let (parent, child, standalone) = (ids[0], ids[1], ids[2]);
+    set_childs_on_label(&db, &user, parent, vec![child]).await;
+
+    let labels = label_db::get_labels(&db, &user, false).await.unwrap();
+
+    let mut label_ids: Vec<i64> = labels.iter().map(|label| label.meta.id).collect();
+    label_ids.sort_unstable();
+    assert_eq!(label_ids, vec![parent, child, standalone]);
+    let parent_label = labels.iter().find(|label| label.meta.id == parent).unwrap();
+    assert_eq!(
+        parent_label
+            .children
+            .iter()
+            .map(|label| label.id)
+            .collect::<Vec<_>>(),
+        vec![child]
+    );
+    let child_label = labels.iter().find(|label| label.meta.id == child).unwrap();
+    assert!(child_label.has_parent);
+    assert!(child_label.children.is_empty());
+}

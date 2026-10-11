@@ -184,15 +184,6 @@ async fn extract_threemf_models(
     .await?)
 }
 
-#[tauri::command]
-async fn compute_model_folder_size(
-    state: State<'_, TauriAppState>,
-) -> Result<u64, ApplicationError> {
-    let size = service::get_folder_size(&state.get_model_dir());
-
-    Ok(size)
-}
-
 #[derive(Serialize, Clone)]
 struct DownloadFinishedEvent {
     path: String,
@@ -607,10 +598,7 @@ pub fn run() {
             get_slicers,
             set_configuration,
             get_configuration,
-            compute_model_folder_size,
             new_window_with_url,
-            api::add_childs_to_label,
-            api::remove_childs_from_label,
             api::set_childs_on_label,
             api::get_resources,
             api::add_resource,
@@ -619,7 +607,6 @@ pub fn run() {
             api::open_resource_folder,
             api::set_keywords_on_label,
             api::get_keywords_for_label,
-            api::get_model_bytes,
             api::get_blob_bytes,
             api::get_current_user,
             api::set_current_user,
@@ -637,8 +624,6 @@ pub fn run() {
             extract_threemf_models,
             api::download_files_and_open_in_folder,
             api::download_files_and_open_in_slicer,
-            api::expand_paths,
-            api::get_file_bytes,
             api::upload_models_to_remote_server,
             api::blobs_to_path,
             api::set_last_sync_time,
@@ -648,7 +633,6 @@ pub fn run() {
 
     app.run(|app_handle, e| {
         if matches!(e, tauri::RunEvent::ExitRequested { .. }) {
-            // Close sqlite db
             tauri::async_runtime::block_on(async move {
                 let app_state = app_handle.state::<TauriAppState>();
                 app_state.app_state.db.close().await;

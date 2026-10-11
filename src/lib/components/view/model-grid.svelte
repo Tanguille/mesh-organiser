@@ -6,14 +6,15 @@
   } from "$lib/api/shared/settings_api";
   import ModelEdit from "$lib/components/edit/model.svelte";
   import MultiModelEdit from "$lib/components/edit/multi-model.svelte";
-  import { Input } from "$lib/components/ui/input";
   import FileTypeFilter from "$lib/components/view/file-type-filter.svelte";
   import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
+  import SearchInput from "$lib/components/view/search-input.svelte";
   import SortFilter from "$lib/components/view/sort-filter.svelte";
+  import EmptyState from "$lib/components/view/empty-state.svelte";
   import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
   import { configuration } from "$lib/configuration.svelte";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
-  import { debounce, wait } from "$lib/utils";
+  import { wait } from "$lib/utils";
   import { untrack } from "svelte";
   import Button from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
@@ -35,12 +36,8 @@
   let busyLoadingNext = $state.raw<boolean>(false);
 
   const isMobile = new IsMobile();
-  const showLeftSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length <= 0),
-  );
-  const showRightSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length > 0),
-  );
+  const showLeftSide = $derived(!isMobile.current || selected.length <= 0);
+  const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
   async function fetchNextModelSet() {
     if (busyLoadingNext) return;
@@ -67,20 +64,11 @@
     await resetModelSet();
   }
 
-  let debouncedSetNewSearchText = debounce(setNewSearchText, 200);
-
   $effect(() => {
     props.modelStream.setOrderBy(
       convertOrderOptionModelsToEnum(configuration.order_option_models),
     );
   });
-
-  function onSearchInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    debouncedSetNewSearchText(
-      target.value.trim().length === 0 ? null : target.value.trim(),
-    );
-  }
 
   function onDeleteSelected() {
     onDelete(selected);
@@ -130,11 +118,7 @@
   {#if showLeftSide}
     <div class="flex flex-1 flex-col gap-1" style="min-width: 0;">
       <div class="flex flex-row justify-center gap-3 px-5 py-3">
-        <Input
-          oninput={onSearchInput}
-          class="grow border-primary"
-          placeholder="Search"
-        />
+        <SearchInput onsearch={setNewSearchText} />
 
         <FileTypeFilter
           onchange={async (x) => {
@@ -182,7 +166,6 @@
           <Undo2 /> Close model preview
         </Button>
       {/if}
-      <!-- TODO: Implement ondelete for all of these-->
       {#if selected.length >= 2}
         <MultiModelEdit
           models={selected}
@@ -214,11 +197,7 @@
           onGroupDelete={() => onGroupDeleteSelected(allModelsWithFallback)}
         />
       {:else}
-        <div
-          class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-        >
-          <span class="text-xl">No model selected</span>
-        </div>
+        <EmptyState>No model selected</EmptyState>
       {/if}
     </div>
   {/if}

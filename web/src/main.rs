@@ -14,7 +14,6 @@ mod path_safety;
 mod query_bounds;
 mod session_store;
 mod user;
-mod web_app_state;
 mod web_import_state;
 
 const ENV_RUST_LOG: &str = "RUST_LOG";
@@ -37,7 +36,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
 
     tokio::spawn(loop_remove_temp_paths());
 
-    App::new().await?.serve().await
+    // Fail fast on a bad PORT before touching the database.
+    let port = app::parse_port()?;
+
+    App::new().await?.serve(port).await
 }
 
 fn main() {

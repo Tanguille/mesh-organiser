@@ -266,8 +266,7 @@ pub async fn set_resource_on_group(
     group_id: i64,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    // Lightweight existence check; the EXISTS clause mirrors get_group_via_id's
-    // behavior of treating a group with zero models as not found.
+    // Lightweight existence check; a group with zero models is treated as not found.
     let Some(group_row) = sqlx::query!(
         "SELECT group_resource_id FROM models_group
             WHERE group_id = ? AND group_user_id = ?

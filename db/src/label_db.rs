@@ -21,19 +21,16 @@ pub async fn get_labels_min(db: &DbContext, user: &User) -> Result<Vec<LabelMeta
         .fetch_all(db)
         .await?;
 
-    let mut labels = Vec::new();
-
-    for row in rows {
-        labels.push(LabelMeta {
+    Ok(rows
+        .into_iter()
+        .map(|row| LabelMeta {
             id: row.label_id,
             name: row.label_name,
             color: row.label_color,
             unique_global_id: row.label_unique_global_id,
             last_modified: row.label_last_modified,
-        });
-    }
-
-    Ok(labels)
+        })
+        .collect())
 }
 
 fn get_effective_labels(
@@ -118,6 +115,7 @@ pub async fn get_labels(
           WHERE parent_labels.label_user_id = ?
           ORDER BY parent_labels.label_name ASC"
     )
+    .bind(user.id)
     .bind(user.id)
     .fetch_all(db)
     .await?;
@@ -237,13 +235,11 @@ pub async fn add_labels_on_models(
     model_ids: &[i64],
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    // Batch permission check for all labels
     let label_global_ids = get_unique_ids_from_label_ids(db, user, label_ids).await?;
     if label_global_ids.values().len() != label_ids.len() {
         return Err(DbError::RowNotFound);
     }
 
-    // Batch insert using a single query with multiple VALUES
     if !label_ids.is_empty() && !model_ids.is_empty() {
         let mut query_builder =
             QueryBuilder::new("INSERT INTO models_labels (label_id, model_id) ");
@@ -259,7 +255,6 @@ pub async fn add_labels_on_models(
         query_builder.build().execute(db).await?;
     }
 
-    // Batch update timestamps
     let now = time_now();
     set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&now)).await?;
 
@@ -419,7 +414,7 @@ pub async fn delete_label(db: &DbContext, user: &User, label_id: i64) -> Result<
 }
 
 /// Verifies the caller owns the parent label and every child label before mutating the
-/// parent/child relationship. Shared by `add_childs_to_label` and `remove_childs_from_label`.
+/// parent/child relationship.
 async fn check_parent_and_children_access(
     db: &DbContext,
     user: &User,
@@ -438,18 +433,25 @@ async fn check_parent_and_children_access(
     Ok(())
 }
 
-pub async fn add_childs_to_label(
+/// Replaces the children of `parent_label_id` with `child_label_ids`. The delete and insert
+/// share one transaction, so a failed insert keeps the previous children instead of leaving
+/// the label with none.
+pub async fn set_childs_on_label(
     db: &DbContext,
     user: &User,
     parent_label_id: i64,
-    child_label_ids: Vec<i64>,
-    update_timestamp: Option<&str>,
+    child_label_ids: &[i64],
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
-    check_parent_and_children_access(db, user, parent_label_id, &child_label_ids).await?;
+    check_parent_and_children_access(db, user, parent_label_id, child_label_ids).await?;
 
-    // Batch insert using a single query with multiple VALUES
+    let mut transaction = db.begin().await?;
+    sqlx::query!(
+        "DELETE FROM labels_labels WHERE parent_label_id = ?",
+        parent_label_id
+    )
+    .execute(&mut *transaction)
+    .await?;
+
     if !child_label_ids.is_empty() {
         let mut query_builder =
             QueryBuilder::new("INSERT INTO labels_labels (parent_label_id, child_label_id) ");
@@ -457,59 +459,12 @@ pub async fn add_childs_to_label(
             builder.push_bind(parent_label_id);
             builder.push_bind(child_id);
         });
-        query_builder.build().execute(db).await?;
+        query_builder.build().execute(&mut *transaction).await?;
     }
 
-    set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
+    transaction.commit().await?;
 
-    Ok(())
-}
-
-pub async fn remove_childs_from_label(
-    db: &DbContext,
-    user: &User,
-    parent_label_id: i64,
-    child_label_ids: Vec<i64>,
-    update_timestamp: Option<&str>,
-) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
-    check_parent_and_children_access(db, user, parent_label_id, &child_label_ids).await?;
-
-    // Batch delete using IN clause
-    if !child_label_ids.is_empty() {
-        let mut query_builder =
-            QueryBuilder::new("DELETE FROM labels_labels WHERE parent_label_id = ");
-        query_builder.push_bind(parent_label_id);
-        query_builder.push(" AND child_label_id IN ");
-        push_in_i64(&mut query_builder, &child_label_ids);
-        query_builder.build().execute(db).await?;
-    }
-
-    set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
-    Ok(())
-}
-
-pub async fn remove_all_childs_from_label(
-    db: &DbContext,
-    user: &User,
-    parent_label_id: i64,
-    update_timestamp: Option<&str>,
-) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
-    let _unique_global_id = get_unique_id_from_label_id(db, user, parent_label_id).await?;
-
-    sqlx::query!(
-        "DELETE FROM labels_labels WHERE parent_label_id = ?",
-        parent_label_id
-    )
-    .execute(db)
-    .await?;
-
-    set_last_updated_on_label(db, user, parent_label_id, timestamp).await?;
-
-    Ok(())
+    set_last_updated_on_label(db, user, parent_label_id, &time_now()).await
 }
 
 pub async fn set_last_updated_on_label(

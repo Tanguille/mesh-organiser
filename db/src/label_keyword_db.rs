@@ -75,7 +75,6 @@ pub async fn set_keywords_for_label(
     .execute(db)
     .await?;
 
-    // Batch insert using a single query with multiple VALUES
     if !keywords.is_empty() {
         let mut query_builder =
             QueryBuilder::new("INSERT INTO label_keywords (keyword_name, keyword_label_id) ");

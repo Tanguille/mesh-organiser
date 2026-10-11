@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { sveltekit } from "@sveltejs/kit/vite";
+import { svelteTesting } from "@testing-library/svelte/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 
@@ -31,7 +32,8 @@ export default defineConfig(({ mode }) => {
   const viteAppVersion = fromEnv.length > 0 ? fromEnv : `v${packageVersion}`;
 
   return {
-    plugins: [tailwindcss(), sveltekit()],
+    // svelteTesting() is a no-op outside Vitest; component tests opt into jsdom per file.
+    plugins: [tailwindcss(), sveltekit(), svelteTesting()],
 
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(viteAppVersion),
