@@ -1,0 +1,30 @@
+name: release-please
+
+# Opens/updates the release PR; merging it triggers `release-tag`, which tags and publishes.
+# `skip-github-release: true` (see release-please-config.json) keeps release-please from tagging
+# itself, which would race `release-tag` and make it skip the publish dispatch (tag already exists).
+# `release-tag` also relabels the merged PR (`autorelease: pending` -> `tagged`).
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # Prefer a PAT so CI runs on the release PRs it opens.
+          # `GITHUB_TOKEN`-created PRs do not trigger other workflows.
+          # See `.github/RELEASE.md` for the `RELEASE_PLEASE_TOKEN` setup.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}

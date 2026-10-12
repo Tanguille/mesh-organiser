@@ -2,7 +2,23 @@
 
 This repo uses GitHub Actions to build the Tauri desktop app. You can create a public release, a draft release, or just build artifacts without creating a release.
 
-## What you need to do
+## Automatic release PRs (release-please)
+
+Pushes to `main` run the **release-please** workflow. It reads
+[Conventional Commits](https://www.conventionalcommits.org/) since the last
+release (`fix:` → patch, `feat:` → minor, breaking `!` → major) and keeps a
+release PR up to date. The PR bumps `package.json`, `Cargo.toml` and the
+workspace crates in `Cargo.lock` (every `[[package]]` without a `source`)
+together plus `CHANGELOG.md`; merging it triggers `release-tag` below, which
+tags, creates the GitHub Release, and dispatches `publish`. No manual version
+bump or tag push is needed.
+
+Config: `release-please-config.json` + `.release-please-manifest.json`.
+
+> Recommended: add a `RELEASE_PLEASE_TOKEN` secret (PAT with `repo` scope) so
+> CI runs on release-please PRs. Falls back to `GITHUB_TOKEN` when absent.
+
+## What you need to do (manual fallback)
 
 ### 1. Version in one place
 
@@ -62,6 +78,7 @@ For build-only:
 
 ## Workflows
 
+- **release-please** (`release-please.yaml`) – Opens/updates the release PR on push to `main`. Merge it to release.
 - **release-tag** (`release-tag.yaml`) – Auto-tags `v<package.json version>` and creates the GitHub Release on push to `main`. Trigger: push to `main` touching `package.json`/`Cargo.toml`.
 - **publish** (`release.yaml`) – Builds the app and creates a release or artifacts. Trigger: manual (workflow_dispatch) or push of tag `v*`.
 

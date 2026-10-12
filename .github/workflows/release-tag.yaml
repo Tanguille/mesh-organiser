@@ -23,6 +23,8 @@ on:
 permissions:
   contents: write
   actions: write # gh workflow run
+  issues: write # relabel the merged release-please PR (labels live on the issue API)
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -85,3 +87,30 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run release.yaml --ref "${{ steps.version.outputs.tag }}" -f releaseType=publish
+
+      # release-please runs with `skip-github-release`, so it never relabels its
+      # merged PR itself. A merged PR left on `autorelease: pending` makes every
+      # later run abort ("untagged, merged release PRs outstanding"). Runs even
+      # if an earlier step failed or the tag already existed (manual tag,
+      # re-run), but only once the tag is on the remote, and only touches the
+      # pending PR for this version, so ordinary pushes are a no-op.
+      - name: Mark merged release-please PR as tagged
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        # REST rather than `gh pr edit`: adding a label this way creates it if
+        # missing, and avoids gh's GraphQL edit path needing extra scopes.
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG not on remote; leaving release PRs pending."
+            exit 0
+          fi
+          # Default release-please title: "chore(main): release X.Y.Z".
+          for pr in $(gh pr list --state merged --label "autorelease: pending" --json number,title \
+            --jq ".[] | select(.title | endswith(\" release $VERSION\")) | .number"); do
+            gh api -X DELETE "repos/{owner}/{repo}/issues/$pr/labels/autorelease:%20pending" >/dev/null
+            gh api "repos/{owner}/{repo}/issues/$pr/labels" -f "labels[]=autorelease: tagged" >/dev/null
+            echo "Marked #$pr as autorelease: tagged."
+          done
