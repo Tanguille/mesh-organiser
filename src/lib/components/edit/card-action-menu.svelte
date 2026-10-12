@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LucideIcon } from "@lucide/svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
 
   const {

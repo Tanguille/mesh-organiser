@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { LabelMeta } from "$lib/api/shared/label_api";
+import type { LabelMeta } from "#lib/api/shared/label_api";
 import LabelSelect from "./label-select.svelte";
 
 function label(id: number, name: string): LabelMeta {

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { flagsToGlyphObjects } from "$lib/glyph";
-  import type { ModelFlags } from "$lib/api/shared/model_api";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { flagsToGlyphObjects } from "#lib/glyph";
+  import type { ModelFlags } from "#lib/api/shared/model_api";
 
   const props: { flags: ModelFlags } = $props();
 </script>

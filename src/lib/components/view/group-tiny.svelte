@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Card, CardHeader, CardContent } from "$lib/components/ui/card";
+  import { Card, CardHeader, CardContent } from "#lib/components/ui/card";
 
-  import GroupImg from "$lib/components/view/group-img.svelte";
+  import GroupImg from "#lib/components/view/group-img.svelte";
   import type { ClassValue } from "svelte/elements";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import FlagBadges from "$lib/components/view/flag-badges.svelte";
-  import type { Group } from "$lib/api/shared/group_api";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import FlagBadges from "#lib/components/view/flag-badges.svelte";
+  import type { Group } from "#lib/api/shared/group_api";
 
   const props: { group: Group; class?: ClassValue } = $props();
 </script>

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Model } from "$lib/api/shared/model_api";
-  import { configuration } from "$lib/configuration.svelte";
-  import { representativeModel } from "$lib/utils";
+  import type { Model } from "#lib/api/shared/model_api";
+  import { configuration } from "#lib/configuration.svelte";
+  import { representativeModel } from "#lib/utils";
   import ModelImg from "./model-img.svelte";
   import type { ClassValue } from "svelte/elements";
 

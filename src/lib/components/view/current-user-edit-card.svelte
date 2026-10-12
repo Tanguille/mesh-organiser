@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
     IAdminUserApi,
     ISwitchUserApi,
@@ -7,28 +7,28 @@
     IUserManageSelfApi,
     IUserTokenApi,
     type User,
-  } from "$lib/api/shared/user_api";
+  } from "#lib/api/shared/user_api";
   import {
     Card,
     CardContent,
     CardHeader,
     CardTitle,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
   import { onMount } from "svelte";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import { IHostApi, isCurrentPlatformDesktop } from "$lib/api/shared/host_api";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Separator } from "#lib/components/ui/separator/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import { IHostApi, isCurrentPlatformDesktop } from "#lib/api/shared/host_api";
   import { toast } from "svelte-sonner";
-  import { currentUser } from "$lib/configuration.svelte";
+  import { currentUser } from "#lib/configuration.svelte";
   import {
     IDiskUsageInfoApi,
     type DiskUsageInfo,
-  } from "$lib/api/shared/disk_usage_info_api";
-  import { debounce, toReadableSize } from "$lib/utils";
+  } from "#lib/api/shared/disk_usage_info_api";
+  import { debounce, toReadableSize } from "#lib/utils";
   import AsyncButton from "../ui/button/async-button.svelte";
-  import { IUserSyncApi } from "$lib/api/shared/user_sync_api";
+  import { IUserSyncApi } from "#lib/api/shared/user_sync_api";
 
   const loginApi = getContainer().optional<IUserLoginApi>(IUserLoginApi);
   const hostApi = getContainer().optional<IHostApi>(IHostApi);

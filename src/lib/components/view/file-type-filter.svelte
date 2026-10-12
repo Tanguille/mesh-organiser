@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { FileType } from "$lib/api/shared/blob_api";
-  import * as Select from "$lib/components/ui/select/index.js";
+  import { FileType } from "#lib/api/shared/blob_api";
+  import * as Select from "#lib/components/ui/select/index.js";
   import FileBox from "@lucide/svelte/icons/file-box";
 
   let {

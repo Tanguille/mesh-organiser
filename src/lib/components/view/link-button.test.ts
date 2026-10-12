@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetContainer, getContainer } from "$lib/api/dependency_injection";
-import { IInternalBrowserApi } from "$lib/api/shared/internal_browser_api";
-import { configuration } from "$lib/configuration.svelte";
-import { buttonVariants } from "$lib/components/ui/button/index.js";
+import { resetContainer, getContainer } from "#lib/api/dependency_injection";
+import { IInternalBrowserApi } from "#lib/api/shared/internal_browser_api";
+import { configuration } from "#lib/configuration.svelte";
+import { buttonVariants } from "#lib/components/ui/button/index.js";
 import LinkButton from "./link-button.svelte";
 
 const LINK = "https://example.com/model";

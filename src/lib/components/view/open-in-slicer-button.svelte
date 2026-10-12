@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
-  import type { Model } from "$lib/api/shared/model_api";
-  import { ISidebarStateApi } from "$lib/api/shared/sidebar_state_api";
-  import { ISlicerApi, type SlicerEntry } from "$lib/api/shared/slicer_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import type { Model } from "#lib/api/shared/model_api";
+  import { ISidebarStateApi } from "#lib/api/shared/sidebar_state_api";
+  import { ISlicerApi, type SlicerEntry } from "#lib/api/shared/slicer_api";
   import { AsyncButton, Button } from "../ui/button";
   import Slice from "@lucide/svelte/icons/slice";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import { onMount } from "svelte";
-  import { configuration } from "$lib/configuration.svelte";
+  import { configuration } from "#lib/configuration.svelte";
   import type { ClassValue } from "svelte/elements";
 
   const componentProps: {

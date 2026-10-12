@@ -1,9 +1,9 @@
 import { goto } from "$app/navigation";
-import { resolve } from "$lib/paths";
+import { resolve } from "#lib/paths";
 import { toast } from "svelte-sonner";
 import { IGroupApi, type GroupMeta } from "./group_api";
 import type { Model } from "./model_api";
-import { updateSidebarState } from "$lib/sidebar_data.svelte";
+import { updateSidebarState } from "#lib/sidebar_data.svelte";
 
 export interface ThreemfMetadata {
   nozzle_diameter: number | null;

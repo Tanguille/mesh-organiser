@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Label, LabelMeta } from "$lib/api/shared/label_api";
-import { defaultSidebarState } from "$lib/api/shared/sidebar_state_api";
-import { sidebarState } from "$lib/sidebar_data.svelte";
+import type { Label, LabelMeta } from "#lib/api/shared/label_api";
+import { defaultSidebarState } from "#lib/api/shared/sidebar_state_api";
+import { sidebarState } from "#lib/sidebar_data.svelte";
 import AppSidebar from "./app-sidebar.svelte";
 
 const page = vi.hoisted(() => {

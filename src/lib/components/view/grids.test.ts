@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IModelStreamManager } from "$lib/api/shared/model_api";
-import type { IGroupStreamManager } from "$lib/api/shared/group_api";
+import type { IModelStreamManager } from "#lib/api/shared/model_api";
+import type { IGroupStreamManager } from "#lib/api/shared/group_api";
 import ModelGrid from "./model-grid.svelte";
 import GroupGrid from "./group-grid.svelte";
 

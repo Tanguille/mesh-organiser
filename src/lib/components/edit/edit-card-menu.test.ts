@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getContainer, resetContainer } from "$lib/api/dependency_injection";
-import { IResourceApi, type ResourceMeta } from "$lib/api/shared/resource_api";
-import { ILabelApi, type Label } from "$lib/api/shared/label_api";
+import { getContainer, resetContainer } from "#lib/api/dependency_injection";
+import { IResourceApi, type ResourceMeta } from "#lib/api/shared/resource_api";
+import { ILabelApi, type Label } from "#lib/api/shared/label_api";
 import EditResource from "./resource.svelte";
 import EditLabel from "./label.svelte";
 

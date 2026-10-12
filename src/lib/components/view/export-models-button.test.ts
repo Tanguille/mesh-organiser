@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getContainer, resetContainer } from "$lib/api/dependency_injection";
-import { ILocalApi } from "$lib/api/shared/local_api";
-import { IDownloadApi } from "$lib/api/shared/download_api";
-import type { Model } from "$lib/api/shared/model_api";
+import { getContainer, resetContainer } from "#lib/api/dependency_injection";
+import { ILocalApi } from "#lib/api/shared/local_api";
+import { IDownloadApi } from "#lib/api/shared/download_api";
+import type { Model } from "#lib/api/shared/model_api";
 import ExportModelsButton from "./export-models-button.svelte";
 
 const models = [{ id: 1 }, { id: 2 }] as unknown as Model[];
