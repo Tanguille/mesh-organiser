@@ -1,4 +1,4 @@
-import { beginSyncStep, globalSyncState, SyncStep } from "$lib/sync.svelte";
+import { beginSyncStep, globalSyncState, SyncStep } from "#lib/sync.svelte";
 
 export interface DiffableItem {
   uniqueGlobalId: string;

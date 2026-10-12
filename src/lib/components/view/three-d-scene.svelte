@@ -3,7 +3,7 @@
   import type { BufferGeometry } from "three";
   import { OrbitControls } from "@threlte/extras";
   import { onDestroy } from "svelte";
-  import { configuration } from "$lib/configuration.svelte";
+  import { configuration } from "#lib/configuration.svelte";
   import { Color, Vector4 } from "three";
   import vertexShader from "./custom.vert?raw";
   import fragmentShader from "./custom.frag?raw";

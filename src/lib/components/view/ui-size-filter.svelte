@@ -1,9 +1,9 @@
 <script lang="ts">
-  import * as Select from "$lib/components/ui/select/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import {
     SizeOptionModelsAsList,
     type SizeOptionModels,
-  } from "$lib/api/shared/settings_api";
+  } from "#lib/api/shared/settings_api";
   import Grid2x2 from "@lucide/svelte/icons/grid-2x2";
   import List from "@lucide/svelte/icons/list";
 

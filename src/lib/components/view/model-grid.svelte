@@ -1,20 +1,20 @@
 <script lang="ts">
-  import type { IModelStreamManager, Model } from "$lib/api/shared/model_api";
+  import type { IModelStreamManager, Model } from "#lib/api/shared/model_api";
   import {
     convertOrderOptionModelsToEnum,
     MODEL_ORDER_LABELS,
-  } from "$lib/api/shared/settings_api";
-  import ModelEdit from "$lib/components/edit/model.svelte";
-  import MultiModelEdit from "$lib/components/edit/multi-model.svelte";
-  import FileTypeFilter from "$lib/components/view/file-type-filter.svelte";
-  import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
-  import SearchInput from "$lib/components/view/search-input.svelte";
-  import SortFilter from "$lib/components/view/sort-filter.svelte";
-  import EmptyState from "$lib/components/view/empty-state.svelte";
-  import UiSizeFilter from "$lib/components/view/ui-size-filter.svelte";
-  import { configuration } from "$lib/configuration.svelte";
-  import { IsMobile } from "$lib/hooks/is-mobile.svelte";
-  import { wait } from "$lib/utils";
+  } from "#lib/api/shared/settings_api";
+  import ModelEdit from "#lib/components/edit/model.svelte";
+  import MultiModelEdit from "#lib/components/edit/multi-model.svelte";
+  import FileTypeFilter from "#lib/components/view/file-type-filter.svelte";
+  import ModelGridInner from "#lib/components/view/model-grid-inner.svelte";
+  import SearchInput from "#lib/components/view/search-input.svelte";
+  import SortFilter from "#lib/components/view/sort-filter.svelte";
+  import EmptyState from "#lib/components/view/empty-state.svelte";
+  import UiSizeFilter from "#lib/components/view/ui-size-filter.svelte";
+  import { configuration } from "#lib/configuration.svelte";
+  import { IsMobile } from "#lib/hooks/is-mobile.svelte";
+  import { wait } from "#lib/utils";
   import { untrack } from "svelte";
   import Button from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";

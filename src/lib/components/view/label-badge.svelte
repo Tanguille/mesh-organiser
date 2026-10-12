@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
-  import type { LabelMeta } from "$lib/api/shared/label_api";
-  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { resolve } from "#lib/paths";
+  import type { LabelMeta } from "#lib/api/shared/label_api";
+  import { Badge } from "#lib/components/ui/badge/index.js";
 
   const props: { label: LabelMeta; allowClick?: boolean } = $props();
 

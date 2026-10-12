@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Input } from "$lib/components/ui/input";
-  import { debounce, normalizeSearchInput } from "$lib/utils";
+  import { Input } from "#lib/components/ui/input";
+  import { debounce, normalizeSearchInput } from "#lib/utils";
 
   const props: { onsearch: (text: string | null) => void } = $props();
 

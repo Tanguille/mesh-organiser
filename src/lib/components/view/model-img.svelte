@@ -2,10 +2,10 @@
   import { untrack } from "svelte";
   import type { ClassValue } from "svelte/elements";
   import Boxes from "@lucide/svelte/icons/boxes";
-  import type { Model } from "$lib/api/shared/model_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IBlobApi } from "$lib/api/shared/blob_api";
-  import { configuration } from "$lib/configuration.svelte";
+  import type { Model } from "#lib/api/shared/model_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IBlobApi } from "#lib/api/shared/blob_api";
+  import { configuration } from "#lib/configuration.svelte";
 
   let img_src = $state("");
   let load_failed = $state(false);

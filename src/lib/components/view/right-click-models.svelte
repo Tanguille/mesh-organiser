@@ -1,26 +1,26 @@
 <script lang="ts">
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Slice from "@lucide/svelte/icons/slice";
   import GroupIcon from "@lucide/svelte/icons/group";
   import type { ClassValue } from "svelte/elements";
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
-  import type { Model } from "$lib/api/shared/model_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ISlicerApi } from "$lib/api/shared/slicer_api";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import { createShare, IShareApi } from "$lib/api/shared/share_api";
+  import { resolve } from "#lib/paths";
+  import type { Model } from "#lib/api/shared/model_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ISlicerApi } from "#lib/api/shared/slicer_api";
+  import { ILocalApi } from "#lib/api/shared/local_api";
+  import { createShare, IShareApi } from "#lib/api/shared/share_api";
   import Share2 from "@lucide/svelte/icons/share-2";
-  import { FileType } from "$lib/api/shared/blob_api";
+  import { FileType } from "#lib/api/shared/blob_api";
   import {
     extractThreemfModels,
     IThreemfApi,
-  } from "$lib/api/shared/threemf_api";
-  import { IGroupApi } from "$lib/api/shared/group_api";
+  } from "#lib/api/shared/threemf_api";
+  import { IGroupApi } from "#lib/api/shared/group_api";
   import type { Snippet } from "svelte";
   import PackageOpen from "@lucide/svelte/icons/package-open";
-  import { countWriter } from "$lib/utils";
+  import { countWriter } from "#lib/utils";
 
   const props: { children: Snippet; models: Model[]; class?: ClassValue } =
     $props();

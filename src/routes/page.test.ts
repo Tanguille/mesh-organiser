@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { configuration } from "$lib/configuration.svelte";
-import { configurationDefault } from "$lib/api/shared/settings_api";
+import { configuration } from "#lib/configuration.svelte";
+import { configurationDefault } from "#lib/api/shared/settings_api";
 import Page from "./+page.svelte";
 
 const goto = vi.hoisted(() => vi.fn());

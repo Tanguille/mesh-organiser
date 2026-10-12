@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { svelteTesting } from "@testing-library/svelte/vite";
 import tailwindcss from "@tailwindcss/vite";
@@ -32,8 +33,18 @@ export default defineConfig(({ mode }) => {
   const viteAppVersion = fromEnv.length > 0 ? fromEnv : `v${packageVersion}`;
 
   return {
-    // svelteTesting() is a no-op outside Vitest; component tests opt into jsdom per file.
-    plugins: [tailwindcss(), sveltekit(), svelteTesting()],
+    plugins: [
+      tailwindcss(),
+      // SvelteKit 3 reads its config from this plugin call (svelte.config.js is no longer supported).
+      sveltekit({
+        // Tauri: static build with SPA fallback so client routing works for any deep link
+        // (dynamic [slug] routes, share links, etc.). See:
+        // https://v2.tauri.app/start/frontend/sveltekit/
+        adapter: adapter({ fallback: "index.html" }),
+      }),
+      // svelteTesting() is a no-op outside Vitest; component tests opt into jsdom per file.
+      svelteTesting(),
+    ],
 
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(viteAppVersion),
