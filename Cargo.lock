@@ -1159,7 +1159,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.6",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -3058,7 +3058,7 @@ dependencies = [
  "threemf",
  "vek",
  "wavefront_obj",
- "zip",
+ "zip 9.0.0",
 ]
 
 [[package]]
@@ -3132,9 +3132,9 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lzma-rust2"
-version = "0.16.5"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
+checksum = "fde178a3caf126c440fa15628147772d8ee590a39477d711353fbe2e58a73a5b"
 dependencies = [
  "sha2 0.11.0",
 ]
@@ -5106,7 +5106,7 @@ dependencies = [
  "vek",
  "winreg 0.56.0",
  "wiremock",
- "zip",
+ "zip 9.0.0",
 ]
 
 [[package]]
@@ -6124,7 +6124,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -6206,7 +6206,7 @@ dependencies = [
  "quick-xml 0.39.4",
  "serde",
  "thiserror 2.0.21",
- "zip",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -7877,6 +7877,20 @@ name = "zip"
 version = "8.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.2",
+ "memchr",
+ "typed-path",
+ "zopfli",
+]
+
+[[package]]
+name = "zip"
+version = "9.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "711e8c9646791c49b7eb799a19c4ae70a9b8372ddc6a1fa4778defd1e2aa5d5e"
 dependencies = [
  "aes",
  "bzip2",
