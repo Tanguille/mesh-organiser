@@ -192,7 +192,7 @@ importers:
         version: 8.6.1(svelte@5.57.2(@typescript-eslint/types@8.71.1))(three@0.186.1)
       '@threlte/extras':
         specifier: ^9.21.1
-        version: 9.22.0(@types/three@0.186.0)(svelte@5.57.2(@typescript-eslint/types@8.71.1))(three@0.186.1)
+        version: 9.22.1(@types/three@0.186.0)(svelte@5.57.2(@typescript-eslint/types@8.71.1))(three@0.186.1)
       '@types/qs':
         specifier: ^6.15.1
         version: 6.15.1
@@ -860,8 +860,8 @@ packages:
       svelte: '>=5'
       three: '>=0.172'
 
-  '@threlte/extras@9.22.0':
-    resolution: {integrity: sha512-1bJlcFMpY16RKMgILBAki6pPm4r2FDHx/KGmJFlFj4CxAF31VkciBjXx3nAeqiMl2Brevsr9wfaccZ2dxirzrg==}
+  '@threlte/extras@9.22.1':
+    resolution: {integrity: sha512-zoVoofB113aM0bdsy79UPM1AE/JEjF7zYyJtrJr9ezFtOVlDRbIMx9J0CExF14xoQ7Gbj/8sms7SP15k11rTpQ==}
     peerDependencies:
       svelte: '>=5'
       three: '>=0.172'
@@ -1997,11 +1997,6 @@ packages:
     peerDependencies:
       three: '>=0.170'
 
-  three-viewport-gizmo@2.2.0:
-    resolution: {integrity: sha512-Jo9Liur1rUmdKk75FZumLU/+hbF+RtJHi1qsKZpntjKlCYScK6tjbYoqvJ9M+IJphrlQJF5oReFW7Sambh0N4Q==}
-    peerDependencies:
-      three: '>=0.162.0 <1.0.0'
-
   three@0.186.1:
     resolution: {integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==}
 
@@ -2680,7 +2675,7 @@ snapshots:
       svelte: 5.57.2(@typescript-eslint/types@8.71.1)
       three: 0.186.1
 
-  '@threlte/extras@9.22.0(@types/three@0.186.0)(svelte@5.57.2(@typescript-eslint/types@8.71.1))(three@0.186.1)':
+  '@threlte/extras@9.22.1(@types/three@0.186.0)(svelte@5.57.2(@typescript-eslint/types@8.71.1))(three@0.186.1)':
     dependencies:
       '@threejs-kit/instanced-sprite-mesh': 2.5.1(@types/three@0.186.0)(three@0.186.1)
       camera-controls: 3.1.2(three@0.186.1)
@@ -2688,7 +2683,6 @@ snapshots:
       three: 0.186.1
       three-mesh-bvh: 0.9.15(three@0.186.1)
       three-perf: 1.0.11(three@0.186.1)
-      three-viewport-gizmo: 2.2.0(three@0.186.1)
       troika-three-text: 0.52.5(three@0.186.1)
     transitivePeerDependencies:
       - '@types/three'
@@ -3728,10 +3722,6 @@ snapshots:
       three: 0.186.1
       troika-three-text: 0.52.5(three@0.186.1)
       tweakpane: 3.1.10
-
-  three-viewport-gizmo@2.2.0(three@0.186.1):
-    dependencies:
-      three: 0.186.1
 
   three@0.186.1: {}
 
