@@ -1,6 +1,6 @@
 /**
  * Invariants from `.github/RELEASE.md`: single app version, Tauri config consistency.
- * Run in CI (Svelte, publish) via `node scripts/check-package-cargo-version.mjs`.
+ * Run before every publish build via `node scripts/check-package-cargo-version.mjs`.
  */
 import { readFileSync } from "node:fs";
 
