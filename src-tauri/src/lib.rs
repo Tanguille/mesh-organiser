@@ -575,7 +575,6 @@ pub fn run() {
             api::get_models,
             api::get_labels,
             api::edit_model,
-            api::delete_model,
             api::add_label,
             api::ungroup,
             api::edit_group,

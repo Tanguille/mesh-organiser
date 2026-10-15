@@ -6,18 +6,12 @@ use wavefront_obj::obj::{self, ObjSet};
 use crate::{
     error::MeshThumbnailError,
     mesh::Mesh,
-    parse_model::find_zip_entry_bytes,
-    path_ext::{is_zip_of, matches_ext},
+    parse_model::{find_zip_entry_bytes, parse_by_extension},
+    path_ext::matches_ext,
 };
 
 pub fn handle(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
-    if is_zip_of(path, "obj") {
-        Ok(Some(parse_zip(path)?))
-    } else if matches_ext(path, "obj") {
-        Ok(Some(parse(path)?))
-    } else {
-        Ok(None)
-    }
+    parse_by_extension(path, "obj", parse, parse_zip)
 }
 
 fn parse(path: &Path) -> Result<Mesh, MeshThumbnailError> {

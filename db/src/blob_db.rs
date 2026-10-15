@@ -1,27 +1,7 @@
-use sqlx::{QueryBuilder, Row};
-
-use crate::{DbError, db_context::DbContext, model::blob::Blob, push_in_i64, util::time_now};
+use crate::{DbError, db_context::DbContext, model::blob::Blob, push_in, util::time_now};
 
 pub async fn get_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
-    let rows = sqlx::query!(
-        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs"
-    )
-    .fetch_all(db)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            Blob::from_parts(
-                row.blob_id,
-                row.blob_sha256,
-                row.blob_filetype,
-                row.blob_size,
-                row.blob_added,
-                row.blob_path,
-            )
-        })
-        .collect())
+    sqlx::query_as("SELECT * FROM blobs").fetch_all(db).await
 }
 
 pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob>, DbError> {
@@ -29,46 +9,17 @@ pub async fn get_blobs_via_ids(db: &DbContext, ids: Vec<i64>) -> Result<Vec<Blob
         return Ok(Vec::new());
     }
 
-    let mut query_builder = QueryBuilder::new(
-        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs WHERE blob_id IN ",
-    );
-    push_in_i64(&mut query_builder, &ids);
-    let rows = query_builder.build().fetch_all(db).await?;
+    let mut query_builder = sqlx::QueryBuilder::new("SELECT * FROM blobs WHERE blob_id IN ");
+    push_in(&mut query_builder, &ids);
 
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            Blob::from_parts(
-                row.get("blob_id"),
-                row.get("blob_sha256"),
-                row.get("blob_filetype"),
-                row.get("blob_size"),
-                row.get("blob_added"),
-                row.get("blob_path"),
-            )
-        })
-        .collect())
+    query_builder.build_query_as().fetch_all(db).await
 }
 
 pub async fn get_blob_via_sha256(db: &DbContext, sha256: &str) -> Result<Option<Blob>, DbError> {
-    let row = sqlx::query!(
-        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs WHERE blob_sha256 = ?",
-        sha256
-    )
-    .fetch_optional(db)
-    .await?;
-
-    match row {
-        Some(record) => Ok(Some(Blob::from_parts(
-            record.blob_id,
-            record.blob_sha256,
-            record.blob_filetype,
-            record.blob_size,
-            record.blob_added,
-            record.blob_path,
-        ))),
-        None => Ok(None),
-    }
+    sqlx::query_as("SELECT * FROM blobs WHERE blob_sha256 = ?")
+        .bind(sha256)
+        .fetch_optional(db)
+        .await
 }
 
 pub async fn add_blob(
@@ -94,37 +45,17 @@ pub async fn add_blob(
     Ok(result.last_insert_rowid())
 }
 
+/// Deletes every blob no model references and returns the deleted rows. One statement, so a
+/// model added concurrently can't have its blob removed between a select and the delete.
 pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
-    let dead_blob_rows = sqlx::query!(
-        "SELECT blob_id, blob_sha256, blob_filetype, blob_size, blob_added, blob_path FROM blobs
+    sqlx::query_as(
+        "DELETE FROM blobs
             WHERE blob_id NOT IN
                 (SELECT DISTINCT model_blob_id
                     FROM models
-                    WHERE model_blob_id IS NOT NULL)"
+                    WHERE model_blob_id IS NOT NULL)
+            RETURNING *",
     )
     .fetch_all(db)
-    .await?;
-
-    let dead_blobs: Vec<Blob> = dead_blob_rows
-        .into_iter()
-        .map(|row| {
-            Blob::from_parts(
-                row.blob_id,
-                row.blob_sha256,
-                row.blob_filetype,
-                row.blob_size,
-                row.blob_added,
-                row.blob_path,
-            )
-        })
-        .collect();
-
-    if !dead_blobs.is_empty() {
-        let dead_ids: Vec<i64> = dead_blobs.iter().map(|blob| blob.id).collect();
-        let mut query_builder = QueryBuilder::new("DELETE FROM blobs WHERE blob_id IN ");
-        push_in_i64(&mut query_builder, &dead_ids);
-        query_builder.build().execute(db).await?;
-    }
-
-    Ok(dead_blobs)
+    .await
 }

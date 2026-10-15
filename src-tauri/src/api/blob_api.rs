@@ -14,12 +14,11 @@ pub async fn get_blob_bytes(
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
     let Some(blob) = blob_db::get_blob_via_sha256(&state.app_state.db, sha256).await? else {
-        return Err(ApplicationError::InternalError(String::from(
-            "Failed to find blob",
-        )));
+        return Err(
+            service::ServiceError::InternalError(String::from("Failed to find blob")).into(),
+        );
     };
 
-    // Todo: This is not a streamed response. Less efficient than the streaming we did before!
     let bytes = export_service::get_bytes_from_blob(&blob, &state.app_state).await?;
 
     Ok(Response::new(bytes))

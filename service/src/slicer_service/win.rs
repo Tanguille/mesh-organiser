@@ -15,9 +15,6 @@ impl Slicer {
         get_slicer_path(self).is_some()
     }
 
-    /// # Panics
-    ///
-    /// Panics if the slicer path cannot be resolved or converted to UTF-8.
     pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
         let slicer_pathbuf = get_slicer_path(self).unwrap();
 

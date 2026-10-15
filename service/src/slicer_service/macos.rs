@@ -9,9 +9,6 @@ impl Slicer {
         get_slicer_path(self).is_some()
     }
 
-    /// # Panics
-    ///
-    /// Panics if the slicer path cannot be resolved.
     pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
         let slicer_path = get_slicer_path(self).unwrap();
 

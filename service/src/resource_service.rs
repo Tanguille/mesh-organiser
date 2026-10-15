@@ -10,10 +10,6 @@ use crate::{service_error::ServiceError, util::open_folder_in_explorer};
 use super::app_state::AppState;
 
 /// Opens the resource folder in the system file explorer.
-///
-/// # Errors
-///
-/// Returns an error if the path cannot be created or opened.
 pub fn open_resource_folder(
     resource: &ResourceMeta,
     user: &User,
@@ -37,10 +33,6 @@ pub fn open_resource_folder(
 }
 
 /// Deletes the resource folder for the user.
-///
-/// # Errors
-///
-/// Returns an error if the directory cannot be removed.
 pub fn delete_resource_folder(
     resource: &ResourceMeta,
     user: &User,
@@ -58,11 +50,6 @@ pub fn delete_resource_folder(
 
 /// Deletes a resource: removes its folder on disk, then the database row.
 /// Shared by the Tauri command and the web handler.
-///
-/// # Errors
-///
-/// Returns an error if the resource does not exist for the user, the folder
-/// cannot be removed, or the database delete fails.
 pub async fn delete_resource(
     resource_id: i64,
     user: &User,

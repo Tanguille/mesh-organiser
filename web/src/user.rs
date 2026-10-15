@@ -3,68 +3,25 @@ use std::{fmt, sync::Arc};
 use axum::{extract::FromRequestParts, http::StatusCode, http::request::Parts};
 use axum_login::{AuthnBackend, UserId};
 use password_auth::verify_password;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::task;
 
 use db::{db_context::DbContext, model::user::User, user_db};
 
 use crate::error::ApplicationError;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct AuthUser {
-    id: i64,
-    pub username: String,
-    pub email: String,
-    pub permissions: usize,
-    pub validity_token: Vec<u8>,
-}
+#[derive(Clone)]
+pub struct AuthUser(User);
 
-// Here we've implemented `Debug` manually to avoid accidentally logging the
-// password hash and validity token.
+// `User`'s derived `Debug` would log the password hash, sync token and sync url.
 impl fmt::Debug for AuthUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("User")
-            .field("id", &self.id)
-            .field("username", &self.username)
-            .field("email", &self.email)
-            .field("permissions", &self.permissions)
-            .field("validity_token", &"[redacted]")
-            .finish()
-    }
-}
-
-impl AuthUser {
-    pub fn to_user(&self) -> User {
-        User {
-            id: self.id,
-            username: self.username.clone(),
-            email: self.email.clone(),
-            permissions: db::model::user::UserPermissions::from_bits_truncate(
-                self.permissions.try_into().unwrap_or(u32::MAX),
-            ),
-            password_hash: String::default(),
-            last_sync: None,
-            sync_token: None,
-            sync_url: None,
-            created_at: String::default(),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn for_test(
-        id: i64,
-        username: &str,
-        email: &str,
-        permissions: usize,
-        validity_token: Vec<u8>,
-    ) -> Self {
-        Self {
-            id,
-            username: username.to_string(),
-            email: email.to_string(),
-            permissions,
-            validity_token,
-        }
+            .field("id", &self.0.id)
+            .field("username", &self.0.username)
+            .field("email", &self.0.email)
+            .field("permissions", &self.0.permissions)
+            .finish_non_exhaustive()
     }
 }
 
@@ -72,11 +29,13 @@ impl axum_login::AuthUser for AuthUser {
     type Id = i64;
 
     fn id(&self) -> Self::Id {
-        self.id
+        self.0.id
     }
 
+    /// The sync url doubles as the validity token: `scramble_validity_token`
+    /// rewrites it, which invalidates every existing session of the user.
     fn session_auth_hash(&self) -> &[u8] {
-        &self.validity_token
+        self.0.sync_url.as_deref().unwrap_or_default().as_bytes()
     }
 }
 
@@ -106,16 +65,6 @@ impl Backend {
     pub const fn new(db: Arc<DbContext>) -> Self {
         Self { db }
     }
-
-    fn convert_user(user: User) -> AuthUser {
-        AuthUser {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            permissions: user.permissions.bits() as usize,
-            validity_token: user.sync_url.map_or_else(Vec::new, String::into_bytes),
-        }
-    }
 }
 
 impl AuthnBackend for Backend {
@@ -139,13 +88,13 @@ impl AuthnBackend for Backend {
                 })
                 .await?;
 
-                Ok(user.map(Self::convert_user))
+                Ok(user.map(AuthUser))
             }
             Credentials::Token(token_credentials) => {
                 let user =
                     user_db::get_user_by_sync_token(&self.db, &token_credentials.token).await?;
 
-                Ok(user.map(Self::convert_user))
+                Ok(user.map(AuthUser))
             }
         }
     }
@@ -153,14 +102,14 @@ impl AuthnBackend for Backend {
     async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
         let user = user_db::get_user_by_id(&self.db, *user_id).await?;
 
-        Ok(user.map(Self::convert_user))
+        Ok(user.map(AuthUser))
     }
 }
 
 pub type AuthSession = axum_login::AuthSession<Backend>;
 
 /// Extracts the domain [`User`] for the authenticated session, so handlers
-/// don't each repeat the auth-session unwrap and `to_user` mapping. Rejects
+/// don't each repeat the auth-session unwrap. Rejects
 /// with 401 when no user is logged in (matching `login_required!` semantics;
 /// the route layers stay in place as defense in depth).
 pub struct CurrentUser(pub User);
@@ -176,62 +125,14 @@ where
 
         auth_session
             .user
-            .map(|user| Self(user.to_user()))
+            .map(|user| Self(user.0))
             .ok_or((StatusCode::UNAUTHORIZED, "Not logged in"))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::AuthUser;
     use db::model::user::UserPermissions;
-
-    #[test]
-    fn to_user_round_trip_id_username_email() {
-        let auth = AuthUser::for_test(42, "alice", "alice@example.com", 0, vec![]);
-        let user = auth.to_user();
-        assert_eq!(user.id, 42);
-        assert_eq!(user.username, "alice");
-        assert_eq!(user.email, "alice@example.com");
-        assert!(user.permissions.is_empty());
-        assert_eq!(user.password_hash, "");
-        assert!(user.sync_url.is_none());
-    }
-
-    #[test]
-    fn to_user_permissions_bits() {
-        let auth = AuthUser::for_test(
-            1,
-            "u",
-            "e@e.com",
-            UserPermissions::Admin.bits() as usize,
-            vec![],
-        );
-        let user = auth.to_user();
-        assert!(user.permissions.contains(UserPermissions::Admin));
-
-        let auth_sync = AuthUser::for_test(
-            2,
-            "u",
-            "e@e.com",
-            UserPermissions::Sync.bits() as usize,
-            vec![],
-        );
-        let user_sync = auth_sync.to_user();
-        assert!(user_sync.permissions.contains(UserPermissions::Sync));
-    }
-
-    #[test]
-    fn to_user_permissions_truncate_large_usize() {
-        let auth = AuthUser::for_test(1, "u", "e@e.com", usize::MAX, vec![]);
-        let user = auth.to_user();
-        assert_eq!(
-            user.permissions.bits(),
-            UserPermissions::Admin.bits()
-                | UserPermissions::Sync.bits()
-                | UserPermissions::OnlineAccount.bits()
-        );
-    }
 
     fn stored_user(permissions: UserPermissions, sync_url: Option<&str>) -> db::model::user::User {
         db::model::user::User {
@@ -251,10 +152,10 @@ mod tests {
     fn stored_user_round_trip_preserves_identity_and_every_permission_combination() {
         for bits in 0..=UserPermissions::all().bits() {
             let permissions = UserPermissions::from_bits(bits).expect("bits should be known flags");
-            let auth_user = super::Backend::convert_user(stored_user(permissions, None));
+            let auth_user = super::AuthUser(stored_user(permissions, None));
             assert_eq!(axum_login::AuthUser::id(&auth_user), 7);
 
-            let user = auth_user.to_user();
+            let user = auth_user.0;
 
             assert_eq!(
                 (
@@ -271,12 +172,11 @@ mod tests {
     /// Existing sessions stay valid only while this hash is byte-for-byte unchanged.
     #[test]
     fn session_auth_hash_is_the_sync_url_bytes() {
-        let with_sync_url = super::Backend::convert_user(stored_user(
+        let with_sync_url = super::AuthUser(stored_user(
             UserPermissions::Sync,
             Some("https://sync.example/user-7"),
         ));
-        let without_sync_url =
-            super::Backend::convert_user(stored_user(UserPermissions::Sync, None));
+        let without_sync_url = super::AuthUser(stored_user(UserPermissions::Sync, None));
 
         assert_eq!(
             axum_login::AuthUser::session_auth_hash(&with_sync_url),
@@ -290,10 +190,8 @@ mod tests {
 
     #[test]
     fn debug_output_redacts_credentials() {
-        let auth_user = super::Backend::convert_user(stored_user(
-            UserPermissions::Admin,
-            Some("sync-url-secret"),
-        ));
+        let auth_user =
+            super::AuthUser(stored_user(UserPermissions::Admin, Some("sync-url-secret")));
 
         let debug = format!("{auth_user:?}");
 
