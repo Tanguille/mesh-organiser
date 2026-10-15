@@ -28,6 +28,6 @@ This ensures:
 **Do NOT** commit changes to these files unless the task explicitly involves updating dependencies:
 
 - package.json
-- package-lock.json
+- pnpm-lock.yaml
 - Cargo.lock
 - mise.toml
