@@ -16,7 +16,10 @@ import {
 import { importState } from "#lib/import.svelte";
 import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
 import { IGroupApi } from "../shared/group_api";
-import type { IBlobApi } from "../shared/blob_api";
+import {
+  fileTypeToPlainFileExtension,
+  type IBlobApi,
+} from "../shared/blob_api";
 import { downloadFile } from "../tauri/tauri_import";
 import {
   computeDifferences,
@@ -84,7 +87,9 @@ async function downloadSingleModel(
   localImportApi: ITauriImportApi,
 ): Promise<void> {
   const downloadUrl = await serverBlobApi.getBlobDownloadUrl(serverModel.blob);
-  const download = await downloadFile(downloadUrl);
+  // The server download returns unpacked bytes for zipped blob types.
+  const extension = fileTypeToPlainFileExtension(serverModel.blob.filetype);
+  const download = await downloadFile(downloadUrl, `model${extension}`);
 
   // TODO: This isn't great
   const localImportState = await localImportApi.startImportProcess(
@@ -97,7 +102,12 @@ async function downloadSingleModel(
     },
   );
 
-  const id = localImportState.imported_models[0].model_ids[0];
+  const id = localImportState.imported_models[0]?.model_ids[0];
+  if (localImportState.status === ImportStatus.Failure || id === undefined) {
+    throw new Error(
+      `Failed to import synced model "${serverModel.name}": ${localImportState.failure_reason ?? "No model was imported"}`,
+    );
+  }
   serverModel.id = id;
   await localModelApi.editModel(serverModel, true, true);
   globalSyncState.processedItems += 1;

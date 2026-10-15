@@ -48,8 +48,14 @@ export interface AccountLinkEmit {
   link_token: string;
 }
 
-export async function downloadFile(url: string): Promise<DownloadResult> {
-  return await invoke("download_file", { url: url });
+export async function downloadFile(
+  url: string,
+  filename?: string,
+): Promise<DownloadResult> {
+  return await invoke("download_file", {
+    url: url,
+    filename: filename ?? null,
+  });
 }
 
 async function importModel(
