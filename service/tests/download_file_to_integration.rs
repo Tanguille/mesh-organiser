@@ -112,6 +112,25 @@ async fn get_content_disposition_filename_uses_url_path_when_header_missing() {
 }
 
 #[tokio::test]
+async fn get_content_disposition_filename_uses_url_path_when_header_unparseable() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("x")
+                .insert_header("Content-Disposition", "attachment"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let url = format!("{}/some/path/fallback.stl", mock_server.uri());
+    let response = reqwest::get(&url).await.expect("GET should succeed");
+    let name = get_content_disposition_filename(&response);
+    assert_eq!(name.as_deref(), Some("fallback.stl"));
+}
+
+#[tokio::test]
 async fn get_content_disposition_filename_rfc5987_from_header() {
     let mock_server = MockServer::start().await;
 

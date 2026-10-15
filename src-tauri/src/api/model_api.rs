@@ -174,3 +174,19 @@ pub async fn get_model_disk_space_usage(
         size_compressed: local,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn model_disk_space_usage_serializes_both_sizes_by_name() {
+        let usage = super::ModelDiskSpaceUsage {
+            size_uncompressed: 2048,
+            size_compressed: 512,
+        };
+
+        assert_eq!(
+            serde_json::to_value(usage).expect("disk usage should serialize"),
+            serde_json::json!({ "size_uncompressed": 2048, "size_compressed": 512 })
+        );
+    }
+}
