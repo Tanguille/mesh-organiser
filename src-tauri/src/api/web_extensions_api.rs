@@ -230,6 +230,7 @@ async fn process_uploads(
                 "Warning: Path {} does not exist, skipping upload",
                 path.path.display()
             );
+            continue;
         }
 
         {

@@ -108,7 +108,7 @@ pub async fn get_models(
 
     let mut query_builder = QueryBuilder::new(
         "SELECT models.model_id, model_name, model_url, model_desc, model_added, model_flags, model_unique_global_id, model_last_modified,
-				blob_id, blob_sha256, blob_filetype, blob_size, blob_path,
+				blob_id, blob_sha256, blob_filetype, blob_size, blob_path, blob_added,
                 GROUP_CONCAT(labels.label_id) AS label_ids,
                 models_group.group_id, group_name, group_created, group_resource_id, group_unique_global_id, group_last_modified
          FROM models
@@ -191,7 +191,7 @@ pub async fn get_models(
                 sha256: row.get("blob_sha256"),
                 filetype: row.get("blob_filetype"),
                 size: row.get("blob_size"),
-                added: row.get("model_added"),
+                added: row.get("blob_added"),
                 disk_path: row.get("blob_path"),
             },
             link: row.get("model_url"),
@@ -356,14 +356,18 @@ pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(
 
 pub async fn get_unique_ids_from_model_ids(
     db: &DbContext,
+    user: &User,
     model_ids: Vec<i64>,
 ) -> Result<IndexMap<i64, String>, DbError> {
     if model_ids.is_empty() {
         return Ok(IndexMap::new());
     }
 
-    let mut query_builder =
-        QueryBuilder::new("SELECT model_id, model_unique_global_id FROM models WHERE model_id IN ");
+    let mut query_builder = QueryBuilder::new(
+        "SELECT model_id, model_unique_global_id FROM models WHERE model_user_id = ",
+    );
+    query_builder.push_bind(user.id);
+    query_builder.push(" AND model_id IN ");
     push_in_i64(&mut query_builder, &model_ids);
     let rows = query_builder.build().fetch_all(db).await?;
 

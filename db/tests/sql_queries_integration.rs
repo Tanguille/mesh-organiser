@@ -3,7 +3,7 @@
 use db::{
     blob_db, db_context, group_db, label_db,
     model::{blob::FileType, user::User},
-    model_db,
+    model_db, user_db,
 };
 use tempfile::tempdir;
 
@@ -419,4 +419,54 @@ async fn get_labels_returns_labels_with_children_attached() {
     let child_label = labels.iter().find(|label| label.meta.id == child).unwrap();
     assert!(child_label.has_parent);
     assert!(child_label.children.is_empty());
+}
+
+#[tokio::test]
+async fn remove_labels_from_models_rejects_another_users_model() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user_id = user_db::add_user(&db, "other", "other@example.com", "password")
+        .await
+        .unwrap();
+    let other_user = user_db::get_user_by_id(&db, other_user_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let label_id = add_labels(&db, &user, &["mine"]).await[0];
+    let blob_id = blob_db::add_blob(&db, "foreign", "stl", 1, None)
+        .await
+        .unwrap();
+    let foreign_model_id = model_db::add_model(&db, &other_user, "theirs", blob_id, None, None)
+        .await
+        .unwrap();
+
+    let result =
+        label_db::remove_labels_from_models(&db, &user, &[label_id], &[foreign_model_id], None)
+            .await;
+
+    assert!(matches!(result, Err(sqlx::Error::RowNotFound)));
+}
+
+#[tokio::test]
+async fn get_models_reports_blob_added_not_model_added() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let blob_id = blob_db::add_blob(&db, "dated", "stl", 1, None)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE blobs SET blob_added = '2000-01-01T00:00:00Z' WHERE blob_id = ?")
+        .bind(blob_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let model_id = model_db::add_model(&db, &user, "dated", blob_id, None, None)
+        .await
+        .unwrap();
+
+    let models = model_db::get_models_via_ids(&db, &user, vec![model_id])
+        .await
+        .unwrap();
+
+    assert_eq!(models[0].blob.added, "2000-01-01T00:00:00Z");
+    assert_ne!(models[0].added, models[0].blob.added);
 }
