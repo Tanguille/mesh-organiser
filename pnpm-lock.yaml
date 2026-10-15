@@ -1,4 +1,5 @@
 ---
+# pr-shepherd 2026-10-15: re-committed so pnpm minimumReleaseAge baseline (lockfile commit time) clears the 4h window
 lockfileVersion: '9.0'
 
 importers:
