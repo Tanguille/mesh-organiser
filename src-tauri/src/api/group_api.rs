@@ -36,7 +36,7 @@ pub async fn get_groups(
             order_by: order_by
                 .map(|s| GroupOrderBy::from_str(&s))
                 .transpose()
-                .map_err(|_| ApplicationError::InternalError(
+                .map_err(|_| service::ServiceError::InternalError(
                     "Invalid order_by value. Valid values are: CreatedAsc, CreatedDesc, NameAsc, NameDesc, ModifiedAsc, ModifiedDesc".to_string()
                 ))?,
             text_search,
@@ -68,15 +68,13 @@ pub async fn add_group(
     group_name: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<ModelGroupMeta, ApplicationError> {
-    let group_meta = group_db::add_empty_group(
+    Ok(group_db::add_empty_group(
         &state.app_state.db,
         &state.get_current_user(),
         group_name,
         None,
     )
-    .await?;
-
-    Ok(group_meta)
+    .await?)
 }
 
 #[tauri::command]
@@ -140,12 +138,10 @@ pub async fn get_group_count(
     include_ungrouped_models: Option<bool>,
     state: State<'_, TauriAppState>,
 ) -> Result<usize, ApplicationError> {
-    let count = group_db::get_group_count(
+    Ok(group_db::get_group_count(
         &state.app_state.db,
         &state.get_current_user(),
         include_ungrouped_models.unwrap_or(false),
     )
-    .await?;
-
-    Ok(count)
+    .await?)
 }

@@ -19,7 +19,6 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
-/// Routes for the group endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -38,8 +37,6 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 pub struct GetGroupParams {
-    #[serde(default)]
-    pub model_ids: Vec<i64>,
     pub model_ids_str: Option<String>,
     #[serde(default)]
     pub group_ids: Vec<i64>,
@@ -59,7 +56,7 @@ impl GetGroupParams {
     /// bounds check runs before any allocation from request data.
     fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
         query_bounds::PaginatedListQueryBounds {
-            model_ids: &self.model_ids,
+            model_ids: &[], // groups cannot be filtered by model id
             group_ids: &self.group_ids,
             label_ids: &self.label_ids,
             text_search: self.text_search.as_deref(),
@@ -75,7 +72,7 @@ pub async fn get_groups(
     State(app_state): State<AppState>,
     Query(params): Query<GetGroupParams>,
 ) -> Result<Response, ApplicationError> {
-    if let Err(e) = query_bounds::validate_group_list_query_bounds(
+    if let Err(e) = query_bounds::validate_list_query_bounds(
         params.paginated_bounds(),
         params.model_ids_str.as_deref(),
     ) {
@@ -92,7 +89,7 @@ pub async fn get_groups(
         &app_state.db,
         &user,
         GroupFilterOptions {
-            model_ids: query_bounds::none_if_empty(params.model_ids).or(model_ids),
+            model_ids,
             group_ids: query_bounds::none_if_empty(params.group_ids),
             label_ids: query_bounds::none_if_empty(params.label_ids),
             order_by: params.order_by.as_deref().map(|order_by| {
@@ -119,7 +116,7 @@ pub async fn get_share_groups(
 ) -> Result<Response, ApplicationError> {
     let scope = ShareScope::resolve(&app_state, &share_id).await?;
 
-    if let Err(e) = query_bounds::validate_group_list_query_bounds(
+    if let Err(e) = query_bounds::validate_list_query_bounds(
         params.paginated_bounds(),
         params.model_ids_str.as_deref(),
     ) {

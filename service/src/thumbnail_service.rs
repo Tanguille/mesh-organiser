@@ -24,20 +24,17 @@ use crate::{
     import_state::{ImportState, ImportStatus},
 };
 
-const IMAGE_WIDTH: usize = 400;
-const IMAGE_HEIGHT: usize = 400;
-const IMAGE_SIZE: Vec2<usize> = Vec2::new(IMAGE_WIDTH, IMAGE_HEIGHT);
+const IMAGE_WIDTH: u32 = 400;
+const IMAGE_HEIGHT: u32 = 400;
+const IMAGE_SIZE: Vec2<usize> = Vec2::new(IMAGE_WIDTH as usize, IMAGE_HEIGHT as usize);
 
 fn resize_and_save_thumbnail(
     image: &mut DynamicImage,
     image_path: &Path,
 ) -> Result<(), ServiceError> {
-    *image = image.resize_to_fill(
-        u32::try_from(IMAGE_WIDTH).unwrap_or(400),
-        u32::try_from(IMAGE_HEIGHT).unwrap_or(400),
-        Triangle,
-    );
+    *image = image.resize_to_fill(IMAGE_WIDTH, IMAGE_HEIGHT, Triangle);
     image.save(image_path)?;
+
     Ok(())
 }
 
@@ -47,21 +44,19 @@ fn render(
     color: Vec3<u8>,
     rotation: Vec3<f32>,
 ) -> Result<(), ServiceError> {
-    let mesh = match parse_model::handle_parse(model_path) {
-        Ok(Some(mesh)) => mesh,
-        Ok(None) => {
-            return Err(ServiceError::InternalError(format!(
-                "Could not generate thumbnail for model at path {}: unsupported format",
-                model_path.display()
-            )));
-        }
-        Err(e) => {
-            return Err(ServiceError::InternalError(format!(
+    let mesh = parse_model::handle_parse(model_path)
+        .map_err(|e| {
+            ServiceError::InternalError(format!(
                 "Error parsing model at path {} for thumbnail generation: {e}",
                 model_path.display()
-            )));
-        }
-    };
+            ))
+        })?
+        .ok_or_else(|| {
+            ServiceError::InternalError(format!(
+                "Could not generate thumbnail for model at path {}: unsupported format",
+                model_path.display()
+            ))
+        })?;
 
     let thumbnail = render::render(&mesh, IMAGE_SIZE, rotation, color);
 
@@ -74,8 +69,7 @@ fn render(
 /// Used by `process` to gate which file types get a thumbnail.
 fn thumbnail_extension_for_path(path: &Path) -> Result<FileType, ServiceError> {
     let file_type = FileType::from_pathbuf(path);
-    // Reject unsupported types and Step (thumbnail render does not support it);
-    // allow Stl, Obj, Gcode, Threemf and their zips
+    // Step is rejected too: thumbnail rendering does not support it.
     if file_type.is_unsupported() || file_type.is_step() {
         return Err(ServiceError::InternalError(format!(
             "Unsupported file extension for thumbnail generation: {}",
@@ -124,10 +118,6 @@ fn process(
 }
 
 /// Generates thumbnails for all blobs in the database.
-///
-/// # Errors
-///
-/// Returns an error if blob listing or thumbnail generation fails.
 pub async fn generate_all_thumbnails(
     app_state: &AppState,
     overwrite: bool,
@@ -142,10 +132,6 @@ pub async fn generate_all_thumbnails(
 /// Fetches the given models and generates their (missing) thumbnails into
 /// `import_state`, returning the fetched models. Shared post-import tail of the
 /// web and Tauri upload/extract handlers.
-///
-/// # Errors
-///
-/// Returns an error if the model lookup or thumbnail generation fails.
 pub async fn generate_thumbnails_for_model_ids(
     app_state: &AppState,
     user: &User,
@@ -160,15 +146,8 @@ pub async fn generate_thumbnails_for_model_ids(
     Ok(models)
 }
 
-/// Generates thumbnails for the given blobs.
-///
-/// # Errors
-///
-/// Returns an error if thumbnail generation fails.
-///
-/// # Panics
-///
-/// Panics if a spawned thumbnail task panics.
+/// Generates thumbnails for the given blobs; a blob whose thumbnail fails is skipped.
+/// A panicking thumbnail task resumes its unwind here.
 pub async fn generate_thumbnails(
     models: &[&Blob],
     app_state: &AppState,
@@ -215,7 +194,6 @@ pub async fn generate_thumbnails(
 
     for (model_path, image_path) in paths {
         futures.spawn_blocking(move || {
-            // Ignore errors for now
             let _ = process(
                 &model_path,
                 &image_path,

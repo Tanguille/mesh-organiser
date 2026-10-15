@@ -18,10 +18,16 @@ pub fn time_now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
-/// Validates that a unique global id is exactly 32 characters long, the invariant shared by
-/// every `edit_*_global_id` entry point.
-pub fn validate_global_id(id: &str) -> Result<(), DbError> {
-    if id.len() != 32 {
+/// The caller-supplied `update_timestamp`, falling back to the current time.
+#[must_use]
+pub fn timestamp_or_now(update_timestamp: Option<&str>) -> String {
+    update_timestamp.map_or_else(time_now, ToString::to_string)
+}
+
+/// Validates that a unique global id, when given, is exactly 32 characters long. Every `edit_*`
+/// entry point checks this before writing anything, so a bad id never leaves a partial edit.
+pub fn validate_global_id(id: Option<&str>) -> Result<(), DbError> {
+    if id.is_some_and(|id| id.len() != 32) {
         return Err(DbError::InvalidArgument(
             "Unique Global ID must be 32 characters long".to_string(),
         ));

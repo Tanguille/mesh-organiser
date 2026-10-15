@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
 use regex::Regex;
@@ -15,8 +15,17 @@ use crate::{
     util::{cleanse_evil_from_name, percent_decode},
 };
 
-static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
-static FILENAME_UNQUOTED: OnceLock<Regex> = OnceLock::new();
+static FILENAME_QUOTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).expect("valid regex literal"));
+static FILENAME_UNQUOTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"filename\s*=\s*([^;\s]+)").expect("valid regex literal"));
+static MAKERWORLD_MODEL_PAGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)https://(?:www\.)?makerworld\.com(?:\.cn)?",
+        r"(?:/(?:[a-z]{2}(?:-[a-z]{2})?))?/models/[\w-]+",
+    ))
+    .expect("valid regex literal")
+});
 
 #[derive(Serialize)]
 pub struct DownloadResult {
@@ -28,16 +37,15 @@ pub struct DownloadResult {
 /// nexprint URL branch, which must stay quoted-only (the unquoted fallback would
 /// capture trailing query params from a URL).
 fn quoted_filename(value: &str) -> Option<String> {
-    let re = FILENAME_QUOTED.get_or_init(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).unwrap());
-    re.captures(value)
-        .and_then(|cap| cap.get(1))
-        .map(|m| m.as_str().to_string())
+    FILENAME_QUOTED
+        .captures(value)
+        .and_then(|captures| captures.get(1))
+        .map(|name| name.as_str().to_string())
 }
 
 /// Parses a Content-Disposition header value and returns the filename if present.
-/// Supports `filename*=UTF-8''<percent-encoded>` (RFC 5987) and `filename="..."` / `filename=value`.
+/// Prefers `filename*=UTF-8''<percent-encoded>` (RFC 5987), then `filename="..."`, then `filename=value`.
 fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
-    // Prefer filename*=UTF-8''<encoded> (RFC 5987)
     if let Some(rest) = header_value.split("filename*=").nth(1) {
         let token = rest.split(';').next().unwrap_or(rest).trim();
         if let Some(encoded) = token
@@ -48,18 +56,15 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
             return Some(decoded);
         }
     }
-    // Fallback: filename="..." or filename=value
+
     if let Some(name) = quoted_filename(header_value) {
         return Some(name);
     }
-    let re2 = FILENAME_UNQUOTED.get_or_init(|| Regex::new(r"filename\s*=\s*([^;\s]+)").unwrap());
-    if let Some(cap) = re2.captures(header_value)
-        && let Some(m) = cap.get(1)
-    {
-        return Some(m.as_str().trim().to_string());
-    }
 
-    None
+    FILENAME_UNQUOTED
+        .captures(header_value)
+        .and_then(|captures| captures.get(1))
+        .map(|name| name.as_str().trim().to_string())
 }
 
 pub fn get_content_disposition_filename(response: &Response) -> Option<String> {
@@ -90,28 +95,13 @@ fn filename_from_response_or_url(response: &Response) -> String {
     get_content_disposition_filename(response).unwrap_or_else(|| "model.stl".to_string())
 }
 
-static MAKERWORLD_MODEL_PAGE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
-
 /// If either URL contains a `MakerWorld` model page path (`/{locale}/models/{slug}` or `/models/{slug}`),
 /// returns that page URL substring from the haystack. Otherwise returns `None` for caller fallback.
-///
-/// If the built-in pattern fails to compile, returns `None` on every call so the download path uses
-/// the generic `MakerWorld` site URL instead of panicking.
 fn makerworld_model_page_url(original_url: &str, response_url: &str) -> Option<String> {
-    let regex = MAKERWORLD_MODEL_PAGE
-        .get_or_init(|| {
-            Regex::new(concat!(
-                r"(?i)https://(?:www\.)?makerworld\.com(?:\.cn)?",
-                r"(?:/(?:[a-z]{2}(?:-[a-z]{2})?))?/models/[\w-]+",
-            ))
-        })
-        .as_ref()
-        .ok()?;
-
-    regex
+    MAKERWORLD_MODEL_PAGE
         .find(original_url)
-        .or_else(|| regex.find(response_url))
-        .map(|m| m.as_str().to_string())
+        .or_else(|| MAKERWORLD_MODEL_PAGE.find(response_url))
+        .map(|page| page.as_str().to_string())
 }
 
 /// Downloads the resource at `url` into `dir` (caller-provided; no temp dir created).
@@ -147,10 +137,6 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
 
 /// Simple download into a caller-provided directory. No site-specific `filename`/`source_uri` logic.
 /// Returns `DownloadResult` with `path` set and `source_uri: None`.
-///
-/// # Errors
-///
-/// Returns an error if the request fails, the response is not successful, or file I/O fails.
 pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, ServiceError> {
     let (path, _) = download_file_to_dir(url, dir).await?;
     let path = path
@@ -163,14 +149,6 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
 }
 
 /// Downloads to a temp dir and derives filename/source from URL; may rename file for site-specific logic.
-///
-/// # Errors
-///
-/// Returns an error if the request fails, the response is not successful, or file I/O fails.
-///
-/// # Panics
-///
-/// Panics if creating the temp dir fails (see [`get_temp_dir`]).
 pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     let temp_dir = get_temp_dir("download");
 

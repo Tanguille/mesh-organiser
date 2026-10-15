@@ -71,3 +71,29 @@ fn from_pathbuf_detects_plain_compound_and_missing_extensions() {
         );
     }
 }
+
+#[test]
+fn is_zipped_and_is_zippable_cover_every_variant() {
+    // (variant, is_zipped, is_zippable)
+    let cases = [
+        (FileType::Stl, false, true),
+        (FileType::ZippedStl, true, false),
+        (FileType::Obj, false, true),
+        (FileType::ZippedObj, true, false),
+        (FileType::Gcode, false, true),
+        (FileType::ZippedGcode, true, false),
+        (FileType::Step, false, true),
+        (FileType::ZippedStep, true, false),
+        (FileType::Threemf, false, false),
+        (FileType::Unknown, false, false),
+    ];
+
+    for (file_type, zipped, zippable) in cases {
+        assert_eq!(file_type.is_zipped(), zipped, "is_zipped for {file_type:?}");
+        assert_eq!(
+            file_type.is_zippable(),
+            zippable,
+            "is_zippable for {file_type:?}"
+        );
+    }
+}

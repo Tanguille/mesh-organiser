@@ -3,22 +3,30 @@ use serde::{Serialize, Serializer};
 use thiserror::Error;
 use tokio::task;
 
-use service::service_error;
+use service::{ServiceError, service_error};
 
+/// Sources that `ServiceError` also wraps convert through it (see the `From` impls
+/// below), so their serialised shape is defined once, in the service crate.
 #[derive(Error, Debug)]
 pub enum ApplicationError {
-    #[error("Failed to open or read file")]
-    FileSystemFault(#[from] std::io::Error),
-    #[error("Internal error")]
-    InternalError(String),
-    #[error("Database error")]
-    DatabaseError(#[from] db::DbError),
-    #[error("Service error")]
-    ServiceError(#[from] service::ServiceError),
+    #[error(transparent)]
+    Service(#[from] ServiceError),
     #[error(transparent)]
     TaskJoinError(#[from] task::JoinError),
     #[error("Upload error")]
     MultipartError(#[from] MultipartError),
+}
+
+impl From<std::io::Error> for ApplicationError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Service(e.into())
+    }
+}
+
+impl From<db::DbError> for ApplicationError {
+    fn from(e: db::DbError) -> Self {
+        Self::Service(e.into())
+    }
 }
 
 impl Serialize for ApplicationError {
@@ -27,10 +35,7 @@ impl Serialize for ApplicationError {
         S: Serializer,
     {
         let (error_type, error_inner_message) = match self {
-            Self::ServiceError(inner) => return inner.serialize(serializer),
-            Self::FileSystemFault(inner) => ("FileSystemFault", inner.to_string()),
-            Self::InternalError(s) => ("InternalError", s.clone()),
-            Self::DatabaseError(inner) => ("DatabaseError", inner.to_string()),
+            Self::Service(inner) => return inner.serialize(serializer),
             Self::TaskJoinError(inner) => ("TaskJoinError", inner.to_string()),
             Self::MultipartError(inner) => ("MultipartError", inner.to_string()),
         };
@@ -60,13 +65,16 @@ mod tests {
 
     #[test]
     fn internal_error_display() {
-        let err = ApplicationError::InternalError("something went wrong".to_string());
+        let err = ApplicationError::from(service::ServiceError::InternalError(
+            "something went wrong".to_string(),
+        ));
         assert_eq!(err.to_string(), "Internal error");
     }
 
     #[test]
     fn internal_error_serializes_three_field_shape() {
-        let err = ApplicationError::InternalError("detail".to_string());
+        let err =
+            ApplicationError::from(service::ServiceError::InternalError("detail".to_string()));
         let value = serde_json::to_value(&err).expect("serialization should succeed");
         let obj = value.as_object().expect("should be object");
         assert_eq!(
@@ -85,7 +93,7 @@ mod tests {
 
     #[test]
     fn into_response_returns_500() {
-        let err = ApplicationError::InternalError("test".to_string());
+        let err = ApplicationError::from(service::ServiceError::InternalError("test".to_string()));
         let response = err.into_response();
         assert_eq!(
             response.status(),
@@ -173,7 +181,7 @@ mod tests {
                 ),
             ),
             (
-                ApplicationError::InternalError("detail".to_string()),
+                ApplicationError::from(service::ServiceError::InternalError("detail".to_string())),
                 error_shape("InternalError", "Internal error", "detail"),
             ),
             (

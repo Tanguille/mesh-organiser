@@ -908,7 +908,7 @@ async fn edit_model_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
             &db,
             &user,
             model_id,
-            "own",
+            "partial",
             None,
             None,
             ModelFlags::empty(),
@@ -942,7 +942,10 @@ async fn edit_model_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(own.unique_global_id, NEW_GLOBAL_ID);
+    assert_eq!(
+        (own.name.as_str(), own.unique_global_id.as_str()),
+        ("own", NEW_GLOBAL_ID)
+    );
     let foreign = model_db::get_model_via_id(&db, &other_user, foreign_id)
         .await
         .unwrap()
@@ -971,7 +974,7 @@ async fn edit_label_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
         .unwrap();
     for invalid in INVALID_GLOBAL_IDS {
         let result =
-            label_db::edit_label(&db, &user, label_id, "own", 1, None, Some(invalid)).await;
+            label_db::edit_label(&db, &user, label_id, "partial", 1, None, Some(invalid)).await;
         assert!(
             matches!(result, Err(sqlx::Error::InvalidArgument(_))),
             "{invalid:?}"
@@ -992,11 +995,13 @@ async fn edit_label_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
         foreign_result,
         Ok(()) | Err(sqlx::Error::RowNotFound)
     ));
+    let own_labels = label_db::get_labels_min(&db, &user).await.unwrap();
     assert_eq!(
-        label_db::get_unique_id_from_label_id(&db, &user, label_id)
-            .await
-            .unwrap(),
-        NEW_GLOBAL_ID
+        (
+            own_labels[0].name.as_str(),
+            own_labels[0].unique_global_id.as_str()
+        ),
+        ("own", NEW_GLOBAL_ID)
     );
     let foreign_labels = label_db::get_labels_min(&db, &other_user).await.unwrap();
     assert_eq!(foreign_labels.len(), 1);
@@ -1039,7 +1044,7 @@ async fn edit_resource_global_id_persists_valid_rejects_invalid_and_skips_foreig
             &db,
             &user,
             resource_id,
-            "own",
+            "partial",
             ResourceFlags::empty(),
             None,
             Some(invalid),
@@ -1065,11 +1070,13 @@ async fn edit_resource_global_id_persists_valid_rejects_invalid_and_skips_foreig
         foreign_result,
         Ok(()) | Err(sqlx::Error::RowNotFound)
     ));
+    let own = resource_db::get_resource_meta_by_id(&db, &user, resource_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        resource_db::get_unique_id_from_resource_id(&db, &user, resource_id)
-            .await
-            .unwrap(),
-        NEW_GLOBAL_ID
+        (own.name.as_str(), own.unique_global_id.as_str()),
+        ("own", NEW_GLOBAL_ID)
     );
     let foreign_after = resource_db::get_resource_meta_by_id(&db, &other_user, foreign.id)
         .await
@@ -1104,7 +1111,8 @@ async fn edit_group_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
         .await
         .unwrap();
     for invalid in INVALID_GLOBAL_IDS {
-        let result = group_db::edit_group(&db, &user, group_id, "own", None, Some(invalid)).await;
+        let result =
+            group_db::edit_group(&db, &user, group_id, "partial", None, Some(invalid)).await;
         assert!(
             matches!(result, Err(sqlx::Error::InvalidArgument(_))),
             "{invalid:?}"
@@ -1124,7 +1132,10 @@ async fn edit_group_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
         foreign_result,
         Ok(()) | Err(sqlx::Error::RowNotFound)
     ));
-    assert_eq!(group_name_and_global_id(group_id).await.1, NEW_GLOBAL_ID);
+    assert_eq!(
+        group_name_and_global_id(group_id).await,
+        ("own".to_string(), NEW_GLOBAL_ID.to_string())
+    );
     assert_eq!(
         group_name_and_global_id(foreign.id).await,
         ("foreign".to_string(), foreign.unique_global_id.clone())
@@ -1188,26 +1199,11 @@ async fn label_ownership_checks_reject_missing_foreign_and_duplicate_label_ids()
             .await,
             &context,
         );
-        assert_row_not_found(
-            &label_db::get_unique_id_from_label_id(&db, &user, parent_id).await,
-            &context,
-        );
     }
     label_db::add_labels_on_models(&db, &user, &[], &[model_id], None)
         .await
         .unwrap();
-    let unique_ids = label_db::get_unique_ids_from_label_ids(
-        &db,
-        &user,
-        &[own.id, foreign_id, MISSING_ID, own.id],
-    )
-    .await
-    .unwrap();
 
-    assert_eq!(
-        unique_ids.into_iter().collect::<Vec<_>>(),
-        vec![(own.id, own.unique_global_id)]
-    );
     let model = model_db::get_model_via_id(&db, &user, model_id)
         .await
         .unwrap()
@@ -1257,22 +1253,11 @@ async fn model_ownership_checks_reject_missing_foreign_and_duplicate_model_ids()
             &context,
         );
     }
-    let unique_ids = model_db::get_unique_ids_from_model_ids(
-        &db,
-        &user,
-        vec![model_id, foreign_id, MISSING_ID, model_id],
-    )
-    .await
-    .unwrap();
 
     let model = model_db::get_model_via_id(&db, &user, model_id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(
-        unique_ids.into_iter().collect::<Vec<_>>(),
-        vec![(model_id, model.unique_global_id)]
-    );
     assert_eq!(
         model
             .labels
@@ -1329,23 +1314,11 @@ async fn resource_and_group_ownership_checks_reject_missing_foreign_and_empty_ta
             &format!("resource {resource_id} on group {target_group_id}"),
         );
     }
-    for resource_id in [foreign_resource_id, MISSING_ID] {
-        assert_row_not_found(
-            &resource_db::get_unique_id_from_resource_id(&db, &user, resource_id).await,
-            &format!("resource id {resource_id}"),
-        );
-    }
     assert_row_not_found(
         &group_db::set_group_id_on_models(&db, &user, Some(MISSING_ID), vec![model_id], None).await,
         "missing group id",
     );
 
-    assert_eq!(
-        resource_db::get_unique_id_from_resource_id(&db, &user, resource.id)
-            .await
-            .unwrap(),
-        resource.unique_global_id
-    );
     assert!(
         resource_db::get_group_id_to_resource_map(&db, &user)
             .await

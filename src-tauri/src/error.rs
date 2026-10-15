@@ -1,26 +1,38 @@
 use async_zip::error::ZipError;
 use serde::{Serialize, Serializer};
-use service::service_error;
+use service::{ServiceError, service_error};
 use thiserror::Error;
 
+/// Sources that `ServiceError` also wraps convert through it (see the `From` impls
+/// below), so their serialised shape is defined once, in the service crate.
 #[derive(Error, Debug)]
 pub enum ApplicationError {
-    #[error("Failed to open or read file")]
-    FileSystemFault(#[from] std::io::Error),
-    #[error("Internal error")]
-    InternalError(String),
-    #[error("Failed to process JSON")]
-    JsonError(#[from] serde_json::Error),
+    #[error(transparent)]
+    Service(#[from] ServiceError),
     #[error("Framework error")]
     FrameworkError(#[from] tauri::Error),
-    #[error("Database error")]
-    DatabaseError(#[from] db::DbError),
-    #[error("Service error")]
-    ServiceError(#[from] service::ServiceError),
     #[error("Web request error")]
     WebRequestError(#[from] tauri_plugin_http::reqwest::Error),
     #[error("Zip operation error")]
     AsyncZipOperationError(#[from] ZipError),
+}
+
+impl From<std::io::Error> for ApplicationError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Service(e.into())
+    }
+}
+
+impl From<db::DbError> for ApplicationError {
+    fn from(e: db::DbError) -> Self {
+        Self::Service(e.into())
+    }
+}
+
+impl From<serde_json::Error> for ApplicationError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Service(e.into())
+    }
 }
 
 impl Serialize for ApplicationError {
@@ -29,12 +41,8 @@ impl Serialize for ApplicationError {
         S: Serializer,
     {
         let (error_type, error_inner_message) = match self {
-            Self::ServiceError(inner) => return inner.serialize(serializer),
-            Self::FileSystemFault(inner) => ("FileSystemFault", inner.to_string()),
-            Self::InternalError(s) => ("InternalError", s.clone()),
-            Self::JsonError(inner) => ("JsonError", inner.to_string()),
+            Self::Service(inner) => return inner.serialize(serializer),
             Self::FrameworkError(inner) => ("FrameworkError", inner.to_string()),
-            Self::DatabaseError(inner) => ("DatabaseError", inner.to_string()),
             Self::WebRequestError(inner) => ("WebRequestError", inner.to_string()),
             Self::AsyncZipOperationError(inner) => ("AsyncZipOperationError", inner.to_string()),
         };
@@ -90,7 +98,9 @@ mod tests {
                 ),
             ),
             (
-                super::ApplicationError::InternalError("detail".to_string()),
+                super::ApplicationError::from(service::ServiceError::InternalError(
+                    "detail".to_string(),
+                )),
                 error_shape("InternalError", "Internal error", "detail"),
             ),
             (

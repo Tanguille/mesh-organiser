@@ -9,6 +9,7 @@ use async_zip::{
     Compression, ZipEntryBuilder, tokio::read::seek::ZipFileReader, tokio::write::ZipFileWriter,
 };
 use itertools::Itertools;
+use serde::Serialize;
 use tokio::{
     fs::File,
     io::{AsyncRead, BufReader},
@@ -18,13 +19,13 @@ use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use db::{
     blob_db,
     model::{Model, blob::Blob, user::User},
-    model_db,
+    model_db, user_db,
 };
 
 use crate::{
     ASYNC_MULT,
     service_error::ServiceError,
-    util::{self, cleanse_evil_from_name, convert_zip_to_extension, is_zipped_file_extension},
+    util::{self, cleanse_evil_from_name, convert_zip_to_extension},
 };
 
 use super::app_state::AppState;
@@ -43,10 +44,6 @@ const STALE_TEMP_DIR_AGE: Duration = Duration::from_mins(5);
 /// The directory is created atomically with a random suffix, so concurrent
 /// callers never share a workspace. The caller owns cleanup;
 /// [`remove_stale_temp_dirs`] reaps whatever is left behind.
-///
-/// # Panics
-///
-/// Panics if the directory cannot be created under the system temp dir.
 #[must_use]
 pub fn get_temp_dir(action: &str) -> PathBuf {
     tempfile::Builder::new()
@@ -60,10 +57,6 @@ pub fn get_temp_dir(action: &str) -> PathBuf {
 ///
 /// Both the desktop app and the web server reap on their own schedule, so the
 /// rule for what counts as ours and what counts as stale lives here once.
-///
-/// # Errors
-///
-/// Returns an error if the system temp dir cannot be read or a stale directory cannot be removed.
 pub fn remove_stale_temp_dirs() -> Result<(), ServiceError> {
     let now = std::time::SystemTime::now();
     for entry in fs::read_dir(env::temp_dir())? {
@@ -100,17 +93,13 @@ pub fn get_image_path_for_blob(blob: &Blob, app_state: &AppState) -> PathBuf {
 }
 
 /// Opens a blob's content as an async reader (plain file or first entry of a zip).
-///
-/// # Errors
-///
-/// Returns an error if the blob file cannot be opened or (for zips) the zip cannot be read.
 pub async fn open_blob_content_reader(
     blob: &Blob,
     app_state: &AppState,
 ) -> Result<Box<dyn AsyncRead + Unpin + Send>, ServiceError> {
     let path = get_model_path_for_blob(blob, app_state);
     let file = File::open(path).await?;
-    if is_zipped_file_extension(&blob.filetype) {
+    if blob.to_file_type().is_zipped() {
         // Owning the reader lets into_entry return a streaming entry reader,
         // so callers never buffer the whole decompressed file in memory.
         let zip = ZipFileReader::with_tokio(BufReader::new(file)).await?;
@@ -122,14 +111,7 @@ pub async fn open_blob_content_reader(
 }
 
 /// Exports models to a temp folder; returns the folder path and list of exported file paths.
-///
-/// # Errors
-///
-/// Returns an error if file I/O or zip/JSON serialisation fails.
-///
-/// # Panics
-///
-/// Panics if a spawned export task panics (e.g. during `get_path_from_model`).
+/// Models whose export fails are left out of the list.
 pub async fn export_to_temp_folder(
     models: Vec<Model>,
     app_state: &AppState,
@@ -140,9 +122,10 @@ pub async fn export_to_temp_folder(
     let temp_dir = get_temp_dir(action);
 
     if configuration.export_metadata {
-        let metadata_path = temp_dir.join("metadata.json");
-        let metadata_file = fs::File::create(&metadata_path)?;
-        serde_json::to_writer_pretty(metadata_file, &models)?;
+        fs::write(
+            temp_dir.join(METADATA_FILE_NAME),
+            serde_json::to_vec_pretty(&models)?,
+        )?;
     }
 
     let max = configuration.core_parallelism * ASYNC_MULT;
@@ -155,11 +138,13 @@ pub async fn export_to_temp_folder(
     })
     .await;
 
-    // Keep only the Ok(PathBuf) outputs; models whose export failed are skipped.
     let paths = results.into_iter().flatten().collect();
 
     Ok((temp_dir, paths))
 }
+
+/// Written by both export flavours when `export_metadata` is on.
+const METADATA_FILE_NAME: &str = "metadata.json";
 
 fn name_collection_of_models(models: &[Model]) -> String {
     let set: Vec<i64> = models
@@ -189,10 +174,6 @@ pub struct ExportZipResult {
 }
 
 /// Exports models to a zip in a temp folder.
-///
-/// # Errors
-///
-/// Returns an error if file I/O or zip/JSON serialisation fails.
 pub async fn export_zip_to_temp_folder(
     models: Vec<Model>,
     app_state: &AppState,
@@ -206,12 +187,11 @@ pub async fn export_zip_to_temp_folder(
     let mut file = File::create(&filepath).await?;
     let mut writer = ZipFileWriter::with_tokio(&mut file);
 
-    // TODO: Better way to handle metadata
     if configuration.export_metadata {
-        let mut buffer: Vec<u8> = Vec::new();
-        serde_json::to_writer_pretty(&mut buffer, &models)?;
-        let builder = ZipEntryBuilder::new("metadata.json".into(), Compression::Deflate);
-        writer.write_entry_whole(builder, &buffer).await?;
+        let builder = ZipEntryBuilder::new(METADATA_FILE_NAME.into(), Compression::Deflate);
+        writer
+            .write_entry_whole(builder, &serde_json::to_vec_pretty(&models)?)
+            .await?;
     }
 
     for model in models {
@@ -238,10 +218,6 @@ pub async fn export_zip_to_temp_folder(
 }
 
 /// Reads the full blob bytes.
-///
-/// # Errors
-///
-/// Returns an error if the blob file cannot be read.
 pub async fn get_bytes_from_blob(
     blob: &Blob,
     app_state: &AppState,
@@ -269,10 +245,6 @@ pub fn ensure_unique_file(base_path: &Path, file_name: &str) -> PathBuf {
 }
 
 /// Resolves the path for a model in the temp dir (copy or reference depending on `lazy`).
-///
-/// # Errors
-///
-/// Returns an error if the source file cannot be read or copied.
 pub async fn get_path_from_model(
     temp_dir: &Path,
     model: &Model,
@@ -284,7 +256,7 @@ pub async fn get_path_from_model(
     let extension = convert_zip_to_extension(&model.blob.filetype);
     let dst_file_path = ensure_unique_file(temp_dir, &format!("{cleansed_name}.{extension}"));
 
-    if is_zipped_file_extension(&model.blob.filetype) {
+    if model.blob.to_file_type().is_zipped() {
         let mut reader = open_blob_content_reader(&model.blob, app_state).await?;
         let mut dst_file = File::create(&dst_file_path).await?;
         tokio::io::copy(&mut reader, &mut dst_file).await?;
@@ -297,18 +269,30 @@ pub async fn get_path_from_model(
     }
 }
 
-/// Sums on-disk size of blobs by hash in the model dir.
-///
-/// # Errors
-///
-/// Returns an error if the model directory cannot be read.
-pub fn get_size_of_blobs(
-    blobs: &[String], // Sha256's
+#[derive(Debug, Serialize)]
+pub struct ModelDiskSpaceUsage {
+    pub size_uncompressed: u64,
+    pub size_compressed: u64,
+}
+
+/// Returns the user's model sizes as recorded at import (uncompressed) and as stored on disk (compressed).
+pub async fn get_model_disk_space_usage(
     app_state: &AppState,
-) -> Result<u64, ServiceError> {
+    user: &User,
+) -> Result<ModelDiskSpaceUsage, ServiceError> {
+    let data = model_db::get_size_of_models(&app_state.db, user).await?;
+
+    Ok(ModelDiskSpaceUsage {
+        size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
+        size_compressed: get_size_of_blobs(&data.blob_sha256, app_state)?,
+    })
+}
+
+/// Sums the on-disk size of the files in the model dir whose name stem is one of `blob_sha256s`.
+fn get_size_of_blobs(blob_sha256s: &[String], app_state: &AppState) -> Result<u64, ServiceError> {
     let base_dir = app_state.get_model_dir();
     let mut total_size: u64 = 0;
-    let hashset = blobs.iter().cloned().collect::<HashSet<String>>();
+    let hashset = blob_sha256s.iter().cloned().collect::<HashSet<String>>();
 
     for path in base_dir.read_dir()? {
         let Ok(path) = path else { continue };
@@ -341,10 +325,6 @@ pub fn get_size_of_blobs(
 ///
 /// Duplicate ids are deduped rather than rejected. Shared by the Tauri commands and
 /// the web handlers so the verify-delete-GC policy lives in one place.
-///
-/// # Errors
-///
-/// Returns an error if any model id cannot be found for the user or a database call fails.
 pub async fn delete_models(
     app_state: &AppState,
     user: &User,
@@ -368,11 +348,14 @@ pub async fn delete_models(
     Ok(())
 }
 
+/// Deletes the user, then the files of blobs nothing references any more.
+pub async fn delete_user(app_state: &AppState, user_id: i64) -> Result<(), ServiceError> {
+    user_db::delete_user(&app_state.db, user_id).await?;
+
+    delete_dead_blobs(app_state).await
+}
+
 /// Removes on-disk files for blobs that are no longer referenced.
-///
-/// # Errors
-///
-/// Returns an error if the database call to fetch dead blobs fails.
 pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError> {
     let blobs = blob_db::get_and_delete_dead_blobs(&app_state.db).await?;
 
@@ -395,14 +378,6 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
     }
     Ok(())
 }
-
-// -----------------------------------------------------------------------------
-// Tests for ensure_unique_file.
-// -----------------------------------------------------------------------------
-//
-// Blob content reading tests for get_bytes_from_blob (and get_path_from_model
-// for non-zip, lazy=false).
-// -----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -432,6 +407,19 @@ mod tests {
             let _ = write!(s, "{:02x}", Faker.fake_with_rng::<u8, _>(&mut rng));
             s
         })
+    }
+
+    #[test]
+    fn model_disk_space_usage_serializes_both_sizes_by_name() {
+        let usage = super::ModelDiskSpaceUsage {
+            size_uncompressed: 2048,
+            size_compressed: 512,
+        };
+
+        assert_eq!(
+            serde_json::to_value(usage).expect("disk usage should serialize"),
+            serde_json::json!({ "size_uncompressed": 2048, "size_compressed": 512 })
+        );
     }
 
     #[test]

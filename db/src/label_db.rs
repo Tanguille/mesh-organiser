@@ -3,13 +3,14 @@ use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError, TimestampSchema,
+    DbError,
     db_context::DbContext,
+    ensure_labels_owned, ensure_models_owned,
     model::{
         label::{Label, LabelMeta},
         user::User,
     },
-    model_db, push_in_i64, random_hex_32, set_timestamp_column,
+    model_db, push_in, random_hex_32, set_timestamp_column, timestamp_or_now,
     util::{time_now, validate_global_id},
 };
 
@@ -80,8 +81,6 @@ pub async fn get_labels(
     user: &User,
     include_ungrouped_models: bool,
 ) -> Result<Vec<Label>, DbError> {
-    // Use a CTE with JOIN-based aggregations instead of correlated subqueries
-    // This eliminates N+1 query patterns and improves performance
     let rows = sqlx::query(
     "WITH label_stats AS (
         SELECT 
@@ -186,48 +185,6 @@ pub async fn get_labels(
     Ok(label_map.into_values().collect())
 }
 
-pub async fn get_unique_id_from_label_id(
-    db: &DbContext,
-    user: &User,
-    label_id: i64,
-) -> Result<String, DbError> {
-    let row = sqlx::query!(
-        "SELECT label_unique_global_id FROM labels WHERE label_id = ? AND label_user_id = ?",
-        label_id,
-        user.id
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.label_unique_global_id)
-}
-
-pub async fn get_unique_ids_from_label_ids(
-    db: &DbContext,
-    user: &User,
-    label_ids: &[i64],
-) -> Result<IndexMap<i64, String>, DbError> {
-    if label_ids.is_empty() {
-        return Ok(IndexMap::new());
-    }
-
-    let mut query_builder =
-        QueryBuilder::new("SELECT label_id, label_unique_global_id FROM labels WHERE label_id IN ");
-    push_in_i64(&mut query_builder, label_ids);
-    query_builder.push(" AND label_user_id = ");
-    query_builder.push_bind(user.id);
-    let rows = query_builder.build().fetch_all(db).await?;
-
-    let mut id_map = IndexMap::new();
-    for row in rows {
-        let label_id: i64 = row.get("label_id");
-        let label_unique_global_id: String = row.get("label_unique_global_id");
-        id_map.insert(label_id, label_unique_global_id);
-    }
-
-    Ok(id_map)
-}
-
 pub async fn add_labels_on_models(
     db: &DbContext,
     user: &User,
@@ -235,16 +192,8 @@ pub async fn add_labels_on_models(
     model_ids: &[i64],
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let label_global_ids = get_unique_ids_from_label_ids(db, user, label_ids).await?;
-    if label_global_ids.values().len() != label_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
-
-    let model_global_ids =
-        model_db::get_unique_ids_from_model_ids(db, user, model_ids.to_vec()).await?;
-    if model_global_ids.len() != model_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
+    ensure_labels_owned(db, user, label_ids).await?;
+    ensure_models_owned(db, user, model_ids).await?;
 
     if !label_ids.is_empty() && !model_ids.is_empty() {
         let mut query_builder =
@@ -261,10 +210,7 @@ pub async fn add_labels_on_models(
         query_builder.build().execute(db).await?;
     }
 
-    let now = time_now();
-    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&now)).await?;
-
-    Ok(())
+    set_last_updated_on_labels(db, user, label_ids, &timestamp_or_now(update_timestamp)).await
 }
 
 pub async fn remove_labels_from_models(
@@ -274,29 +220,41 @@ pub async fn remove_labels_from_models(
     model_ids: &[i64],
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let label_global_ids = get_unique_ids_from_label_ids(db, user, label_ids).await?;
-
-    if label_global_ids.len() != label_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
-
-    let model_global_ids =
-        model_db::get_unique_ids_from_model_ids(db, user, model_ids.to_vec()).await?;
-
-    if model_global_ids.len() != model_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
+    ensure_labels_owned(db, user, label_ids).await?;
+    ensure_models_owned(db, user, model_ids).await?;
 
     let mut query_builder = QueryBuilder::new("DELETE FROM models_labels WHERE label_id IN ");
-    push_in_i64(&mut query_builder, label_ids);
+    push_in(&mut query_builder, label_ids);
     query_builder.push(" AND model_id IN ");
-    push_in_i64(&mut query_builder, model_ids);
+    push_in(&mut query_builder, model_ids);
     query_builder.build().execute(db).await?;
 
-    let now = time_now();
-    set_last_updated_on_labels(db, user, label_ids, update_timestamp.unwrap_or(&now)).await?;
+    set_last_updated_on_labels(db, user, label_ids, &timestamp_or_now(update_timestamp)).await
+}
 
-    Ok(())
+/// Makes `label_ids` the complete label set of `model_id`.
+pub async fn set_labels_on_model(
+    db: &DbContext,
+    user: &User,
+    label_ids: &[i64],
+    model_id: i64,
+) -> Result<(), DbError> {
+    remove_all_labels_from_models(db, user, &[model_id], None).await?;
+
+    add_labels_on_models(db, user, label_ids, &[model_id], None).await
+}
+
+/// Puts `label_id` on every model in `model_ids`. Existing links are dropped first:
+/// `models_labels` has no unique constraint, so re-adding would duplicate the row.
+pub async fn set_label_on_models(
+    db: &DbContext,
+    user: &User,
+    label_id: i64,
+    model_ids: &[i64],
+) -> Result<(), DbError> {
+    remove_labels_from_models(db, user, &[label_id], model_ids, None).await?;
+
+    add_labels_on_models(db, user, &[label_id], model_ids, None).await
 }
 
 pub async fn remove_all_labels_from_models(
@@ -313,18 +271,16 @@ pub async fn remove_all_labels_from_models(
 
     let model_ids: Vec<i64> = models.iter().map(|model| model.id).collect();
     let mut query_builder = QueryBuilder::new("DELETE FROM models_labels WHERE model_id IN ");
-    push_in_i64(&mut query_builder, &model_ids);
+    push_in(&mut query_builder, &model_ids);
     query_builder.build().execute(db).await?;
 
     let label_ids: Vec<i64> = models
         .iter()
-        .flat_map(|m| m.labels.iter().map(|l| l.id))
+        .flat_map(|model| model.labels.iter().map(|label| label.id))
         .unique()
         .collect();
-    let now = time_now();
-    set_last_updated_on_labels(db, user, &label_ids, update_timestamp.unwrap_or(&now)).await?;
 
-    Ok(())
+    set_last_updated_on_labels(db, user, &label_ids, &timestamp_or_now(update_timestamp)).await
 }
 
 pub async fn add_label(
@@ -335,8 +291,7 @@ pub async fn add_label(
     update_timestamp: Option<&str>,
 ) -> Result<LabelMeta, DbError> {
     let unique_global_id = random_hex_32();
-    let now = time_now();
-    let last_modified = update_timestamp.unwrap_or(&now).to_string();
+    let last_modified = timestamp_or_now(update_timestamp);
 
     let result = sqlx::query!(
         "INSERT INTO labels (label_name, label_color, label_user_id, label_unique_global_id, label_last_modified) VALUES (?, ?, ?, ?, ?)",
@@ -367,38 +322,15 @@ pub async fn edit_label(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    validate_global_id(global_id)?;
+    let timestamp = timestamp_or_now(update_timestamp);
 
     sqlx::query!(
-        "UPDATE labels SET label_name = ?, label_color = ?, label_last_modified = ? WHERE label_id = ? AND label_user_id = ?",
+        "UPDATE labels SET label_name = ?, label_color = ?, label_last_modified = ?, label_unique_global_id = COALESCE(?, label_unique_global_id) WHERE label_id = ? AND label_user_id = ?",
         name,
         color,
         timestamp,
-        label_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    if let Some(global_id) = global_id {
-        edit_label_global_id(db, user, label_id, global_id).await?;
-    }
-
-    Ok(())
-}
-
-async fn edit_label_global_id(
-    db: &DbContext,
-    user: &User,
-    label_id: i64,
-    unique_global_id: &str,
-) -> Result<(), DbError> {
-    validate_global_id(unique_global_id)?;
-
-    sqlx::query!(
-        "UPDATE labels SET label_unique_global_id = ? WHERE label_id = ? AND label_user_id = ?",
-        unique_global_id,
+        global_id,
         label_id,
         user.id
     )
@@ -420,9 +352,11 @@ pub async fn delete_label(db: &DbContext, user: &User, label_id: i64) -> Result<
     Ok(())
 }
 
-/// Verifies the caller owns the parent label and every child label before mutating the
-/// parent/child relationship.
-async fn check_parent_and_children_access(
+/// Replaces the children of `parent_label_id` with `child_label_ids`.
+///
+/// The user must own the parent and every child. The delete and insert share one transaction,
+/// so a failed insert keeps the previous children instead of leaving the label with none.
+pub async fn set_childs_on_label(
     db: &DbContext,
     user: &User,
     parent_label_id: i64,
@@ -430,26 +364,8 @@ async fn check_parent_and_children_access(
 ) -> Result<(), DbError> {
     // Sequential on purpose: SQLite serializes on the connection anyway, and this
     // keeps the db crate free of a direct tokio dependency.
-    get_unique_id_from_label_id(db, user, parent_label_id).await?;
-    let access_check = get_unique_ids_from_label_ids(db, user, child_label_ids).await?;
-
-    if access_check.len() != child_label_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
-
-    Ok(())
-}
-
-/// Replaces the children of `parent_label_id` with `child_label_ids`. The delete and insert
-/// share one transaction, so a failed insert keeps the previous children instead of leaving
-/// the label with none.
-pub async fn set_childs_on_label(
-    db: &DbContext,
-    user: &User,
-    parent_label_id: i64,
-    child_label_ids: &[i64],
-) -> Result<(), DbError> {
-    check_parent_and_children_access(db, user, parent_label_id, child_label_ids).await?;
+    ensure_labels_owned(db, user, &[parent_label_id]).await?;
+    ensure_labels_owned(db, user, child_label_ids).await?;
 
     let mut transaction = db.begin().await?;
     sqlx::query!(
@@ -471,16 +387,7 @@ pub async fn set_childs_on_label(
 
     transaction.commit().await?;
 
-    set_last_updated_on_label(db, user, parent_label_id, &time_now()).await
-}
-
-pub async fn set_last_updated_on_label(
-    db: &DbContext,
-    user: &User,
-    label_id: i64,
-    timestamp: &str,
-) -> Result<(), DbError> {
-    set_last_updated_on_labels(db, user, &[label_id], timestamp).await
+    set_last_updated_on_labels(db, user, &[parent_label_id], &time_now()).await
 }
 
 pub async fn set_last_updated_on_labels(
@@ -491,12 +398,10 @@ pub async fn set_last_updated_on_labels(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        TimestampSchema {
-            table: "labels",
-            ts_col: "label_last_modified",
-            id_col: "label_id",
-            user_col: "label_user_id",
-        },
+        "labels",
+        "label_last_modified",
+        "label_id",
+        "label_user_id",
         label_ids,
         user.id,
         timestamp,
@@ -506,19 +411,8 @@ pub async fn set_last_updated_on_labels(
 
 #[cfg(test)]
 mod tests {
-    //! Tests for `get_labels` / effective-labels logic: key-snapshot loop and `fill_effective_labels_and_counts`.
-    //! Verifies (a) label with no children has `effective_labels` = [self] and counts = self_*,
-    //! (b) label with children has `effective_labels` = self + descendants, (c) `group_count`/`model_count`
-    //! are sums of self_* over effective labels.
-
-    use indexmap::IndexMap;
-
-    use crate::model::label::{Label, LabelMeta};
-
-    use super::fill_effective_labels_and_counts;
-
-    fn meta(id: i64, name: &str) -> LabelMeta {
-        LabelMeta {
+    fn meta(id: i64, name: &str) -> super::LabelMeta {
+        super::LabelMeta {
             id,
             name: name.to_string(),
             color: 0,
@@ -528,12 +422,12 @@ mod tests {
     }
 
     fn label_with_children(
-        meta: LabelMeta,
-        children: Vec<LabelMeta>,
+        meta: super::LabelMeta,
+        children: Vec<super::LabelMeta>,
         self_group_count: i64,
         self_model_count: i64,
-    ) -> Label {
-        Label {
+    ) -> super::Label {
+        super::Label {
             meta,
             children,
             effective_labels: Vec::new(),
@@ -547,11 +441,11 @@ mod tests {
 
     #[test]
     fn effective_labels_leaf_label_contains_only_self_and_counts_equal_self() {
-        let mut label_map: IndexMap<i64, Label> = IndexMap::new();
+        let mut label_map: super::IndexMap<i64, super::Label> = super::IndexMap::new();
         let leaf_meta = meta(1, "Leaf");
         label_map.insert(1, label_with_children(leaf_meta, vec![], 10, 20));
 
-        fill_effective_labels_and_counts(&mut label_map);
+        super::fill_effective_labels_and_counts(&mut label_map);
 
         let label = label_map.get(&1).unwrap();
         assert_eq!(label.effective_labels.len(), 1);
@@ -562,7 +456,7 @@ mod tests {
 
     #[test]
     fn effective_labels_parent_includes_self_and_descendants() {
-        let mut label_map: IndexMap<i64, Label> = IndexMap::new();
+        let mut label_map: super::IndexMap<i64, super::Label> = super::IndexMap::new();
         let parent_meta = meta(1, "Parent");
         let child_meta = meta(2, "Child");
         label_map.insert(
@@ -571,7 +465,7 @@ mod tests {
         );
         label_map.insert(2, label_with_children(child_meta, vec![], 3, 5));
 
-        fill_effective_labels_and_counts(&mut label_map);
+        super::fill_effective_labels_and_counts(&mut label_map);
 
         let parent = label_map.get(&1).unwrap();
         assert_eq!(parent.effective_labels.len(), 2);
@@ -589,7 +483,7 @@ mod tests {
 
     #[test]
     fn effective_labels_three_level_hierarchy_counts_sum_over_effective() {
-        let mut label_map: IndexMap<i64, Label> = IndexMap::new();
+        let mut label_map: super::IndexMap<i64, super::Label> = super::IndexMap::new();
         let root_meta = meta(1, "Root");
         let mid_meta = meta(2, "Mid");
         let leaf_meta = meta(3, "Leaf");
@@ -603,7 +497,7 @@ mod tests {
         );
         label_map.insert(3, label_with_children(leaf_meta, vec![], 4, 40));
 
-        fill_effective_labels_and_counts(&mut label_map);
+        super::fill_effective_labels_and_counts(&mut label_map);
 
         let root = label_map.get(&1).unwrap();
         assert_eq!(root.effective_labels.len(), 3);

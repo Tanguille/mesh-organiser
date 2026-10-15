@@ -29,16 +29,12 @@ use crate::{
     ASYNC_MULT,
     import_state::{ImportState, ImportStatus, ImportedModelsSet},
     service_error::ServiceError,
-    util::{self, convert_extension_to_zip, is_zippable_file_extension},
+    util::{self, convert_extension_to_zip},
 };
 
 use super::app_state::AppState;
 
 /// Imports models from a path (file, directory, or zip).
-///
-/// # Errors
-///
-/// Returns an error if the path is invalid, I/O fails, or import rules are violated (e.g. zip as path).
 pub async fn import_path(
     path: &str,
     app_state: &AppState,
@@ -85,14 +81,6 @@ pub async fn import_path(
 }
 
 /// Returns the number of models at the path (file, directory, or zip).
-///
-/// # Errors
-///
-/// Returns an error if the path is invalid or I/O fails.
-///
-/// # Panics
-///
-/// Panics if the path has no extension when checked (internal logic bug).
 pub async fn get_model_count(
     path: &str,
     recursive: bool,
@@ -123,14 +111,6 @@ pub async fn get_model_count(
 }
 
 /// Inner import implementation; updates `import_state` in place.
-///
-/// # Errors
-///
-/// Returns an error if I/O or DB operations fail.
-///
-/// # Panics
-///
-/// Panics if the path has no extension when checked (internal logic bug).
 async fn import_path_inner(
     path: &str,
     app_state: &AppState,
@@ -154,15 +134,8 @@ async fn import_path_inner(
     } else if is_zip_path(&path_buff) {
         import_models_from_zip(path, app_state, import_state, name).await?;
     } else if is_supported_extension(&path_buff) {
-        let (user, origin_url, delete_after_import, import_as_path) = {
-            let import_state = import_state.lock().await;
-            (
-                import_state.user.clone(),
-                import_state.origin_url.clone(),
-                import_state.delete_after_import,
-                import_state.import_as_path,
-            )
-        };
+        let (user, origin_url, delete_after_import, import_as_path) =
+            import_options(&*import_state.lock().await);
 
         import_models_from_dir_inner(
             app_state,
@@ -265,6 +238,17 @@ pub async fn add_labels_by_keywords(
     }
 }
 
+/// Snapshots the per-file import settings so the import tasks need not hold the lock:
+/// `(user, origin_url, delete_after_import, import_as_path)`.
+fn import_options(import_state: &ImportState) -> (User, Option<String>, bool, bool) {
+    (
+        import_state.user.clone(),
+        import_state.origin_url.clone(),
+        import_state.delete_after_import,
+        import_state.import_as_path,
+    )
+}
+
 async fn import_models_from_dir_recursive(
     path: &Path,
     app_state: &AppState,
@@ -321,11 +305,7 @@ async fn import_models_from_dir_inner(
     let file_size = usize::try_from(path.metadata()?.len()).unwrap_or(0);
 
     let mut file = File::open(&path).await?;
-    let permanent_disk_path = if import_as_path {
-        Some(path.clone())
-    } else {
-        None
-    };
+    let permanent_disk_path = import_as_path.then(|| path.clone());
 
     let id = import_single_model(
         &mut file,
@@ -358,18 +338,12 @@ async fn import_models_from_dir(
     group_name: String,
 ) -> Result<(), ServiceError> {
     let configuration = app_state.get_configuration();
-    let (user, origin_url, delete_after_import, import_as_path) = {
-        let mut import_state = import_state.lock().await;
-
-        import_state.add_new_import_set(Some(group_name));
-
-        (
-            import_state.user.clone(),
-            import_state.origin_url.clone(),
-            import_state.delete_after_import,
-            import_state.import_as_path,
-        )
-    };
+    import_state
+        .lock()
+        .await
+        .add_new_import_set(Some(group_name));
+    let (user, origin_url, delete_after_import, import_as_path) =
+        import_options(&*import_state.lock().await);
 
     let entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())
@@ -428,13 +402,6 @@ async fn import_models_from_zip(
             }
 
             let path = PathBuf::from(file.entry().filename().as_str()?);
-            /* -- TODO: Revist this at some point
-            if path.file_name().take().unwrap() == ".link" {
-                let mut file_contents: Vec<u8> = Vec::new();
-                file_compat.read_to_end(&mut file_contents).await?;
-                let temp = String::from_utf8(file_contents).unwrap();
-                link.replace(temp);
-            }*/
 
             if !is_supported_extension(&path) {
                 continue;
@@ -495,27 +462,21 @@ where
         bytes[..16].try_into().expect("slice is 16 bytes"),
     ));
 
-    let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
-
-    if let Some(id) = existing_id {
+    if let Some(id) = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await? {
         return Ok(id);
     }
 
-    let blob_id_optional = blob_db::get_blob_via_sha256(&app_state.db, &hash).await?;
-
-    let blob_id;
-
-    if let Some(blob) = blob_id_optional {
-        blob_id = blob.id;
+    let blob_id = if let Some(blob) = blob_db::get_blob_via_sha256(&app_state.db, &hash).await? {
+        blob.id
     } else if let Some(permanent_disk_path) = permanent_disk_path {
-        blob_id = blob_db::add_blob(
+        blob_db::add_blob(
             &app_state.db,
             &hash,
             file_type,
             i64::try_from(file_size).unwrap_or(i64::MAX),
             Some(permanent_disk_path.to_str().unwrap().to_string()),
         )
-        .await?;
+        .await?
     } else {
         let new_extension = convert_extension_to_zip(file_type);
 
@@ -525,7 +486,7 @@ where
 
         let mut file_handle = File::create(&final_file_name).await?;
 
-        if is_zippable_file_extension(file_type) {
+        if FileType::from_extension(file_type).is_zippable() {
             let mut writer = ZipFileWriter::with_tokio(&mut file_handle);
             let builder = ZipEntryBuilder::new(
                 format!("{name}.{}", file_type.to_lowercase()).into(),
@@ -538,19 +499,17 @@ where
             file_handle.write_all(&file_contents).await?;
         }
 
-        blob_id = blob_db::add_blob(
+        blob_db::add_blob(
             &app_state.db,
             &hash,
             &new_extension,
             i64::try_from(file_size).unwrap_or(i64::MAX),
             None,
         )
-        .await?;
-    }
+        .await?
+    };
 
-    let id = model_db::add_model(&app_state.db, user, name, blob_id, link, None).await?;
-
-    Ok(id)
+    Ok(model_db::add_model(&app_state.db, user, name, blob_id, link, None).await?)
 }
 
 #[must_use]
@@ -656,10 +615,6 @@ async fn traverse_directory(
 }
 
 /// Expands paths (files/dirs) into a list of directory scan models.
-///
-/// # Errors
-///
-/// Returns an error if directory traversal or I/O fails.
 pub async fn expand_paths(
     paths: &[PathBuf],
     recursive: bool,
@@ -684,10 +639,6 @@ pub async fn expand_paths(
 
     Ok(models)
 }
-
-// -----------------------------------------------------------------------------
-// Tests for get_model_count error paths (zip as path, unsupported file type).
-// -----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

@@ -1,4 +1,3 @@
-use indexmap::IndexMap;
 use sqlx::{QueryBuilder, Row};
 use strum::EnumString;
 
@@ -6,14 +5,9 @@ use crate::{
     DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     label_db,
-    model::{
-        Model, ModelFlags,
-        blob::{Blob, FileType},
-        model_group::ModelGroupMeta,
-        user::User,
-    },
-    push_in_i64,
-    util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
+    model::{Model, ModelFlags, blob::FileType, model_group::ModelGroupMeta, user::User},
+    push_in,
+    util::{parse_concat_ids, random_hex_32, time_now, timestamp_or_now, validate_global_id},
 };
 
 #[derive(Debug, PartialEq, Eq, EnumString)]
@@ -90,7 +84,6 @@ pub async fn get_models(
     user: &User,
     options: ModelFilterOptions,
 ) -> Result<PaginatedResponse<Model>, DbError> {
-    // Enforce pagination limits to prevent unbounded queries
     let page_size = options.page_size.min(MAX_PAGE_SIZE);
     let offset = (i64::from(options.page) - 1) * i64::from(page_size);
 
@@ -122,17 +115,17 @@ pub async fn get_models(
 
     if let Some(model_ids) = &options.model_ids {
         query_builder.push(" AND models.model_id IN ");
-        push_in_i64(&mut query_builder, model_ids);
+        push_in(&mut query_builder, model_ids);
     }
 
     if let Some(group_ids) = &options.group_ids {
         query_builder.push(" AND group_id IN ");
-        push_in_i64(&mut query_builder, group_ids);
+        push_in(&mut query_builder, group_ids);
     }
 
     if let Some(label_ids) = &options.label_ids {
         query_builder.push(" AND labels.label_id IN ");
-        push_in_i64(&mut query_builder, label_ids);
+        push_in(&mut query_builder, label_ids);
     }
 
     if let Some(model_flags) = options.model_flags {
@@ -143,12 +136,11 @@ pub async fn get_models(
     }
 
     if let Some(file_types) = &options.file_types {
-        query_builder.push(" AND LOWER(blob_filetype) IN (");
-        let mut separated = query_builder.separated(", ");
-        for extension in file_types.iter().flat_map(FileType::storage_extensions) {
-            separated.push_bind(*extension);
-        }
-        query_builder.push(")");
+        query_builder.push(" AND LOWER(blob_filetype) IN ");
+        push_in(
+            &mut query_builder,
+            file_types.iter().flat_map(FileType::storage_extensions),
+        );
     }
 
     if let Some(text_search) = options.text_search {
@@ -175,7 +167,7 @@ pub async fn get_models(
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels_map: IndexMap<_, _> = label_db::get_labels_min(db, user)
+    let min_labels_map: indexmap::IndexMap<_, _> = label_db::get_labels_min(db, user)
         .await?
         .into_iter()
         .map(|l| (l.id, l))
@@ -186,14 +178,7 @@ pub async fn get_models(
             id: row.get("model_id"),
             name: row.get("model_name"),
             last_modified: row.get("model_last_modified"),
-            blob: Blob {
-                id: row.get("blob_id"),
-                sha256: row.get("blob_sha256"),
-                filetype: row.get("blob_filetype"),
-                size: row.get("blob_size"),
-                added: row.get("blob_added"),
-                disk_path: row.get("blob_path"),
-            },
+            blob: sqlx::FromRow::from_row(&row)?,
             link: row.get("model_url"),
             description: row.get("model_desc"),
             added: row.get("model_added"),
@@ -297,40 +282,17 @@ pub async fn edit_model(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    validate_global_id(global_id)?;
+    let timestamp = timestamp_or_now(update_timestamp);
     let flags = i64::from(flags.bits());
     sqlx::query!(
-        "UPDATE models SET model_name = ?, model_url = ?, model_desc = ?, model_flags = ?, model_last_modified = ? WHERE model_id = ? AND model_user_id = ?",
+        "UPDATE models SET model_name = ?, model_url = ?, model_desc = ?, model_flags = ?, model_last_modified = ?, model_unique_global_id = COALESCE(?, model_unique_global_id) WHERE model_id = ? AND model_user_id = ?",
         name,
         link,
         description,
         flags,
         timestamp,
-        id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    if let Some(global_id) = global_id {
-        edit_model_global_id(db, user, id, global_id).await?;
-    }
-
-    Ok(())
-}
-
-async fn edit_model_global_id(
-    db: &DbContext,
-    user: &User,
-    id: i64,
-    unique_global_id: &str,
-) -> Result<(), DbError> {
-    validate_global_id(unique_global_id)?;
-
-    sqlx::query!(
-        "UPDATE models SET model_unique_global_id = ? WHERE model_id = ? AND model_user_id = ?",
-        unique_global_id,
+        global_id,
         id,
         user.id
     )
@@ -348,38 +310,10 @@ pub async fn delete_models(db: &DbContext, user: &User, ids: &[i64]) -> Result<(
     let mut query_builder = QueryBuilder::new("DELETE FROM models WHERE model_user_id = ");
     query_builder.push_bind(user.id);
     query_builder.push(" AND model_id IN ");
-    push_in_i64(&mut query_builder, ids);
+    push_in(&mut query_builder, ids);
     query_builder.build().execute(db).await?;
 
     Ok(())
-}
-
-pub async fn get_unique_ids_from_model_ids(
-    db: &DbContext,
-    user: &User,
-    model_ids: Vec<i64>,
-) -> Result<IndexMap<i64, String>, DbError> {
-    if model_ids.is_empty() {
-        return Ok(IndexMap::new());
-    }
-
-    let mut query_builder = QueryBuilder::new(
-        "SELECT model_id, model_unique_global_id FROM models WHERE model_user_id = ",
-    );
-    query_builder.push_bind(user.id);
-    query_builder.push(" AND model_id IN ");
-    push_in_i64(&mut query_builder, &model_ids);
-    let rows = query_builder.build().fetch_all(db).await?;
-
-    let mut id_map = IndexMap::new();
-
-    for row in rows {
-        let id: i64 = row.get("model_id");
-        let unique_id: String = row.get("model_unique_global_id");
-        id_map.insert(id, unique_id);
-    }
-
-    Ok(id_map)
 }
 
 // TODO: Can we make a get model via sha256?
@@ -413,34 +347,23 @@ pub async fn get_model_ids_via_sha256s(
     }
 
     let mut query_builder = QueryBuilder::new(
-        "SELECT model_id, blob_sha256 FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id WHERE blob_sha256 IN ",
+        "SELECT blob_sha256, model_id FROM models INNER JOIN blobs ON models.model_blob_id = blobs.blob_id WHERE blob_sha256 IN ",
     );
-    query_builder.push("(");
-    let mut separated = query_builder.separated(", ");
-    for sha in sha256s {
-        separated.push_bind(sha);
-    }
-    query_builder.push(") AND model_user_id = ");
+    push_in(&mut query_builder, sha256s);
+    query_builder.push(" AND model_user_id = ");
     query_builder.push_bind(user.id);
-    let rows = query_builder.build().fetch_all(db).await?;
-
-    let sha_to_id: std::collections::HashMap<String, i64> = rows
-        .iter()
-        .map(|r| {
-            (
-                r.get::<String, _>("blob_sha256"),
-                r.get::<i64, _>("model_id"),
-            )
-        })
+    let sha256_to_id: std::collections::HashMap<String, i64> = query_builder
+        .build_query_as::<(String, i64)>()
+        .fetch_all(db)
+        .await?
+        .into_iter()
         .collect();
 
-    let model_ids: Vec<i64> = sha256s
+    sha256s
         .iter()
-        .map(|s| sha_to_id.get(s).copied())
+        .map(|sha256| sha256_to_id.get(sha256).copied())
         .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| DbError::RowNotFound)?;
-
-    Ok(model_ids)
+        .ok_or(DbError::RowNotFound)
 }
 
 pub async fn get_model_count(

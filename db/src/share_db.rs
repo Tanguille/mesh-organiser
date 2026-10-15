@@ -7,8 +7,31 @@ use crate::{
     model_db, parse_concat_ids, random_hex_32, time_now,
 };
 
+#[allow(clippy::struct_field_names)]
+struct ShareDbQuery {
+    share_id: String,
+    share_user_id: i64,
+    share_created_at: String,
+    share_name: String,
+    share_model_ids: Option<String>,
+}
+
+impl ShareDbQuery {
+    fn into_share(self) -> Share {
+        Share {
+            id: self.share_id,
+            created_at: self.share_created_at,
+            share_name: self.share_name,
+            user_id: self.share_user_id,
+            model_ids: self
+                .share_model_ids
+                .map_or_else(Vec::new, |ids| parse_concat_ids(&ids)),
+        }
+    }
+}
+
 pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbError> {
-    let shares = sqlx::query!("
+    let rows = sqlx::query_as!(ShareDbQuery, "
         SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(shares_models.model_id) AS \"share_model_ids: String\"
         FROM shares
         LEFT JOIN shares_models ON shares.share_id = shares_models.share_id
@@ -19,26 +42,11 @@ pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbErr
         .fetch_all(db)
         .await?;
 
-    Ok(shares
-        .into_iter()
-        .map(|share| {
-            let model_ids: Vec<i64> = share
-                .share_model_ids
-                .map_or_else(Vec::new, |ids| parse_concat_ids(&ids));
-
-            Share {
-                id: share.share_id,
-                created_at: share.share_created_at,
-                share_name: share.share_name,
-                user_id: share.share_user_id,
-                model_ids,
-            }
-        })
-        .collect())
+    Ok(rows.into_iter().map(ShareDbQuery::into_share).collect())
 }
 
 pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, DbError> {
-    let share = sqlx::query!("
+    let row = sqlx::query_as!(ShareDbQuery, "
         SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(shares_models.model_id) AS \"share_model_ids: String\"
         FROM shares
         LEFT JOIN shares_models ON shares.share_id = shares_models.share_id
@@ -48,17 +56,7 @@ pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, D
         .fetch_one(db)
         .await?;
 
-    let model_ids: Vec<i64> = share
-        .share_model_ids
-        .map_or_else(Vec::new, |ids| parse_concat_ids(&ids));
-
-    Ok(Share {
-        id: share.share_id,
-        created_at: share.share_created_at,
-        share_name: share.share_name,
-        user_id: share.share_user_id,
-        model_ids,
-    })
+    Ok(row.into_share())
 }
 
 pub async fn set_model_ids_on_share(

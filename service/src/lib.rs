@@ -1,3 +1,7 @@
+// Pedantic doc lints (missing_errors_doc, missing_panics_doc) are allowed here;
+// service is only used inside this workspace and fails with ServiceError throughout.
+#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+
 mod app_state;
 mod configuration;
 pub mod download_file_service;

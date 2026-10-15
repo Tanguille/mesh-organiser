@@ -34,38 +34,28 @@ impl<'de> Deserialize<'de> for ResourceFlags {
     }
 }
 
-#[derive(Serialize, Clone)]
-pub struct ResourceMeta {
-    pub id: i64,
-    pub name: String,
-    pub flags: ResourceFlags,
-    pub created: String,
-    pub last_modified: String,
-    pub unique_global_id: String,
+/// Decodes the stored `resource_flags` column; a value with unknown bits decodes as no flags.
+impl From<i64> for ResourceFlags {
+    fn from(bits: i64) -> Self {
+        Self::from_bits(u32::try_from(bits).unwrap_or(0)).unwrap_or_else(Self::empty)
+    }
 }
 
-impl ResourceMeta {
-    /// Builds a `ResourceMeta` from raw DB columns, centralizing the `resource_flags`
-    /// (stored as i64) -> `ResourceFlags` conversion shared by every resource query.
-    #[must_use]
-    pub fn from_parts(
-        id: i64,
-        name: String,
-        flags: i64,
-        created: String,
-        unique_global_id: String,
-        last_modified: String,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            flags: ResourceFlags::from_bits(u32::try_from(flags).unwrap_or(0))
-                .unwrap_or_else(ResourceFlags::empty),
-            created,
-            unique_global_id,
-            last_modified,
-        }
-    }
+/// Maps from the `resources` columns by name, so it also reads a resource out of a joined row.
+#[derive(Serialize, Clone, sqlx::FromRow)]
+pub struct ResourceMeta {
+    #[sqlx(rename = "resource_id")]
+    pub id: i64,
+    #[sqlx(rename = "resource_name")]
+    pub name: String,
+    #[sqlx(rename = "resource_flags", try_from = "i64")]
+    pub flags: ResourceFlags,
+    #[sqlx(rename = "resource_created")]
+    pub created: String,
+    #[sqlx(rename = "resource_last_modified")]
+    pub last_modified: String,
+    #[sqlx(rename = "resource_unique_global_id")]
+    pub unique_global_id: String,
 }
 
 #[derive(Serialize)]
