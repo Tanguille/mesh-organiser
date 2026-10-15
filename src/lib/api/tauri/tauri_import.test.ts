@@ -1,9 +1,9 @@
 /**
- * Characterization tests for TauriImportApi's event wiring, pinned before the
- * listener-table and importRemoteFile refactor. Locks the exact set of Tauri
- * events listened to, each handler's effect on the shared importState, and the
- * argument objects remote imports (deep link, built-in browser download,
- * Downloads folder watch) pass to startImportProcess and the add_model command.
+ * Characterization tests for TauriImportApi's event wiring. Locks the exact set
+ * of Tauri events listened to, each handler's effect on the shared importState,
+ * and the argument objects remote imports (deep link, built-in browser
+ * download, Downloads folder watch) pass to startImportProcess and the
+ * add_model command.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

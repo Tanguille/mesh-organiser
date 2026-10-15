@@ -1,9 +1,9 @@
 /**
  * Characterization tests for the read-only resource/label API stubs used by
- * demo mode and public share pages, pinned before they are folded into shared
- * read-only stubs. The stubs differ in how mutators fail: demo mutators throw a
- * "Demo mode: ..." error, web-share mutators are silent no-ops except the
- * creators, which throw "Method not implemented.". Reads return empty lists.
+ * demo mode and public share pages. The stubs differ in how mutators fail: demo
+ * mutators throw a "Demo mode: ..." error, web-share mutators are silent no-ops
+ * except the creators, which throw "Method not implemented.". Reads return
+ * empty lists.
  */
 
 import { describe, expect, it } from "vitest";

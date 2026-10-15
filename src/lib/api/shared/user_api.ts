@@ -57,7 +57,6 @@ export function createUserInstance(
   };
 }
 
-// Builds a User with no permissions and no sync configuration, created now.
 export function newlyCreatedUser(
   id: number,
   username: string,

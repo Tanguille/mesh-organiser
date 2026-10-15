@@ -1,8 +1,7 @@
 /**
- * Characterization test for DemoModelApi.deleteModels, pinned before
- * deleteModel is removed from IModelApi: deleteModels currently delegates to
- * deleteModel per model, so the removal must keep dropping each model from the
- * model, group-membership and label-membership maps.
+ * Characterization test for DemoModelApi.deleteModels: each deleted model must
+ * be dropped from the model, group-membership and label-membership maps, and
+ * every other model must stay.
  */
 
 import { describe, expect, it } from "vitest";

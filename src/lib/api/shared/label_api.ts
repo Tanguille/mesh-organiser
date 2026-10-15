@@ -42,28 +42,6 @@ export interface Label {
   selfGroupCount: number;
 }
 
-export function createLabelInstance(
-  meta: LabelMeta,
-  children: LabelMeta[],
-  effectiveLabels: LabelMeta[],
-  hasParent: boolean,
-  modelCount: number,
-  groupCount: number,
-  selfModelCount: number,
-  selfGroupCount: number,
-): Label {
-  return {
-    meta,
-    children,
-    effectiveLabels,
-    hasParent,
-    modelCount,
-    groupCount,
-    selfModelCount,
-    selfGroupCount,
-  };
-}
-
 export const ILabelApi = Symbol("ILabelApi");
 
 export interface ILabelApi {

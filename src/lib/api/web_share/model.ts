@@ -33,8 +33,6 @@ export class WebShareModelApi implements IModelApi {
 
   async editModel(_model: Model): Promise<void> {}
 
-  async deleteModel(_model: Model): Promise<void> {}
-
   async deleteModels(_models: Model[]): Promise<void> {}
 
   async getModelCount(_flags: ModelFlags | null): Promise<number> {

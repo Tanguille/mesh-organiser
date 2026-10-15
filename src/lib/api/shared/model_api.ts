@@ -160,7 +160,6 @@ export interface IModelApi {
     editTimestamp?: boolean,
     editGlobalId?: boolean,
   ): Promise<void>;
-  deleteModel(model: Model): Promise<void>;
   deleteModels(models: Model[]): Promise<void>;
   getModelCount(flags: ModelFlags | null): Promise<number>;
 }

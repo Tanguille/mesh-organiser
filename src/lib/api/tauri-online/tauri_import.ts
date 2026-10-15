@@ -27,7 +27,7 @@ export interface UploadResult {
   uploaded_models: DirectoryScanModel[];
 }
 
-async function uploadModels(
+export async function uploadModels(
   paths: string[],
   recursive: boolean,
   sourceUrl: string | null,

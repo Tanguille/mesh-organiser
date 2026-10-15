@@ -1,5 +1,4 @@
 import {
-  createLabelInstance,
   createLabelMetaInstance,
   stringColorToNumber,
   type ILabelApi,
@@ -45,18 +44,17 @@ export class DemoLabelApi implements ILabelApi {
         }
       });
 
-      const label = createLabelInstance(
-        labelMeta,
-        [], // No children in demo
-        [labelMeta], // Effective labels is just itself
-        false, // No parent
+      // Demo labels have no hierarchy, so a label is only its own effective label.
+      labels.push({
+        meta: labelMeta,
+        children: [],
+        effectiveLabels: [labelMeta],
+        hasParent: false,
         modelCount,
         groupCount,
         selfModelCount,
         selfGroupCount,
-      );
-
-      labels.push(label);
+      });
     }
 
     return labels;
