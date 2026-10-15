@@ -14,7 +14,6 @@ use crate::{
     user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
 };
 
-/// Routes for the login, logout and current-user endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",

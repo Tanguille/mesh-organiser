@@ -152,10 +152,8 @@ async fn get_content_disposition_filename_rfc5987_from_header() {
     assert_eq!(name.as_deref(), Some("my percent file.stl"));
 }
 
-// -----------------------------------------------------------------------------
 // `download_file` percent-decodes the last response-URL segment (thingiverse)
 // and the whole URL (nexprint) to derive the final filename.
-// -----------------------------------------------------------------------------
 
 /// Downloads `<mock server>/<url_path>` through `download_file` and checks the derived
 /// filename and source uri.

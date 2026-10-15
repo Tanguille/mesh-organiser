@@ -15,14 +15,12 @@ pub async fn get_labels(
     include_ungrouped_models: Option<bool>,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<Label>, ApplicationError> {
-    let labels = label_db::get_labels(
+    Ok(label_db::get_labels(
         &state.app_state.db,
         &state.get_current_user(),
         include_ungrouped_models.unwrap_or(false),
     )
-    .await?;
-
-    Ok(labels)
+    .await?)
 }
 
 #[tauri::command]
@@ -31,16 +29,14 @@ pub async fn add_label(
     label_color: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<LabelMeta, ApplicationError> {
-    let label_meta = label_db::add_label(
+    Ok(label_db::add_label(
         &state.app_state.db,
         &state.get_current_user(),
         label_name,
         label_color,
         None,
     )
-    .await?;
-
-    Ok(label_meta)
+    .await?)
 }
 
 #[tauri::command]
@@ -49,19 +45,11 @@ pub async fn set_labels_on_model(
     model_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    label_db::remove_all_labels_from_models(
-        &state.app_state.db,
-        &state.get_current_user(),
-        &[model_id],
-        None,
-    )
-    .await?;
-    label_db::add_labels_on_models(
+    label_db::set_labels_on_model(
         &state.app_state.db,
         &state.get_current_user(),
         &label_ids,
-        &[model_id],
-        None,
+        model_id,
     )
     .await?;
 
@@ -74,20 +62,11 @@ pub async fn set_label_on_models(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
-    label_db::remove_labels_from_models(
+    label_db::set_label_on_models(
         &state.app_state.db,
         &state.get_current_user(),
-        &[label_id],
+        label_id,
         &model_ids,
-        None,
-    )
-    .await?;
-    label_db::add_labels_on_models(
-        &state.app_state.db,
-        &state.get_current_user(),
-        &[label_id],
-        &model_ids,
-        None,
     )
     .await?;
 
@@ -185,12 +164,10 @@ pub async fn get_keywords_for_label(
     label_id: i64,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<LabelKeyword>, ApplicationError> {
-    let keywords = label_keyword_db::get_keywords_for_label(
+    Ok(label_keyword_db::get_keywords_for_label(
         &state.app_state.db,
         &state.get_current_user(),
         label_id,
     )
-    .await?;
-
-    Ok(keywords)
+    .await?)
 }

@@ -36,9 +36,9 @@ impl ShareScope {
         let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
 
         let Some(owner) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
-            return Err(ApplicationError::InternalError(
-                "Share owner user not found.".into(),
-            ));
+            return Err(
+                service::ServiceError::InternalError("Share owner user not found.".into()).into(),
+            );
         };
 
         Ok(Self { share, owner })
@@ -69,7 +69,6 @@ impl ShareScope {
     }
 }
 
-/// Routes for the share endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",

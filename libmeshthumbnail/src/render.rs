@@ -19,7 +19,6 @@ pub fn render(
     let magnitude = aabb.size().magnitude();
     let scale = 2.4 / magnitude;
 
-    // First scale, then translate to origin
     let model = Mat4::<f32>::rotation_x(270f32.to_radians()) *  // Y rotation - base value
                             Mat4::<f32>::rotation_z(90f32.to_radians()) * // X rotation - base value
                             Mat4::<f32>::rotation_x(-rotation.y.to_radians()) *

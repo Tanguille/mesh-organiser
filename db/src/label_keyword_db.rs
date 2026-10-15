@@ -4,9 +4,10 @@ use sqlx::QueryBuilder;
 use crate::{
     DbError,
     db_context::DbContext,
-    label_db::{self, set_last_updated_on_label},
+    ensure_labels_owned,
+    label_db::set_last_updated_on_labels,
     model::{label_keyword::LabelKeyword, user::User},
-    util::time_now,
+    timestamp_or_now,
 };
 
 pub async fn get_keywords_for_label(
@@ -64,9 +65,7 @@ pub async fn set_keywords_for_label(
     keywords: Vec<String>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
-    let _hex = label_db::get_unique_id_from_label_id(db, user, label_id).await?;
+    ensure_labels_owned(db, user, &[label_id]).await?;
 
     sqlx::query!(
         "DELETE FROM label_keywords WHERE keyword_label_id = ?",
@@ -85,7 +84,5 @@ pub async fn set_keywords_for_label(
         query_builder.build().execute(db).await?;
     }
 
-    set_last_updated_on_label(db, user, label_id, timestamp).await?;
-
-    Ok(())
+    set_last_updated_on_labels(db, user, &[label_id], &timestamp_or_now(update_timestamp)).await
 }

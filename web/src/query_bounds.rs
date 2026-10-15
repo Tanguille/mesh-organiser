@@ -1,4 +1,4 @@
-//! Upper bounds for query-string-derived allocations (IDs and UTF-8 strings).
+//! Upper bounds for query-string-derived allocations (ids and UTF-8 strings).
 //!
 //! Limits are expressed in UTF-8 bytes for strings (`str::len()`).
 
@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use db::MAX_PAGE_SIZE;
 
-/// Maximum number of `i64` IDs accepted per repeated query parameter (`?model_ids=1&model_ids=2`).
+/// Maximum number of `i64` ids accepted per repeated query parameter (`?model_ids=1&model_ids=2`).
 pub const MAX_ID_LIST_ITEMS: usize = 10_000;
 
 /// Maximum `page` index (1-based) for list endpoints; keeps offset arithmetic bounded.
@@ -39,7 +39,6 @@ pub enum QueryBoundsError {
     PageSizeOutOfRange { max: u32 },
 }
 
-/// Rejects `ids` if it contains more than [`MAX_ID_LIST_ITEMS`] elements.
 const fn validate_id_list(field: &'static str, ids: &[i64]) -> Result<(), QueryBoundsError> {
     if ids.len() > MAX_ID_LIST_ITEMS {
         return Err(QueryBoundsError::TooManyIds {
@@ -51,7 +50,6 @@ const fn validate_id_list(field: &'static str, ids: &[i64]) -> Result<(), QueryB
     Ok(())
 }
 
-/// Validates `model_ids`, `group_ids`, and `label_ids` list lengths.
 fn validate_three_id_lists(
     model_ids: &[i64],
     group_ids: &[i64],
@@ -76,23 +74,9 @@ pub struct PaginatedListQueryBounds<'a> {
     pub page_size: u32,
 }
 
-/// Full query bounds for paginated model list endpoints (`GET /models`, share variants).
-pub fn validate_model_list_query_bounds(
-    query_bounds: PaginatedListQueryBounds<'_>,
-) -> Result<(), QueryBoundsError> {
-    validate_three_id_lists(
-        query_bounds.model_ids,
-        query_bounds.group_ids,
-        query_bounds.label_ids,
-    )?;
-    validate_list_query_strings(query_bounds.text_search, query_bounds.order_by)?;
-    validate_pagination(query_bounds.page, query_bounds.page_size)?;
-
-    Ok(())
-}
-
-/// Full query bounds for paginated group list endpoints (`GET /groups`, share variants).
-pub fn validate_group_list_query_bounds(
+/// Full query bounds for the paginated model and group list endpoints and their share
+/// variants. Only the group endpoints take a raw `model_ids_str`; model endpoints pass `None`.
+pub fn validate_list_query_bounds(
     query_bounds: PaginatedListQueryBounds<'_>,
     model_ids_str: Option<&str>,
 ) -> Result<(), QueryBoundsError> {
@@ -102,7 +86,7 @@ pub fn validate_group_list_query_bounds(
         query_bounds.label_ids,
     )?;
     validate_list_query_strings(query_bounds.text_search, query_bounds.order_by)?;
-    validate_model_ids_str_raw(model_ids_str)?;
+    validate_optional_str(model_ids_str, "model_ids_str", MAX_MODEL_IDS_STR_BYTES)?;
     validate_pagination(query_bounds.page, query_bounds.page_size)?;
 
     Ok(())
@@ -114,14 +98,13 @@ pub fn bad_request(e: &QueryBoundsError) -> Response {
     (StatusCode::BAD_REQUEST, e.to_string()).into_response()
 }
 
-/// Rejects `opt` if `Some` and UTF-8 byte length exceeds `max_bytes`.
 const fn validate_optional_str(
-    str: Option<&str>,
+    value: Option<&str>,
     field: &'static str,
     max_bytes: usize,
 ) -> Result<(), QueryBoundsError> {
-    if let Some(s) = str
-        && s.len() > max_bytes
+    if let Some(value) = value
+        && value.len() > max_bytes
     {
         return Err(QueryBoundsError::StringTooLong {
             field,
@@ -134,22 +117,22 @@ const fn validate_optional_str(
 
 /// Parses comma-separated decimal `i64` values; invalid segments are skipped.
 /// Returns [`QueryBoundsError::TooManyCommaSeparatedIds`] if more than `max` values parse successfully.
-pub fn parse_comma_separated_i64(str: &str, max: usize) -> Result<Vec<i64>, QueryBoundsError> {
-    let mut out = Vec::new();
-    for part in str.split(',') {
+pub fn parse_comma_separated_i64(text: &str, max: usize) -> Result<Vec<i64>, QueryBoundsError> {
+    let mut ids = Vec::new();
+    for part in text.split(',') {
         let part = part.trim();
         if part.is_empty() {
             continue;
         }
         if let Ok(id) = part.parse::<i64>() {
-            if out.len() >= max {
+            if ids.len() >= max {
                 return Err(QueryBoundsError::TooManyCommaSeparatedIds { max });
             }
-            out.push(id);
+            ids.push(id);
         }
     }
 
-    Ok(out)
+    Ok(ids)
 }
 
 /// Converts a request-parameter vector into an option, treating an empty list as absent.
@@ -162,21 +145,14 @@ pub fn none_if_empty<T>(ids: Vec<T>) -> Option<Vec<T>> {
     if ids.is_empty() { None } else { Some(ids) }
 }
 
-/// Parses comma-separated `model_ids_str` when present; [`None`] when the query param is absent.
 pub fn optional_comma_separated_model_ids(
-    str: Option<&str>,
+    model_ids_str: Option<&str>,
 ) -> Result<Option<Vec<i64>>, QueryBoundsError> {
-    str.map_or(Ok(None), |s| {
-        parse_comma_separated_i64(s, MAX_ID_LIST_ITEMS).map(Some)
+    model_ids_str.map_or(Ok(None), |model_ids_str| {
+        parse_comma_separated_i64(model_ids_str, MAX_ID_LIST_ITEMS).map(Some)
     })
 }
 
-/// Validates optional raw `model_ids_str` byte length.
-const fn validate_model_ids_str_raw(str: Option<&str>) -> Result<(), QueryBoundsError> {
-    validate_optional_str(str, "model_ids_str", MAX_MODEL_IDS_STR_BYTES)
-}
-
-/// Validates shared list + string fields for model and group list endpoints.
 fn validate_list_query_strings(
     text_search: Option<&str>,
     order_by: Option<&str>,
@@ -187,15 +163,10 @@ fn validate_list_query_strings(
     Ok(())
 }
 
-/// Parses `order_by` query values only when UTF-8 length is within [`MAX_ORDER_BY_BYTES`], so
-/// `FromStr` work stays bounded even if validation is skipped by mistake. Oversized or
-/// unknown values fall back to `default`.
+/// Parses an `order_by` value whose length every caller has already bounded through
+/// [`validate_list_query_bounds`]; unknown values fall back to `default`.
 #[must_use]
 pub fn parse_order_by_bounded<T: std::str::FromStr>(order_by: &str, default: T) -> T {
-    if order_by.len() > MAX_ORDER_BY_BYTES {
-        return default;
-    }
-
     T::from_str(order_by).unwrap_or(default)
 }
 
@@ -294,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_model_list_query_bounds_matches_individual_validators() {
+    fn validate_list_query_bounds_matches_individual_validators() {
         let ok = PaginatedListQueryBounds {
             model_ids: &[],
             group_ids: &[],
@@ -304,15 +275,15 @@ mod tests {
             page: 1,
             page_size: 50,
         };
-        assert!(validate_model_list_query_bounds(ok).is_ok());
+        assert!(validate_list_query_bounds(ok, None).is_ok());
         assert_eq!(
-            validate_model_list_query_bounds(PaginatedListQueryBounds { page: 0, ..ok }),
+            validate_list_query_bounds(PaginatedListQueryBounds { page: 0, ..ok }, None),
             Err(QueryBoundsError::PageOutOfRange { max: MAX_PAGE })
         );
     }
 
     #[test]
-    fn validate_group_list_query_bounds_includes_model_ids_str() {
+    fn validate_list_query_bounds_includes_model_ids_str() {
         let base = PaginatedListQueryBounds {
             model_ids: &[],
             group_ids: &[],
@@ -322,10 +293,10 @@ mod tests {
             page: 1,
             page_size: 50,
         };
-        assert!(validate_group_list_query_bounds(base, None).is_ok());
+        assert!(validate_list_query_bounds(base, None).is_ok());
         let long = "a".repeat(MAX_MODEL_IDS_STR_BYTES + 1);
         assert_eq!(
-            validate_group_list_query_bounds(base, Some(&long)),
+            validate_list_query_bounds(base, Some(&long)),
             Err(QueryBoundsError::StringTooLong {
                 field: "model_ids_str",
                 max: MAX_MODEL_IDS_STR_BYTES,
@@ -446,18 +417,18 @@ mod tests {
             ),
         ];
 
-        assert_eq!(validate_model_list_query_bounds(at_limit), Ok(()));
+        assert_eq!(validate_list_query_bounds(at_limit, None), Ok(()));
         assert_eq!(
-            validate_group_list_query_bounds(at_limit, Some(&model_ids_str_at_limit)),
+            validate_list_query_bounds(at_limit, Some(&model_ids_str_at_limit)),
             Ok(())
         );
         for (bounds, expected_body) in cases {
             assert_eq!(
-                rejection_body(validate_model_list_query_bounds(bounds)).await,
+                rejection_body(validate_list_query_bounds(bounds, None)).await,
                 expected_body
             );
             assert_eq!(
-                rejection_body(validate_group_list_query_bounds(
+                rejection_body(validate_list_query_bounds(
                     bounds,
                     Some(&model_ids_str_at_limit)
                 ))
@@ -466,7 +437,7 @@ mod tests {
             );
         }
         assert_eq!(
-            rejection_body(validate_group_list_query_bounds(
+            rejection_body(validate_list_query_bounds(
                 at_limit,
                 Some(&model_ids_str_over_limit)
             ))
@@ -501,8 +472,7 @@ mod tests {
             ),
         ];
 
-        assert_eq!(validate_model_list_query_bounds(first_page), Ok(()));
-        assert_eq!(validate_group_list_query_bounds(first_page, None), Ok(()));
+        assert_eq!(validate_list_query_bounds(first_page, None), Ok(()));
         for (page, page_size, expected_body) in cases {
             let bounds = PaginatedListQueryBounds {
                 page,
@@ -510,11 +480,7 @@ mod tests {
                 ..first_page
             };
             assert_eq!(
-                rejection_body(validate_model_list_query_bounds(bounds)).await,
-                expected_body
-            );
-            assert_eq!(
-                rejection_body(validate_group_list_query_bounds(bounds, None)).await,
+                rejection_body(validate_list_query_bounds(bounds, None)).await,
                 expected_body
             );
         }
@@ -536,11 +502,11 @@ mod tests {
         };
 
         assert_eq!(
-            rejection_body(validate_model_list_query_bounds(all_invalid)).await,
+            rejection_body(validate_list_query_bounds(all_invalid, None)).await,
             "Too many values in model_ids; maximum allowed is 10000"
         );
         assert_eq!(
-            rejection_body(validate_group_list_query_bounds(
+            rejection_body(validate_list_query_bounds(
                 all_invalid,
                 Some(&model_ids_str_over_limit)
             ))
