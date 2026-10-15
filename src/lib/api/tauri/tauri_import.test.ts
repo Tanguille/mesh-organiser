@@ -284,7 +284,10 @@ describe("remote imports", () => {
       ],
     ]);
     expect(mocks.invoke.mock.calls).toEqual([
-      ["download_file", { url: "https://host/files/benchy.stl?token=1" }],
+      [
+        "download_file",
+        { url: "https://host/files/benchy.stl?token=1", filename: null },
+      ],
       [
         "add_model",
         {

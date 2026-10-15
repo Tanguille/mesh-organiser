@@ -166,7 +166,7 @@ async fn assert_download(url_path: &str, expected_name: &str, expected_source: &
         .await;
 
     let url = format!("{}/{url_path}", mock_server.uri());
-    let result = service::download_file_service::download_file(&url)
+    let result = service::download_file_service::download_file(&url, None)
         .await
         .expect("download should succeed");
 
@@ -199,4 +199,28 @@ async fn download_file_nexprint_decodes_quoted_filename_from_url() {
         "https://nexprint.com/",
     )
     .await;
+}
+
+#[tokio::test]
+async fn download_file_explicit_filename_overrides_site_logic() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("x"))
+        .mount(&mock_server)
+        .await;
+
+    let url = format!("{}/thingiverse/other.stl", mock_server.uri());
+    let result = service::download_file_service::download_file(&url, Some("model.3mf"))
+        .await
+        .expect("download should succeed");
+
+    let path = PathBuf::from(&result.path);
+    assert_eq!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("model.3mf")
+    );
+    assert_eq!(result.source_uri, None);
+
+    fs::remove_file(&path).ok();
 }
