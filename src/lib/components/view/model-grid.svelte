@@ -16,15 +16,13 @@
   import { IsMobile } from "#lib/hooks/is-mobile.svelte";
   import { wait } from "#lib/utils";
   import { untrack } from "svelte";
-  import Button from "../ui/button/button.svelte";
-  import Undo2 from "@lucide/svelte/icons/undo-2";
+  import SelectionPanel from "#lib/components/view/selection-panel.svelte";
 
   const props: {
     modelStream: IModelStreamManager;
     default_show_multiselect_all?: boolean;
     initialEditMode?: boolean;
     onRemoveGroupDelete?: boolean;
-    onDelete?: (models: Model[]) => void;
     onEmpty?: () => void;
   } = $props();
   let loadedModels = $state<Model[]>([]);
@@ -87,7 +85,6 @@
     loadedModels = loadedModels.filter(
       (m) => !models.some((s) => s.id === m.id),
     );
-    props.onDelete?.(models);
 
     if (loadedModels.length === 0) {
       props.onEmpty?.();
@@ -152,20 +149,7 @@
   {/if}
 
   {#if showRightSide}
-    <div
-      class="{isMobile.current
-        ? 'w-full'
-        : 'w-[400px] min-w-[400px]'} relative mx-4 my-2 hide-scrollbar flex flex-col gap-4 overflow-y-auto"
-    >
-      {#if isMobile.current}
-        <Button
-          onclick={() => {
-            selected = [];
-          }}
-        >
-          <Undo2 /> Close model preview
-        </Button>
-      {/if}
+    <SelectionPanel onClose={() => (selected = [])}>
       {#if selected.length >= 2}
         <MultiModelEdit
           models={selected}
@@ -199,6 +183,6 @@
       {:else}
         <EmptyState>No model selected</EmptyState>
       {/if}
-    </div>
+    </SelectionPanel>
   {/if}
 </div>

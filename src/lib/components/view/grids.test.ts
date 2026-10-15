@@ -7,7 +7,7 @@ import ModelGrid from "./model-grid.svelte";
 import GroupGrid from "./group-grid.svelte";
 
 // jsdom has no matchMedia; svelte/reactivity touches it at import time and
-// IsMobile / IsSplitGridSize (MediaQuery) read it. matches=false: desktop, both panes render.
+// IsMobile / group-grid's split-view MediaQuery read it. matches=false: desktop, both panes render.
 vi.hoisted(() => {
   window.matchMedia ??= (query: string) =>
     ({

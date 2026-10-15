@@ -26,26 +26,24 @@
   import EmptyState from "#lib/components/view/empty-state.svelte";
   import UiSizeFilter from "#lib/components/view/ui-size-filter.svelte";
   import { configuration } from "#lib/configuration.svelte";
-  import { IsSplitGridSize } from "#lib/hooks/is-split-grid-size.svelte";
   import { onDestroy, untrack } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
   import { wait, uniqueById } from "#lib/utils";
   import { IsMobile } from "#lib/hooks/is-mobile.svelte";
-  import Button, { buttonVariants } from "../ui/button/button.svelte";
-  import Undo2 from "@lucide/svelte/icons/undo-2";
+  import { buttonVariants } from "../ui/button/button.svelte";
+  import SelectionPanel from "#lib/components/view/selection-panel.svelte";
 
-  interface GroupWithModels {
+  interface AffectedGroup {
     meta: Group;
-    models: Model[];
     fullGroup: boolean;
   }
 
   const props: {
     groupStream: IGroupStreamManager;
     default_show_multiselect_all?: boolean;
-    onDelete?: (groups: GroupWithModels[]) => void;
   } = $props();
   let loadedGroups = $state<Group[]>([]);
   let selected = $state.raw<Group[]>([]);
@@ -54,10 +52,11 @@
   const showLeftSide = $derived(!isMobile.current || selected.length <= 0);
   const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
-  let gridSizeMonitor = new IsSplitGridSize();
+  // Below 1600px wide there is no room for the split view.
+  const tooNarrowForSplit = new MediaQuery("max-width: 1599px");
 
   let effectiveSplitSetting = $derived.by(() => {
-    if (gridSizeMonitor.current) {
+    if (tooNarrowForSplit.current) {
       return "no_split";
     }
 
@@ -155,14 +154,13 @@
 
   function onDelete() {
     let set = new Set(selectedModels.map((x) => x.id));
-    let affectedGroups: GroupWithModels[] = [];
+    let affectedGroups: AffectedGroup[] = [];
 
     for (const group of selected) {
       let modelsInGroup = group.models.filter((m) => set.has(m.id));
       if (modelsInGroup.length > 0) {
         affectedGroups.push({
           meta: group,
-          models: modelsInGroup,
           fullGroup: modelsInGroup.length === group.models.length,
         });
       }
@@ -183,7 +181,6 @@
 
     clearSplitViewModels();
     selected = [];
-    props.onDelete?.(affectedGroups);
   }
 
   function onGroupDelete(deletedGroup: Group) {
@@ -278,21 +275,12 @@
   {/if}
 
   {#if showRightSide}
-    <div
-      class="{isMobile.current
-        ? 'w-full'
-        : 'w-[400px] min-w-[400px]'} relative mx-4 my-2 hide-scrollbar flex flex-col gap-4 overflow-y-auto"
+    <SelectionPanel
+      onClose={() => {
+        clearSplitViewModels();
+        selected = [];
+      }}
     >
-      {#if isMobile.current}
-        <Button
-          onclick={() => {
-            clearSplitViewModels();
-            selected = [];
-          }}
-        >
-          <Undo2 /> Close model preview
-        </Button>
-      {/if}
       {#if selected.length >= 2}
         {@render SelectedModelsEditor()}
       {:else if selected.length === 1 && selected[0].meta.id >= 0}
@@ -327,7 +315,7 @@
       {:else}
         <EmptyState>No group selected</EmptyState>
       {/if}
-    </div>
+    </SelectionPanel>
   {/if}
 </div>
 

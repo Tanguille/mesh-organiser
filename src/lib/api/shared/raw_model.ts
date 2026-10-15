@@ -8,7 +8,6 @@ import {
   type GroupMeta,
 } from "./group_api";
 import {
-  createLabelInstance,
   createLabelMetaInstance,
   type Label,
   type LabelMeta,
@@ -172,16 +171,18 @@ export interface RawLabel {
 }
 
 export function parseRawLabel(raw: RawLabel): Label {
-  return createLabelInstance(
-    parseRawLabelMeta(raw.meta),
-    raw.children.map((child) => parseRawLabelMeta(child)),
-    raw.effective_labels.map((effective) => parseRawLabelMeta(effective)),
-    raw.has_parent,
-    raw.model_count,
-    raw.group_count,
-    raw.self_model_count,
-    raw.self_group_count,
-  );
+  return {
+    meta: parseRawLabelMeta(raw.meta),
+    children: raw.children.map((child) => parseRawLabelMeta(child)),
+    effectiveLabels: raw.effective_labels.map((effective) =>
+      parseRawLabelMeta(effective),
+    ),
+    hasParent: raw.has_parent,
+    modelCount: raw.model_count,
+    groupCount: raw.group_count,
+    selfModelCount: raw.self_model_count,
+    selfGroupCount: raw.self_group_count,
+  };
 }
 
 export interface RawLabelKeyword {

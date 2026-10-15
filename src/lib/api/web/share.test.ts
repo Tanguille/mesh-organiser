@@ -1,8 +1,7 @@
 /**
  * Characterization tests for the web share APIs (WebShareApi and the
- * read-only LimitedWebShareApi used on public share pages) and parseRawShare,
- * pinned before the share factory inlining and the share API dedup. Request
- * method, url and body are the contract with the web server.
+ * read-only LimitedWebShareApi used on public share pages) and parseRawShare.
+ * Request method, url and body are the contract with the web server.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -48,15 +47,6 @@ function models(...ids: number[]): Model[] {
 describe("parseRawShare", () => {
   it("maps every raw field onto the share shape", () => {
     expect(parseRawShare(rawShare)).toStrictEqual(share);
-  });
-
-  it("wraps a single numeric model id into an array", () => {
-    const parsed = parseRawShare({
-      ...rawShare,
-      model_ids: 42 as unknown as number[],
-    });
-
-    expect(parsed.modelIds).toEqual([42]);
   });
 });
 

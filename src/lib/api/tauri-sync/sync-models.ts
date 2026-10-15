@@ -9,9 +9,9 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { getContainer } from "../dependency_injection";
 import { IModelApi, type Model } from "../shared/model_api";
-import type {
-  UploadResult,
-  DirectoryScanModel,
+import {
+  uploadModels,
+  type DirectoryScanModel,
 } from "../tauri-online/tauri_import";
 import { importState } from "#lib/import.svelte";
 import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
@@ -57,12 +57,13 @@ async function stepUpload(
   const paths = await invoke<BlobPath[]>("blobs_to_path", {
     blobIds: toUpload.map((x) => x.blob.id),
   });
-  const uploads = await invoke<UploadResult>("upload_models_to_remote_server", {
-    paths: paths.map((x) => x.blob_path),
-    recursive: false,
-    openInSlicer: false,
-    sourceUrl: null,
-  });
+  // Arguments: paths, recursive, sourceUrl, openInSlicer.
+  const uploads = await uploadModels(
+    paths.map((x) => x.blob_path),
+    false,
+    null,
+    false,
+  );
   importState.status = ImportStatus.Idle;
 
   await runWithLimit(uploads.uploaded_models, (upload) =>

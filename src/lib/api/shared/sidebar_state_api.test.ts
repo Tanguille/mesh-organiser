@@ -1,9 +1,9 @@
 /**
- * Characterization tests for the sidebar state APIs and how
- * updateSidebarState (sidebar_data.svelte.ts) consumes them, pinned before the
- * sidebar-state API simplification. DefaultSidebarStateApi resolves its APIs
- * from the container on every call and maps eight parallel results onto
- * SidebarState; distinct values per source catch a swapped index.
+ * Characterization tests for getSidebarState and how updateSidebarState
+ * (sidebar_data.svelte.ts) consumes the registered sidebar state function.
+ * getSidebarState resolves its APIs from the container on every call and maps
+ * eight parallel results onto SidebarState; distinct values per source catch a
+ * swapped index.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,9 +16,8 @@ import { IModelApi, type ModelFlags } from "./model_api";
 import { IResourceApi } from "./resource_api";
 import { IShareApi } from "./share_api";
 import {
-  DefaultSidebarStateApi,
   defaultSidebarState,
-  EmptySidebarStateApi,
+  getSidebarState,
   ISidebarStateApi,
   type SidebarState,
 } from "./sidebar_state_api";
@@ -84,11 +83,11 @@ afterEach(() => {
   Object.assign(sidebarState, defaultSidebarState());
 });
 
-describe("DefaultSidebarStateApi", () => {
+describe("getSidebarState", () => {
   it("maps every source onto the sidebar state", async () => {
     const apis = registerApis();
 
-    const state = await new DefaultSidebarStateApi().getSidebarState();
+    const state = await getSidebarState();
 
     expect(state).toStrictEqual(fullState);
     expect(apis.model.getModelCount.mock.calls).toEqual([
@@ -104,15 +103,15 @@ describe("DefaultSidebarStateApi", () => {
     const apis = registerApis();
     configuration.show_ungrouped_models_in_groups = false;
 
-    await new DefaultSidebarStateApi().getSidebarState();
+    await getSidebarState();
 
     expect(apis.group.getGroupCount).toHaveBeenCalledWith(false);
   });
 
-  it("skips the share api when constructed with includeShares false", async () => {
+  it("skips the share api when includeShares is false", async () => {
     const apis = registerApis();
 
-    const state = await new DefaultSidebarStateApi(false).getSidebarState();
+    const state = await getSidebarState(false);
 
     expect(state).toStrictEqual({ ...fullState, shareCount: 0 });
     expect(apis.share.getShares).not.toHaveBeenCalled();
@@ -121,7 +120,7 @@ describe("DefaultSidebarStateApi", () => {
   it("treats missing slicer and share apis as empty", async () => {
     registerApis({ slicer: false, share: false });
 
-    const state = await new DefaultSidebarStateApi().getSidebarState();
+    const state = await getSidebarState();
 
     expect(state).toStrictEqual({
       ...fullState,
@@ -131,17 +130,7 @@ describe("DefaultSidebarStateApi", () => {
   });
 
   it("rejects when a required api is not registered", async () => {
-    await expect(
-      new DefaultSidebarStateApi().getSidebarState(),
-    ).rejects.toThrow("Dependency not found");
-  });
-});
-
-describe("EmptySidebarStateApi", () => {
-  it("returns the default sidebar state without touching the container", async () => {
-    await expect(
-      new EmptySidebarStateApi().getSidebarState(),
-    ).resolves.toStrictEqual(defaultSidebarState());
+    await expect(getSidebarState()).rejects.toThrow("Dependency not found");
   });
 });
 
@@ -156,16 +145,18 @@ describe("updateSidebarState", () => {
 
   it("assigns the registered api's state onto the shared sidebar state", async () => {
     registerApis();
-    getContainer().addSingleton(ISidebarStateApi, new DefaultSidebarStateApi());
+    getContainer().addSingleton(ISidebarStateApi, getSidebarState);
 
     await updateSidebarState();
 
     expect({ ...sidebarState }).toStrictEqual(fullState);
   });
 
-  it("resets the shared sidebar state to defaults with the empty api", async () => {
+  it("resets the shared sidebar state to defaults with an empty state function", async () => {
     Object.assign(sidebarState, fullState);
-    getContainer().addSingleton(ISidebarStateApi, new EmptySidebarStateApi());
+    getContainer().addSingleton(ISidebarStateApi, async () =>
+      defaultSidebarState(),
+    );
 
     await updateSidebarState();
 

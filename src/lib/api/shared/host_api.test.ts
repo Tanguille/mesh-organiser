@@ -1,12 +1,11 @@
 /**
  * Characterization tests for the host API implementations (demo, web, tauri)
- * and isCurrentPlatformDesktop, pinned before the demo/web hosts are folded
- * into one shared host api. Demo and web differ only in the platform they
- * report; both read VITE_APP_VERSION at call time, while tauri asks the app.
+ * and isCurrentPlatformDesktop. Demo and web share WebHostApi and differ only
+ * in the platform they report; both read VITE_APP_VERSION at call time, while
+ * tauri asks the app.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DemoHostApi } from "../demo/host";
 import { HostApi } from "../tauri/host";
 import { WebHostApi } from "../web/host";
 import { isCurrentPlatformDesktop, Platform, type IHostApi } from "./host_api";
@@ -21,8 +20,8 @@ afterEach(() => {
 
 describe.each([
   {
-    name: "DemoHostApi",
-    host: new DemoHostApi(),
+    name: "WebHostApi (demo)",
+    host: new WebHostApi(Platform.DemoWebApp),
     platform: Platform.DemoWebApp,
   },
   { name: "WebHostApi", host: new WebHostApi(), platform: Platform.WebApp },

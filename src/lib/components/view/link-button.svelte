@@ -12,6 +12,7 @@
 
   const props: {
     link: string | undefined | null;
+    title?: string | null;
     visible?: boolean;
     class?: ClassValue;
     variant?: ButtonVariant;
@@ -42,12 +43,18 @@
       href={props.link}
       rel="external"
       target="_blank"
+      title={props.title}
       class="{buttonVariants({ variant })} {props.class}"
     >
       {@render body()}
     </a>
   {:else}
-    <Button {variant} class={props.class} onclick={openLink}>
+    <Button
+      {variant}
+      title={props.title}
+      class={props.class}
+      onclick={openLink}
+    >
       {@render body()}
     </Button>
   {/if}
