@@ -50,26 +50,30 @@ export class SyncApi implements ISyncApi {
     try {
       await syncModels(serverModelApi, serverGroupApi, serverBlobApi);
 
-      // Model identities are stable once syncModels completes, so drain both
-      // full model lists once here instead of re-fetching them inside each of
-      // the group and label stages.
+      // Model identities are stable once syncModels completes, so drain and
+      // index both full model lists once here instead of per group and label.
       const localModelApi = getContainer().require<IModelApi>(IModelApi);
       const [serverModels, localModels] = await Promise.all([
         getAllModels(serverModelApi),
         getAllModels(localModelApi),
       ]);
+      const serverModelsById = new Map(
+        serverModels.map((model) => [model.uniqueGlobalId, model]),
+      );
+      const localModelsById = new Map(
+        localModels.map((model) => [model.uniqueGlobalId, model]),
+      );
 
-      await syncGroups(serverGroupApi, serverModels, localModels);
+      await syncGroups(serverGroupApi, serverModelsById, localModelsById);
       await syncLabels(
         serverModelApi,
         serverLabelApi,
-        serverModels,
-        localModels,
+        serverModelsById,
+        localModelsById,
       );
       await syncResources(serverGroupApi, serverResourceApi);
     } catch (e) {
       console.error("Error during sync:", e);
-      //toast.error("An error occurred during sync. Please check your connection and try again.");
       resetSyncState();
       resetImportState();
       throw e;

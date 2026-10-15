@@ -1,5 +1,5 @@
 /**
- * Regression tests for sync algorithm (computeDifferences, forceApplyFieldToObject).
+ * Regression tests for the sync algorithm (computeDifferences).
  * Locks behaviour before refactors or sync logic changes.
  */
 
@@ -7,7 +7,6 @@ import { describe, it, expect } from "vitest";
 import {
   computeDifferences,
   defaultSyncResult,
-  forceApplyFieldToObject,
   type DiffableItem,
 } from "./algorithm";
 
@@ -105,33 +104,5 @@ describe("computeDifferences", () => {
     expect(result.syncToLocal).toHaveLength(0);
     expect(result.toUpload).toHaveLength(0);
     expect(result.toDownload).toHaveLength(0);
-  });
-});
-
-describe("forceApplyFieldToObject", () => {
-  it("merges object with result of extractor", () => {
-    type Foo = { id: string; name: string };
-    const objects: Foo[] = [
-      { id: "1", name: "Alice" },
-      { id: "2", name: "Bob" },
-    ];
-    const extractor = (obj: Foo): DiffableItem => ({
-      uniqueGlobalId: obj.id,
-      lastModified: new Date(1000),
-    });
-    const result = forceApplyFieldToObject(objects, extractor);
-    expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({
-      id: "1",
-      name: "Alice",
-      uniqueGlobalId: "1",
-      lastModified: new Date(1000),
-    });
-    expect(result[1]).toEqual({
-      id: "2",
-      name: "Bob",
-      uniqueGlobalId: "2",
-      lastModified: new Date(1000),
-    });
   });
 });

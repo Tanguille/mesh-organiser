@@ -2,7 +2,6 @@
   import * as Select from "#lib/components/ui/select/index.js";
   import LabelBadge from "#lib/components/view/label-badge.svelte";
   import Tag from "@lucide/svelte/icons/tag";
-  import type { ClassValue } from "svelte/elements";
   import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
   import AddLabelPopover from "./add-label-popover.svelte";
   import { buttonVariants } from "../ui/button";
@@ -14,13 +13,11 @@
   let {
     value = $bindable(),
     availableLabels = [],
-    clazz = undefined,
     placeholder = "Select some labels",
     onchange = () => {},
   }: {
     value: LabelMeta[];
     availableLabels: LabelMeta[];
-    clazz?: ClassValue;
     placeholder?: string;
     onchange?: VoidFunction;
   } = $props();
@@ -50,7 +47,7 @@
         .map((l) => l!))
   }
 >
-  <Select.Trigger class="h-fit {clazz}">
+  <Select.Trigger class="h-fit">
     {#if value.length <= 0}
       {placeholder}
     {:else}
@@ -71,7 +68,7 @@
         >
       {/each}
     </Select.Group>
-    <Select.SelectSeparator />
+    <Select.Separator />
     <Select.Group>
       <AddLabelPopover
         class="w-full"

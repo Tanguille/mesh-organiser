@@ -6,6 +6,9 @@ export enum FileType {
   GCODE = "gcode.zip",
 }
 
+// Extensions the importers accept, besides zip archives.
+export const MODEL_EXTENSIONS = ["stl", "obj", "3mf", "gcode", "step"];
+
 /**
  * Normalizes a file-type selection for backend filters.
  *
@@ -75,7 +78,6 @@ export function createBlobInstance(
   };
 }
 
-// Builds the blob thumbnail URL shared by the web and web-share blob APIs.
 export function blobThumbnailUrl(origin: string, sha256: string): string {
   return origin + "/api/v1/blobs/" + sha256 + "/thumb";
 }

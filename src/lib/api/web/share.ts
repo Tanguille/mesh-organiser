@@ -3,11 +3,7 @@ import {
   HttpMethod,
   type IServerRequestApi,
 } from "../shared/server_request_api";
-import {
-  createShareInstance,
-  type IShareApi,
-  type Share,
-} from "../shared/share_api";
+import type { IShareApi, Share } from "../shared/share_api";
 
 export interface RawShare {
   id: string;
@@ -18,13 +14,13 @@ export interface RawShare {
 }
 
 export function parseRawShare(raw: RawShare): Share {
-  return createShareInstance(
-    raw.id,
-    raw.created_at,
-    raw.share_name,
-    raw.user_name,
-    raw.model_ids,
-  );
+  return {
+    id: raw.id,
+    createdAt: new Date(raw.created_at),
+    shareName: raw.share_name,
+    userName: raw.user_name,
+    modelIds: raw.model_ids,
+  };
 }
 
 export class WebShareApi implements IShareApi {
@@ -43,16 +39,13 @@ export class WebShareApi implements IShareApi {
   }
 
   async getShare(shareId: string): Promise<Share> {
-    // Lazy implementation, should be fixed later
-
+    // Lazy: scans the full share list instead of requesting GET /shares/{id}.
     const shares = await this.getShares();
-    for (const share of shares) {
-      if (share.id === shareId) {
-        return share;
-      }
-    }
 
-    return Promise.reject("Share not found");
+    return (
+      shares.find((share) => share.id === shareId) ??
+      Promise.reject("Share not found")
+    );
   }
 
   async createShare(shareName: string): Promise<Share> {
@@ -68,22 +61,11 @@ export class WebShareApi implements IShareApi {
     return parseRawShare(rawShare);
   }
 
-  private async putModelIds(share: Share, modelIds: number[]): Promise<void> {
-    const data = {
-      model_ids: modelIds,
-    };
-
+  async setModelsOnShare(share: Share, models: Model[]): Promise<void> {
     await this.requestApi.request<void>(
       `/shares/${share.id}/models`,
       HttpMethod.PUT,
-      data,
-    );
-  }
-
-  async setModelsOnShare(share: Share, models: Model[]): Promise<void> {
-    await this.putModelIds(
-      share,
-      models.map((m) => m.id),
+      { model_ids: models.map((model) => model.id) },
     );
   }
 

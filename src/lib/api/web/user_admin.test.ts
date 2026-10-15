@@ -1,8 +1,7 @@
 /**
- * Characterization tests for WebUserAdminApi's edit requests, pinned before the
- * user-admin dedup. The self variants target the user the API was constructed
- * with, the admin variants target the user passed in; method, url and body are
- * the contract with the web server.
+ * Characterization tests for WebUserAdminApi's edit requests. The self variants
+ * target the user the API was constructed with, the admin variants target the
+ * user passed in; method, url and body are the contract with the web server.
  */
 
 import { describe, expect, it, vi } from "vitest";

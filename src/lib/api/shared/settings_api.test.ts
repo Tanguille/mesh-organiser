@@ -1,8 +1,8 @@
 /**
  * Characterization tests for the settings option lists and the order-option
- * converters, pinned before the type derivation / Record lookup refactor. The
- * sort dropdowns and size pickers render these lists in insertion order, and the
- * converters fall back to a default for values persisted by older versions.
+ * converters. The sort dropdowns and size pickers render these lists in
+ * insertion order, and the converters fall back to a default for values
+ * persisted by older versions.
  */
 
 import { describe, expect, it } from "vitest";

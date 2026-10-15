@@ -6,7 +6,6 @@
     children: Snippet;
     class?: string;
     onclick: () => Promise<void>;
-    enabled?: boolean;
   } = $props();
   let active = $state(true);
 
@@ -17,10 +16,6 @@
   }
 </script>
 
-<Root
-  onclick={onClick}
-  class={props.class}
-  disabled={!(props.enabled ?? true) || !active}
->
+<Root onclick={onClick} class={props.class} disabled={!active}>
   {@render props.children?.()}
 </Root>
