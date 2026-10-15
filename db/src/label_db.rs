@@ -274,7 +274,8 @@ pub async fn remove_labels_from_models(
         return Err(DbError::RowNotFound);
     }
 
-    let model_global_ids = model_db::get_unique_ids_from_model_ids(db, model_ids.to_vec()).await?;
+    let model_global_ids =
+        model_db::get_unique_ids_from_model_ids(db, user, model_ids.to_vec()).await?;
 
     if model_global_ids.len() != model_ids.len() {
         return Err(DbError::RowNotFound);
