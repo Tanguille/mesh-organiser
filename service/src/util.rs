@@ -385,6 +385,31 @@ mod tests {
         assert_eq!(prettify_file_name(&path, false), "a b c");
     }
 
+    #[test]
+    fn test_prettify_file_name_separators_collapse_and_trim() {
+        let cases = [
+            ("dir/Gear - v2 + spare.stl", false, "Gear v2 spare"),
+            (
+                "_-+Leading_and_trailing+-_.obj",
+                false,
+                "Leading and trailing",
+            ),
+            ("Single  Spaced   Name.3mf", false, "Single Spaced Name"),
+            ("v1.2_final.stl", false, "v1.2 final"),
+            ("Café_Modèl.stl", false, "Café Modèl"),
+            ("parent/My__Folder-Name", true, "My Folder Name"),
+            ("archive.stl.zip", false, "archive.stl"),
+        ];
+
+        for (path, is_dir, expected) in cases {
+            assert_eq!(
+                prettify_file_name(&PathBuf::from(path), is_dir),
+                expected,
+                "prettify_file_name({path:?}, {is_dir})"
+            );
+        }
+    }
+
     // ---- is_zippable_file_extension ----
 
     #[test]

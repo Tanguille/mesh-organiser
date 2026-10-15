@@ -405,6 +405,109 @@ mod tests {
     }
 
     #[test]
+    fn parse_content_disposition_filename_prefers_rfc5987_over_plain() {
+        assert_eq!(
+            parse_content_disposition_filename(
+                r#"attachment; filename="fallback.stl"; filename*=UTF-8''real%20name.stl"#
+            ),
+            Some("real name.stl".to_string())
+        );
+        // The encoded token ends at the next `;`.
+        assert_eq!(
+            parse_content_disposition_filename(r"attachment; filename*=UTF-8''a.stl; size=3"),
+            Some("a.stl".to_string())
+        );
+        // An unusable `filename*=` falls back to the quoted, then unquoted, plain form.
+        assert_eq!(
+            parse_content_disposition_filename(
+                r#"attachment; filename*=ISO-8859-1''x.stl; filename="fallback.stl""#
+            ),
+            Some("fallback.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(
+                r"attachment; filename*=ISO-8859-1''x.stl; filename=plain.stl"
+            ),
+            Some("plain.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_plain_forms_stop_at_delimiters() {
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename = "spaced name.stl" ; x=1"#),
+            Some("spaced name.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename("attachment; filename=plain.stl; size=10"),
+            Some("plain.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename("attachment; filename = spaced.stl"),
+            Some("spaced.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn quoted_filename_matches_only_the_quoted_form() {
+        assert_eq!(
+            super::quoted_filename(
+                r#"x?response-content-disposition=attachment;filename="na me.stl"&y=1"#
+            ),
+            Some("na me.stl".to_string())
+        );
+        assert_eq!(
+            super::quoted_filename(r#"filename = "spaced.stl""#),
+            Some("spaced.stl".to_string())
+        );
+        assert_eq!(
+            super::quoted_filename(r#"filename="""#),
+            Some(String::new())
+        );
+        assert_eq!(super::quoted_filename("filename=unquoted.stl&y=1"), None);
+        assert_eq!(super::quoted_filename("no filename here"), None);
+    }
+
+    #[test]
+    fn makerworld_model_page_url_matches_without_locale() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://makerworld.com/models/123_abc-def#profileId-1",
+                "https://cdn.example.com/",
+            ),
+            Some("https://makerworld.com/models/123_abc-def".to_string())
+        );
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://cdn.example.com/",
+                "https://www.makerworld.com.cn/models/77-slug?from=search",
+            ),
+            Some("https://www.makerworld.com.cn/models/77-slug".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_rejects_non_model_pages() {
+        let rejected = [
+            "http://makerworld.com/en/models/1-plain-http",
+            "https://makerworld.com/en/collections/1-not-a-model",
+            "https://makerworld.com/eng/models/1-three-letter-locale",
+            "https://makerworld.com/en-gb-x/models/1-long-locale",
+            "https://makerworld.com/en/models/",
+            "https://makerworld.org/en/models/1-other-tld",
+            "https://maker-world.com/en/models/1-other-host",
+        ];
+
+        for url in rejected {
+            assert_eq!(
+                makerworld_model_page_url(url, "https://cdn.example.com/"),
+                None,
+                "{url} should not match"
+            );
+        }
+    }
+
+    #[test]
     fn parse_content_disposition_filename_rfc5987_invalid_utf8_returns_none() {
         // %FF is not valid UTF-8; decoding fails and `filename*=` has no plain fallback.
         assert_eq!(

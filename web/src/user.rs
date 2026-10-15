@@ -232,4 +232,81 @@ mod tests {
                 | UserPermissions::OnlineAccount.bits()
         );
     }
+
+    fn stored_user(permissions: UserPermissions, sync_url: Option<&str>) -> db::model::user::User {
+        db::model::user::User {
+            id: 7,
+            username: "alice".to_string(),
+            email: "alice@example.com".to_string(),
+            created_at: "2024-01-02 03:04:05".to_string(),
+            sync_url: sync_url.map(str::to_string),
+            sync_token: Some("sync-token-secret".to_string()),
+            last_sync: Some("2024-05-06 07:08:09".to_string()),
+            permissions,
+            password_hash: "$argon2id$v=19$password-hash-secret".to_string(),
+        }
+    }
+
+    #[test]
+    fn stored_user_round_trip_preserves_identity_and_every_permission_combination() {
+        for bits in 0..=UserPermissions::all().bits() {
+            let permissions = UserPermissions::from_bits(bits).expect("bits should be known flags");
+            let auth_user = super::Backend::convert_user(stored_user(permissions, None));
+            assert_eq!(axum_login::AuthUser::id(&auth_user), 7);
+
+            let user = auth_user.to_user();
+
+            assert_eq!(
+                (
+                    user.id,
+                    user.username.as_str(),
+                    user.email.as_str(),
+                    user.permissions
+                ),
+                (7, "alice", "alice@example.com", permissions)
+            );
+        }
+    }
+
+    /// Existing sessions stay valid only while this hash is byte-for-byte unchanged.
+    #[test]
+    fn session_auth_hash_is_the_sync_url_bytes() {
+        let with_sync_url = super::Backend::convert_user(stored_user(
+            UserPermissions::Sync,
+            Some("https://sync.example/user-7"),
+        ));
+        let without_sync_url =
+            super::Backend::convert_user(stored_user(UserPermissions::Sync, None));
+
+        assert_eq!(
+            axum_login::AuthUser::session_auth_hash(&with_sync_url),
+            b"https://sync.example/user-7"
+        );
+        assert_eq!(
+            axum_login::AuthUser::session_auth_hash(&without_sync_url),
+            b""
+        );
+    }
+
+    #[test]
+    fn debug_output_redacts_credentials() {
+        let auth_user = super::Backend::convert_user(stored_user(
+            UserPermissions::Admin,
+            Some("sync-url-secret"),
+        ));
+
+        let debug = format!("{auth_user:?}");
+
+        assert!(debug.contains("alice"), "unexpected Debug output: {debug}");
+        for secret in [
+            "password-hash-secret",
+            "sync-token-secret",
+            "sync-url-secret",
+        ] {
+            assert!(
+                !debug.contains(secret),
+                "Debug output leaks {secret}: {debug}"
+            );
+        }
+    }
 }

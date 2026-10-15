@@ -365,4 +365,291 @@ mod tests {
             ModelOrderBy::NameAsc
         );
     }
+
+    /// Handlers return this response verbatim, so the status and text are client-visible.
+    async fn rejection_body(result: Result<(), QueryBoundsError>) -> String {
+        let response = bad_request(&result.expect_err("query bounds should be rejected"));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response.headers()[axum::http::header::CONTENT_TYPE],
+            "text/plain; charset=utf-8"
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("rejection body should be readable");
+
+        String::from_utf8(body.to_vec()).expect("rejection body should be UTF-8")
+    }
+
+    #[tokio::test]
+    async fn list_query_bounds_accept_limits_and_reject_one_past_each() {
+        let ids_at_limit = vec![0_i64; MAX_ID_LIST_ITEMS];
+        let ids_over_limit = vec![0_i64; MAX_ID_LIST_ITEMS + 1];
+        let text_at_limit = "a".repeat(MAX_QUERY_TEXT_BYTES);
+        let text_over_limit = "a".repeat(MAX_QUERY_TEXT_BYTES + 1);
+        let multibyte_text_over_limit = "é".repeat(MAX_QUERY_TEXT_BYTES / 2 + 1);
+        let order_by_at_limit = "a".repeat(MAX_ORDER_BY_BYTES);
+        let order_by_over_limit = "a".repeat(MAX_ORDER_BY_BYTES + 1);
+        let model_ids_str_at_limit = "1".repeat(MAX_MODEL_IDS_STR_BYTES);
+        let model_ids_str_over_limit = "1".repeat(MAX_MODEL_IDS_STR_BYTES + 1);
+        let at_limit = PaginatedListQueryBounds {
+            model_ids: &ids_at_limit,
+            group_ids: &ids_at_limit,
+            label_ids: &ids_at_limit,
+            text_search: Some(&text_at_limit),
+            order_by: Some(&order_by_at_limit),
+            page: MAX_PAGE,
+            page_size: MAX_PAGE_SIZE,
+        };
+        let cases = [
+            (
+                PaginatedListQueryBounds {
+                    model_ids: &ids_over_limit,
+                    ..at_limit
+                },
+                "Too many values in model_ids; maximum allowed is 10000",
+            ),
+            (
+                PaginatedListQueryBounds {
+                    group_ids: &ids_over_limit,
+                    ..at_limit
+                },
+                "Too many values in group_ids; maximum allowed is 10000",
+            ),
+            (
+                PaginatedListQueryBounds {
+                    label_ids: &ids_over_limit,
+                    ..at_limit
+                },
+                "Too many values in label_ids; maximum allowed is 10000",
+            ),
+            (
+                PaginatedListQueryBounds {
+                    text_search: Some(&text_over_limit),
+                    ..at_limit
+                },
+                "text_search exceeds maximum length of 8192 bytes (UTF-8)",
+            ),
+            (
+                PaginatedListQueryBounds {
+                    text_search: Some(&multibyte_text_over_limit),
+                    ..at_limit
+                },
+                "text_search exceeds maximum length of 8192 bytes (UTF-8)",
+            ),
+            (
+                PaginatedListQueryBounds {
+                    order_by: Some(&order_by_over_limit),
+                    ..at_limit
+                },
+                "order_by exceeds maximum length of 256 bytes (UTF-8)",
+            ),
+        ];
+
+        assert_eq!(validate_model_list_query_bounds(at_limit), Ok(()));
+        assert_eq!(
+            validate_group_list_query_bounds(at_limit, Some(&model_ids_str_at_limit)),
+            Ok(())
+        );
+        for (bounds, expected_body) in cases {
+            assert_eq!(
+                rejection_body(validate_model_list_query_bounds(bounds)).await,
+                expected_body
+            );
+            assert_eq!(
+                rejection_body(validate_group_list_query_bounds(
+                    bounds,
+                    Some(&model_ids_str_at_limit)
+                ))
+                .await,
+                expected_body
+            );
+        }
+        assert_eq!(
+            rejection_body(validate_group_list_query_bounds(
+                at_limit,
+                Some(&model_ids_str_over_limit)
+            ))
+            .await,
+            "model_ids_str exceeds maximum length of 262144 bytes (UTF-8)"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_query_bounds_reject_out_of_range_pagination() {
+        let first_page = PaginatedListQueryBounds {
+            model_ids: &[],
+            group_ids: &[],
+            label_ids: &[],
+            text_search: None,
+            order_by: None,
+            page: 1,
+            page_size: 1,
+        };
+        let cases = [
+            (0, 1, "page must be between 1 and 1000000 inclusive"),
+            (
+                MAX_PAGE + 1,
+                1,
+                "page must be between 1 and 1000000 inclusive",
+            ),
+            (1, 0, "page_size must be between 1 and 1000 inclusive"),
+            (
+                1,
+                MAX_PAGE_SIZE + 1,
+                "page_size must be between 1 and 1000 inclusive",
+            ),
+        ];
+
+        assert_eq!(validate_model_list_query_bounds(first_page), Ok(()));
+        assert_eq!(validate_group_list_query_bounds(first_page, None), Ok(()));
+        for (page, page_size, expected_body) in cases {
+            let bounds = PaginatedListQueryBounds {
+                page,
+                page_size,
+                ..first_page
+            };
+            assert_eq!(
+                rejection_body(validate_model_list_query_bounds(bounds)).await,
+                expected_body
+            );
+            assert_eq!(
+                rejection_body(validate_group_list_query_bounds(bounds, None)).await,
+                expected_body
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn list_query_bounds_report_model_ids_first_when_everything_is_invalid() {
+        let ids_over_limit = vec![0_i64; MAX_ID_LIST_ITEMS + 1];
+        let text_over_limit = "a".repeat(MAX_QUERY_TEXT_BYTES + 1);
+        let model_ids_str_over_limit = "1".repeat(MAX_MODEL_IDS_STR_BYTES + 1);
+        let all_invalid = PaginatedListQueryBounds {
+            model_ids: &ids_over_limit,
+            group_ids: &ids_over_limit,
+            label_ids: &ids_over_limit,
+            text_search: Some(&text_over_limit),
+            order_by: Some(&text_over_limit),
+            page: 0,
+            page_size: 0,
+        };
+
+        assert_eq!(
+            rejection_body(validate_model_list_query_bounds(all_invalid)).await,
+            "Too many values in model_ids; maximum allowed is 10000"
+        );
+        assert_eq!(
+            rejection_body(validate_group_list_query_bounds(
+                all_invalid,
+                Some(&model_ids_str_over_limit)
+            ))
+            .await,
+            "Too many values in model_ids; maximum allowed is 10000"
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_comma_separated_model_ids_parses_and_bounds_model_ids_str() {
+        let ids_at_limit = vec!["5"; MAX_ID_LIST_ITEMS].join(",");
+        let ids_at_limit_with_garbage = format!("{ids_at_limit},x,,1.5");
+        let ids_over_limit = format!("{ids_at_limit},5");
+
+        assert_eq!(optional_comma_separated_model_ids(None), Ok(None));
+        assert_eq!(
+            optional_comma_separated_model_ids(Some("")),
+            Ok(Some(vec![]))
+        );
+        assert_eq!(
+            optional_comma_separated_model_ids(Some("42")),
+            Ok(Some(vec![42]))
+        );
+        assert_eq!(
+            optional_comma_separated_model_ids(Some(" 1, 2 ,3,3,-7,+8 ")),
+            Ok(Some(vec![1, 2, 3, 3, -7, 8]))
+        );
+        assert_eq!(
+            optional_comma_separated_model_ids(Some("abc,1.5,0x10,,9223372036854775808")),
+            Ok(Some(vec![]))
+        );
+        assert_eq!(
+            optional_comma_separated_model_ids(Some("1,abc,2")),
+            Ok(Some(vec![1, 2]))
+        );
+        assert_eq!(
+            optional_comma_separated_model_ids(Some(&ids_at_limit_with_garbage))
+                .map(|ids| ids.map(|ids| ids.len())),
+            Ok(Some(MAX_ID_LIST_ITEMS))
+        );
+        assert_eq!(
+            rejection_body(optional_comma_separated_model_ids(Some(&ids_over_limit)).map(|_| ()))
+                .await,
+            "Too many model_ids in model_ids_str; maximum allowed is 10000"
+        );
+    }
+
+    #[test]
+    fn parse_order_by_bounded_maps_every_variant_and_falls_back_on_anything_else() {
+        let model_variants = [
+            ("AddedAsc", ModelOrderBy::AddedAsc),
+            ("AddedDesc", ModelOrderBy::AddedDesc),
+            ("NameAsc", ModelOrderBy::NameAsc),
+            ("NameDesc", ModelOrderBy::NameDesc),
+            ("SizeAsc", ModelOrderBy::SizeAsc),
+            ("SizeDesc", ModelOrderBy::SizeDesc),
+            ("ModifiedAsc", ModelOrderBy::ModifiedAsc),
+            ("ModifiedDesc", ModelOrderBy::ModifiedDesc),
+        ];
+        let group_variants = [
+            ("CreatedAsc", db::group_db::GroupOrderBy::CreatedAsc),
+            ("CreatedDesc", db::group_db::GroupOrderBy::CreatedDesc),
+            ("NameAsc", db::group_db::GroupOrderBy::NameAsc),
+            ("NameDesc", db::group_db::GroupOrderBy::NameDesc),
+            ("ModifiedAsc", db::group_db::GroupOrderBy::ModifiedAsc),
+            ("ModifiedDesc", db::group_db::GroupOrderBy::ModifiedDesc),
+        ];
+        let unknown_at_limit = "a".repeat(MAX_ORDER_BY_BYTES);
+        let invalid = [
+            "",
+            "nameasc",
+            "NAMEASC",
+            " NameAsc",
+            "NameAsc ",
+            "name_asc",
+            "AddedAsc,NameAsc",
+            unknown_at_limit.as_str(),
+        ];
+
+        // Two different defaults so a parsed value can never coincide with the fallback.
+        for (name, expected) in model_variants {
+            assert_eq!(
+                parse_order_by_bounded(name, ModelOrderBy::AddedAsc),
+                expected
+            );
+            assert_eq!(
+                parse_order_by_bounded(name, ModelOrderBy::AddedDesc),
+                expected
+            );
+        }
+        for (name, expected) in group_variants {
+            assert_eq!(
+                parse_order_by_bounded(name, db::group_db::GroupOrderBy::CreatedAsc),
+                expected
+            );
+            assert_eq!(
+                parse_order_by_bounded(name, db::group_db::GroupOrderBy::CreatedDesc),
+                expected
+            );
+        }
+        for order_by in invalid {
+            assert_eq!(
+                parse_order_by_bounded(order_by, ModelOrderBy::SizeDesc),
+                ModelOrderBy::SizeDesc
+            );
+            assert_eq!(
+                parse_order_by_bounded(order_by, db::group_db::GroupOrderBy::ModifiedAsc),
+                db::group_db::GroupOrderBy::ModifiedAsc
+            );
+        }
+    }
 }
