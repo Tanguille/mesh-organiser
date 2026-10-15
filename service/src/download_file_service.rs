@@ -149,7 +149,11 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
 }
 
 /// Downloads to a temp dir and derives filename/source from URL; may rename file for site-specific logic.
-pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
+/// An explicit `filename` overrides that logic, and `source_uri` is then `None`.
+pub async fn download_file(
+    url: &str,
+    filename: Option<&str>,
+) -> Result<DownloadResult, ServiceError> {
     let temp_dir = get_temp_dir("download");
 
     let (mut file_path, response_url) = download_file_to_dir(url, &temp_dir).await?;
@@ -168,30 +172,35 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         .to_string();
 
     let mut source_uri: Option<String> = None;
-    let desired_filename: String = if url.contains("makerworld") {
-        source_uri = Some(
-            makerworld_model_page_url(url, &response_url)
-                .unwrap_or_else(|| String::from("https://makerworld.com/")),
-        );
-        url.split("name=").last().unwrap_or("model.stl").to_string()
-    } else if url.contains("thingiverse") {
-        source_uri = Some(String::from("https://thingiverse.com/"));
-        redirect_url_filename
-    } else if let Some(stripped) = url.strip_prefix("https://files.printables.com/media/prints/") {
-        let id = String::from(stripped.split('/').next().unwrap());
-        source_uri = Some(format!("https://printables.com/model/{id}"));
-        current_filename
-    } else if url.contains("nexprint") {
-        source_uri = Some(String::from("https://nexprint.com/"));
-        // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
-        // quoted-only on purpose — see quoted_filename.
-        let decoded_url = percent_decode(url).unwrap();
-        quoted_filename(&decoded_url)
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| current_filename.clone())
-    } else {
-        current_filename
+    let site_filename = || -> String {
+        if url.contains("makerworld") {
+            source_uri = Some(
+                makerworld_model_page_url(url, &response_url)
+                    .unwrap_or_else(|| String::from("https://makerworld.com/")),
+            );
+            url.split("name=").last().unwrap_or("model.stl").to_string()
+        } else if url.contains("thingiverse") {
+            source_uri = Some(String::from("https://thingiverse.com/"));
+            redirect_url_filename
+        } else if let Some(stripped) =
+            url.strip_prefix("https://files.printables.com/media/prints/")
+        {
+            let id = String::from(stripped.split('/').next().unwrap());
+            source_uri = Some(format!("https://printables.com/model/{id}"));
+            current_filename
+        } else if url.contains("nexprint") {
+            source_uri = Some(String::from("https://nexprint.com/"));
+            // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
+            // quoted-only on purpose — see quoted_filename.
+            let decoded_url = percent_decode(url).unwrap();
+            quoted_filename(&decoded_url)
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| current_filename.clone())
+        } else {
+            current_filename
+        }
     };
+    let desired_filename = filename.map_or_else(site_filename, str::to_string);
 
     let cleansed_desired = cleanse_evil_from_name(&desired_filename);
     let current_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
