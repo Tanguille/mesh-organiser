@@ -223,10 +223,15 @@ pub async fn get_groups(
     })
 }
 
-async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<String, DbError> {
+async fn get_unique_id_from_group_id(
+    db: &DbContext,
+    user: &User,
+    group_id: i64,
+) -> Result<String, DbError> {
     let row = sqlx::query!(
-        "SELECT group_unique_global_id FROM models_group WHERE group_id = ?",
-        group_id
+        "SELECT group_unique_global_id FROM models_group WHERE group_id = ? AND group_user_id = ?",
+        group_id,
+        user.id
     )
     .fetch_one(db)
     .await?;
@@ -251,7 +256,7 @@ pub async fn set_group_id_on_models(
         .collect();
 
     if let Some(gid) = group_id {
-        get_unique_id_from_group_id(db, gid).await?;
+        get_unique_id_from_group_id(db, user, gid).await?;
         old_group_ids.push(gid);
     }
 

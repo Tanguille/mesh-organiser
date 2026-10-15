@@ -1408,3 +1408,61 @@ async fn get_model_ids_via_sha256s_preserves_input_order_and_rejects_unknown_or_
         None
     );
 }
+
+#[tokio::test]
+async fn set_group_id_on_models_rejects_another_users_group() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let foreign_group_id = add_group_with_model(&db, &other_user, "theirs").await;
+    let model_id = add_model(&db, &user, "mine").await;
+
+    let result =
+        group_db::set_group_id_on_models(&db, &user, Some(foreign_group_id), vec![model_id], None)
+            .await;
+
+    assert!(matches!(result, Err(sqlx::Error::RowNotFound)));
+    let models = model_db::get_models_via_ids(&db, &user, vec![model_id])
+        .await
+        .unwrap();
+    assert!(models[0].group.is_none());
+}
+
+#[tokio::test]
+async fn add_labels_on_models_rejects_another_users_model() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let label_id = label_db::add_label(&db, &user, "mine", 1, None)
+        .await
+        .unwrap()
+        .id;
+    let foreign_model_id = add_model(&db, &other_user, "theirs").await;
+
+    let result =
+        label_db::add_labels_on_models(&db, &user, &[label_id], &[foreign_model_id], None).await;
+
+    assert!(matches!(result, Err(sqlx::Error::RowNotFound)));
+    let models = model_db::get_models_via_ids(&db, &other_user, vec![foreign_model_id])
+        .await
+        .unwrap();
+    assert!(models[0].labels.is_empty());
+}
+
+#[tokio::test]
+async fn set_model_ids_on_share_with_no_models_clears_the_share() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let model_id = add_model(&db, &user, "shared").await;
+    let share_id = share_db::create_share(&db, &user, "share").await.unwrap();
+    share_db::set_model_ids_on_share(&db, &user, &share_id, vec![model_id])
+        .await
+        .unwrap();
+
+    share_db::set_model_ids_on_share(&db, &user, &share_id, vec![])
+        .await
+        .unwrap();
+
+    let share = share_db::get_share_via_id(&db, &share_id).await.unwrap();
+    assert_eq!(share.model_ids, Vec::<i64>::new());
+}

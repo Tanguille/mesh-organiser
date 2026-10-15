@@ -240,6 +240,12 @@ pub async fn add_labels_on_models(
         return Err(DbError::RowNotFound);
     }
 
+    let model_global_ids =
+        model_db::get_unique_ids_from_model_ids(db, user, model_ids.to_vec()).await?;
+    if model_global_ids.len() != model_ids.len() {
+        return Err(DbError::RowNotFound);
+    }
+
     if !label_ids.is_empty() && !model_ids.is_empty() {
         let mut query_builder =
             QueryBuilder::new("INSERT INTO models_labels (label_id, model_id) ");
