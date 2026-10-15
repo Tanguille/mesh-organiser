@@ -330,3 +330,19 @@ pub async fn add_model(
 
     Ok(Json(model_ids).into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn disk_space_usage_response_serializes_both_sizes_by_name() {
+        let usage = super::GetModelDiskSpaceUsageResponse {
+            size_compressed: 512,
+            size_uncompressed: 2048,
+        };
+
+        assert_eq!(
+            serde_json::to_value(usage).expect("disk usage should serialize"),
+            serde_json::json!({ "size_uncompressed": 2048, "size_compressed": 512 })
+        );
+    }
+}

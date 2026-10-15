@@ -226,6 +226,74 @@ describe("parseRawLabel", () => {
     expect(label.selfModelCount).toBe(3);
     expect(label.selfGroupCount).toBe(1);
   });
+
+  it("produces the full label shape with every field mapped and colors zero-padded", () => {
+    const raw: RawLabel = {
+      meta: {
+        id: 20,
+        name: "parent",
+        color: 0x00000a,
+        unique_global_id: "parent-gid",
+        last_modified: "2024-06-02T00:00:00Z",
+      },
+      children: [
+        {
+          id: 21,
+          name: "child",
+          color: 0x00ff00,
+          unique_global_id: "child-gid",
+          last_modified: "2024-06-03T00:00:00Z",
+        },
+      ],
+      effective_labels: [
+        {
+          id: 22,
+          name: "effective",
+          color: 0,
+          unique_global_id: "effective-gid",
+          last_modified: "2024-06-04T00:00:00Z",
+        },
+      ],
+      has_parent: false,
+      model_count: 8,
+      group_count: 7,
+      self_model_count: 6,
+      self_group_count: 5,
+    };
+
+    expect(parseRawLabel(raw)).toStrictEqual({
+      meta: {
+        id: 20,
+        name: "parent",
+        color: "#00000a",
+        lastModified: new Date("2024-06-02T00:00:00Z"),
+        uniqueGlobalId: "parent-gid",
+      },
+      children: [
+        {
+          id: 21,
+          name: "child",
+          color: "#00ff00",
+          lastModified: new Date("2024-06-03T00:00:00Z"),
+          uniqueGlobalId: "child-gid",
+        },
+      ],
+      effectiveLabels: [
+        {
+          id: 22,
+          name: "effective",
+          color: "#000000",
+          lastModified: new Date("2024-06-04T00:00:00Z"),
+          uniqueGlobalId: "effective-gid",
+        },
+      ],
+      hasParent: false,
+      modelCount: 8,
+      groupCount: 7,
+      selfModelCount: 6,
+      selfGroupCount: 5,
+    });
+  });
 });
 
 const sampleRawBlob: RawBlob = {
