@@ -115,7 +115,7 @@ pub async fn edit_user(
     State(app_state): State<AppState>,
     Json(params): Json<PutUserParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    require_admin_or_self(&user, user_id, "change this user's password")?;
+    require_admin_or_self(&user, user_id, "edit this user")?;
 
     user_db::edit_user_min(
         &app_state.db,
