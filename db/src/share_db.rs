@@ -90,14 +90,19 @@ pub async fn set_model_ids_on_share(
         .execute(db)
         .await?;
 
-    let mut query_builder = QueryBuilder::new("INSERT INTO shares_models (share_id, model_id) ");
-    query_builder.push_values(models.iter().map(|model| model.id), |mut b, model_id| {
-        b.push_bind(share_id);
-        b.push_bind(model_id);
-    });
-
-    let query = query_builder.build();
-    query.execute(db).await?;
+    // An empty VALUES list is invalid SQL; clearing the share stops at the DELETE above.
+    if !models.is_empty() {
+        let mut query_builder =
+            QueryBuilder::new("INSERT INTO shares_models (share_id, model_id) ");
+        query_builder.push_values(
+            models.iter().map(|model| model.id),
+            |mut builder, model_id| {
+                builder.push_bind(share_id);
+                builder.push_bind(model_id);
+            },
+        );
+        query_builder.build().execute(db).await?;
+    }
 
     Ok(())
 }
