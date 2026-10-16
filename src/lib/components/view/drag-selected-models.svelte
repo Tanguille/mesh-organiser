@@ -5,8 +5,8 @@
     state as dragState,
     startDragging,
     stopDragging,
-  } from "$lib/drag-selected-models.svelte";
-  import type { Model } from "$lib/api/shared/model_api";
+  } from "#lib/drag-selected-models.svelte";
+  import type { Model } from "#lib/api/shared/model_api";
 
   const props: { children: Snippet; models: Model[]; class?: ClassValue } =
     $props();
@@ -53,11 +53,6 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-  class={props.class}
-  onmousedown={(e) => onmousedown(e)}
-  onmousemove={(e) => onmousemove(e)}
-  onmouseup={(e) => onmouseup(e)}
->
+<div class={props.class} {onmousedown} {onmousemove} {onmouseup}>
   {@render props.children?.()}
 </div>

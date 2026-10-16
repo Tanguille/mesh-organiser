@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://kritika.home-operations.com/kritika.schema.json
+rules:
+  - id: renovate-tauri
+    whenExpr: pr.headRef.startsWith("renovate/")
+    rule: >-
+      For Tauri, check that a plugin's Rust crate and its npm package, and tauri with @tauri-apps/api, stay on matching versions.

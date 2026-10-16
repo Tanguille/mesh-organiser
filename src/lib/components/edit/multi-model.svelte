@@ -4,43 +4,36 @@
     CardContent,
     CardHeader,
     CardTitle,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
 
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
-  import { Label } from "$lib/components/ui/label";
-  import LabelSelect from "$lib/components/view/label-select.svelte";
-  import { countWriter, uniqueById } from "$lib/utils";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index.js";
+  import { Label } from "#lib/components/ui/label";
+  import LabelSelect from "#lib/components/view/label-select.svelte";
+  import { countWriter, uniqueById } from "#lib/utils";
 
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
+  import { resolve } from "#lib/paths";
 
-  import {
-    AsyncButton,
-    Button,
-    buttonVariants,
-  } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
   import { toast } from "svelte-sonner";
   import type { ClassValue } from "svelte/elements";
 
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { type GroupMeta, IGroupApi } from "$lib/api/shared/group_api";
-  import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import { IModelApi, type Model } from "$lib/api/shared/model_api";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { type GroupMeta, IGroupApi } from "#lib/api/shared/group_api";
+  import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
+  import { IModelApi, type Model } from "#lib/api/shared/model_api";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
   import Boxes from "@lucide/svelte/icons/boxes";
   import Component from "@lucide/svelte/icons/component";
   import Group from "@lucide/svelte/icons/group";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Ungroup from "@lucide/svelte/icons/ungroup";
-  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
-  import Download from "@lucide/svelte/icons/download";
   import OpenInSlicerButton from "../view/open-in-slicer-button.svelte";
-  import { createShare, IShareApi } from "$lib/api/shared/share_api";
+  import { createShare, IShareApi } from "#lib/api/shared/share_api";
   import Share2 from "@lucide/svelte/icons/share-2";
-  import { configurationMeta } from "$lib/configuration.svelte";
+  import { configurationMeta } from "#lib/configuration.svelte";
   import ExportModelsButton from "../view/export-models-button.svelte";
 
   const props: {
@@ -61,13 +54,11 @@
   );
 
   let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
-  let appliedLabels = $derived(uniqueById(models.map((x) => x.labels).flat()));
+  let appliedLabels = $derived(uniqueById(models.flatMap((x) => x.labels)));
 
   const modelApi = getContainer().require<IModelApi>(IModelApi);
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
   const labelApi = getContainer().require<ILabelApi>(ILabelApi);
-  const localApi = getContainer().optional<ILocalApi>(ILocalApi);
-  const downloadApi = getContainer().optional<IDownloadApi>(IDownloadApi);
   const shareApi = getContainer().optional<IShareApi>(IShareApi);
 
   async function setLabelOnAllModels(label: LabelMeta) {
@@ -112,14 +103,6 @@
 
     await promise;
     await updateSidebarState();
-  }
-
-  async function setPrintedFlagOnAllModels(printed: boolean) {
-    await setFlagOnAllModels((x) => (x.flags.printed = printed), printed);
-  }
-
-  async function setFavoriteFlagOnAllModels(favorite: boolean) {
-    await setFlagOnAllModels((x) => (x.flags.favorite = favorite), favorite);
   }
 
   async function setFlagOnAllModels(action: (m: Model) => void, set: boolean) {
@@ -196,10 +179,10 @@
   }
 
   async function onRemoveGroup() {
-    const count = models.length;
-    await groupApi.removeModelsFromGroup(models);
+    const affected_models = models;
+    await groupApi.removeModelsFromGroup(affected_models);
     await updateSidebarState();
-    toast.success(`Ungrouped ${count} model(s)`);
+    toast.success(`Ungrouped ${countWriter("model", affected_models)}`);
     props.onGroupDelete?.();
   }
 
@@ -259,17 +242,7 @@
       <div class="flex flex-col gap-4">
         <Label>Open</Label>
         <div class="grid grid-cols-2 gap-4">
-          {#if localApi}
-            <ExportModelsButton {models} class="grow" />
-          {:else if downloadApi}
-            <AsyncButton
-              class="grow"
-              onclick={() => downloadModels(models, downloadApi)}
-              ><Download /> Download {models.length > 1
-                ? "models"
-                : "model"}</AsyncButton
-            >
-          {/if}
+          <ExportModelsButton {models} class="grow" />
           <OpenInSlicerButton {models} class="grow" />
         </div>
       </div>
@@ -321,13 +294,17 @@
           <CheckboxWithLabel
             class="ml-1"
             label="Printed"
-            bind:value={() => printed, (val) => setPrintedFlagOnAllModels(val)}
+            bind:value={
+              () => printed,
+              (val) => setFlagOnAllModels((x) => (x.flags.printed = val), val)
+            }
           />
           <CheckboxWithLabel
             class="ml-1"
             label="Favorite"
             bind:value={
-              () => favorited, (val) => setFavoriteFlagOnAllModels(val)
+              () => favorited,
+              (val) => setFlagOnAllModels((x) => (x.flags.favorite = val), val)
             }
           />
         </div>

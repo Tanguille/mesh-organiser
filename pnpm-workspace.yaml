@@ -1,5 +1,2 @@
-minimumReleaseAgeExclude:
-  - "@types/three@0.185.1"
-  - prettier@3.9.5
 onlyBuiltDependencies:
   - esbuild

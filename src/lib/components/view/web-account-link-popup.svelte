@@ -4,43 +4,37 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  } from "#lib/components/ui/card";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import FolderSync from "@lucide/svelte/icons/folder-sync";
   import Globe from "@lucide/svelte/icons/globe";
 
   import { toast } from "svelte-sonner";
-  import type { AccountLinkData } from "$lib/account_link_data.svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import type { AccountLinkData } from "#lib/account_link_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
     IAdminUserApi,
     ISwitchUserApi,
     IUserApi,
     type User,
-  } from "$lib/api/shared/user_api";
+  } from "#lib/api/shared/user_api";
   import { onMount } from "svelte";
   import Input from "../ui/input/input.svelte";
-  import * as Select from "$lib/components/ui/select/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { Label } from "../ui/label";
-  import { IUserSyncApi } from "$lib/api/shared/user_sync_api";
+  import { IUserSyncApi } from "#lib/api/shared/user_sync_api";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { redirectAfterUserSwitch } from "$lib/paths";
+  import { redirectAfterUserSwitch } from "#lib/paths";
 
-  let props: { data: AccountLinkData; onDismiss?: () => void } = $props();
+  let props: { data: AccountLinkData; onDismiss: () => void } = $props();
   const userApi = getContainer().optional<IUserApi>(IUserApi);
   const userAdminApi = getContainer().optional<IAdminUserApi>(IAdminUserApi);
   const userSyncApi = getContainer().optional<IUserSyncApi>(IUserSyncApi);
   const userSwitchApi = getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
   let users = $state<User[]>([]);
   let currentUser = $state<User | null>(null);
-
-  function dismiss() {
-    if (props.onDismiss) {
-      props.onDismiss();
-    }
-  }
 
   async function linkLocalAccount() {
     if (!userSyncApi || !userSwitchApi) {
@@ -66,7 +60,7 @@
 
       await redirectAfterUserSwitch();
 
-      dismiss();
+      props.onDismiss();
       location.reload();
     } catch (e) {
       toast.error("Failed to link local account: " + e);
@@ -99,7 +93,7 @@
       await userSwitchApi.switchUser(newUser);
       await goto(resolve("/"));
 
-      dismiss();
+      props.onDismiss();
       location.reload();
     } catch (e) {
       toast.error("Failed to create online account: " + e);
@@ -129,7 +123,7 @@
     <CardHeader>
       <div class="flex flex-row items-center gap-4">
         <CardTitle class="grow">Link account to {props.data.baseUrl}</CardTitle>
-        <Button size="sm" onclick={dismiss}>Dismiss</Button>
+        <Button size="sm" onclick={props.onDismiss}>Dismiss</Button>
       </div>
       <p>
         Using online accounts inside the desktop application gives you access to

@@ -3,8 +3,8 @@ import {
   createGroupMetaInstance,
   groupOrderByComparator,
   type Group,
+  type GroupFilter,
   type GroupMeta,
-  type GroupOrderBy,
   type IGroupApi,
 } from "../shared/group_api";
 import { modelMatchesSearch, type Model } from "../shared/model_api";
@@ -34,20 +34,16 @@ function collectGroupModels(
 
   mockModels.forEach((model, modelId) => {
     if (predicate(modelId)) {
-      // Check if model matches filters
       if (model_ids && !model_ids.includes(modelId)) return;
 
-      // Check label filter
       const modelLabelIds = modelLabelsMap.get(modelId) || [];
       if (label_ids && !label_ids.some((lid) => modelLabelIds.includes(lid)))
         return;
 
-      // Check text search
       if (searchLower && !modelMatchesSearch(model, searchLower)) return;
 
       models.push(model);
 
-      // Collect labels
       modelLabelIds.forEach((lid) => labelIds.add(lid));
 
       // Collect flags (union across models, deduped) via the shared converter
@@ -63,21 +59,23 @@ function collectGroupModels(
 
 export class DemoGroupApi implements IGroupApi {
   async getGroups(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: GroupOrderBy,
-    text_search: string | null,
+    filter: GroupFilter,
     page: number,
     page_size: number,
-    include_ungrouped_models: boolean,
   ): Promise<Group[]> {
+    const {
+      modelIds: model_ids,
+      groupIds: group_ids,
+      labelIds: label_ids,
+      orderBy: order_by,
+      textSearch: text_search,
+      fileTypes: file_types,
+      includeUngroupedModels: include_ungrouped_models,
+    } = filter;
     const groups: Group[] = [];
 
-    // Collect all groups that match the criteria
     const groupsToProcess = new Map<number, GroupMeta>();
 
-    // If specific group IDs are requested
     if (group_ids) {
       group_ids.forEach((id) => {
         const group = mockGroups.get(id);
@@ -86,15 +84,12 @@ export class DemoGroupApi implements IGroupApi {
         }
       });
     } else {
-      // Add all groups
       mockGroups.forEach((group, id) => {
         groupsToProcess.set(id, group);
       });
     }
 
-    // Build groups with their models
     for (const [groupId, groupMeta] of groupsToProcess) {
-      // Find all models in this group
       const {
         models: modelsInGroup,
         labelIds: groupLabels,
@@ -106,10 +101,8 @@ export class DemoGroupApi implements IGroupApi {
         (modelId) => modelGroupMap.get(modelId) === groupId,
       );
 
-      // Skip empty groups unless requested
       if (modelsInGroup.length === 0 && !include_ungrouped_models) continue;
 
-      // Convert label IDs to LabelMeta
       const labels = resolveLabels(Array.from(groupLabels));
 
       const group = createGroupInstance(
@@ -123,7 +116,6 @@ export class DemoGroupApi implements IGroupApi {
       groups.push(group);
     }
 
-    // Handle ungrouped models
     if (include_ungrouped_models) {
       // The accumulated labels/flags are unused here: each ungrouped model is
       // turned into its own group below, recomputing labels and flags per model.
@@ -134,7 +126,6 @@ export class DemoGroupApi implements IGroupApi {
         (modelId) => !modelGroupMap.has(modelId),
       );
 
-      // Create ungrouped models as individual groups
       ungroupedModels.forEach((model) => {
         const modelLabelIds = modelLabelsMap.get(model.id) || [];
         const labels = resolveLabels(modelLabelIds);
@@ -157,30 +148,22 @@ export class DemoGroupApi implements IGroupApi {
       });
     }
 
-    // Apply text search to group names
-    let filteredGroups = groups;
-    if (text_search) {
-      const searchLower = text_search.toLowerCase();
-      filteredGroups = groups.filter(
-        (g) =>
-          g.meta.name.toLowerCase().includes(searchLower) ||
-          g.models.some((m) => modelMatchesSearch(m, searchLower)),
-      );
-    }
+    // Like the SQL backend: keep whole groups that contain any matching type.
+    const filteredGroups = groups.filter(
+      (g) =>
+        g.models.length > 0 &&
+        (!file_types ||
+          g.models.some((m) => file_types.includes(m.blob.filetype))),
+    );
 
-    filteredGroups = filteredGroups.filter((g) => g.models.length > 0);
-
-    // Sort groups
     filteredGroups.sort(groupOrderByComparator(order_by));
 
-    // Apply pagination
     const start = (page - 1) * page_size;
     const end = start + page_size;
     return filteredGroups.slice(start, end);
   }
 
   async addGroup(name: string): Promise<GroupMeta> {
-    // Find the highest group ID
     let maxId = 0;
     mockGroups.forEach((_group, id) => {
       if (id > maxId) maxId = id;
@@ -204,15 +187,12 @@ export class DemoGroupApi implements IGroupApi {
       throw new Error(`Group with id ${group.id} not found`);
     }
 
-    // Update mutable properties
     existingGroup.name = group.name;
   }
 
   async deleteGroup(group: GroupMeta): Promise<void> {
-    // Remove group
     mockGroups.delete(group.id);
 
-    // Remove models from this group
     mockModels.forEach((model, modelId) => {
       if (modelGroupMap.get(modelId) === group.id) {
         model.group = null;
@@ -226,7 +206,6 @@ export class DemoGroupApi implements IGroupApi {
     models: Pick<Model, "id">[],
   ): Promise<void> {
     models.forEach((model) => {
-      // Update the model's group reference
       const existingModel = mockModels.get(model.id);
       if (existingModel) {
         existingModel.group = group;
@@ -237,7 +216,6 @@ export class DemoGroupApi implements IGroupApi {
 
   async removeModelsFromGroup(models: Pick<Model, "id">[]): Promise<void> {
     models.forEach((model) => {
-      // Remove the model's group reference
       const existingModel = mockModels.get(model.id);
       if (existingModel) {
         existingModel.group = null;
@@ -250,7 +228,6 @@ export class DemoGroupApi implements IGroupApi {
     let count = mockGroups.size;
 
     if (include_ungrouped_models) {
-      // Count ungrouped models
       let ungroupedCount = 0;
       mockModels.forEach((_model, modelId) => {
         if (!modelGroupMap.has(modelId)) {

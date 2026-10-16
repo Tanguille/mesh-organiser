@@ -7,8 +7,10 @@ use crate::{
     db_context::DbContext,
     label_db,
     model::{
-        Model, ModelFlags, blob::Blob, label::convert_label_meta_list_to_map,
-        model_group::ModelGroupMeta, user::User,
+        Model, ModelFlags,
+        blob::{Blob, FileType},
+        model_group::ModelGroupMeta,
+        user::User,
     },
     push_in_i64,
     util::{parse_concat_ids, random_hex_32, time_now, validate_global_id},
@@ -49,6 +51,8 @@ pub struct ModelFilterOptions {
     pub order_by: Option<ModelOrderBy>,
     pub text_search: Option<String>,
     pub model_flags: Option<ModelFlags>,
+    /// Restrict to blobs of these types (zipped or not). `None` = any; `Some(&[])` = nothing.
+    pub file_types: Option<Vec<FileType>>,
     pub page: u32,
     pub page_size: u32,
 }
@@ -65,12 +69,21 @@ impl Default for ModelFilterOptions {
             order_by: None,
             text_search: None,
             model_flags: None,
+            file_types: None,
             page: 1,
             page_size: MAX_PAGE_SIZE,
         }
     }
 }
 
+/// Returns a page of the user's models matching all supplied filters.
+///
+/// File types match stored extensions case-insensitively and include equivalent zipped and
+/// unzipped spellings. An empty ID or file-type list matches no models.
+///
+/// # Errors
+///
+/// Returns an error if the models or their labels cannot be queried.
 #[allow(clippy::too_many_lines)]
 pub async fn get_models(
     db: &DbContext,
@@ -84,6 +97,7 @@ pub async fn get_models(
     if options.model_ids.as_ref().is_some_and(Vec::is_empty)
         || options.group_ids.as_ref().is_some_and(Vec::is_empty)
         || options.label_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.file_types.as_ref().is_some_and(Vec::is_empty)
     {
         return Ok(PaginatedResponse {
             page: options.page,
@@ -128,6 +142,15 @@ pub async fn get_models(
         query_builder.push_bind(i64::from(model_flags.bits()));
     }
 
+    if let Some(file_types) = &options.file_types {
+        query_builder.push(" AND LOWER(blob_filetype) IN (");
+        let mut separated = query_builder.separated(", ");
+        for extension in file_types.iter().flat_map(FileType::storage_extensions) {
+            separated.push_bind(*extension);
+        }
+        query_builder.push(")");
+    }
+
     if let Some(text_search) = options.text_search {
         let pattern = format!("%{text_search}%");
         query_builder.push(" AND (model_name LIKE ");
@@ -152,8 +175,11 @@ pub async fn get_models(
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels = label_db::get_labels_min(db, user).await?;
-    let min_labels_map = convert_label_meta_list_to_map(min_labels);
+    let min_labels_map: IndexMap<_, _> = label_db::get_labels_min(db, user)
+        .await?
+        .into_iter()
+        .map(|l| (l.id, l))
+        .collect();
 
     for row in rows {
         models.push(Model {
@@ -209,12 +235,8 @@ pub async fn get_models_via_ids(
     user: &User,
     ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
-    // Use MAX_PAGE_SIZE instead of u32::MAX to ensure bounded queries
-    // If more items are needed, multiple calls should be made
     let options = ModelFilterOptions {
         model_ids: Some(ids),
-        page: 1,
-        page_size: MAX_PAGE_SIZE,
         ..Default::default()
     };
 
@@ -309,18 +331,6 @@ async fn edit_model_global_id(
     sqlx::query!(
         "UPDATE models SET model_unique_global_id = ? WHERE model_id = ? AND model_user_id = ?",
         unique_global_id,
-        id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
-}
-
-pub async fn delete_model(db: &DbContext, user: &User, id: i64) -> Result<(), DbError> {
-    sqlx::query!(
-        "DELETE FROM models WHERE model_id = ? AND model_user_id = ?",
         id,
         user.id
     )

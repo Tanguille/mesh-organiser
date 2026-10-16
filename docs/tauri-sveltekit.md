@@ -7,7 +7,7 @@ This repo follows the [Tauri 2 SvelteKit guide](https://v2.tauri.app/start/front
 - **Vite** listens on **`http://127.0.0.1:9435`** with **`strictPort: true`** when **`TAURI_DEV_HOST`** is unset ([`vite.config.js`](../vite.config.js)), matching Tauri’s **`devUrl`** probe. That avoids a **blank WebView** (hostname/`::1` mismatch) and avoids **`tauri dev`** hanging on “Waiting for … `127.0.0.1:9435`” when Vite was only bound in a way that did not accept IPv4 loopback.
 - **`src-tauri/tauri.conf.json`** sets **`devUrl`** to **`http://127.0.0.1:9435`**. Override **`TAURI_DEV_HOST`** for LAN/device testing and align **`devUrl`**, HMR, and CSP as described below.
 - **`beforeDevCommand`** is `pnpm run dev:web`.
-- **`pnpm run dev`** runs **`dev:cleanup`** (`kill-port 9435`, then **1s** pause for the OS to release the port) then **`tauri dev`**, so a stuck process on 9435 is less likely to block startup.
+- **`pnpm run dev`** runs **`tauri dev`**. If port **9435** is busy, Vite fails fast (`strictPort`); free the port manually.
 
 ### Debugging a blank window in dev
 
@@ -34,7 +34,7 @@ Also try:
 ## SPA shell vs prerender
 
 - Root [`src/routes/+layout.ts`](../src/routes/+layout.ts) uses **`export const ssr = false`** (no Node SSR in the WebView).
-- **`@sveltejs/adapter-static`** is configured with **`fallback: 'index.html'`** in [`svelte.config.js`](../svelte.config.js) so **deep links** (e.g. `/group/123`, `/share/...`) work when served as static files inside Tauri.
+- **`@sveltejs/adapter-static`** is configured with **`fallback: 'index.html'`** in the `sveltekit({ ... })` plugin call in [`vite.config.js`](../vite.config.js) (SvelteKit 3 no longer reads `svelte.config.js`) so **deep links** (e.g. `/group/123`, `/share/...`) work when served as static files inside Tauri.
 - Dynamic `[slug]` routes do **not** use stub `entries()` for build-time paths; the client router resolves params at runtime.
 
 ## Content-Security-Policy (dev vs release)

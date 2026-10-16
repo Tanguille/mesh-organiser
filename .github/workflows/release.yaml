@@ -182,31 +182,38 @@ jobs:
             args: "--config src-tauri/tauri.release-csp.json --target aarch64-apple-darwin"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Verify package.json matches Cargo workspace version
         run: node scripts/check-package-cargo-version.mjs
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v4
+      # Matches svelte-ci.yaml: pnpm version comes from package.json
+      # `packageManager`, so a hardcoded `version:` here can't drift from it.
+      - name: Set up pnpm
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with:
-          version: 10
+          runtime: node@latest
+          cache: true
+          cache-dependency-path: pnpm-lock.yaml
+          install: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: current
-          cache: pnpm
-
+      # Matches rust-ci.yaml. dtolnay/rust-toolchain publishes no tags, so
+      # Dependabot cannot resolve a SHA pin to it and errors out the entire
+      # github-actions update batch; this action is tagged and resolves fine.
+      # cache/rustflags are disabled to keep the previous behaviour: caching
+      # stays with the explicit Swatinem step below, and the release build must
+      # not fail on warnings.
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          target: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          cache: false
+          rustflags: ""
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: release
 

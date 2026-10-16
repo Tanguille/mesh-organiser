@@ -1,28 +1,20 @@
 <script lang="ts">
-  import { configuration } from "$lib/configuration.svelte";
+  import { configuration } from "#lib/configuration.svelte";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import AppHeader from "$lib/components/view/app-header.svelte";
+  import AppHeader from "#lib/components/view/app-header.svelte";
 
-  switch (configuration.startup_page) {
-    case "models":
-      goto(resolve("/model"));
-      break;
-    case "import":
-      goto(resolve("/import"));
-      break;
-    case "groups":
-      goto(resolve("/group"));
-      break;
-    case "favorites":
-      goto(resolve("/favorite"));
-      break;
-    case "print-history":
-      goto(resolve("/printed"));
-      break;
-    case "projects":
-      goto(resolve("/resource"));
-      break;
+  const startupRoutes = {
+    models: "/model",
+    import: "/import",
+    groups: "/group",
+    favorites: "/favorite",
+    "print-history": "/printed",
+    projects: "/resource",
+  } as const;
+
+  if (configuration.startup_page) {
+    goto(resolve(startupRoutes[configuration.startup_page]));
   }
 </script>
 

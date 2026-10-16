@@ -28,54 +28,22 @@ impl Serialize for ApplicationError {
     where
         S: Serializer,
     {
-        if let Self::ServiceError(inner) = self {
-            return inner.serialize(serializer);
-        }
+        let (error_type, error_inner_message) = match self {
+            Self::ServiceError(inner) => return inner.serialize(serializer),
+            Self::FileSystemFault(inner) => ("FileSystemFault", inner.to_string()),
+            Self::InternalError(s) => ("InternalError", s.clone()),
+            Self::JsonError(inner) => ("JsonError", inner.to_string()),
+            Self::FrameworkError(inner) => ("FrameworkError", inner.to_string()),
+            Self::DatabaseError(inner) => ("DatabaseError", inner.to_string()),
+            Self::WebRequestError(inner) => ("WebRequestError", inner.to_string()),
+            Self::AsyncZipOperationError(inner) => ("AsyncZipOperationError", inner.to_string()),
+        };
 
-        match self {
-            Self::FileSystemFault(inner) => service_error::serialize_error_struct(
-                serializer,
-                "FileSystemFault",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::InternalError(s) => service_error::serialize_error_struct(
-                serializer,
-                "InternalError",
-                &self.to_string(),
-                s,
-            ),
-            Self::JsonError(inner) => service_error::serialize_error_struct(
-                serializer,
-                "JsonError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::FrameworkError(inner) => service_error::serialize_error_struct(
-                serializer,
-                "FrameworkError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::DatabaseError(inner) => service_error::serialize_error_struct(
-                serializer,
-                "DatabaseError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::WebRequestError(inner) => service_error::serialize_error_struct(
-                serializer,
-                "WebRequestError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::AsyncZipOperationError(inner) => service_error::serialize_error_struct(
-                serializer,
-                "AsyncZipOperationError",
-                &self.to_string(),
-                &inner.to_string(),
-            ),
-            Self::ServiceError(_) => unreachable!(),
-        }
+        service_error::serialize_error_struct(
+            serializer,
+            error_type,
+            &self.to_string(),
+            &error_inner_message,
+        )
     }
 }

@@ -1,8 +1,10 @@
 import { createBlobInstance, type Blob } from "./blob_api";
 import {
+  buildGetGroupsQuery,
   createGroupInstance,
   createGroupMetaInstance,
   type Group,
+  type GroupFilter,
   type GroupMeta,
 } from "./group_api";
 import {
@@ -14,14 +16,16 @@ import {
 import {
   createModelInstance,
   type Model,
+  type ModelFilter,
   type ModelFlags,
-  type ModelOrderBy,
 } from "./model_api";
 import {
   createResourceMetaInstance,
   type ResourceFlags,
   type ResourceMeta,
 } from "./resource_api";
+import { HttpMethod, type IServerRequestApi } from "./server_request_api";
+import { createUserInstance, type User } from "./user_api";
 
 /** Raw blob shape (matches tauri blob response). */
 export interface RawBlob {
@@ -65,27 +69,22 @@ export interface RawModel {
   unique_global_id: string;
 }
 
-// Builds the shared getModels request body used by both the web and
-// web-share model endpoints (they differ only in the endpoint path).
+/** Builds query parameters for the web and web-share model endpoints. */
 export function buildGetModelsQuery(
-  model_ids: number[] | null,
-  group_ids: number[] | null,
-  label_ids: number[] | null,
-  order_by: ModelOrderBy,
-  text_search: string | null,
+  filter: ModelFilter,
   page: number,
   page_size: number,
-  flags: ModelFlags | null,
 ) {
   return {
-    model_ids,
-    group_ids,
-    label_ids,
-    order_by,
-    text_search,
+    model_ids: filter.modelIds,
+    group_ids: filter.groupIds,
+    label_ids: filter.labelIds,
+    order_by: filter.orderBy,
+    text_search: filter.textSearch,
+    file_types: filter.fileTypes,
     page,
     page_size,
-    model_flags: convertModelFlagsToRaw(flags),
+    model_flags: convertModelFlagsToRaw(filter.flags),
   };
 }
 
@@ -234,4 +233,61 @@ export function parseRawModel(raw: RawModel): Model {
     raw.flags,
     raw.unique_global_id,
   );
+}
+
+/** Raw user shape (matches tauri and server user responses). */
+export interface RawUser {
+  id: number;
+  username: string;
+  email: string;
+  created_at: string;
+  permissions: string[];
+  sync_url: string | null;
+  sync_token: string | null;
+  last_sync: string | null;
+}
+
+export function parseRawUser(raw: RawUser): User {
+  return createUserInstance(
+    raw.id,
+    raw.username,
+    raw.email,
+    raw.created_at,
+    raw.permissions,
+    raw.sync_url,
+    raw.sync_token,
+    raw.last_sync,
+  );
+}
+
+/** Fetches one page of models from a web or web-share model endpoint. */
+export async function fetchModelPage(
+  requestApi: IServerRequestApi,
+  path: string,
+  filter: ModelFilter,
+  page: number,
+  pageSize: number,
+): Promise<Model[]> {
+  const response = await requestApi.request<RawModel[]>(
+    path,
+    HttpMethod.GET,
+    buildGetModelsQuery(filter, page, pageSize),
+  );
+  return response.map((rawModel) => parseRawModel(rawModel));
+}
+
+/** Fetches one page of groups from a web or web-share group endpoint. */
+export async function fetchGroupPage(
+  requestApi: IServerRequestApi,
+  path: string,
+  filter: GroupFilter,
+  page: number,
+  pageSize: number,
+): Promise<Group[]> {
+  const response = await requestApi.request<RawGroup[]>(
+    path,
+    HttpMethod.GET,
+    buildGetGroupsQuery(filter, page, pageSize),
+  );
+  return response.map((rawGroup) => parseRawGroup(rawGroup));
 }

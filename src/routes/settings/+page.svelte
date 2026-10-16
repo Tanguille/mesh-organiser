@@ -1,51 +1,50 @@
 <script lang="ts">
-  import { Input } from "$lib/components/ui/input/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ILocalApi } from "$lib/api/shared/local_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ILocalApi } from "#lib/api/shared/local_api";
   import {
     configurationDefault,
     ISettingsApi,
     SettingSection,
-  } from "$lib/api/shared/settings_api";
-  import { IThumbnailApi } from "$lib/api/shared/thumbnail_api";
-  import { IAdminUserApi } from "$lib/api/shared/user_api";
-  import { normalizeServerBaseUrl } from "$lib/api/mobile/server_url";
+  } from "#lib/api/shared/settings_api";
+  import { IThumbnailApi } from "#lib/api/shared/thumbnail_api";
+  import { IAdminUserApi } from "#lib/api/shared/user_api";
+  import { normalizeServerBaseUrl } from "#lib/api/mobile/server_url";
   import {
     getServerUrl,
     setServerUrl,
     clearServerUrl,
-  } from "$lib/api/tauri/server_url";
-  import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
+  } from "#lib/api/tauri/server_url";
+  import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
   import {
     Card,
     CardContent,
     CardHeader,
     CardTitle,
-  } from "$lib/components/ui/card";
-  import CardFooter from "$lib/components/ui/card/card-footer.svelte";
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import UserEditCard from "$lib/components/view/user-edit-card.svelte";
-  import { configuration } from "$lib/configuration.svelte";
+  } from "#lib/components/ui/card";
+  import CardFooter from "#lib/components/ui/card/card-footer.svelte";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import UserEditCard from "#lib/components/view/user-edit-card.svelte";
+  import { configuration } from "#lib/configuration.svelte";
   import {
     globalImportSettings,
     importState,
     resetImportState,
-  } from "$lib/import.svelte";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { getAvailableThemes, getThemeName, setTheme } from "$lib/theme";
+  } from "#lib/import.svelte";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
+  import { getAvailableThemes, getThemeName, setTheme } from "#lib/theme";
   import Moon from "@lucide/svelte/icons/moon";
   import Sun from "@lucide/svelte/icons/sun";
   import { resetMode, setMode } from "mode-watcher";
-  import CurrentUserEditCard from "$lib/components/view/current-user-edit-card.svelte";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
-  import { ITauriImportApi } from "$lib/api/shared/tauri_import_api";
-  import { toast } from "svelte-sonner";
+  import CurrentUserEditCard from "#lib/components/view/current-user-edit-card.svelte";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
+  import { ITauriImportApi } from "#lib/api/shared/tauri_import_api";
 
   const thumbnailApi = getContainer().optional<IThumbnailApi>(IThumbnailApi);
   const localApi = getContainer().optional<ILocalApi>(ILocalApi);
@@ -70,11 +69,9 @@
     thumbnail_regen_button_enabled = false;
     importState.model_count = sidebarState.modelCount;
 
-    let promise = overwrite
+    await (overwrite
       ? thumbnailApi.generateAllThumbnails()
-      : thumbnailApi.generateMissingThumbnails();
-
-    await promise;
+      : thumbnailApi.generateMissingThumbnails());
 
     resetImportState();
     thumbnail_regen_button_enabled = true;
@@ -94,10 +91,6 @@
     if (new_path) {
       configuration.custom_slicer_path = new_path;
     }
-  }
-
-  async function onInternalStateChange() {
-    await updateSidebarState();
   }
 
   onMount(async () => {
@@ -350,12 +343,7 @@
               () => configuration.watch_downloads_folder,
               (val) => {
                 configuration.watch_downloads_folder = val;
-                if (tauriImportApi) {
-                  // initImportListeners exists on Tauri impl but not on shared interface
-                  (
-                    tauriImportApi as unknown as { initImportListeners(): void }
-                  ).initImportListeners();
-                }
+                tauriImportApi?.initImportListeners();
               }
             }
             label="Watch Downloads folder for new models to import"
@@ -535,7 +523,7 @@
               () => configuration.show_ungrouped_models_in_groups,
               (val) => {
                 configuration.show_ungrouped_models_in_groups = val;
-                onInternalStateChange();
+                updateSidebarState();
               }
             }
             label="Show ungrouped models in groups"

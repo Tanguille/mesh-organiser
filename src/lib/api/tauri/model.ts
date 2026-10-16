@@ -2,36 +2,32 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   type Model,
   type IModelApi,
+  type ModelFilter,
   type ModelFlags,
-  type ModelOrderBy,
 } from "../shared/model_api";
 import {
   type RawModel,
   convertModelFlagsToRaw,
   parseRawModel,
 } from "../shared/raw_model";
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 
 export class ModelApi implements IModelApi {
   async getModels(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: ModelOrderBy,
-    text_search: string | null,
+    filter: ModelFilter,
     page: number,
-    page_size: number,
-    flags: ModelFlags | null,
+    pageSize: number,
   ): Promise<Model[]> {
     const models = await invoke<RawModel[]>("get_models", {
-      modelIds: model_ids,
-      groupIds: group_ids,
-      labelIds: label_ids,
-      orderBy: order_by,
-      textSearch: text_search,
-      modelFlags: convertModelFlagsToRaw(flags),
-      page: page,
-      pageSize: page_size,
+      modelIds: filter.modelIds,
+      groupIds: filter.groupIds,
+      labelIds: filter.labelIds,
+      orderBy: filter.orderBy,
+      textSearch: filter.textSearch,
+      modelFlags: convertModelFlagsToRaw(filter.flags),
+      fileTypes: filter.fileTypes,
+      page,
+      pageSize,
     });
 
     return models.map((model) => parseRawModel(model));

@@ -1,36 +1,38 @@
 <script lang="ts">
-  import { resolve } from "$lib/paths";
+  import { resolve } from "#lib/paths";
   import {
     createGroupMetaInstance,
     type Group,
     type GroupMeta,
     type IGroupStreamManager,
-  } from "$lib/api/shared/group_api";
-  import type { Model } from "$lib/api/shared/model_api";
+  } from "#lib/api/shared/group_api";
+  import type { Model } from "#lib/api/shared/model_api";
   import {
     convertOrderOptionGroupsToEnum,
     GROUP_ORDER_LABELS,
-    type OrderOptionGroups,
-  } from "$lib/api/shared/settings_api";
-  import { SizeOptionClasses } from "$lib/components/view/size-classes";
-  import EditGroup from "$lib/components/edit/group.svelte";
-  import ModelEdit from "$lib/components/edit/model.svelte";
-  import EditMultiModel from "$lib/components/edit/multi-model.svelte";
-  import Checkbox from "$lib/components/ui/checkbox/checkbox.svelte";
-  import { Input } from "$lib/components/ui/input";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import DragSelectedModels from "$lib/components/view/drag-selected-models.svelte";
-  import { createGridSelection } from "$lib/components/view/grid-selection.svelte";
-  import ModelGridInner from "$lib/components/view/model-grid-inner.svelte";
-  import RightClickModels from "$lib/components/view/right-click-models.svelte";
-  import { configuration } from "$lib/configuration.svelte";
-  import { IsSplitGridSize } from "$lib/hooks/is-split-grid-size.svelte";
+  } from "#lib/api/shared/settings_api";
+  import { SizeOptionClasses } from "#lib/components/view/size-classes";
+  import EditGroup from "#lib/components/edit/group.svelte";
+  import ModelEdit from "#lib/components/edit/model.svelte";
+  import EditMultiModel from "#lib/components/edit/multi-model.svelte";
+  import Checkbox from "#lib/components/ui/checkbox/checkbox.svelte";
+  import DragSelectedModels from "#lib/components/view/drag-selected-models.svelte";
+  import FileTypeFilter from "#lib/components/view/file-type-filter.svelte";
+  import { createGridSelection } from "#lib/components/view/grid-selection.svelte";
+  import ModelGridInner from "#lib/components/view/model-grid-inner.svelte";
+  import RightClickModels from "#lib/components/view/right-click-models.svelte";
+  import SearchInput from "#lib/components/view/search-input.svelte";
+  import SortFilter from "#lib/components/view/sort-filter.svelte";
+  import EmptyState from "#lib/components/view/empty-state.svelte";
+  import UiSizeFilter from "#lib/components/view/ui-size-filter.svelte";
+  import { configuration } from "#lib/configuration.svelte";
+  import { IsSplitGridSize } from "#lib/hooks/is-split-grid-size.svelte";
   import { onDestroy, untrack } from "svelte";
   import { type ClassValue } from "svelte/elements";
   import GroupTinyList from "./group-tiny-list.svelte";
   import GroupTiny from "./group-tiny.svelte";
-  import { debounce, wait, uniqueById } from "$lib/utils";
-  import { IsMobile } from "$lib/hooks/is-mobile.svelte";
+  import { wait, uniqueById } from "#lib/utils";
+  import { IsMobile } from "#lib/hooks/is-mobile.svelte";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
   import Undo2 from "@lucide/svelte/icons/undo-2";
 
@@ -49,12 +51,8 @@
   let selected = $state.raw<Group[]>([]);
 
   const isMobile = new IsMobile();
-  const showLeftSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length <= 0),
-  );
-  const showRightSide = $derived(
-    !isMobile.current || (isMobile.current && selected.length > 0),
-  );
+  const showLeftSide = $derived(!isMobile.current || selected.length <= 0);
+  const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
   let gridSizeMonitor = new IsSplitGridSize();
 
@@ -96,8 +94,6 @@
     await resetGroupSet();
   }
 
-  let debouncedSetNewSearchText = debounce(setNewSearchText, 200);
-
   // Reuse the shared item size classes, layering on the image-strip widths the
   // list view needs for its `.imglist` container.
   const sizes = {
@@ -108,10 +104,6 @@
   };
 
   const size = $derived(sizes[configuration.size_option_groups]);
-
-  const readableOrder = $derived(
-    GROUP_ORDER_LABELS[configuration.order_option_groups],
-  );
 
   $effect(() => {
     props.groupStream.setOrderBy(
@@ -152,16 +144,12 @@
     selection.destroy();
   });
 
-  function onSearchInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    debouncedSetNewSearchText(
-      target.value.trim().length === 0 ? null : target.value.trim(),
-    );
-  }
+  const modelsInSelectedGroups = $derived(selected.flatMap((g) => g.models));
+  const modelsInLoadedGroups = $derived(loadedGroups.flatMap((g) => g.models));
 
   let selectedModels = $derived(
     splitViewSelectedModels.length <= 0
-      ? selected.map((x) => x.models).flat()
+      ? modelsInSelectedGroups
       : splitViewSelectedModels,
   );
 
@@ -240,18 +228,9 @@
     }
   }
 
-  let groupStreamLoadGen = 0;
-
   $effect(() => {
     void props.groupStream;
-
-    const gen = ++groupStreamLoadGen;
-    untrack(async () => {
-      await resetGroupSet();
-      if (gen !== groupStreamLoadGen) {
-        return;
-      }
-    });
+    untrack(() => resetGroupSet());
   });
 </script>
 
@@ -259,59 +238,25 @@
   {#if showLeftSide}
     <div class="flex flex-1 flex-col gap-1" style="min-width: 0;">
       <div class="flex flex-row justify-center gap-3 px-5 py-3">
-        <Input
-          oninput={onSearchInput}
-          class="border-primary"
-          placeholder="Search"
-        />
+        <SearchInput onsearch={setNewSearchText} />
 
-        <Select.Root
-          type="single"
-          name="Sort"
-          onValueChange={(x) => {
-            props.groupStream.setOrderBy(
-              convertOrderOptionGroupsToEnum(x as OrderOptionGroups),
-            );
+        <FileTypeFilter
+          onchange={(x) => {
+            props.groupStream.setFileTypes(x);
             resetGroupSet();
           }}
-          bind:value={configuration.order_option_groups}
-        >
-          <Select.Trigger class="border-primary">
-            {readableOrder}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Group>
-              <Select.GroupHeading>Sort options</Select.GroupHeading>
-              {#each Object.entries(GROUP_ORDER_LABELS) as order (order[0])}
-                <Select.Item value={order[0]} label={order[1]}
-                  >{order[1]}</Select.Item
-                >
-              {/each}
-            </Select.Group>
-          </Select.Content>
-        </Select.Root>
+        />
 
-        <Select.Root
-          type="single"
-          name="Size"
-          bind:value={configuration.size_option_groups}
-        >
-          <Select.Trigger class="border-primary">
-            {configuration.size_option_groups.replaceAll("_", " ")}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Group>
-              <Select.GroupHeading>Size options</Select.GroupHeading>
-              {#each Object.entries(sizes) as size_entry (size_entry[0])}
-                <Select.Item
-                  value={size_entry[0]}
-                  label={size_entry[0].replaceAll("_", " ")}
-                  >{size_entry[0].replaceAll("_", " ")}</Select.Item
-                >
-              {/each}
-            </Select.Group>
-          </Select.Content>
-        </Select.Root>
+        <SortFilter
+          bind:value={configuration.order_option_groups}
+          options={GROUP_ORDER_LABELS}
+          onchange={(x) => {
+            props.groupStream.setOrderBy(convertOrderOptionGroupsToEnum(x));
+            resetGroupSet();
+          }}
+        />
+
+        <UiSizeFilter bind:value={configuration.size_option_groups} />
       </div>
 
       {#if effectiveSplitSetting === "no_split"}
@@ -349,15 +294,7 @@
         </Button>
       {/if}
       {#if selected.length >= 2}
-        {#if selectedModels.length >= 2}
-          <EditMultiModel
-            models={selectedModels}
-            {onDelete}
-            onGroupDelete={() => onGroupDeleteViaModels(selectedModels)}
-          />
-        {:else if selectedModels.length === 1}
-          <ModelEdit model={selectedModels[0]} {onDelete} />
-        {/if}
+        {@render SelectedModelsEditor()}
       {:else if selected.length === 1 && selected[0].meta.id >= 0}
         <EditGroup
           group={selected[0]}
@@ -371,15 +308,7 @@
               href={resolve("/group/" + selected[0].meta.id)}>View models</a
             >
           {/if}
-          {#if selectedModels.length >= 2}
-            <EditMultiModel
-              models={selectedModels}
-              {onDelete}
-              onGroupDelete={() => onGroupDeleteViaModels(selectedModels)}
-            />
-          {:else if selectedModels.length === 1}
-            <ModelEdit model={selectedModels[0]} {onDelete} />
-          {/if}
+          {@render SelectedModelsEditor()}
         {:else}
           <ModelEdit model={selected[0].models[0]} {onDelete} />
         {/if}
@@ -387,25 +316,32 @@
         <ModelEdit model={selected[0].models[0]} {onDelete} />
       {:else if props.default_show_multiselect_all && loadedGroups.length > 0}
         <EditMultiModel
-          models={loadedGroups.map((x) => x.models).flat()}
+          models={modelsInLoadedGroups}
           onDelete={() => {
             clearSplitViewModels();
             selected = [...loadedGroups];
             onDelete();
           }}
-          onGroupDelete={() =>
-            onGroupDeleteViaModels(loadedGroups.map((x) => x.models).flat())}
+          onGroupDelete={() => onGroupDeleteViaModels(modelsInLoadedGroups)}
         />
       {:else}
-        <div
-          class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-        >
-          <span class="text-xl">No group selected</span>
-        </div>
+        <EmptyState>No group selected</EmptyState>
       {/if}
     </div>
   {/if}
 </div>
+
+{#snippet SelectedModelsEditor()}
+  {#if selectedModels.length >= 2}
+    <EditMultiModel
+      models={selectedModels}
+      {onDelete}
+      onGroupDelete={() => onGroupDeleteViaModels(selectedModels)}
+    />
+  {:else if selectedModels.length === 1}
+    <ModelEdit model={selectedModels[0]} {onDelete} />
+  {/if}
+{/snippet}
 
 {#snippet SplitView(
   wrapperClass: ClassValue,
@@ -419,15 +355,11 @@
       <ModelGridInner
         bind:value={splitViewSelectedModels}
         itemSize={configuration.size_option_groups}
-        availableModels={selected.map((x) => x.models).flat()}
+        availableModels={modelsInSelectedGroups}
         clazz={innerClazz}
       />
     {:else}
-      <div
-        class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-      >
-        <span class="text-xl">No models in group to display</span>
-      </div>
+      <EmptyState>No models in group to display</EmptyState>
     {/if}
   </span>
 {/snippet}
@@ -438,12 +370,9 @@
     bind:this={scrollContainer}
     onscroll={selection.handleScroll}
   >
-    <DragSelectedModels
-      models={selected.map((x) => x.models).flat()}
-      class="select-none"
-    >
+    <DragSelectedModels models={modelsInSelectedGroups} class="select-none">
       <RightClickModels
-        models={selected.map((x) => x.models).flat()}
+        models={modelsInSelectedGroups}
         class={`flex flex-row flex-wrap content-start justify-center gap-2 outline-0 ${configuration.show_multiselect_checkboxes && configuration.size_option_groups.includes("Grid") ? "pt-[5px]" : ""}`}
       >
         {#if configuration.size_option_groups.includes("List")}

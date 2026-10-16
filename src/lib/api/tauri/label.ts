@@ -13,7 +13,7 @@ import {
   type RawLabelKeyword,
   type RawLabelMeta,
 } from "../shared/raw_model";
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 
 export class LabelApi implements ILabelApi {
   async getLabels(includeUngroupedModels: boolean): Promise<Label[]> {
@@ -104,16 +104,6 @@ export class LabelApi implements ILabelApi {
     children: LabelMeta[],
   ): Promise<void> {
     return await invoke("set_childs_on_label", {
-      parentLabelId: label.id,
-      childLabelIds: children.map((child) => child.id),
-    });
-  }
-
-  async removeChildrenFromLabel(
-    label: LabelMeta,
-    children: LabelMeta[],
-  ): Promise<void> {
-    return await invoke("remove_childs_from_label", {
       parentLabelId: label.id,
       childLabelIds: children.map((child) => child.id),
     });

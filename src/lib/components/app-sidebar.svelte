@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.js";
   import Box from "@lucide/svelte/icons/box";
   import Boxes from "@lucide/svelte/icons/boxes";
   import FolderInput from "@lucide/svelte/icons/folder-input";
@@ -15,32 +15,32 @@
   import Tags from "@lucide/svelte/icons/tags";
   import Bomb from "@lucide/svelte/icons/bomb";
 
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import ImportProgressIndicator from "$lib/components/view/tauri-import-progress-indicator.svelte";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import ImportProgressIndicator from "#lib/components/view/tauri-import-progress-indicator.svelte";
 
-  import { getThisLabelOnly, resolve } from "$lib/paths";
+  import { getThisLabelOnly, resolve } from "#lib/paths";
   import { page } from "$app/state";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ILabelApi, type LabelMeta } from "$lib/api/shared/label_api";
-  import { ImportStatus } from "$lib/api/shared/tauri_import_api";
-  import AddLabelPopover from "$lib/components/view/add-label-popover.svelte";
-  import { configuration, panicState } from "$lib/configuration.svelte";
-  import { importState } from "$lib/import.svelte";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
+  import { ImportStatus } from "#lib/api/shared/tauri_import_api";
+  import AddLabelPopover from "#lib/components/view/add-label-popover.svelte";
+  import { configuration, panicState } from "#lib/configuration.svelte";
+  import { importState } from "#lib/import.svelte";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
   import Check from "@lucide/svelte/icons/check";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
   import PanelLeft from "@lucide/svelte/icons/panel-left";
   import Slice from "@lucide/svelte/icons/slice";
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
   import NavUser from "./view/nav-user.svelte";
-  import { IHostApi, Platform } from "$lib/api/shared/host_api";
+  import { IHostApi, Platform } from "#lib/api/shared/host_api";
   import DemoMode from "./view/demo-mode.svelte";
   import Share2 from "@lucide/svelte/icons/share-2";
-  import { IShareApi } from "$lib/api/shared/share_api";
-  import { ISyncApi } from "$lib/api/shared/sync_api";
+  import { IShareApi } from "#lib/api/shared/share_api";
+  import { ISyncApi } from "#lib/api/shared/sync_api";
   import SyncProgressIndicator from "./view/sync-progress-indicator.svelte";
-  import { globalSyncState, SyncStage } from "$lib/sync.svelte";
+  import { globalSyncState, SyncStage } from "#lib/sync.svelte";
 
   const shareApi = getContainer().optional<IShareApi>(IShareApi);
 
@@ -63,8 +63,8 @@
     return label;
   });
 
-  // Lookup map so LabelTree resolves an entry by id in O(1) instead of a linear
-  // scan per node (the tree recurses, so the scan was O(nodes * labels)).
+  // Lookup map so LabelTree resolves an entry by id in O(1); the tree recurses,
+  // so a linear scan per node would be O(nodes * labels).
   const labelsById = $derived(
     new Map(sidebarState.labels.map((l) => [l.meta.id, l])),
   );
@@ -330,6 +330,50 @@
   </Sidebar.Footer>
 </Sidebar.Root>
 
+{#snippet LabelLink({
+  meta,
+  href,
+  active,
+  icon: Icon,
+  iconClass,
+  chevron = false,
+  count,
+  children,
+}: {
+  meta: LabelMeta;
+  href: string;
+  active: boolean;
+  icon: typeof Tag;
+  iconClass?: string;
+  chevron?: boolean;
+  count?: number;
+  children?: Snippet;
+})}
+  <Sidebar.MenuItem data-drag-type="label" data-drag-param={meta.id}>
+    <Sidebar.MenuButton class={active ? "border-l-2 border-secondary" : ""}>
+      {#snippet child({ props })}
+        <a
+          href={resolve(href)}
+          onmouseenter={cloneOnHover}
+          onmouseleave={destroyOnLeave}
+          onclick={onClickScrollIntoView}
+          {...props}
+        >
+          {#if chevron && (sidebar.open || sidebar.isMobile)}
+            <ChevronRight class="chevron" className="transition-transform" />
+          {/if}
+          <Icon class={iconClass} style={`color: ${meta.color};`} />
+          <span class="mr-3">{meta.name}</span>
+        </a>
+      {/snippet}
+    </Sidebar.MenuButton>
+    {@render children?.()}
+    {#if count !== undefined}
+      <Sidebar.MenuBadge class="w-5 max-w-5 basis-5">{count}</Sidebar.MenuBadge>
+    {/if}
+  </Sidebar.MenuItem>
+{/snippet}
+
 {#snippet LabelTree({
   label,
   level,
@@ -342,42 +386,43 @@
   {@const labelWithChildren = labelsById.get(label.id)}
 
   {#if labelWithChildren}
+    {@const meta = labelWithChildren.meta}
+    {@const href = `/label/${meta.id}${parentId ? `?parentId=${parentId}` : ""}`}
+    {@const onLabelUrl = current_url === `/label/${meta.id}`}
     {#if labelWithChildren.children.length <= 0 || level > 5}
-      <Sidebar.MenuItem
-        data-drag-type="label"
-        data-drag-param={labelWithChildren.meta.id}
-      >
-        <Sidebar.MenuButton
-          class={current_url === `/label/${labelWithChildren.meta.id}`
-            ? "border-l-2 border-secondary"
-            : ""}
-        >
-          {#snippet child({ props })}
-            <a
-              href={resolve(
-                "/label/" +
-                  labelWithChildren.meta.id +
-                  (parentId ? `?parentId=${parentId}` : ""),
-              )}
-              onmouseenter={cloneOnHover}
-              onmouseleave={destroyOnLeave}
-              onclick={onClickScrollIntoView}
-              {...props}
-            >
-              <Tag style={`color: ${labelWithChildren.meta.color};`} />
-              <span class="mr-3">{labelWithChildren.meta.name}</span>
-            </a>
-          {/snippet}
-        </Sidebar.MenuButton>
-        <Sidebar.MenuBadge class="w-5 max-w-5 basis-5">
-          {#if configuration.show_grouped_count_on_labels}
-            {labelWithChildren.selfGroupCount}
-          {:else}
-            {labelWithChildren.selfModelCount}
-          {/if}
-        </Sidebar.MenuBadge>
-      </Sidebar.MenuItem>
+      {@render LabelLink({
+        meta,
+        href,
+        active: onLabelUrl,
+        icon: Tag,
+        count: configuration.show_grouped_count_on_labels
+          ? labelWithChildren.selfGroupCount
+          : labelWithChildren.selfModelCount,
+      })}
     {:else}
+      {#snippet subLabels()}
+        <Collapsible.Content>
+          <Sidebar.MenuSub>
+            {#if labelWithChildren.selfModelCount > 0}
+              {@render LabelLink({
+                meta,
+                href: `/label/${meta.id}?thisLabelOnly=true`,
+                active: onLabelUrl && thisLabelOnly,
+                icon: Tag,
+                iconClass: "h-full w-full",
+              })}
+            {/if}
+
+            {#each labelWithChildren.children as childLabel (childLabel.id)}
+              {@render LabelTree({
+                label: childLabel,
+                level: level + 1,
+                parentId: meta.id,
+              })}
+            {/each}
+          </Sidebar.MenuSub>
+        </Collapsible.Content>
+      {/snippet}
       <Collapsible.Root
         class="group/collapsible [&[data-state=open]>li>a>svg.chevron:first-child]:rotate-90"
         open={currentUrlChild != null &&
@@ -385,98 +430,18 @@
             (c) => c.id === currentUrlChild.id,
           )}
       >
-        <Sidebar.MenuItem
-          data-drag-type="label"
-          data-drag-param={labelWithChildren.meta.id}
-        >
-          <Sidebar.MenuButton
-            class={current_url === `/label/${labelWithChildren.meta.id}` &&
-            !thisLabelOnly
-              ? "border-l-2 border-secondary"
-              : ""}
-          >
-            {#snippet child({ props })}
-              <a
-                href={resolve(
-                  "/label/" +
-                    labelWithChildren.meta.id +
-                    (parentId ? `?parentId=${parentId}` : ""),
-                )}
-                onmouseenter={cloneOnHover}
-                onmouseleave={destroyOnLeave}
-                onclick={onClickScrollIntoView}
-                {...props}
-              >
-                {#if sidebar.open || sidebar.isMobile}
-                  <ChevronRight
-                    class="chevron"
-                    className="transition-transform"
-                  />
-                {/if}
-
-                <Tags
-                  class="h-full w-full"
-                  style={`color: ${labelWithChildren.meta.color};`}
-                />
-
-                <span class="mr-3">{labelWithChildren.meta.name}</span>
-              </a>
-            {/snippet}
-          </Sidebar.MenuButton>
-          <Collapsible.Content>
-            <Sidebar.MenuSub>
-              {#if labelWithChildren.selfModelCount > 0}
-                <Sidebar.MenuItem
-                  data-drag-type="label"
-                  data-drag-param={labelWithChildren.meta.id}
-                >
-                  <Sidebar.MenuButton
-                    class={current_url ===
-                      `/label/${labelWithChildren.meta.id}` && thisLabelOnly
-                      ? "border-l-2 border-secondary"
-                      : ""}
-                  >
-                    {#snippet child({ props })}
-                      <a
-                        href={resolve(
-                          "/label/" +
-                            labelWithChildren.meta.id +
-                            "?thisLabelOnly=true",
-                        )}
-                        onmouseenter={cloneOnHover}
-                        onmouseleave={destroyOnLeave}
-                        onclick={onClickScrollIntoView}
-                        {...props}
-                      >
-                        <Tag
-                          class="h-full w-full"
-                          style={`color: ${labelWithChildren.meta.color};`}
-                        />
-
-                        <span class="mr-3">{labelWithChildren.meta.name}</span>
-                      </a>
-                    {/snippet}
-                  </Sidebar.MenuButton>
-                </Sidebar.MenuItem>
-              {/if}
-
-              {#each labelWithChildren.children as childLabel (childLabel.id)}
-                {@render LabelTree({
-                  label: childLabel,
-                  level: level + 1,
-                  parentId: labelWithChildren.meta.id,
-                })}
-              {/each}
-            </Sidebar.MenuSub>
-          </Collapsible.Content>
-          <Sidebar.MenuBadge class="w-5 max-w-5 basis-5">
-            {#if configuration.show_grouped_count_on_labels}
-              {labelWithChildren.groupCount}
-            {:else}
-              {labelWithChildren.modelCount}
-            {/if}
-          </Sidebar.MenuBadge>
-        </Sidebar.MenuItem>
+        {@render LabelLink({
+          meta,
+          href,
+          active: onLabelUrl && !thisLabelOnly,
+          icon: Tags,
+          iconClass: "h-full w-full",
+          chevron: true,
+          count: configuration.show_grouped_count_on_labels
+            ? labelWithChildren.groupCount
+            : labelWithChildren.modelCount,
+          children: subLabels,
+        })}
       </Collapsible.Root>
     {/if}
   {/if}

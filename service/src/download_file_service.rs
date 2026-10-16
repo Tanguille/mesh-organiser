@@ -8,12 +8,11 @@ use regex::Regex;
 use reqwest::{Response, header::CONTENT_DISPOSITION};
 use serde::Serialize;
 use tokio::{fs::File, io::AsyncWriteExt};
-use urlencoding::decode;
 
 use crate::{
-    export_service::{ensure_unique_file_full_filename, get_temp_dir},
+    export_service::{ensure_unique_file, get_temp_dir},
     service_error::ServiceError,
-    util::cleanse_evil_from_name,
+    util::{cleanse_evil_from_name, percent_decode},
 };
 
 static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
@@ -44,9 +43,9 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
         if let Some(encoded) = token
             .strip_prefix("UTF-8''")
             .or_else(|| token.strip_prefix("utf-8''"))
-            && let Ok(decoded) = decode(encoded)
+            && let Ok(decoded) = percent_decode(encoded)
         {
-            return Some(decoded.into_owned());
+            return Some(decoded);
         }
     }
     // Fallback: filename="..." or filename=value
@@ -131,7 +130,7 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
     let response_url = response.url().to_string();
     let filename = filename_from_response_or_url(&response);
     let cleansed = cleanse_evil_from_name(&filename);
-    let file_path = ensure_unique_file_full_filename(dir, &cleansed);
+    let file_path = ensure_unique_file(dir, &cleansed);
 
     // Stream to disk chunk by chunk instead of buffering the whole response;
     // callers fire these concurrently, so full-body buffering multiplies.
@@ -171,8 +170,7 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
 ///
 /// # Panics
 ///
-/// Panics if creating the temp dir fails or the system clock cannot provide
-/// nanosecond timestamps for the temp dir name (see [`get_temp_dir`]).
+/// Panics if creating the temp dir fails (see [`get_temp_dir`]).
 pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     let temp_dir = get_temp_dir("download");
 
@@ -180,7 +178,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
 
     let redirect_url_filename = response_url.split('/').next_back().map_or_else(
         || "model.stl".to_string(),
-        |seg| decode(seg).unwrap_or_default().into_owned(),
+        |segment| percent_decode(segment).unwrap_or_default(),
     );
 
     // Filename of the file we just downloaded; used as the default in branches that
@@ -209,7 +207,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         source_uri = Some(String::from("https://nexprint.com/"));
         // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
         // quoted-only on purpose — see quoted_filename.
-        let decoded_url = decode(url).unwrap().into_owned();
+        let decoded_url = percent_decode(url).unwrap();
         quoted_filename(&decoded_url)
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| current_filename.clone())
@@ -220,7 +218,7 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
     let cleansed_desired = cleanse_evil_from_name(&desired_filename);
     let current_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if cleansed_desired != current_name {
-        let new_path = ensure_unique_file_full_filename(&temp_dir, &cleansed_desired);
+        let new_path = ensure_unique_file(&temp_dir, &cleansed_desired);
         fs::rename(&file_path, &new_path)?;
         file_path = new_path;
     }
@@ -378,6 +376,40 @@ mod tests {
                 "https://ignore.example/",
             ),
             Some("HTTPS://WWW.MAKERWORLD.COM/EN/models/999-ABC".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_multibyte_and_space() {
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''na%C3%AFve%20file.stl"),
+            Some("naïve file.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_plus_stays_literal() {
+        // Percent-decoding, not form-decoding: `+` is not a space.
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''a+b.stl"),
+            Some("a+b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_malformed_escape_left_untouched() {
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''bad%zzname.stl"),
+            Some("bad%zzname.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_rfc5987_invalid_utf8_returns_none() {
+        // %FF is not valid UTF-8; decoding fails and `filename*=` has no plain fallback.
+        assert_eq!(
+            parse_content_disposition_filename(r"filename*=UTF-8''bad%FF.stl"),
+            None
         );
     }
 }

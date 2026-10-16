@@ -8,7 +8,6 @@ import { createGroupMetaInstance } from "../shared/group_api";
 import type { LabelMeta } from "../shared/label_api";
 import { createLabelMetaInstance } from "../shared/label_api";
 
-// Helper function to determine file type from URL
 function getFileTypeFromUrl(url: string): FileType {
   const lower = url.toLowerCase();
   if (lower.endsWith(".3mf")) return FileType.THREEMF;
@@ -18,15 +17,12 @@ function getFileTypeFromUrl(url: string): FileType {
   return FileType.STL; // default
 }
 
-// Helper function to extract filename from URL
 function getFilenameFromUrl(url: string): string {
   const parts = url.split("/");
   const filename = parts[parts.length - 1];
-  // Remove extension for display name
   return filename.replace(/\.(stl|3mf|gcode|obj|step)(\.png)?$/i, "");
 }
 
-// Helper function to parse size string to bytes
 function parseSizeToBytes(size: string): number {
   const match = size.match(/^([\d.]+)\s*(B|KB|MB|GB)$/i);
   if (!match) return 0;
@@ -48,7 +44,6 @@ function parseSizeToBytes(size: string): number {
   }
 }
 
-// Mock model data
 interface MockModelData {
   name: string;
   modelUrl: string;
@@ -160,14 +155,12 @@ const mockModelDataList: MockModelData[] = [
   },
 ];
 
-// Create blobs and models
 let nextId = 1;
 let nextBlobId = 1;
 
 const mockBlobs: Map<number, Blob> = new Map();
 export const mockModels: Map<number, Model> = new Map();
 
-// Generate mock data
 const baseDate = new Date("2024-01-01");
 mockModelDataList.forEach((data, index) => {
   const blob = createBlobInstance(
@@ -178,7 +171,6 @@ mockModelDataList.forEach((data, index) => {
     new Date(baseDate.getTime() + index * 86400000).toISOString(), // Add a day for each model
   );
 
-  // Store model URL and thumbnail URL on blob for later use
   (blob as DemoBlob)._modelUrl = data.modelUrl;
   (blob as DemoBlob)._thumbnailUrl = data.thumbnailUrl;
 
@@ -211,7 +203,6 @@ mockModelDataList.forEach((data, index) => {
   mockModels.set(model.id, model);
 });
 
-// Create groups
 export const mockGroups: Map<number, GroupMeta> = new Map();
 
 const primitivesGroup = createGroupMetaInstance(
@@ -223,7 +214,6 @@ const primitivesGroup = createGroupMetaInstance(
 );
 mockGroups.set(primitivesGroup.id, primitivesGroup);
 
-// Create labels
 export const mockLabels: Map<number, LabelMeta> = new Map();
 
 const benchmarkingLabel = createLabelMetaInstance(
@@ -235,11 +225,9 @@ const benchmarkingLabel = createLabelMetaInstance(
 );
 mockLabels.set(benchmarkingLabel.id, benchmarkingLabel);
 
-// Track model-to-group and model-to-label relationships
 export const modelGroupMap: Map<number, number> = new Map();
 export const modelLabelsMap: Map<number, number[]> = new Map();
 
-// Assign models to groups and labels
 const modelsByName: Map<string, Model> = new Map();
 mockModels.forEach((model) => {
   modelsByName.set(model.name.toLowerCase(), model);
@@ -252,7 +240,6 @@ export function resolveLabels(ids: number[]): LabelMeta[] {
     .filter((label): label is LabelMeta => label !== undefined);
 }
 
-// Add primitives to group
 const primitiveNames = ["sphere", "cone", "cube", "cylinder", "disc", "torus"];
 primitiveNames.forEach((name) => {
   const model = modelsByName.get(name);
@@ -262,7 +249,6 @@ primitiveNames.forEach((name) => {
   }
 });
 
-// Add benchmarking models to label
 const benchmarkNames = ["boaty", "3dbenchy", "eiffel tower"];
 benchmarkNames.forEach((name) => {
   const model = modelsByName.get(name);

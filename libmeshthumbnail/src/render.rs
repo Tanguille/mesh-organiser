@@ -10,17 +10,15 @@ pub fn render(
     image_size: Vec2<usize>,
     rotation: Vec3<f32>,
     color: Vec3<u8>,
-    zoom: f32,
 ) -> RgbaImage {
-    let mut color_buffer = Buffer2d::fill([image_size.x, image_size.y], [0, 0, 0, 0]); // Transparent background
+    let mut color_buffer = Buffer2d::fill([image_size.x, image_size.y], [0, 0, 0, 0]);
     let mut depth_buffer = Buffer2d::fill([image_size.x, image_size.y], 1.0);
 
     let aabb = mesh.aabb();
     let center = aabb.center();
     let magnitude = aabb.size().magnitude();
-    let scale = (2.4 / magnitude) * zoom;
+    let scale = 2.4 / magnitude;
 
-    // Set up camera and view matrices
     // First scale, then translate to origin
     let model = Mat4::<f32>::rotation_x(270f32.to_radians()) *  // Y rotation - base value
                             Mat4::<f32>::rotation_z(90f32.to_radians()) * // X rotation - base value
@@ -66,12 +64,10 @@ pub fn render(
         &mut depth_buffer,
     );
 
-    RgbaImage::from_fn(
+    RgbaImage::from_raw(
         u32::try_from(image_size.x).unwrap_or(0),
         u32::try_from(image_size.y).unwrap_or(0),
-        |x, y| {
-            let pixel = color_buffer.raw()[y as usize * image_size.x + x as usize];
-            image::Rgba(pixel)
-        },
+        color_buffer.raw().as_flattened().to_vec(),
     )
+    .unwrap_or_default()
 }

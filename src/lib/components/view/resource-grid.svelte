@@ -1,27 +1,29 @@
 <script lang="ts">
-  import { resolve } from "$lib/paths";
-  import { Input } from "$lib/components/ui/input";
-  import * as Select from "$lib/components/ui/select/index.js";
+  import { resolve } from "#lib/paths";
+  import { Input } from "#lib/components/ui/input";
   import GroupTinyList from "./group-tiny-list.svelte";
-  import { AsyncButton, buttonVariants } from "$lib/components/ui/button";
-  import EditResource from "$lib/components/edit/resource.svelte";
+  import SortFilter from "./sort-filter.svelte";
+  import { buttonVariants } from "#lib/components/ui/button";
+  import EditResource from "#lib/components/edit/resource.svelte";
   import NotebookText from "@lucide/svelte/icons/notebook-text";
   import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
   import Button from "../ui/button/button.svelte";
   import {
     IResourceApi,
     type ResourceMeta,
-  } from "$lib/api/shared/resource_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import type { Group } from "$lib/api/shared/group_api";
-  import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import { configuration } from "$lib/configuration.svelte";
+  } from "#lib/api/shared/resource_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import type { Group } from "#lib/api/shared/group_api";
+  import { updateSidebarState } from "#lib/sidebar_data.svelte";
+  import { configuration } from "#lib/configuration.svelte";
   import OpenInSlicerButton from "./open-in-slicer-button.svelte";
-  import { downloadModels, IDownloadApi } from "$lib/api/shared/download_api";
-  import { handleGridItemKeyDown } from "$lib/utils";
-  import Download from "@lucide/svelte/icons/download";
+  import { handleGridItemKeyDown } from "#lib/utils";
   import ExportModelsButton from "./export-models-button.svelte";
+  import EmptyState from "./empty-state.svelte";
+  import {
+    GROUP_ORDER_LABELS,
+    type OrderOptionGroups,
+  } from "#lib/api/shared/settings_api";
 
   const props: { resources: ResourceMeta[] } = $props();
   let selected = $state.raw<ResourceMeta | null>(null);
@@ -29,20 +31,19 @@
   let newName = $state<string>("");
 
   const resourceApi = getContainer().require<IResourceApi>(IResourceApi);
-  const localApi = getContainer().optional<ILocalApi>(ILocalApi);
-  const downloadApi = getContainer().optional<IDownloadApi>(IDownloadApi);
 
   let scrollContainer: HTMLElement;
 
   interface SearchFilters {
     search: string;
-    order: "date-asc" | "date-desc" | "name-asc" | "name-desc";
+    // Resources sort on the same keys as groups.
+    order: OrderOptionGroups;
     limit: number;
   }
 
   const currentFilter = $state<SearchFilters>({
     search: "",
-    order: "date-desc",
+    order: "modified-desc",
     limit: 100,
   });
 
@@ -55,15 +56,6 @@
     }
   }
 
-  const readableOrders = {
-    "date-asc": "Date (Asc)",
-    "date-desc": "Date (Desc)",
-    "name-asc": "Name (Asc)",
-    "name-desc": "Name (Desc)",
-  };
-
-  const readableOrder = $derived(readableOrders[currentFilter.order]);
-
   const filteredCollection = $derived.by(() => {
     let search_lower = currentFilter.search.toLowerCase();
 
@@ -72,17 +64,17 @@
       .sort((a, b) => {
         switch (currentFilter.order) {
           case "date-asc":
-            return (
-              new Date(a.created).getTime() - new Date(b.created).getTime()
-            );
+            return a.created.getTime() - b.created.getTime();
           case "date-desc":
-            return (
-              new Date(b.created).getTime() - new Date(a.created).getTime()
-            );
+            return b.created.getTime() - a.created.getTime();
           case "name-asc":
             return a.name.localeCompare(b.name);
           case "name-desc":
             return b.name.localeCompare(a.name);
+          case "modified-asc":
+            return a.lastModified.getTime() - b.lastModified.getTime();
+          case "modified-desc":
+            return b.lastModified.getTime() - a.lastModified.getTime();
           default:
             return 0;
         }
@@ -125,28 +117,17 @@
 
 <div class="flex h-full flex-row">
   <div class="flex flex-1 flex-col gap-1" style="min-width: 0;">
-    <div class="grid grid-cols-2 justify-center gap-5 px-5 py-3">
+    <div class="flex flex-row justify-center gap-3 px-5 py-3">
       <Input
         bind:value={currentFilter.search}
-        class="border-primary"
+        class="grow border-primary"
         placeholder="Search"
       />
 
-      <Select.Root type="single" name="Sort" bind:value={currentFilter.order}>
-        <Select.Trigger class="border-primary">
-          {readableOrder}
-        </Select.Trigger>
-        <Select.Content>
-          <Select.Group>
-            <Select.GroupHeading>Sort options</Select.GroupHeading>
-            {#each Object.entries(readableOrders) as order (order[0])}
-              <Select.Item value={order[0]} label={order[1]}
-                >{order[1]}</Select.Item
-              >
-            {/each}
-          </Select.Group>
-        </Select.Content>
-      </Select.Root>
+      <SortFilter
+        bind:value={currentFilter.order}
+        options={GROUP_ORDER_LABELS}
+      />
     </div>
 
     <div
@@ -163,7 +144,7 @@
           oncontextmenu={(e) => onClick(resource, e)}
           onclick={(e) => onClick(resource, e)}
           onkeydown={(e) => onKeyDown(resource, e)}
-          class="flex h-14 w-full min-w-0 cursor-pointer flex-row gap-3 overflow-hidden rounded-lg border p-1 px-3 select-none [&_.imglist]:w-[165px] {isSelected
+          class="flex h-14 w-full min-w-0 cursor-pointer flex-row gap-3 overflow-hidden rounded-lg border p-1 px-3 select-none {isSelected
             ? 'border-primary'
             : ''}"
         >
@@ -218,16 +199,7 @@
             Open group
           </a>
           <div class="mx-3 mt-2 mb-4 grid grid-cols-2 gap-4">
-            {#if localApi}
-              <ExportModelsButton models={group.models} class="grow" />
-            {:else if downloadApi}
-              <AsyncButton
-                class="grow"
-                onclick={() => downloadModels(group.models, downloadApi)}
-                ><Download /> Download model</AsyncButton
-              >
-            {/if}
-
+            <ExportModelsButton models={group.models} class="grow" />
             <OpenInSlicerButton models={group.models} class="grow" />
           </div>
         </div>
@@ -243,11 +215,7 @@
         >
       </div>
     {:else}
-      <div
-        class="flex h-full flex-col items-center justify-center rounded-md border border-dashed"
-      >
-        <span class="text-xl">No project selected</span>
-      </div>
+      <EmptyState>No project selected</EmptyState>
     {/if}
   </div>
 </div>

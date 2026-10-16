@@ -1,16 +1,12 @@
-import {
-  buildGetGroupsQuery,
-  type GroupOrderBy,
-  type Group,
-  type GroupMeta,
-  type IGroupApi,
+import type {
+  GroupFilter,
+  Group,
+  GroupMeta,
+  IGroupApi,
 } from "../shared/group_api";
 import type { Model } from "../shared/model_api";
-import { parseRawGroup, type RawGroup } from "../shared/raw_model";
-import {
-  HttpMethod,
-  type IServerRequestApi,
-} from "../shared/server_request_api";
+import { fetchGroupPage } from "../shared/raw_model";
+import type { IServerRequestApi } from "../shared/server_request_api";
 import type { Share } from "../shared/share_api";
 
 export class WebShareGroupApi implements IGroupApi {
@@ -23,32 +19,17 @@ export class WebShareGroupApi implements IGroupApi {
   }
 
   async getGroups(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: GroupOrderBy,
-    text_search: string | null,
+    filter: GroupFilter,
     page: number,
-    page_size: number,
-    include_ungrouped_models: boolean,
+    pageSize: number,
   ): Promise<Group[]> {
-    const data = buildGetGroupsQuery(
-      model_ids,
-      group_ids,
-      label_ids,
-      order_by,
-      text_search,
-      page,
-      page_size,
-      include_ungrouped_models,
-    );
-
-    const response = await this.requestApi.request<RawGroup[]>(
+    return fetchGroupPage(
+      this.requestApi,
       `/shares/${this.share.id}/groups`,
-      HttpMethod.GET,
-      data,
+      filter,
+      page,
+      pageSize,
     );
-    return response.map((rawGroup) => parseRawGroup(rawGroup));
   }
 
   async addGroup(_name: string): Promise<GroupMeta> {

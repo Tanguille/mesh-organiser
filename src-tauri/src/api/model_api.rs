@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use db::{
-    model::ModelFlags,
+    model::{ModelFlags, blob::FileType},
     model_db,
     model_db::{ModelFilterOptions, ModelOrderBy},
 };
@@ -49,15 +49,13 @@ pub async fn add_model(
     )
     .await?;
 
-    let models_len = models.len();
-    let (_, paths) =
-        export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
-
     if open_in_slicer
-        && models_len > 0
+        && !models.is_empty()
         && let Some(slicer) = &state.get_configuration().slicer
     {
-        slicer.open(paths, &state.app_state).await?;
+        let (_, paths) =
+            export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
+        slicer.open(paths, &state.app_state)?;
     }
 
     import_state.status = ImportStatus::Finished;
@@ -73,6 +71,7 @@ pub async fn get_models(
     order_by: Option<String>,
     text_search: Option<String>,
     model_flags: Option<ModelFlags>,
+    file_types: Option<Vec<FileType>>,
     page: u32,
     page_size: u32,
     state: State<'_, TauriAppState>,
@@ -94,6 +93,7 @@ pub async fn get_models(
                 ))?,
             model_flags,
             text_search,
+            file_types,
             page,
             page_size,
         },
@@ -124,7 +124,7 @@ pub async fn edit_model(
         model_name,
         model_url,
         model_description,
-        model_flags.unwrap_or(ModelFlags::empty()),
+        model_flags.unwrap_or_default(),
         model_timestamp,
         model_global_id,
     )

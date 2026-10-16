@@ -5,11 +5,12 @@
 //! regression coverage so that consolidating download logic in the service
 //! crate does not break behaviour.
 
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
-use service::download_file_service::{download_file_to, get_content_disposition_filename};
 use tempfile::tempdir;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
+
+use service::download_file_service::{download_file_to, get_content_disposition_filename};
 
 #[tokio::test]
 async fn download_file_to_writes_file_with_content_disposition() {
@@ -44,7 +45,7 @@ async fn download_file_to_writes_file_with_content_disposition() {
         "filename should be example.stl from Content-Disposition, got {:?}",
         path.file_name()
     );
-    let contents = std::fs::read_to_string(&path).expect("read file");
+    let contents = fs::read_to_string(&path).expect("read file");
     assert_eq!(contents, "test content");
 }
 
@@ -70,7 +71,7 @@ async fn download_file_to_uses_url_path_when_no_content_disposition() {
         "filename should come from URL path, got {:?}",
         path.file_name()
     );
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "test content");
+    assert_eq!(fs::read_to_string(&path).unwrap(), "test content");
 }
 
 #[tokio::test]
@@ -130,4 +131,55 @@ async fn get_content_disposition_filename_rfc5987_from_header() {
     let response = reqwest::get(&url).await.expect("GET should succeed");
     let name = get_content_disposition_filename(&response);
     assert_eq!(name.as_deref(), Some("my percent file.stl"));
+}
+
+// -----------------------------------------------------------------------------
+// `download_file` percent-decodes the last response-URL segment (thingiverse)
+// and the whole URL (nexprint) to derive the final filename.
+// -----------------------------------------------------------------------------
+
+/// Downloads `<mock server>/<url_path>` through `download_file` and checks the derived
+/// filename and source uri.
+async fn assert_download(url_path: &str, expected_name: &str, expected_source: &str) {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("x"))
+        .mount(&mock_server)
+        .await;
+
+    let url = format!("{}/{url_path}", mock_server.uri());
+    let result = service::download_file_service::download_file(&url)
+        .await
+        .expect("download should succeed");
+
+    let path = PathBuf::from(&result.path);
+    assert!(path.exists());
+    assert_eq!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some(expected_name)
+    );
+    assert_eq!(result.source_uri.as_deref(), Some(expected_source));
+
+    fs::remove_file(&path).ok();
+}
+
+#[tokio::test]
+async fn download_file_thingiverse_decodes_last_url_segment() {
+    assert_download(
+        "thingiverse/na%C3%AFve%20file.stl",
+        "naïve file.stl",
+        "https://thingiverse.com/",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn download_file_nexprint_decodes_quoted_filename_from_url() {
+    assert_download(
+        "nexprint/dl?response-content-disposition=attachment;filename%3D%22na%C3%AFve%20file.stl%22",
+        "naïve file.stl",
+        "https://nexprint.com/",
+    )
+    .await;
 }

@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
 use indexmap::IndexMap;
 use itertools::Itertools;
-use sqlx::{QueryBuilder, Row};
+use sqlx::QueryBuilder;
 use strum::EnumString;
 
 use crate::{
@@ -10,12 +8,13 @@ use crate::{
     db_context::DbContext,
     model::{
         Model, ModelFlags,
+        blob::FileType,
         model_group::{ModelGroup, ModelGroupMeta},
         resource::ResourceMeta,
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, resource_db, set_timestamp_column,
+    push_in_i64, random_hex_32, set_timestamp_column,
     util::{time_now, validate_global_id},
 };
 
@@ -35,6 +34,8 @@ pub struct GroupFilterOptions {
     pub label_ids: Option<Vec<i64>>,
     pub order_by: Option<GroupOrderBy>,
     pub text_search: Option<String>,
+    /// Keep only groups containing at least one model of these types; see `ModelFilterOptions`.
+    pub file_types: Option<Vec<FileType>>,
     /// 1-based page number. `Default` returns 1; values of 0 are treated as 1 by `get_groups`
     /// to keep the function panic-free even if a caller forgets to override the field.
     pub page: u32,
@@ -59,6 +60,7 @@ impl Default for GroupFilterOptions {
             label_ids: None,
             order_by: None,
             text_search: None,
+            file_types: None,
             page: 1,
             page_size: MAX_PAGE_SIZE,
             include_ungrouped_models: false,
@@ -68,8 +70,7 @@ impl Default for GroupFilterOptions {
     }
 }
 
-/// Builds group list from a flat model list. Main cost is typically the upstream fetch of all
-/// models; label dedup is O(1) per model via `HashSet`.
+/// Builds group list from a flat model list. Main cost is typically the upstream fetch of all models.
 fn convert_model_list_to_groups(
     models: Vec<Model>,
     include_ungrouped_models: bool,
@@ -107,12 +108,10 @@ fn convert_model_list_to_groups(
 
         group.flags |= ModelFlags::from_bits_truncate(model.flags.bits());
 
-        let mut existing_label_ids: HashSet<i64> = group.labels.iter().map(|l| l.id).collect();
         for label in &model.labels {
-            if !existing_label_ids.insert(label.id) {
-                continue;
+            if !group.labels.iter().any(|l| l.id == label.id) {
+                group.labels.push(label.clone());
             }
-            group.labels.push(label.clone());
         }
 
         group.models.push(model);
@@ -121,8 +120,15 @@ fn convert_model_list_to_groups(
     index_map.into_values().collect()
 }
 
-/// Returns full group list (meta, models, labels, resource). Callers that only need meta + counts
-/// could be served by a future summary endpoint to reduce payload and DB load.
+/// Returns a page of groups whose models match the supplied filters.
+///
+/// Unless incomplete groups are allowed, model-level filters select groups but each returned
+/// group is repopulated with all of its models. Ungrouped models are represented as individual
+/// groups when requested.
+///
+/// # Errors
+///
+/// Returns an error if the groups or their related models and resources cannot be queried.
 pub async fn get_groups(
     db: &DbContext,
     user: &User,
@@ -131,11 +137,11 @@ pub async fn get_groups(
     let filtered_on_labels = options.label_ids.is_some();
     let filtered_on_text = options.text_search.is_some();
     let filtered_on_models = options.model_ids.is_some();
+    let filtered_on_file_types = options.file_types.is_some();
 
-    let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
+    let group_resource_map = crate::resource_db::get_group_id_to_resource_map(db, user).await?;
 
-    // Enforce pagination limits to prevent unbounded queries
-    // Use MAX_PAGE_SIZE for fetching data, actual pagination happens in-memory
+    // Fetch the full "fetch all" default window; actual pagination happens in-memory below.
     let models = model_db::get_models(
         db,
         user,
@@ -144,8 +150,7 @@ pub async fn get_groups(
             group_ids: options.group_ids,
             label_ids: options.label_ids,
             text_search: options.text_search,
-            page: 1,
-            page_size: MAX_PAGE_SIZE,
+            file_types: options.file_types,
             ..Default::default()
         },
     )
@@ -159,9 +164,10 @@ pub async fn get_groups(
 
     // When filters were applied, we may have only a subset of each group's models. Re-fetch full
     // groups unless the caller allows incomplete groups or wants to keep filtered groups as-is.
-    let re_fetch_full_groups = (filtered_on_labels || filtered_on_text || filtered_on_models)
-        && !options.allow_incomplete_groups
-        && !options.split_incomplete_groups;
+    let re_fetch_full_groups =
+        (filtered_on_labels || filtered_on_text || filtered_on_models || filtered_on_file_types)
+            && !options.allow_incomplete_groups
+            && !options.split_incomplete_groups;
 
     if re_fetch_full_groups {
         let group_ids: Vec<i64> = groups
@@ -176,8 +182,6 @@ pub async fn get_groups(
             user,
             ModelFilterOptions {
                 group_ids: Some(group_ids),
-                page: 1,
-                page_size: MAX_PAGE_SIZE,
                 ..Default::default()
             },
         )
@@ -230,28 +234,6 @@ async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<St
     Ok(row.group_unique_global_id)
 }
 
-async fn get_unique_ids_from_group_ids(
-    db: &DbContext,
-    group_ids: &[i64],
-) -> Result<IndexMap<i64, String>, DbError> {
-    let mut id_map = IndexMap::new();
-    if group_ids.is_empty() {
-        return Ok(id_map);
-    }
-
-    let mut query_builder = QueryBuilder::new(
-        "SELECT group_id, group_unique_global_id FROM models_group WHERE group_id IN ",
-    );
-    push_in_i64(&mut query_builder, group_ids);
-    let rows = query_builder.build().fetch_all(db).await?;
-
-    for row in rows {
-        id_map.insert(row.get("group_id"), row.get("group_unique_global_id"));
-    }
-
-    Ok(id_map)
-}
-
 pub async fn set_group_id_on_models(
     db: &DbContext,
     user: &User,
@@ -267,15 +249,9 @@ pub async fn set_group_id_on_models(
         .filter_map(|m| m.group.as_ref().map(|g| g.id))
         .unique()
         .collect();
-    let mut group_ids = get_unique_ids_from_group_ids(db, &old_group_ids).await?;
-
-    if group_ids.len() != old_group_ids.len() {
-        return Err(DbError::RowNotFound);
-    }
 
     if let Some(gid) = group_id {
-        let hex = get_unique_id_from_group_id(db, gid).await?;
-        group_ids.insert(gid, hex);
+        get_unique_id_from_group_id(db, gid).await?;
         old_group_ids.push(gid);
     }
 
@@ -424,34 +400,6 @@ pub async fn get_group_count(
     };
 
     Ok(base + ungrouped)
-}
-
-pub async fn get_group_via_id(
-    db: &DbContext,
-    user: &User,
-    group_id: i64,
-) -> Result<Option<ModelGroup>, DbError> {
-    let group_resource_map = resource_db::get_group_id_to_resource_map(db, user).await?;
-
-    let models = model_db::get_models(
-        db,
-        user,
-        ModelFilterOptions {
-            group_ids: Some(vec![group_id]),
-            page: 1,
-            page_size: MAX_PAGE_SIZE,
-            ..Default::default()
-        },
-    )
-    .await?;
-
-    let mut groups = convert_model_list_to_groups(models.items, false, &group_resource_map);
-
-    if groups.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(groups.remove(0)))
 }
 
 pub async fn set_last_updated_on_groups(

@@ -1,13 +1,9 @@
-use std::{
-    ffi::OsStr, future::Future, io::Read, panic, path::Path, process::Command, sync::OnceLock,
-};
+use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::OnceLock};
 
 use regex::Regex;
 use tokio::task::JoinSet;
 
 use db::model::blob::FileType;
-
-use crate::service_error::ServiceError;
 
 static COLLAPSE_WHITESPACE: OnceLock<Regex> = OnceLock::new();
 
@@ -41,12 +37,33 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     file_name
 }
 
+/// Percent-decodes `text` into an owned string; fails if the decoded bytes are not valid UTF-8.
+/// A literal `+` is kept as-is and a malformed `%zz` sequence is left untouched.
+///
+/// # Errors
+///
+/// Returns the UTF-8 error if the decoded bytes are not valid UTF-8.
+pub fn percent_decode(text: &str) -> Result<String, std::str::Utf8Error> {
+    percent_encoding::percent_decode_str(text)
+        .decode_utf8()
+        .map(std::borrow::Cow::into_owned)
+}
+
 #[must_use]
 pub fn cleanse_evil_from_name(name: &str) -> String {
-    String::from(
-        name.replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], " ")
-            .trim(),
-    )
+    let cleansed = name
+        .replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], " ")
+        .trim()
+        .to_string();
+
+    // "." or ".." contain no separator to strip above, but `Path::join` still
+    // treats them as directory traversal (escaping into the parent dir); substitute
+    // a placeholder here so every caller gets a safe, usable name for free.
+    if !cleansed.is_empty() && cleansed.chars().all(|c| c == '.') {
+        return String::from("unnamed");
+    }
+
+    cleansed
 }
 
 /// Opens the given path in the system file explorer.
@@ -70,19 +87,6 @@ pub fn open_folder_in_explorer(path: &Path) {
     {
         let _ = Command::new("xdg-open").arg(path).output().unwrap();
     }
-}
-
-/// Returns the total size of all files in the directory (non-recursive).
-///
-/// # Panics
-///
-/// Panics if the directory cannot be read or a metadata call fails.
-#[must_use]
-pub fn get_folder_size(path: &Path) -> u64 {
-    std::fs::read_dir(path)
-        .unwrap()
-        .map(|f| f.unwrap().metadata().unwrap().len())
-        .sum()
 }
 
 #[must_use]
@@ -119,18 +123,6 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
         "gcode.zip" => "gcode",
         _ => &lowercase,
     })
-}
-
-/// Reads the entire file as a UTF-8 string.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be opened or read.
-pub fn read_file_as_text(path: &Path) -> Result<String, ServiceError> {
-    let mut file = std::fs::File::open(path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    Ok(contents)
 }
 
 /// Runs one future per item with bounded parallelism, returning every task output in completion order.
@@ -178,10 +170,8 @@ where
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests for run_bounded: lock in the current behaviour shared by the
-// import and export JoinSet loops before/after the dedup refactor — every task
-// output is returned, at most `max` tasks run concurrently, and a panicking task
-// propagates as a panic (resume_unwind).
+// Tests for run_bounded: every task output is returned, at most `max` tasks run
+// concurrently, and a panicking task propagates as a panic (resume_unwind).
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -211,7 +201,7 @@ mod run_bounded_tests {
     async fn empty_input_returns_empty_vec() {
         let results = run_bounded(Vec::<usize>::new(), 4, |item| async move { item }).await;
 
-        assert!(results.is_empty());
+        assert_eq!(results.len(), 0);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -259,11 +249,8 @@ mod run_bounded_tests {
 }
 
 // -----------------------------------------------------------------------------
-// Regression tests for service::util pure helpers.
-// We test these after consolidating util so that src-tauri uses service::util;
-// the goal is to lock in behaviour and catch regressions from deduplication.
-// Only pure functions are unit-tested here; IO (read_file_as_text,
-// get_folder_size, open_folder_in_explorer) is left out unless tested via temp dir.
+// Tests for service::util pure helpers; IO (open_folder_in_explorer) is left
+// out unless tested via temp dir.
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -276,6 +263,31 @@ mod tests {
         cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
         is_zippable_file_extension, is_zipped_file_extension, prettify_file_name,
     };
+
+    // ---- percent_decode ----
+
+    #[test]
+    fn percent_decode_decodes_multibyte_and_space() {
+        assert_eq!(
+            super::percent_decode("caf%C3%A9%20bar").unwrap(),
+            "café bar"
+        );
+    }
+
+    #[test]
+    fn percent_decode_keeps_plus_literal() {
+        assert_eq!(super::percent_decode("a+b").unwrap(), "a+b");
+    }
+
+    #[test]
+    fn percent_decode_leaves_malformed_escape_untouched() {
+        assert_eq!(super::percent_decode("100%zz").unwrap(), "100%zz");
+    }
+
+    #[test]
+    fn percent_decode_rejects_invalid_utf8() {
+        assert!(super::percent_decode("%FF").is_err());
+    }
 
     // ---- cleanse_evil_from_name ----
 
@@ -337,6 +349,14 @@ mod tests {
     #[test]
     fn test_cleanse_evil_trim_outer_whitespace() {
         assert_eq!(cleanse_evil_from_name("  x  "), "x");
+    }
+
+    #[test]
+    fn test_cleanse_evil_rejects_dot_only_names() {
+        // No separators to strip, but ".." still escapes `Path::join` into the parent dir.
+        assert_eq!(cleanse_evil_from_name(".."), "unnamed");
+        assert_eq!(cleanse_evil_from_name("."), "unnamed");
+        assert_eq!(cleanse_evil_from_name("..."), "unnamed");
     }
 
     // ---- prettify_file_name ----

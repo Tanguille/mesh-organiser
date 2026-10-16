@@ -3,7 +3,6 @@ import ts from "typescript-eslint";
 import svelte from "eslint-plugin-svelte";
 import prettier from "eslint-config-prettier";
 import globals from "globals";
-import svelteConfig from "./svelte.config.js";
 
 export default [
   {
@@ -38,7 +37,6 @@ export default [
         projectService: true,
         extraFileExtensions: [".svelte"],
         parser: ts.parser,
-        svelteConfig,
       },
     },
   },
@@ -54,7 +52,7 @@ export default [
           destructuredArrayIgnorePattern: "^_",
         },
       ],
-      // We use resolve from $lib/paths (wraps $app/paths) for dynamic routes; rule only accepts $app/paths
+      // We use resolve from #lib/paths (wraps $app/paths) for dynamic routes; rule only accepts $app/paths
       "svelte/no-navigation-without-resolve": "off",
     },
   },

@@ -31,12 +31,20 @@ jobs:
       CARGO_INCREMENTAL: 0
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           components: rustfmt, clippy
+          cache-on-failure: false
+          # cadrum's OCCT build output lives directly under target/, outside the
+          # directories cargo's own fingerprinting revalidates on every build. A
+          # restored cache can silently carry an incomplete copy of it forward
+          # while cargo still considers the crate's build script up to date,
+          # so caching target/ here trades a one-time corruption for a
+          # recurring one. Always rebuild OCCT from scratch (~25-30 min) instead.
+          cache-targets: false
 
       - name: Install system dependencies
         run: |
@@ -54,8 +62,9 @@ jobs:
 
       # src-tauri ships `step`, so feature unification builds and tests the STEP
       # path in these workspace runs. On Linux this compiles OCCT from source via
-      # cadrum (~30 min uncached; cached in the cargo target dir afterwards) — see
-      # libmeshthumbnail/Cargo.toml for why Linux cannot use the prebuilt tarball.
+      # cadrum (~25-30 min, every run — see the cache-targets: false note above)
+      # — see libmeshthumbnail/Cargo.toml for why Linux cannot use the prebuilt
+      # tarball.
       - run: cargo build --workspace --all-targets
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace --all-targets

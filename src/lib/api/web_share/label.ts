@@ -36,9 +36,4 @@ export class WebShareLabelApi implements ILabelApi {
     _label: LabelMeta,
     _children: LabelMeta[],
   ): Promise<void> {}
-
-  async removeChildrenFromLabel(
-    _label: LabelMeta,
-    _children: LabelMeta[],
-  ): Promise<void> {}
 }

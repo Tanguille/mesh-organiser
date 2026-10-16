@@ -8,6 +8,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Returns the trimmed value of the search input behind `event`, or null when it is blank. */
+export function normalizeSearchInput(event: Event): string | null {
+  const value = (event.target as HTMLInputElement).value.trim();
+
+  return value.length === 0 ? null : value;
+}
+
 export function debounce<T extends unknown[]>(
   callback: (...args: T) => void,
   timeMs: number,
@@ -124,8 +131,7 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Dedupe by id, preserving first occurrence. O(n) via a Set instead of the
-// O(n^2) `.filter((v, i, a) => a.findIndex(...) === i)` idiom it replaces.
+// Dedupe by id, preserving first occurrence, in O(n) via a Set.
 export function uniqueById<T extends { id: number }>(items: T[]): T[] {
   const seen = new Set<number>();
   return items.filter((item) =>
@@ -136,9 +142,8 @@ export function uniqueById<T extends { id: number }>(items: T[]): T[] {
 // Pick the model with the largest blob as the single representative image
 // for a group/collection.
 export function representativeModel(models: Model[]): Model {
-  // Single-pass max; this runs per group thumbnail in scrolling grid views,
-  // so avoid the copy + O(n log n) sort. Like the sort it replaces, an empty
-  // list yields undefined.
+  // Single-pass max: this runs per group thumbnail in scrolling grid views, so
+  // avoid a copy + O(n log n) sort. An empty list yields undefined.
   let best = models[0];
   for (const model of models) {
     if (model.blob.size > best.blob.size) {
@@ -157,48 +162,23 @@ export async function runWithLimit<T>(
   limit: number = 4,
 ): Promise<void> {
   let index = 0;
-  let active = 0;
   let failed = false;
 
-  return new Promise((resolve, reject) => {
-    const launchNext = () => {
-      while (active < limit) {
-        if (failed) {
-          return;
-        }
-
-        if (index >= items.length) {
-          if (active === 0) resolve();
-          break;
-        }
-
-        // A synchronous throw from fn must reject the run, not escape a
-        // .finally() callback as an unhandled rejection that hangs the await.
-        let task: Promise<void>;
-        try {
-          task = fn(items[index++]);
-        } catch (err) {
-          failed = true;
-          reject(err);
-          return;
-        }
-
-        active++;
-
-        task
-          .catch((err) => {
-            failed = true;
-            reject(err);
-          })
-          .finally(() => {
-            active--;
-            launchNext();
-          });
+  // async worker: a synchronous throw from fn arrives here as a rejection.
+  const worker = async () => {
+    while (index < items.length && !failed) {
+      try {
+        await fn(items[index++]);
+      } catch (err) {
+        failed = true;
+        throw err;
       }
-    };
+    }
+  };
 
-    launchNext();
-  });
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
 }
 
 // Trigger a browser download/navigation via a transient anchor element.
@@ -226,12 +206,7 @@ export function triggerBlobDownload(
 }
 
 export function dateToString(date: Date): string {
-  const isoString = date.toISOString();
-  if (isoString.includes(".")) {
-    return isoString.split(".")[0] + "Z";
-  }
-
-  return isoString;
+  return date.toISOString().split(".")[0] + "Z";
 }
 
 export function timeSinceDate(date: Date): string {
@@ -260,7 +235,6 @@ export function handleGridItemKeyDown<T>(
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     if (useSyntheticMouseEvent) {
-      // Create a synthetic click event for grid items that expect mouse events
       const syntheticEvent = new MouseEvent("click", {
         ctrlKey: event.ctrlKey || event.metaKey,
         shiftKey: event.shiftKey,

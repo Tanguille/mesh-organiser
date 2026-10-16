@@ -1,4 +1,4 @@
-import { currentUser } from "$lib/configuration.svelte";
+import { currentUser } from "#lib/configuration.svelte";
 import { getContainer } from "../dependency_injection";
 import { IBlobApi } from "../shared/blob_api";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";

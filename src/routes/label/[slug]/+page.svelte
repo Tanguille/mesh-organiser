@@ -1,12 +1,16 @@
 <script lang="ts">
-  import GroupGrid from "$lib/components/view/group-grid.svelte";
+  import GroupGrid from "#lib/components/view/group-grid.svelte";
   import { page } from "$app/state";
-  import { getThisLabelOnly } from "$lib/paths";
-  import EditLabel from "$lib/components/edit/label.svelte";
-  import type { Label } from "$lib/api/shared/label_api";
-  import { sidebarState } from "$lib/sidebar_data.svelte";
-  import { GroupStreamManager, IGroupApi } from "$lib/api/shared/group_api";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { getThisLabelOnly } from "#lib/paths";
+  import EditLabel from "#lib/components/edit/label.svelte";
+  import type { Label } from "#lib/api/shared/label_api";
+  import { sidebarState } from "#lib/sidebar_data.svelte";
+  import {
+    defaultGroupFilter,
+    GroupStreamManager,
+    IGroupApi,
+  } from "#lib/api/shared/group_api";
+  import { getContainer } from "#lib/api/dependency_injection";
 
   let groupApi = getContainer().require<IGroupApi>(IGroupApi);
 
@@ -25,11 +29,13 @@
       <GroupGrid
         groupStream={new GroupStreamManager(
           groupApi,
-          null,
-          (thisLabelOnly ? [label.meta] : label.effectiveLabels).map(
-            (x) => x.id,
-          ),
-          true,
+          defaultGroupFilter({
+            labelIds: (thisLabelOnly
+              ? [label.meta]
+              : label.effectiveLabels
+            ).map((x) => x.id),
+            includeUngroupedModels: true,
+          }),
         )}
       />
     </div>

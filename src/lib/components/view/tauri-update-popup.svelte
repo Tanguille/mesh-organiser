@@ -4,22 +4,22 @@
     CardHeader,
     CardTitle,
     CardContent,
-  } from "$lib/components/ui/card";
+  } from "#lib/components/ui/card";
   import { platform } from "@tauri-apps/plugin-os";
   import {
     Button,
     AsyncButton,
     buttonVariants,
-  } from "$lib/components/ui/button/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  } from "#lib/components/ui/button/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import Link from "@lucide/svelte/icons/link";
 
   import { type Update } from "@tauri-apps/plugin-updater";
   import { toast } from "svelte-sonner";
   import { relaunch } from "@tauri-apps/plugin-process";
-  import { configuration } from "$lib/configuration.svelte";
+  import { configuration } from "#lib/configuration.svelte";
 
-  let props: { update: Update; onDismiss?: () => void } = $props();
+  let props: { update: Update; onDismiss: () => void } = $props();
   let currentPlatform = platform();
   let automaticUpdatePlatforms = ["windows"];
 
@@ -39,7 +39,7 @@
 
   function ignore(version: string) {
     configuration.ignore_update = version;
-    props.onDismiss!();
+    props.onDismiss();
   }
 </script>
 
@@ -68,9 +68,7 @@
       <Separator />
 
       <div class="flex w-full justify-end gap-4">
-        <Button variant="outline" onclick={() => props.onDismiss!()}
-          >Dismiss</Button
-        >
+        <Button variant="outline" onclick={props.onDismiss}>Dismiss</Button>
         <Button variant="outline" onclick={() => ignore(props.update.version)}
           >Ignore this update</Button
         >

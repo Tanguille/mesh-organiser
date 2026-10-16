@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "bambustudio",
+          "cura",
+          "prusaslicer",
+          "orcaslicer",
+          "elegooslicer",
+          "meshorganiser"
+        ]
+      }
+    }
+  }
+}

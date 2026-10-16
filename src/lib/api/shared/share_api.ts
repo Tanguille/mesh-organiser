@@ -1,5 +1,5 @@
-import { updateSidebarState } from "$lib/sidebar_data.svelte";
-import { nameCollectionOfModels } from "$lib/utils";
+import { updateSidebarState } from "#lib/sidebar_data.svelte";
+import { nameCollectionOfModels } from "#lib/utils";
 import { toast } from "svelte-sonner";
 import type { Model } from "./model_api";
 
@@ -38,7 +38,6 @@ export interface IShareApi {
   getShare(shareId: string): Promise<Share>;
   getShareLink(share: Share): Promise<string>;
   createShare(shareName: string): Promise<Share>;
-  addModelsToShare(share: Share, models: Model[]): Promise<void>;
   setModelsOnShare(share: Share, models: Model[]): Promise<void>;
   editShare(share: Share): Promise<void>;
   deleteShare(share: Share): Promise<void>;

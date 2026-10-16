@@ -1,4 +1,4 @@
-import { FileType } from "$lib/api/shared/blob_api";
+import { FileType } from "#lib/api/shared/blob_api";
 
 const FILE_TYPE_VALUES = new Set<string>(Object.values(FileType));
 

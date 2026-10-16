@@ -7,7 +7,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 // @ts-expect-error - threejs-webworker-3mf-loader has no type definitions
 import { ThreeMFLoader } from "threejs-webworker-3mf-loader";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import { FileType } from "$lib/api/shared/blob_api";
+import { FileType } from "#lib/api/shared/blob_api";
 import { isValidWorkerMessage } from "./parseModelWorkerMessage.js";
 
 function convertGeometry(group: Group): BufferGeometry | null {
@@ -76,9 +76,9 @@ export function loadModel(
 
     if (localResult) {
       localResult = toCreasedNormals(localResult, 0.1);
-      localResult.computeBoundingSphere();
       localResult.center();
       localResult.rotateX(Math.PI / -2);
+      localResult.computeBoundingSphere();
     }
 
     return localResult || null;
@@ -105,7 +105,6 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
     const geometry = loadModel(buffer, fileType);
 
     if (geometry) {
-      // Check if geometry has valid position data
       if (geometry.attributes.position) {
         const position = geometry.attributes.position.array.buffer;
         const normal = geometry.attributes.normal?.array?.buffer || null;

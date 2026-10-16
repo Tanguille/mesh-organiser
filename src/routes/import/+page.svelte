@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, AsyncButton } from "$lib/components/ui/button/index.js";
+  import { Button, AsyncButton } from "#lib/components/ui/button/index.js";
   import { onDestroy, onMount, untrack } from "svelte";
   import {
     Card,
@@ -7,38 +7,38 @@
     CardTitle,
     CardContent,
     CardDescription,
-  } from "$lib/components/ui/card";
-  import GroupPage from "$lib/components/view/group-page.svelte";
-  import ModelGrid from "$lib/components/view/model-grid.svelte";
+  } from "#lib/components/ui/card";
+  import GroupPage from "#lib/components/view/group-page.svelte";
+  import ModelGrid from "#lib/components/view/model-grid.svelte";
 
-  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import File from "@lucide/svelte/icons/file";
   import Folder from "@lucide/svelte/icons/folder";
   import Undo2 from "@lucide/svelte/icons/undo-2";
-  import { CheckboxWithLabel } from "$lib/components/ui/checkbox/index";
-  import { countWriter } from "$lib/utils";
+  import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index";
+  import { countWriter } from "#lib/utils";
   import Flame from "@lucide/svelte/icons/flame";
   import {
     globalImportSettings,
     importState,
     resetImportState,
-  } from "$lib/import.svelte";
+  } from "#lib/import.svelte";
   import {
+    defaultGroupFilter,
     type Group,
     GroupOrderBy,
     IGroupApi,
-  } from "$lib/api/shared/group_api";
+  } from "#lib/api/shared/group_api";
   import {
     ImportStatus,
     ITauriImportApi,
-  } from "$lib/api/shared/tauri_import_api";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { configuration } from "$lib/configuration.svelte";
-  import { IInternalBrowserApi } from "$lib/api/shared/internal_browser_api";
-  import { PredefinedModelStreamManager } from "$lib/api/shared/model_api";
-  import Spinner from "$lib/components/view/spinner.svelte";
-  import { IWebImportApi } from "$lib/api/shared/web_import_api";
-  import { IHostApi, isCurrentPlatformDesktop } from "$lib/api/shared/host_api";
+  } from "#lib/api/shared/tauri_import_api";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { configuration } from "#lib/configuration.svelte";
+  import { IInternalBrowserApi } from "#lib/api/shared/internal_browser_api";
+  import { PredefinedModelStreamManager } from "#lib/api/shared/model_api";
+  import Spinner from "#lib/components/view/spinner.svelte";
+  import { IWebImportApi } from "#lib/api/shared/web_import_api";
+  import { IHostApi, isCurrentPlatformDesktop } from "#lib/api/shared/host_api";
 
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
   const tauriImportApi =
@@ -119,16 +119,12 @@
   });
 
   let importGroupsLoadGen = 0;
-  let previousImportStatus: ImportStatus | undefined = undefined;
 
   $effect(() => {
     const status = importState.status;
     if (status != ImportStatus.Finished) {
       importedGroups = [];
-      if (previousImportStatus === ImportStatus.Finished) {
-        importGroupsLoadGen++;
-      }
-      previousImportStatus = status;
+      importGroupsLoadGen++; // cancel any in-flight group load
       return;
     }
 
@@ -136,18 +132,16 @@
       .map((res) => res.model_ids)
       .flat();
 
-    previousImportStatus = status;
     const gen = ++importGroupsLoadGen;
     untrack(async () => {
       const groups = await groupApi.getGroups(
-        importedModelIds,
-        null,
-        null,
-        GroupOrderBy.NameDesc,
-        null,
+        defaultGroupFilter({
+          modelIds: importedModelIds,
+          orderBy: GroupOrderBy.NameDesc,
+          includeUngroupedModels: true,
+        }),
         1,
         importedModelIds.length,
-        true,
       );
       if (gen !== importGroupsLoadGen) {
         return;
@@ -196,7 +190,7 @@
       {/if}
     </div>
   {:else if importState.status == ImportStatus.Idle}
-    <div class="max-w-xxl my-auto flex h-fit flex-col gap-5">
+    <div class="my-auto flex h-fit flex-col gap-5">
       {#if tauriImportApi}
         <Card>
           <CardHeader>
@@ -306,9 +300,7 @@
       {:else}
         <h1>Importing model...</h1>
       {/if}
-      <div>
-        <LoaderCircle class="h-10 w-10 animate-spin" />
-      </div>
+      <Spinner />
     </div>
   {/if}
 </div>

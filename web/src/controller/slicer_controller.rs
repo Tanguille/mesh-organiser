@@ -10,14 +10,14 @@ use serde::{Deserialize, Serialize};
 use service::slice_service::{
     SliceOrchestrationResult, SliceOrchestrationSettings, slice_model_for_user,
 };
+use service::AppState;
 
 use crate::{
     error::ApplicationError,
     user::{AuthSession, Backend},
-    web_app_state::WebAppState,
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
@@ -66,13 +66,12 @@ pub struct SliceResponseJson {
 
 async fn post_slice(
     auth_session: AuthSession,
-    State(web_state): State<WebAppState>,
+    State(state): State<AppState>,
     Json(body): Json<SliceRequestBody>,
 ) -> Result<Response, ApplicationError> {
     let user = auth_session.user.unwrap().to_user();
     let settings = SliceOrchestrationSettings::from(body.settings);
-    let result =
-        slice_model_for_user(&web_state.app_state, &user, body.model_id, &settings).await?;
+    let result = slice_model_for_user(&state, &user, body.model_id, &settings).await?;
 
     Ok(Json(slice_response_from_result(result)).into_response())
 }

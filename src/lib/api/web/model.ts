@@ -1,16 +1,11 @@
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 import type {
   IModelApi,
   Model,
+  ModelFilter,
   ModelFlags,
-  ModelOrderBy,
 } from "../shared/model_api";
-import {
-  buildGetModelsQuery,
-  convertModelFlagsToRaw,
-  parseRawModel,
-  type RawModel,
-} from "../shared/raw_model";
+import { convertModelFlagsToRaw, fetchModelPage } from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -24,32 +19,11 @@ export class WebModelApi implements IModelApi {
   }
 
   async getModels(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: ModelOrderBy,
-    text_search: string | null,
+    filter: ModelFilter,
     page: number,
-    page_size: number,
-    flags: ModelFlags | null,
+    pageSize: number,
   ): Promise<Model[]> {
-    const data = buildGetModelsQuery(
-      model_ids,
-      group_ids,
-      label_ids,
-      order_by,
-      text_search,
-      page,
-      page_size,
-      flags,
-    );
-
-    const response = await this.requestApi.request<RawModel[]>(
-      "/models",
-      HttpMethod.GET,
-      data,
-    );
-    return response.map((rawModel) => parseRawModel(rawModel));
+    return fetchModelPage(this.requestApi, "/models", filter, page, pageSize);
   }
 
   async editModel(

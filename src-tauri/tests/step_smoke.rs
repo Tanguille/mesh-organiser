@@ -11,6 +11,6 @@ fn step_parses_inside_gtk_linked_binary() {
     let mesh = libmeshthumbnail::parse_model::handle_parse(&fixture)
         .expect("cube.step should parse")
         .expect("step file should be recognized");
-    assert!(!mesh.vertices.is_empty());
-    assert!(!mesh.indices.is_empty());
+    assert_ne!(mesh.vertices.len(), 0);
+    assert_ne!(mesh.indices.len(), 0);
 }

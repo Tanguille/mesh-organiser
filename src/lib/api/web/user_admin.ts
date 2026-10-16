@@ -9,7 +9,7 @@ import {
   type IAdminUserApi,
   type User,
 } from "../shared/user_api";
-import { parseTauriRawUser, type TauriRawUser } from "../tauri/user";
+import { parseRawUser, type RawUser } from "../shared/raw_model";
 
 export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   private requestApi: IServerRequestApi;
@@ -21,11 +21,11 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   }
 
   async getAllUsers(): Promise<User[]> {
-    const users = await this.requestApi.request<TauriRawUser[]>(
+    const users = await this.requestApi.request<RawUser[]>(
       "/users",
       HttpMethod.GET,
     );
-    return users.map((user) => parseTauriRawUser(user));
+    return users.map((user) => parseRawUser(user));
   }
 
   async addUser(
@@ -54,16 +54,7 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   }
 
   async editUser(user: User): Promise<void> {
-    const dataUserEdit = {
-      user_name: user.username,
-      user_email: user.email,
-    };
-
-    await this.requestApi.request<void>(
-      `/users/${user.id}`,
-      HttpMethod.PUT,
-      dataUserEdit,
-    );
+    await this.editSelf(user);
 
     const dataPermissionsEdit = {
       permissions: permissionsToStringArray(user.permissions),

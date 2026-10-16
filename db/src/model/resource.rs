@@ -15,11 +15,10 @@ impl Serialize for ResourceFlags {
     where
         S: serde::Serializer,
     {
-        let mut flags = Vec::new();
-        if self.contains(Self::Completed) {
-            flags.push("Completed");
-        }
-        flags.serialize(serializer)
+        self.iter_names()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>()
+            .serialize(serializer)
     }
 }
 
@@ -28,14 +27,10 @@ impl<'de> Deserialize<'de> for ResourceFlags {
     where
         D: serde::Deserializer<'de>,
     {
-        let flags: Vec<String> = Vec::deserialize(deserializer)?;
-        let mut result = Self::empty();
-        for flag in flags {
-            if flag.as_str() == "Completed" {
-                result.insert(Self::Completed);
-            }
-        }
-        Ok(result)
+        Ok(Vec::<String>::deserialize(deserializer)?
+            .iter()
+            .filter_map(|f| Self::from_name(f))
+            .collect())
     }
 }
 

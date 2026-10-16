@@ -19,10 +19,7 @@ export class TauriProxyShareApi extends WebShareApi {
 
   // Fetches the full remote model list and resolves the given local models to
   // their remote equivalents by uniqueGlobalId, throwing if any are missing.
-  private async mapToRemoteModels(
-    models: Model[],
-    context: string,
-  ): Promise<Model[]> {
+  private async mapToRemoteModels(models: Model[]): Promise<Model[]> {
     const allRemoteModels = await getAllModels(this.remoteModelApi);
     const remoteModels = allRemoteModels.filter((remoteModel) =>
       models.some(
@@ -33,7 +30,7 @@ export class TauriProxyShareApi extends WebShareApi {
 
     if (remoteModels.length !== models.length) {
       throw new Error(
-        `Some models to ${context} do not exist on the remote server`,
+        "Some models to set on the share do not exist on the remote server",
       );
     }
 
@@ -76,19 +73,8 @@ export class TauriProxyShareApi extends WebShareApi {
     return shares;
   }
 
-  async addModelsToShare(share: Share, models: Model[]): Promise<void> {
-    const remoteModels = await this.mapToRemoteModels(
-      models,
-      "add to the share",
-    );
-    return super.addModelsToShare(share, remoteModels);
-  }
-
   async setModelsOnShare(share: Share, models: Model[]): Promise<void> {
-    const remoteModels = await this.mapToRemoteModels(
-      models,
-      "set on the share",
-    );
+    const remoteModels = await this.mapToRemoteModels(models);
     return super.setModelsOnShare(share, remoteModels);
   }
 }

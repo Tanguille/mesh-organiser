@@ -22,14 +22,10 @@ impl Serialize for ModelFlags {
     where
         S: serde::Serializer,
     {
-        let mut flags = Vec::new();
-        if self.contains(Self::Printed) {
-            flags.push("Printed");
-        }
-        if self.contains(Self::Favorite) {
-            flags.push("Favorite");
-        }
-        flags.serialize(serializer)
+        self.iter_names()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>()
+            .serialize(serializer)
     }
 }
 
@@ -38,16 +34,10 @@ impl<'de> Deserialize<'de> for ModelFlags {
     where
         D: serde::Deserializer<'de>,
     {
-        let flags: Vec<String> = Vec::deserialize(deserializer)?;
-        let mut result = Self::empty();
-        for flag in flags {
-            match flag.as_str() {
-                "Printed" => result.insert(Self::Printed),
-                "Favorite" => result.insert(Self::Favorite),
-                _ => {}
-            }
-        }
-        Ok(result)
+        Ok(Vec::<String>::deserialize(deserializer)?
+            .iter()
+            .filter_map(|f| Self::from_name(f))
+            .collect())
     }
 }
 

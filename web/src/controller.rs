@@ -1,4 +1,3 @@
-pub mod api_router;
 pub mod auth_controller;
 pub mod blob_controller;
 pub mod group_controller;
@@ -10,3 +9,9 @@ pub mod share_controller;
 pub mod slicer_controller;
 pub mod threemf_controller;
 pub mod user_controller;
+
+/// Request body shared by every endpoint that takes just a list of model ids.
+#[derive(serde::Deserialize)]
+pub struct ModelIdsParams {
+    pub model_ids: Vec<i64>,
+}

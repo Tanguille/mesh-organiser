@@ -1,9 +1,8 @@
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 import {
-  buildGetGroupsQuery,
   type Group,
+  type GroupFilter,
   type GroupMeta,
-  type GroupOrderBy,
   type IGroupApi,
 } from "../shared/group_api";
 import type { Model } from "../shared/model_api";
@@ -12,9 +11,8 @@ import {
   type IServerRequestApi,
 } from "../shared/server_request_api";
 import {
-  parseRawGroup,
+  fetchGroupPage,
   parseRawGroupMeta,
-  type RawGroup,
   type RawGroupMeta,
 } from "../shared/raw_model";
 
@@ -26,32 +24,11 @@ export class WebGroupApi implements IGroupApi {
   }
 
   async getGroups(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: GroupOrderBy,
-    text_search: string | null,
+    filter: GroupFilter,
     page: number,
-    page_size: number,
-    include_ungrouped_models: boolean,
+    pageSize: number,
   ): Promise<Group[]> {
-    const data = buildGetGroupsQuery(
-      model_ids,
-      group_ids,
-      label_ids,
-      order_by,
-      text_search,
-      page,
-      page_size,
-      include_ungrouped_models,
-    );
-
-    const response = await this.requestApi.request<RawGroup[]>(
-      "/groups",
-      HttpMethod.GET,
-      data,
-    );
-    return response.map((rawGroup) => parseRawGroup(rawGroup));
+    return fetchGroupPage(this.requestApi, "/groups", filter, page, pageSize);
   }
 
   async addGroup(name: string): Promise<GroupMeta> {

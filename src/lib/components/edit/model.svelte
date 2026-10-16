@@ -1,32 +1,32 @@
 <script lang="ts">
-  import { Card, CardContent, CardHeader } from "$lib/components/ui/card";
+  import { Card, CardContent, CardHeader } from "#lib/components/ui/card";
 
-  import { Input } from "$lib/components/ui/input";
-  import { Label } from "$lib/components/ui/label";
+  import { Input } from "#lib/components/ui/input";
+  import { Label } from "#lib/components/ui/label";
 
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import ListCheck from "@lucide/svelte/icons/list-check";
 
   import { goto } from "$app/navigation";
-  import { resolve } from "$lib/paths";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IGroupApi } from "$lib/api/shared/group_api";
-  import { ILabelApi } from "$lib/api/shared/label_api";
-  import { ILocalApi } from "$lib/api/shared/local_api";
-  import { IModelApi, type Model } from "$lib/api/shared/model_api";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { AsyncButton } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as HoverCard from "$lib/components/ui/hover-card/index.js";
-  import { Toggle } from "$lib/components/ui/toggle/index.js";
-  import LabelBadge from "$lib/components/view/label-badge.svelte";
-  import LabelSelect from "$lib/components/view/label-select.svelte";
-  import LinkButton from "$lib/components/view/link-button.svelte";
-  import ModelImg from "$lib/components/view/model-img.svelte";
-  import ThreeCanvas from "$lib/components/view/three-d-canvas.svelte";
-  import { configuration, configurationMeta } from "$lib/configuration.svelte";
-  import { sidebarState, updateSidebarState } from "$lib/sidebar_data.svelte";
+  import { resolve } from "#lib/paths";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IGroupApi } from "#lib/api/shared/group_api";
+  import { ILabelApi } from "#lib/api/shared/label_api";
+  import { ILocalApi } from "#lib/api/shared/local_api";
+  import { IModelApi, type Model } from "#lib/api/shared/model_api";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { AsyncButton } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as HoverCard from "#lib/components/ui/hover-card/index.js";
+  import { Toggle } from "#lib/components/ui/toggle/index.js";
+  import LabelBadge from "#lib/components/view/label-badge.svelte";
+  import LabelSelect from "#lib/components/view/label-select.svelte";
+  import LinkButton from "#lib/components/view/link-button.svelte";
+  import ModelImg from "#lib/components/view/model-img.svelte";
+  import ThreeCanvas from "#lib/components/view/three-d-canvas.svelte";
+  import { configuration, configurationMeta } from "#lib/configuration.svelte";
+  import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
   import {
     debounce,
     fileTypeToColor,
@@ -34,7 +34,7 @@
     isModelPreviewable,
     loadModelAutomatically,
     toReadableSize,
-  } from "$lib/utils";
+  } from "#lib/utils";
   import Box from "@lucide/svelte/icons/box";
   import Edit from "@lucide/svelte/icons/edit";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
@@ -43,17 +43,17 @@
   import Ungroup from "@lucide/svelte/icons/ungroup";
   import type { ClassValue } from "svelte/elements";
   import Button, { buttonVariants } from "../ui/button/button.svelte";
-  import { IDownloadApi } from "$lib/api/shared/download_api";
+  import { IDownloadApi } from "#lib/api/shared/download_api";
   import Download from "@lucide/svelte/icons/download";
   import { toast } from "svelte-sonner";
   import { untrack } from "svelte";
   import {
     extractThreemfModels,
     IThreemfApi,
-  } from "$lib/api/shared/threemf_api";
-  import { FileType } from "$lib/api/shared/blob_api";
+  } from "#lib/api/shared/threemf_api";
+  import { FileType } from "#lib/api/shared/blob_api";
   import PackageOpen from "@lucide/svelte/icons/package-open";
-  import { createShare, IShareApi } from "$lib/api/shared/share_api";
+  import { createShare, IShareApi } from "#lib/api/shared/share_api";
   import Share2 from "@lucide/svelte/icons/share-2";
   import OpenInSlicerButton from "../view/open-in-slicer-button.svelte";
   import Pin from "@lucide/svelte/icons/pin";
@@ -142,7 +142,7 @@
     props.onDelete?.();
   }
 
-  async function onOpenInSlicer() {
+  async function markPrintedIfConfigured() {
     if (configuration.label_exported_model_as_printed && !model.flags.printed) {
       model.flags.printed = true;
       await onUpdateModel();
@@ -154,11 +154,7 @@
       return;
     }
 
-    if (configuration.label_exported_model_as_printed && !model.flags.printed) {
-      model.flags.printed = true;
-      await onUpdateModel();
-    }
-
+    await markPrintedIfConfigured();
     await localApi.openInFolder([model], false);
   }
 
@@ -361,10 +357,6 @@
           <ModelImg {model} class="flex h-full flex-row justify-center" />
         {/if}
       </div>
-
-      <div class="absolute left-7 m-0 flex h-9 flex-row"></div>
-
-      <div class="absolute right-0 mr-6 flex h-9 flex-row gap-2"></div>
     </CardHeader>
     <CardContent class="pt-4 text-sm">
       <div class="mb-4 grid grid-cols-2 gap-4">
@@ -380,7 +372,7 @@
         <OpenInSlicerButton
           models={model}
           class="grow"
-          onOpen={onOpenInSlicer}
+          onOpen={markPrintedIfConfigured}
         />
       </div>
 

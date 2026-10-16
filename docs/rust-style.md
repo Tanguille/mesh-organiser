@@ -87,6 +87,66 @@ use service::Configuration;
 
 `cargo fmt` does not merge imports; this is a project convention. For very long braced lists (e.g. 10+ items), split by logical subpath for readability.
 
+### What to import
+
+Bring in the **module** for free functions, and the **type** itself for types:
+
+```rust
+use std::fs;                 // fs::read_dir(..), fs::write(..)
+use std::time::Duration;     // Duration::from_secs(5)
+```
+
+### Import only what you use more than once
+
+Import a path only when the name appears **more than once** in the file. A path used a single time stays **fully qualified at the call site** — an import costs a line at the top plus a lookup for the reader, and only pays for itself when the name is reused.
+
+**Good:**
+
+```rust
+use std::fs;
+
+let config = fs::read_to_string(&config_path)?;
+let cache = fs::read_to_string(&cache_path)?;
+
+// used once, so no import
+let db_path = std::path::Path::new("model.sqlite");
+```
+
+**Avoid:**
+
+```rust
+use std::path::Path;
+
+let db_path = Path::new("model.sqlite"); // the only use in the file
+```
+
+### No renamed imports
+
+Do not rename with `as` in a `use`. When two items share a name, qualify one at the **use site** instead:
+
+**Good:**
+
+```rust
+use std::fs;
+use tokio::fs::File;
+
+let handle = File::create(&path).await?;      // tokio
+let meta = fs::File::create(&meta_path)?;     // std, qualified by its module
+```
+
+**Avoid:**
+
+```rust
+use std::fs::{self, File as StdFile};
+use tokio::fs::File;
+```
+
+The single exception is `use some::Trait as _;`, which imports a trait for method resolution without binding a name. That is not a rename, and it cannot be written at the call site.
+
+### Placement
+
+All `use` statements belong at the **top of the file**. Do not add or widen a `use` inside a nested module or function body just to shorten a path — if a nested scope (a `#[cfg(test)] mod tests`, an inner `mod get`) would need its own import, leave the path fully qualified there.
+
 ### Order
 
 List `use` statements in this order (top to bottom), with a single blank line between groups. Omit any group that does not appear in the file.

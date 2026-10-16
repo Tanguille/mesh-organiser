@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{self, File},
     io::prelude::*,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -14,7 +14,6 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
-use urlencoding::decode;
 
 /// Platform type for the application
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -111,16 +110,12 @@ pub struct SlicerEntry {
 async fn get_slicers() -> Result<Vec<SlicerEntry>, ApplicationError> {
     require_local_desktop_app()?;
 
-    Slicer::iter()
-        .map(|f| {
-            let installed = f.is_installed();
-
-            Ok(SlicerEntry {
-                slicer: f,
-                installed,
-            })
+    Ok(Slicer::iter()
+        .map(|slicer| SlicerEntry {
+            installed: slicer.is_installed(),
+            slicer,
         })
-        .collect()
+        .collect())
 }
 
 #[tauri::command]
@@ -152,7 +147,7 @@ async fn open_in_slicer(
     if let Some(slicer) = &state.get_configuration().slicer {
         let (_, paths) =
             export_service::export_to_temp_folder(models, &state.app_state, true, "open").await?;
-        slicer.open(paths, &state.app_state).await?;
+        slicer.open(paths, &state.app_state)?;
     }
 
     Ok(())
@@ -162,14 +157,9 @@ async fn open_in_slicer(
 async fn get_initial_state(
     state: State<'_, TauriAppState>,
 ) -> Result<InitialState, ApplicationError> {
-    let mut initial_state = state.initial_state.lock().unwrap();
+    let initial_state = state.initial_state.lock().unwrap().take();
 
-    if initial_state.is_none() {
-        let config = state.get_configuration();
-        return Ok(InitialState::new(&config));
-    }
-
-    Ok(initial_state.take().unwrap())
+    Ok(initial_state.unwrap_or_else(|| InitialState::new(&state.get_configuration())))
 }
 
 #[tauri::command]
@@ -219,14 +209,7 @@ async fn get_threemf_metadata(
 ) -> Result<ThreemfMetadata, ApplicationError> {
     require_local_desktop_app()?;
 
-    let Some(model) =
-        model_db::get_model_via_id(&state.app_state.db, &state.get_current_user(), model_id)
-            .await?
-    else {
-        return Err(ApplicationError::InternalError(String::from(
-            "Failed to find model",
-        )));
-    };
+    let model = state.require_model(model_id).await?;
 
     let metadata = threemf_service::extract_metadata(&model, &state.app_state).await?;
 
@@ -240,14 +223,7 @@ async fn extract_threemf_models(
 ) -> Result<ModelGroupMeta, ApplicationError> {
     require_local_desktop_app()?;
 
-    let Some(model) =
-        model_db::get_model_via_id(&state.app_state.db, &state.get_current_user(), model_id)
-            .await?
-    else {
-        return Err(ApplicationError::InternalError(String::from(
-            "Failed to find model",
-        )));
-    };
+    let model = state.require_model(model_id).await?;
 
     Ok(threemf_service::extract_models_with_thumbnails(
         &model,
@@ -258,26 +234,10 @@ async fn extract_threemf_models(
     .await?)
 }
 
-#[tauri::command]
-async fn compute_model_folder_size(
-    state: State<'_, TauriAppState>,
-) -> Result<u64, ApplicationError> {
-    require_local_desktop_app()?;
-
-    let size = service::get_folder_size(&state.get_model_dir());
-
-    Ok(size)
-}
-
 #[derive(Serialize, Clone)]
 struct DownloadFinishedEvent {
     path: String,
     url: String,
-}
-
-struct Site {
-    name: &'static str,
-    url: &'static str,
 }
 
 #[tauri::command]
@@ -293,31 +253,22 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         return Ok(());
     }
 
-    let sites: Vec<Site> = vec![
-        Site {
-            name: "Thingiverse",
-            url: "https://www.thingiverse.com/",
-        },
-        Site {
-            name: "MyMiniFactory",
-            url: "https://www.myminifactory.com/search#/?{\"designType\":\"free-only\"}",
-        },
-        Site {
-            name: "Printables",
-            url: "https://www.printables.com",
-        },
-        Site {
-            name: "Makerworld",
-            url: "https://www.makerworld.com",
-        },
-    ];
-
     println!("Opening new window with URL: {url}");
+
+    let sites = [
+        ("Thingiverse", "https://www.thingiverse.com/"),
+        (
+            "MyMiniFactory",
+            "https://www.myminifactory.com/search#/?{\"designType\":\"free-only\"}",
+        ),
+        ("Printables", "https://www.printables.com"),
+        ("Makerworld", "https://www.makerworld.com"),
+    ];
 
     let mut submenu = SubmenuBuilder::new(&app_handle, "Sites");
 
-    for site in &sites {
-        submenu = submenu.text(site.url, site.name);
+    for (name, site_url) in sites {
+        submenu = submenu.text(site_url, name);
     }
 
     let menu = MenuBuilder::new(&app_handle)
@@ -399,21 +350,13 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         }
     })
     .on_download(|f, event| {
-        if let DownloadEvent::Requested {
-            url,
-            destination: _,
-        } = &event
-        {
+        if let DownloadEvent::Requested { url, .. } = &event {
             println!("Download started: {url:?}");
             let () = f.app_handle().emit("download-started", url).unwrap();
             let _ = f.window().set_title("Downloading model...");
         }
 
-        if let DownloadEvent::Finished {
-            url: _,
-            path,
-            success,
-        } = event
+        if let DownloadEvent::Finished { path, success, .. } = event
             && path.is_some()
             && success
         {
@@ -471,58 +414,19 @@ fn extract_deep_link(data: &str) -> Option<String> {
             return Some(encoded.to_string());
         }
 
-        return Some(String::from(decode(encoded).unwrap()));
+        return Some(service::percent_decode(encoded).unwrap());
     }
 
     None
 }
 
 fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
-    let possible_starts = vec![
-        "meshorganiser://link_account/?",
-        "meshorganiser://link_account?",
-    ];
+    // Accept both `link_account/?` and `link_account?`.
+    let query = data
+        .strip_prefix("meshorganiser://link_account/?")
+        .or_else(|| data.strip_prefix("meshorganiser://link_account?"))?;
 
-    for start in possible_starts {
-        if let Some(stripped) = data.strip_prefix(start) {
-            let encoded = stripped.to_string();
-
-            match serde_html_form::from_str::<AccountLinkEmit>(&encoded) {
-                Ok(e) => return Some(e),
-                Err(_) => return None,
-            };
-        }
-    }
-
-    None
-}
-
-fn remove_temp_paths() -> Result<(), ApplicationError> {
-    let threshold = std::time::Duration::from_mins(5);
-    let now = std::time::SystemTime::now();
-    for entry in std::fs::read_dir(std::env::temp_dir())? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir()
-            && path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .starts_with("meshorganiser_")
-            && let Ok(metadata) = std::fs::metadata(&path)
-            && let Ok(modified) = metadata.modified()
-            && now
-                .duration_since(modified)
-                .unwrap_or(std::time::Duration::ZERO)
-                >= threshold
-        {
-            println!("Removing temporary path {}", path.display());
-            std::fs::remove_dir_all(&path)?;
-        }
-    }
-
-    Ok(())
+    serde_html_form::from_str(query).ok()
 }
 
 /// Reads the configuration from the settings file.
@@ -542,7 +446,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
         };
     }
 
-    let json = std::fs::read_to_string(path).expect("Failed to read configuration");
+    let json = fs::read_to_string(path).expect("Failed to read configuration");
 
     serde_json::from_str(&json).expect("Failed to parse configuration")
 }
@@ -556,7 +460,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 #[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub fn run() {
     thread::spawn(move || {
-        let _ = remove_temp_paths();
+        let _ = export_service::remove_stale_temp_dirs();
     });
 
     let app = tauri::Builder::default()
@@ -624,8 +528,8 @@ pub fn run() {
                         .unwrap(),
                 );
 
-                if !std::fs::exists(&app_data_path).unwrap_or(false) {
-                    std::fs::create_dir_all(&app_data_path)
+                if !fs::exists(&app_data_path).unwrap_or(false) {
+                    fs::create_dir_all(&app_data_path)
                         .expect("failed to create app data dir");
                 }
 
@@ -690,9 +594,26 @@ pub fn run() {
 
                 {
                     let app_state = state.app_state.clone();
+                    let user = state.get_current_user();
                     tauri::async_runtime::spawn(async move {
                         let _ = group_db::delete_dead_groups(&app_state.db).await;
                         let _ = export_service::delete_dead_blobs(&app_state).await;
+
+                        // Thumbnails are cached per machine in the app data directory while
+                        // models and the database can sit on a shared data path, so a library
+                        // imported elsewhere shows up here without any. Existing thumbnails
+                        // are skipped, which keeps this cheap on every launch.
+                        let _lock = app_state.import_mutex.lock().await;
+                        let mut import_state = ImportState::new(None, false, false, false, user);
+                        if let Err(e) = thumbnail_service::generate_all_thumbnails(
+                            &app_state,
+                            false,
+                            &mut import_state,
+                        )
+                        .await
+                        {
+                            eprintln!("Thumbnail backfill failed: {e}");
+                        }
                     });
                 }
 
@@ -730,10 +651,7 @@ pub fn run() {
             get_slicers,
             set_configuration,
             get_configuration,
-            compute_model_folder_size,
             new_window_with_url,
-            api::add_childs_to_label,
-            api::remove_childs_from_label,
             api::set_childs_on_label,
             api::get_resources,
             api::add_resource,
@@ -742,7 +660,6 @@ pub fn run() {
             api::open_resource_folder,
             api::set_keywords_on_label,
             api::get_keywords_for_label,
-            api::get_model_bytes,
             api::get_blob_bytes,
             api::get_current_user,
             api::set_current_user,
@@ -760,8 +677,6 @@ pub fn run() {
             extract_threemf_models,
             api::download_files_and_open_in_folder,
             api::download_files_and_open_in_slicer,
-            api::expand_paths,
-            api::get_file_bytes,
             api::upload_models_to_remote_server,
             api::blobs_to_path,
             api::set_last_sync_time,
@@ -775,12 +690,61 @@ pub fn run() {
         .expect("error while running tauri application");
 
     app.run(|app_handle, e| {
-        if let tauri::RunEvent::ExitRequested { .. } = e {
-            // Close sqlite db
+        if matches!(e, tauri::RunEvent::ExitRequested { .. }) {
             tauri::async_runtime::block_on(async move {
                 let app_state = app_handle.state::<TauriAppState>();
                 app_state.app_state.db.close().await;
             });
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn extract_deep_link_percent_decodes_file() {
+        assert_eq!(
+            super::extract_deep_link(
+                "prusaslicer://open/?file=https%3A%2F%2Fex.com%2Fna%C3%AFve%20file.stl"
+            ),
+            Some("https://ex.com/naïve file.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_accepts_no_slash_before_query() {
+        assert_eq!(
+            super::extract_deep_link("cura://open?file=a%20b.stl"),
+            Some("a b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_plus_stays_literal() {
+        assert_eq!(
+            super::extract_deep_link("orcaslicer://open/?file=a+b.stl"),
+            Some("a+b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_malformed_escape_left_untouched() {
+        assert_eq!(
+            super::extract_deep_link("bambustudio://open/?file=bad%zz.stl"),
+            Some("bad%zz.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_elegooslicer_is_not_decoded() {
+        assert_eq!(
+            super::extract_deep_link("elegooslicer://open/?file=a%20b.stl"),
+            Some("a%20b.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_deep_link_unknown_scheme_returns_none() {
+        assert_eq!(super::extract_deep_link("evil://open/?file=a.stl"), None);
+    }
 }

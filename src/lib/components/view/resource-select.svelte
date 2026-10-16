@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ResourceMeta } from "$lib/api/shared/resource_api";
-  import * as Select from "$lib/components/ui/select/index.js";
+  import type { ResourceMeta } from "#lib/api/shared/resource_api";
+  import * as Select from "#lib/components/ui/select/index.js";
   import NotebookText from "@lucide/svelte/icons/notebook-text";
   import type { ClassValue } from "svelte/elements";
 

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { IShareApi, type Share } from "$lib/api/shared/share_api";
-  import ShareEdit from "$lib/components/edit/share.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { IShareApi, type Share } from "#lib/api/shared/share_api";
+  import ShareEdit from "#lib/components/edit/share.svelte";
   import { onMount } from "svelte";
   import Share2 from "@lucide/svelte/icons/share-2";
 
@@ -31,7 +31,7 @@
   </div>
 {:else if !loading}
   <div class="flex h-full w-full flex-col items-center justify-center">
-    <div class="color-primary-foreground mb-4 rounded-md bg-primary p-2">
+    <div class="mb-4 rounded-md bg-primary p-2">
       <Share2 />
     </div>
     No shares available. Share models via the share option in the model and group

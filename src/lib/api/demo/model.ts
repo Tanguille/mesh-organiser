@@ -3,43 +3,43 @@ import {
   modelOrderByComparator,
   type IModelApi,
   type Model,
+  type ModelFilter,
   type ModelFlags,
-  type ModelOrderBy,
 } from "../shared/model_api";
 import { mockModels, modelGroupMap, modelLabelsMap } from "./mock_data";
 
 export class DemoModelApi implements IModelApi {
   private filterByFlags(models: Model[], flags: ModelFlags | null): Model[] {
-    if (flags) {
-      if (flags.printed !== undefined) {
-        models = models.filter((m) => m.flags.printed === flags.printed);
-      }
-      if (flags.favorite !== undefined) {
-        models = models.filter((m) => m.flags.favorite === flags.favorite);
-      }
+    if (!flags) {
+      return models;
     }
-
-    return models;
+    return models.filter(
+      (m) =>
+        m.flags.printed === flags.printed &&
+        m.flags.favorite === flags.favorite,
+    );
   }
 
   async getModels(
-    model_ids: number[] | null,
-    group_ids: number[] | null,
-    label_ids: number[] | null,
-    order_by: ModelOrderBy,
-    text_search: string | null,
+    filter: ModelFilter,
     page: number,
     page_size: number,
-    flags: ModelFlags | null,
   ): Promise<Model[]> {
+    const {
+      modelIds: model_ids,
+      groupIds: group_ids,
+      labelIds: label_ids,
+      orderBy: order_by,
+      textSearch: text_search,
+      fileTypes: file_types,
+      flags,
+    } = filter;
     let models = Array.from(mockModels.values());
 
-    // Filter by model IDs
     if (model_ids) {
       models = models.filter((m) => model_ids.includes(m.id));
     }
 
-    // Filter by group IDs
     if (group_ids) {
       models = models.filter((m) => {
         const groupId = modelGroupMap.get(m.id);
@@ -47,7 +47,6 @@ export class DemoModelApi implements IModelApi {
       });
     }
 
-    // Filter by label IDs
     if (label_ids) {
       models = models.filter((m) => {
         const modelLabelIds = modelLabelsMap.get(m.id) || [];
@@ -55,32 +54,30 @@ export class DemoModelApi implements IModelApi {
       });
     }
 
-    // Filter by text search
     if (text_search) {
       const searchLower = text_search.toLowerCase();
       models = models.filter((m) => modelMatchesSearch(m, searchLower));
     }
 
-    // Filter by flags
     models = this.filterByFlags(models, flags);
 
-    // Sort models
+    if (file_types) {
+      models = models.filter((m) => file_types.includes(m.blob.filetype));
+    }
+
     models.sort(modelOrderByComparator(order_by));
 
-    // Apply pagination
     const start = (page - 1) * page_size;
     const end = start + page_size;
     return models.slice(start, end);
   }
 
   async editModel(model: Model): Promise<void> {
-    // Update the model in the mock data
     const existingModel = mockModels.get(model.id);
     if (!existingModel) {
       throw new Error(`Model with id ${model.id} not found`);
     }
 
-    // Update mutable properties
     existingModel.name = model.name;
     existingModel.link = model.link;
     existingModel.description = model.description;
@@ -88,10 +85,8 @@ export class DemoModelApi implements IModelApi {
   }
 
   async deleteModel(model: Model): Promise<void> {
-    // Remove model from mock data
     mockModels.delete(model.id);
 
-    // Clean up relationships
     modelGroupMap.delete(model.id);
     modelLabelsMap.delete(model.id);
   }

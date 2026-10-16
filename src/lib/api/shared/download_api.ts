@@ -5,7 +5,7 @@ import {
   countWriter,
   nameCollectionOfModels,
   triggerBlobDownload,
-} from "$lib/utils";
+} from "#lib/utils";
 import { toast } from "svelte-sonner";
 
 export const IDownloadApi = Symbol("IDownloadApi");

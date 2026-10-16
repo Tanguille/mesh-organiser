@@ -1,33 +1,33 @@
 <script lang="ts">
   import "../app.css";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import AppSidebar from "$lib/components/app-sidebar.svelte";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.js";
+  import AppSidebar from "#lib/components/app-sidebar.svelte";
   import { ModeWatcher } from "mode-watcher";
   import { onMount } from "svelte";
-  import { Toaster } from "$lib/components/ui/sonner/index.js";
+  import { Toaster } from "#lib/components/ui/sonner/index.js";
   import { toast } from "svelte-sonner";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { IsMobile } from "$lib/hooks/is-mobile.svelte";
-  import { setTheme } from "$lib/theme";
-  import UpdatePopup from "$lib/components/view/tauri-update-popup.svelte";
-  import DragSelectedModelsRoot from "$lib/components/view/drag-selected-models-root.svelte";
-  import { initApi } from "$lib/api/api";
+  import { IsMobile } from "#lib/hooks/is-mobile.svelte";
+  import { setTheme } from "#lib/theme";
+  import UpdatePopup from "#lib/components/view/tauri-update-popup.svelte";
+  import DragSelectedModelsRoot from "#lib/components/view/drag-selected-models-root.svelte";
+  import { initApi } from "#lib/api/api";
   import {
     configuration,
     configurationMeta,
     panicState,
-    scheduleConfigurationPersist,
-  } from "$lib/configuration.svelte";
-  import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { updateState } from "$lib/update_data.svelte";
-  import Spinner from "$lib/components/view/spinner.svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ISidebarStateApi } from "$lib/api/shared/sidebar_state_api";
-  import { IUserApi } from "$lib/api/shared/user_api";
-  import { accountLinkData } from "$lib/account_link_data.svelte";
-  import WebAccountLinkPopup from "$lib/components/view/web-account-link-popup.svelte";
-  import BottomNav from "$lib/components/mobile/bottom-nav.svelte";
+    updateConfiguration,
+  } from "#lib/configuration.svelte";
+  import { updateSidebarState } from "#lib/sidebar_data.svelte";
+  import { updateState } from "#lib/update_data.svelte";
+  import Spinner from "#lib/components/view/spinner.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ISidebarStateApi } from "#lib/api/shared/sidebar_state_api";
+  import { IUserApi } from "#lib/api/shared/user_api";
+  import { accountLinkData } from "#lib/account_link_data.svelte";
+  import WebAccountLinkPopup from "#lib/components/view/web-account-link-popup.svelte";
+  import BottomNav from "#lib/components/mobile/bottom-nav.svelte";
 
   let { children } = $props();
   let initializationDone = $state(false);
@@ -89,8 +89,6 @@
   }
 
   onMount(async () => {
-    initializationDone = false;
-
     try {
       await initApi();
       configurationMeta.configurationLoaded = true;
@@ -117,12 +115,7 @@
     } catch (e) {
       console.error("Application initialization failed:", e);
       toast.error("Application failed to initialize", {
-        description:
-          e instanceof Error
-            ? e.message
-            : typeof e === "string"
-              ? e
-              : String(e),
+        description: rejectionPlainMessage(e),
       });
     }
   });
@@ -142,10 +135,11 @@
       return;
     }
 
-    return scheduleConfigurationPersist(
-      snapshot,
-      save_configuration_debounce_ms,
-    );
+    const timeoutId = window.setTimeout(() => {
+      void updateConfiguration(snapshot);
+    }, save_configuration_debounce_ms);
+
+    return () => window.clearTimeout(timeoutId);
   });
 </script>
 

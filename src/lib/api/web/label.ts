@@ -1,4 +1,4 @@
-import { dateToString } from "$lib/utils";
+import { dateToString } from "#lib/utils";
 import {
   stringColorToNumber,
   type ILabelApi,
@@ -158,21 +158,6 @@ export class WebLabelApi implements ILabelApi {
     await this.requestApi.request<void>(
       `/labels/${label.id}/childs`,
       HttpMethod.PUT,
-      data,
-    );
-  }
-
-  async removeChildrenFromLabel(
-    label: LabelMeta,
-    children: LabelMeta[],
-  ): Promise<void> {
-    const data = {
-      child_label_ids: children.map((child) => child.id),
-    };
-
-    await this.requestApi.request<void>(
-      `/labels/${label.id}/childs`,
-      HttpMethod.DELETE,
       data,
     );
   }

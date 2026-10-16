@@ -1,4 +1,4 @@
-import { configuration, configurationMeta } from "$lib/configuration.svelte";
+import { configuration, configurationMeta } from "#lib/configuration.svelte";
 import { getContainer, resetContainer } from "../dependency_injection";
 import { IBlobApi } from "../shared/blob_api";
 import { DefaultDownloadApi, IDownloadApi } from "../shared/download_api";
@@ -27,16 +27,9 @@ export async function initWebShareApi(): Promise<boolean> {
   container.addSingleton(IServerRequestApi, requestApi);
   container.addSingleton(IShareApi, shareApi);
 
-  const windowPathname = window.location.pathname;
-
-  if (
-    !windowPathname.startsWith("/share/") ||
-    windowPathname.endsWith("/share/")
-  ) {
-    return false;
-  }
-
-  const shareId = windowPathname.replace("/share/", "").split("/")[0];
+  const shareId = document.location.pathname
+    .replace("/share/", "")
+    .split("/")[0];
 
   let share;
 

@@ -16,17 +16,10 @@ impl Serialize for UserPermissions {
     where
         S: serde::Serializer,
     {
-        let mut flags = Vec::new();
-        if self.contains(Self::Admin) {
-            flags.push("Admin");
-        }
-        if self.contains(Self::Sync) {
-            flags.push("Sync");
-        }
-        if self.contains(Self::OnlineAccount) {
-            flags.push("OnlineAccount");
-        }
-        flags.serialize(serializer)
+        self.iter_names()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>()
+            .serialize(serializer)
     }
 }
 
@@ -35,17 +28,10 @@ impl<'de> Deserialize<'de> for UserPermissions {
     where
         D: serde::Deserializer<'de>,
     {
-        let flags: Vec<String> = Vec::deserialize(deserializer)?;
-        let mut result = Self::empty();
-        for flag in flags {
-            match flag.as_str() {
-                "Admin" => result.insert(Self::Admin),
-                "Sync" => result.insert(Self::Sync),
-                "OnlineAccount" => result.insert(Self::OnlineAccount),
-                _ => {}
-            }
-        }
-        Ok(result)
+        Ok(Vec::<String>::deserialize(deserializer)?
+            .iter()
+            .filter_map(|f| Self::from_name(f))
+            .collect())
     }
 }
 

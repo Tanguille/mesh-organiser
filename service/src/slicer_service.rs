@@ -14,13 +14,38 @@ mod win;
 
 pub use base::*;
 
-/// Spawns the given program with the model paths as arguments.
-///
-/// # Errors
-///
-/// Returns an error if paths are empty or spawning the process fails.
-pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-    open_with_args_and_paths(program, &[], paths)
+impl Slicer {
+    #[must_use]
+    pub fn is_installed(&self) -> bool {
+        matches!(self, Self::Custom) || self.detect_installed()
+    }
+
+    /// Opens the slicer application with the given paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slicer is not installed or if no models are provided.
+    pub fn open(&self, paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
+        if matches!(self, Self::Custom) {
+            return open_custom_slicer(paths, app_state);
+        }
+
+        if !self.is_installed() {
+            return Err(ServiceError::InternalError(String::from(
+                "Slicer not installed",
+            )));
+        }
+
+        println!("Opening in slicer: {paths:?}");
+
+        if paths.is_empty() {
+            return Err(ServiceError::InternalError(String::from(
+                "No models to open",
+            )));
+        }
+
+        self.spawn_with_paths(paths)
+    }
 }
 
 /// Opens the user-configured custom slicer with the given paths.
@@ -28,10 +53,7 @@ pub fn open_with_paths(program: &str, paths: Vec<PathBuf>) -> Result<(), Service
 /// # Errors
 ///
 /// Returns an error if the custom slicer path is not set, not found, or spawning fails.
-pub async fn open_custom_slicer(
-    paths: Vec<PathBuf>,
-    app_state: &AppState,
-) -> Result<(), ServiceError> {
+pub fn open_custom_slicer(paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
     let path = app_state.get_configuration().custom_slicer_path;
     if path.is_empty() {
         return Err(ServiceError::InternalError(String::from(
@@ -39,7 +61,6 @@ pub async fn open_custom_slicer(
         )));
     }
 
-    // Parse the command string to separate executable from arguments
     let (executable_path, args) = parse_command_string(&path);
     let pathbuf = PathBuf::from(&executable_path);
 
@@ -55,7 +76,6 @@ pub async fn open_custom_slicer(
     open_with_args_and_paths(&executable_path, args.as_slice(), paths)
 }
 
-/// Open with custom arguments and model paths
 fn open_with_args_and_paths(
     program: &str,
     args: &[String],
@@ -82,26 +102,23 @@ fn open_with_args_and_paths(
 fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
     let cmd = cmd.trim();
     if cmd.is_empty() {
-        return (String::new(), Vec::new());
+        return (String::default(), Vec::new());
     }
 
     let mut chars = cmd.chars().peekable();
     let mut args = Vec::new();
-    let mut current_arg = String::new();
+    let mut current_arg = String::default();
     let mut in_quotes = false;
 
-    // Parse the entire command line into arguments using shell-like quoting rules
     while let Some(char) = chars.next() {
         match char {
             '"' => {
                 in_quotes = !in_quotes;
-                // Don't include quotes in the parsed value
             }
             ' ' | '\t' if !in_quotes => {
                 if !current_arg.is_empty() {
                     args.push(std::mem::take(&mut current_arg));
                 }
-                // Skip consecutive whitespace
                 while let Some(&next_char) = chars.peek() {
                     if next_char == ' ' || next_char == '\t' {
                         chars.next();
@@ -116,17 +133,14 @@ fn parse_command_string(cmd: &str) -> (String, Vec<String>) {
         }
     }
 
-    // Handle the last argument
     if !current_arg.is_empty() {
         args.push(current_arg);
     }
 
     if args.is_empty() {
-        return (String::new(), Vec::new());
+        return (String::default(), Vec::new());
     }
 
-    // Now determine where the executable ends and arguments begin
-    // Look for the first argument that starts with '-' or '/'
     let first_flag_index = args
         .iter()
         .position(|arg| arg.starts_with('-') || arg.starts_with('/'));

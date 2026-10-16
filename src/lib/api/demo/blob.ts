@@ -14,7 +14,6 @@ export class DemoBlobApi implements IBlobApi {
   async getBlobBytes(blob: Blob): Promise<Uint8Array> {
     const modelUrl = (blob as DemoBlob)._modelUrl;
     if (!modelUrl) {
-      // Fallback: return empty array if blob has no URL
       return new Uint8Array(0);
     }
 

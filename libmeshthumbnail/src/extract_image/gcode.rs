@@ -1,15 +1,15 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Cursor, Read},
+    io::{BufRead, BufReader, Read},
     path::Path,
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use image::{DynamicImage, ImageReader};
-use zip::ZipArchive;
+use image::DynamicImage;
 
 use crate::{
     error::MeshThumbnailError,
+    parse_model::with_zip_entry,
     path_ext::{is_zip_of, matches_ext},
 };
 
@@ -41,22 +41,12 @@ fn extract_image_from_gcode_file(gcode_path: &Path) -> Result<DynamicImage, Mesh
 }
 
 fn extract_image_from_gcode_zip(gcode_zip_path: &Path) -> Result<DynamicImage, MeshThumbnailError> {
-    let file = File::open(gcode_zip_path)?;
-    let mut zip = ZipArchive::new(file)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        if Path::new(file.name())
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gcode"))
-        {
-            return extract_image_from_gcode(&mut file);
-        }
-    }
-
-    Err(MeshThumbnailError::InternalError(String::from(
+    with_zip_entry(
+        gcode_zip_path,
+        |name| matches_ext(Path::new(name), "gcode"),
         "No gcode file found in zip archive",
-    )))
+        |_size, mut reader| extract_image_from_gcode(&mut reader),
+    )
 }
 
 fn extract_image_from_gcode<W>(reader: &mut W) -> Result<DynamicImage, MeshThumbnailError>
@@ -68,7 +58,7 @@ where
     let mut in_gcode_section = false;
     let mut gcode_img_width = 0;
     let mut gcode_img_height = 0;
-    let mut image = String::new();
+    let mut image = String::default();
 
     for line in buffered_reader.lines().map_while(Result::ok) {
         if line.starts_with("; thumbnail begin") {
@@ -83,7 +73,7 @@ where
 
             gcode_img_width = *pixel_format_unpacked.first().unwrap_or(&0);
             gcode_img_height = *pixel_format_unpacked.get(1).unwrap_or(&0);
-            image = String::new();
+            image = String::default();
 
             in_gcode_section = gcode_img_width > 0 && gcode_img_height > 0;
         } else if line.starts_with("; thumbnail end") {
@@ -116,9 +106,5 @@ where
         )));
     };
 
-    let step1 = ImageReader::new(Cursor::new(&largest_image.data))
-        .with_guessed_format()?
-        .decode()?;
-
-    Ok(step1)
+    Ok(image::load_from_memory(&largest_image.data)?)
 }

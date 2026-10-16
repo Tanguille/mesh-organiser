@@ -1,10 +1,11 @@
-import { currentUser } from "$lib/configuration.svelte";
+import { currentUser } from "#lib/configuration.svelte";
 import {
+  beginSyncStep,
   globalSyncState,
   resetSyncState,
   SyncStage,
   SyncStep,
-} from "$lib/sync.svelte";
+} from "#lib/sync.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { getContainer } from "../dependency_injection";
 import { IModelApi, type Model } from "../shared/model_api";
@@ -12,7 +13,7 @@ import type {
   UploadResult,
   DirectoryScanModel,
 } from "../tauri-online/tauri_import";
-import { importState } from "$lib/import.svelte";
+import { importState } from "#lib/import.svelte";
 import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
 import { IGroupApi } from "../shared/group_api";
 import type { IBlobApi } from "../shared/blob_api";
@@ -23,7 +24,7 @@ import {
   type ResourceSet,
 } from "./algorithm";
 import { getAllModels } from "../shared/model_api";
-import { runWithLimit } from "$lib/utils";
+import { runWithLimit } from "#lib/utils";
 
 interface BlobPath {
   blob_id: number;
@@ -51,9 +52,7 @@ async function stepUpload(
   serverModelApi: IModelApi,
   serverGroupApi: IGroupApi,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.Upload;
-  globalSyncState.processableItems = toUpload.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.Upload, toUpload.length);
 
   const paths = await invoke<BlobPath[]>("blobs_to_path", {
     blobIds: toUpload.map((x) => x.blob.id),
@@ -110,9 +109,7 @@ async function stepDownload(
   localModelApi: IModelApi,
   localImportApi: ITauriImportApi,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.Download;
-  globalSyncState.processableItems = toDownload.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.Download, toDownload.length);
 
   await runWithLimit(toDownload, (serverModel) =>
     downloadSingleModel(
@@ -148,9 +145,7 @@ async function stepSyncToRemote(
   serverModelApi: IModelApi,
   isServerToLocal: boolean,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.UpdateMetadata;
-  globalSyncState.processableItems = syncToServer.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.UpdateMetadata, syncToServer.length);
 
   await runWithLimit(syncToServer, (modelSet) =>
     syncSingleModelToServer(modelSet, serverModelApi, isServerToLocal),
@@ -161,9 +156,7 @@ async function stepDeleteFromRemote(
   toDelete: Model[],
   remoteApi: IModelApi,
 ): Promise<void> {
-  globalSyncState.step = SyncStep.Delete;
-  globalSyncState.processableItems = toDelete.length;
-  globalSyncState.processedItems = 0;
+  beginSyncStep(SyncStep.Delete, toDelete.length);
 
   await remoteApi.deleteModels(toDelete);
   globalSyncState.processedItems = toDelete.length;
@@ -175,8 +168,7 @@ export async function syncModels(
   serverBlobApi: IBlobApi,
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
-  resetSyncState();
-  globalSyncState.stage = SyncStage.Models;
+  resetSyncState(SyncStage.Models);
   const localModelApi = getContainer().require<IModelApi>(IModelApi);
   const localGroupApi = getContainer().require<IGroupApi>(IGroupApi);
   const localImportApi =
