@@ -13,7 +13,7 @@ use db::{
         share::Share,
         user::User,
     },
-    model_db, resource_db, share_db, time_now, user_db,
+    model_db, random_hex_32, resource_db, share_db, time_now, user_db,
 };
 
 const MISSING_ID: i64 = 999_999;
@@ -39,7 +39,7 @@ async fn test_db() -> (tempfile::TempDir, DbContext) {
 }
 
 async fn add_other_user(db: &DbContext) -> User {
-    let user_id = user_db::add_user(db, "other", "other@example.com", "password")
+    let user_id = user_db::add_user(db, "other", "other@example.com", &random_hex_32())
         .await
         .unwrap();
 
