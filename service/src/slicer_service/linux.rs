@@ -14,12 +14,12 @@ impl Slicer {
     pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
         // Launch with the installed app-id; fall back to the preferred one when
         // nothing is installed (preserves the previous single-id behaviour).
-        let preferred = flatpak_packages_for(self)[0];
-        let package = flatpak_packages_for(self)
+        let packages = flatpak_packages_for(self);
+        let package = packages
             .iter()
             .copied()
             .find(|package| flatpak_installed(package))
-            .unwrap_or(preferred);
+            .unwrap_or(packages[0]);
 
         let _ = Command::new("flatpak")
             .arg("run")
@@ -34,10 +34,10 @@ impl Slicer {
     }
 }
 
-/// Flatpak app-id(s) for a slicer. OrcaSlicer migrated its Flathub package in 2026
-/// (io.github.softfever.OrcaSlicer -> com.orcaslicer.OrcaSlicer); listing both keeps
-/// detection and launch working for pre- and post-migration installs.
-fn flatpak_packages_for(slicer: &Slicer) -> &'static [&'static str] {
+/// Flatpak app-id(s) for a slicer, preferred first. `OrcaSlicer` migrated its Flathub
+/// package in 2026 (`io.github.softfever.OrcaSlicer` -> `com.orcaslicer.OrcaSlicer`);
+/// listing both keeps detection and launch working for pre- and post-migration installs.
+const fn flatpak_packages_for(slicer: &Slicer) -> &'static [&'static str] {
     match slicer {
         Slicer::PrusaSlicer => &["com.prusa3d.PrusaSlicer"],
         Slicer::OrcaSlicer => &[
