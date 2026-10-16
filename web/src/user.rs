@@ -201,10 +201,7 @@ mod tests {
             "sync-token-secret",
             "sync-url-secret",
         ] {
-            assert!(
-                !debug.contains(secret),
-                "Debug output leaks {secret}: {debug}"
-            );
+            assert!(!debug.contains(secret), "Debug output leaks a secret field");
         }
     }
 }
