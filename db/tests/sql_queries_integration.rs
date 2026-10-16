@@ -3,7 +3,7 @@
 use db::{
     blob_db, db_context, group_db, label_db,
     model::{blob::FileType, user::User},
-    model_db, user_db,
+    model_db, random_hex_32, user_db,
 };
 use tempfile::tempdir;
 
@@ -425,7 +425,7 @@ async fn get_labels_returns_labels_with_children_attached() {
 async fn remove_labels_from_models_rejects_another_users_model() {
     let (_dir, db) = test_db().await;
     let user = User::default();
-    let other_user_id = user_db::add_user(&db, "other", "other@example.com", "password")
+    let other_user_id = user_db::add_user(&db, "other", "other@example.com", &random_hex_32())
         .await
         .unwrap();
     let other_user = user_db::get_user_by_id(&db, other_user_id)
