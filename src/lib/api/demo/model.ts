@@ -84,13 +84,6 @@ export class DemoModelApi implements IModelApi {
     existingModel.flags = { ...model.flags };
   }
 
-  async deleteModel(model: Model): Promise<void> {
-    mockModels.delete(model.id);
-
-    modelGroupMap.delete(model.id);
-    modelLabelsMap.delete(model.id);
-  }
-
   async getModelCount(flags: ModelFlags | null): Promise<number> {
     const models = this.filterByFlags(Array.from(mockModels.values()), flags);
 
@@ -99,7 +92,9 @@ export class DemoModelApi implements IModelApi {
 
   async deleteModels(models: Model[]): Promise<void> {
     for (const model of models) {
-      await this.deleteModel(model);
+      mockModels.delete(model.id);
+      modelGroupMap.delete(model.id);
+      modelLabelsMap.delete(model.id);
     }
   }
 }

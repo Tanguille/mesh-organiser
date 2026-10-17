@@ -123,11 +123,6 @@ impl Default for Configuration {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Tests for Configuration::default() and serde deserialization: defaults apply
-// and the slicer stays None for missing/null keys.
-// -----------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;

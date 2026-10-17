@@ -43,6 +43,8 @@
     onGroupDelete?: () => void;
   } = $props();
 
+  // Handlers copy `models` into a local before awaiting: the selection behind
+  // props.models can change while a request is in flight.
   const models = $derived(props.models);
   const printed = $derived(models.every((x) => x.flags.printed));
   const favorited = $derived(models.every((x) => x.flags.favorite));
@@ -214,7 +216,7 @@
       <div class="grow"></div>
       {#if shareApi}
         <Button
-          class="widthhack h-full"
+          class="h-full w-9"
           variant="ghost"
           onclick={() => createShare(models, shareApi)}
         >
@@ -224,9 +226,7 @@
       {#if !configurationMeta.applicationReadOnly}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
-            <div
-              class="{buttonVariants({ variant: 'ghost' })} widthhack h-full"
-            >
+            <div class="{buttonVariants({ variant: 'ghost' })} h-full w-9">
               <Ellipsis />
             </div>
           </DropdownMenu.Trigger>

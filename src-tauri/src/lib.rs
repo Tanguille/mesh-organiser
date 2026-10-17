@@ -123,8 +123,9 @@ async fn get_initial_state(
 #[tauri::command]
 async fn download_file(
     url: &str,
+    filename: Option<&str>,
 ) -> Result<download_file_service::DownloadResult, ApplicationError> {
-    let response = download_file_service::download_file(url).await?;
+    let response = download_file_service::download_file(url, filename).await?;
 
     Ok(response)
 }
@@ -575,7 +576,6 @@ pub fn run() {
             api::get_models,
             api::get_labels,
             api::edit_model,
-            api::delete_model,
             api::add_label,
             api::ungroup,
             api::edit_group,

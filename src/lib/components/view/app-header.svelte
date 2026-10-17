@@ -15,4 +15,4 @@
 
 <h1 class="font-bold">Mesh Organiser</h1>
 <p class="mb-5">Version {version}</p>
-<img src="/logo.png" class="logo tauri h-40" alt="Mesh Organiser Logo" />
+<img src="/logo.png" class="h-40" alt="Mesh Organiser Logo" />

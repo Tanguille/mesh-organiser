@@ -27,8 +27,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { debounce } from "#lib/utils";
 import {
-  DefaultSidebarStateApi,
-  EmptySidebarStateApi,
+  defaultSidebarState,
+  getSidebarState,
   ISidebarStateApi,
 } from "../shared/sidebar_state_api";
 import { HostApi } from "./host";
@@ -101,7 +101,6 @@ export async function initTauriLocalApis(): Promise<void> {
   const resourceFolder = new ResourceFolderApi();
   const resource = new ResourceApi();
   const tauriImport = new TauriImportApi();
-  const sidebarApi = new DefaultSidebarStateApi(false);
   const hostApi = new HostApi();
   const diskUsageInfoApi = new DiskUsageInfoApi();
   const slicerApi = new SlicerApi();
@@ -191,9 +190,10 @@ export async function initTauriLocalApis(): Promise<void> {
     await tauriImport.setAccountLink(state.account_link);
   }
 
+  // Keep the sidebar visible in panic mode (with empty counts) so the user can
+  // still reach the settings.
   if (panicState.inPanic) {
-    const sidebarApi = new EmptySidebarStateApi();
-    container.addSingleton(ISidebarStateApi, sidebarApi);
+    container.addSingleton(ISidebarStateApi, async () => defaultSidebarState());
     return;
   }
 
@@ -204,7 +204,7 @@ export async function initTauriLocalApis(): Promise<void> {
   container.addSingleton(IResourceFolderApi, resourceFolder);
   container.addSingleton(IResourceApi, resource);
   container.addSingleton(ITauriImportApi, tauriImport);
-  container.addSingleton(ISidebarStateApi, sidebarApi);
+  container.addSingleton(ISidebarStateApi, () => getSidebarState(false));
   container.addSingleton(IDiskUsageInfoApi, diskUsageInfoApi);
   container.addSingleton(ISlicerApi, slicerApi);
   container.addSingleton(IThreemfApi, threemfApi);

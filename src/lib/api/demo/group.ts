@@ -17,44 +17,28 @@ import {
   resolveLabels,
 } from "./mock_data";
 
-// Walks mockModels collecting those that satisfy the membership predicate and
-// pass the model_ids / label_ids / text_search filters, accumulating the
-// Printed/Favorite flags and the union of label ids. Shared by the grouped and
+// The mock models that satisfy the membership predicate and pass the
+// model_ids / label_ids / text_search filters. Shared by the grouped and
 // ungrouped collection loops, which differ only in the membership predicate.
 function collectGroupModels(
   model_ids: number[] | null,
   label_ids: number[] | null,
   text_search: string | null,
   predicate: (modelId: number) => boolean,
-): { models: Model[]; labelIds: Set<number>; flags: string[] } {
-  const models: Model[] = [];
-  const labelIds = new Set<number>();
-  const flagsSet = new Set<string>();
+): Model[] {
   const searchLower = text_search?.toLowerCase();
 
-  mockModels.forEach((model, modelId) => {
-    if (predicate(modelId)) {
-      if (model_ids && !model_ids.includes(modelId)) return;
+  return [...mockModels.values()].filter((model) => {
+    const modelLabelIds = modelLabelsMap.get(model.id) || [];
 
-      const modelLabelIds = modelLabelsMap.get(modelId) || [];
-      if (label_ids && !label_ids.some((lid) => modelLabelIds.includes(lid)))
-        return;
-
-      if (searchLower && !modelMatchesSearch(model, searchLower)) return;
-
-      models.push(model);
-
-      modelLabelIds.forEach((lid) => labelIds.add(lid));
-
-      // Collect flags (union across models, deduped) via the shared converter
-      // so the flag-name literals stay centralised in raw_model.ts.
-      convertModelFlagsToRaw(model.flags)?.forEach((flag) =>
-        flagsSet.add(flag),
-      );
-    }
+    return (
+      predicate(model.id) &&
+      (!model_ids || model_ids.includes(model.id)) &&
+      (!label_ids ||
+        label_ids.some((labelId) => modelLabelIds.includes(labelId))) &&
+      (!searchLower || modelMatchesSearch(model, searchLower))
+    );
   });
-
-  return { models, labelIds, flags: [...flagsSet] };
 }
 
 export class DemoGroupApi implements IGroupApi {
@@ -74,27 +58,12 @@ export class DemoGroupApi implements IGroupApi {
     } = filter;
     const groups: Group[] = [];
 
-    const groupsToProcess = new Map<number, GroupMeta>();
+    // The Set drops repeated group ids.
+    for (const groupId of new Set(group_ids ?? mockGroups.keys())) {
+      const groupMeta = mockGroups.get(groupId);
+      if (!groupMeta) continue;
 
-    if (group_ids) {
-      group_ids.forEach((id) => {
-        const group = mockGroups.get(id);
-        if (group) {
-          groupsToProcess.set(id, group);
-        }
-      });
-    } else {
-      mockGroups.forEach((group, id) => {
-        groupsToProcess.set(id, group);
-      });
-    }
-
-    for (const [groupId, groupMeta] of groupsToProcess) {
-      const {
-        models: modelsInGroup,
-        labelIds: groupLabels,
-        flags: groupFlags,
-      } = collectGroupModels(
+      const modelsInGroup = collectGroupModels(
         model_ids,
         label_ids,
         text_search,
@@ -103,23 +72,27 @@ export class DemoGroupApi implements IGroupApi {
 
       if (modelsInGroup.length === 0 && !include_ungrouped_models) continue;
 
-      const labels = resolveLabels(Array.from(groupLabels));
-
-      const group = createGroupInstance(
-        groupMeta,
-        modelsInGroup,
-        labels,
-        null, // No resource in demo
-        groupFlags,
+      // Union of the members' labels and Printed/Favorite flags, deduped.
+      const labelIds = modelsInGroup.flatMap(
+        (model) => modelLabelsMap.get(model.id) || [],
+      );
+      const flags = modelsInGroup.flatMap(
+        (model) => convertModelFlagsToRaw(model.flags) ?? [],
       );
 
-      groups.push(group);
+      groups.push(
+        createGroupInstance(
+          groupMeta,
+          modelsInGroup,
+          resolveLabels([...new Set(labelIds)]),
+          null, // No resource in demo
+          [...new Set(flags)],
+        ),
+      );
     }
 
     if (include_ungrouped_models) {
-      // The accumulated labels/flags are unused here: each ungrouped model is
-      // turned into its own group below, recomputing labels and flags per model.
-      const { models: ungroupedModels } = collectGroupModels(
+      const ungroupedModels = collectGroupModels(
         model_ids,
         label_ids,
         text_search,

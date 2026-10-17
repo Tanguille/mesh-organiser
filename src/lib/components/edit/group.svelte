@@ -142,7 +142,7 @@
         {:else if !configurationMeta.applicationReadOnly}
           <Button
             size="sm"
-            class="widthhack"
+            class="w-9"
             variant="ghost"
             onclick={() => (editMode = true)}><Edit /></Button
           >

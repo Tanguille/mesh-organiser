@@ -21,6 +21,7 @@ import { configuration } from "#lib/configuration.svelte";
 import { open } from "@tauri-apps/plugin-dialog";
 import { accountLinkData } from "#lib/account_link_data.svelte";
 import { BaseDirectory, watch, type WatchEvent } from "@tauri-apps/plugin-fs";
+import { MODEL_EXTENSIONS } from "../shared/blob_api";
 
 interface DeepLinkEmit {
   download_url: string;
@@ -30,6 +31,10 @@ interface DeepLinkEmit {
 interface DownloadFinishedEvent {
   path: string;
   url: string;
+}
+
+interface DragDropPayload {
+  paths?: string[];
 }
 
 export interface DownloadResult {
@@ -43,8 +48,14 @@ export interface AccountLinkEmit {
   link_token: string;
 }
 
-export async function downloadFile(url: string): Promise<DownloadResult> {
-  return await invoke("download_file", { url: url });
+export async function downloadFile(
+  url: string,
+  filename?: string,
+): Promise<DownloadResult> {
+  return await invoke("download_file", {
+    url: url,
+    filename: filename ?? null,
+  });
 }
 
 async function importModel(
@@ -154,92 +165,77 @@ export class TauriImportApi implements ITauriImportApi {
     this.eventListeners.forEach((unlisten) => unlisten());
     this.eventListeners = [];
 
-    this.eventListeners.push(
-      await listen<ImportStatus>("import-status", (event) => {
-        importState.status = event.payload;
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<number>("import-model-count", (event) => {
-        importState.imported_models_count = event.payload;
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<number>("import-thumbnail-count", (event) => {
-        importState.finished_thumbnails_count = event.payload;
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<string>("import-model-group", (event) => {
-        importState.current_importing_group = event.payload;
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<string>("import-failure", (event) => {
-        importState.failure_reason = event.payload;
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<number>("import-model-total", (event) => {
-        importState.model_count = event.payload;
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<ImportState>("import-all-data", (event) => {
-        importState.imported_models = event.payload.imported_models;
-        importState.imported_models_count = event.payload.imported_models_count;
-        importState.finished_thumbnails_count =
-          event.payload.finished_thumbnails_count;
-        importState.model_count = event.payload.model_count;
-        importState.status = event.payload.status;
-        importState.origin_url = event.payload.origin_url;
-        importState.failure_reason = event.payload.failure_reason;
-        importState.recursive = event.payload.recursive;
-        importState.delete_after_import = event.payload.delete_after_import;
-        importState.current_importing_group = undefined;
-        navigateToImportPage();
-      }),
-    );
-
-    this.eventListeners.push(
-      await listen<DeepLinkEmit>(
-        "deep-link",
-        async (event) => await this.handleDeepLink(event.payload),
-      ),
-    );
-    this.eventListeners.push(
-      await listen<string>(
+    // Each handler takes its event's payload; `never` lets the table hold
+    // handlers with different payload types.
+    const handlers: [string, (payload: never) => unknown][] = [
+      [
+        "import-status",
+        (status: ImportStatus) => (importState.status = status),
+      ],
+      [
+        "import-model-count",
+        (count: number) => (importState.imported_models_count = count),
+      ],
+      [
+        "import-thumbnail-count",
+        (count: number) => (importState.finished_thumbnails_count = count),
+      ],
+      [
+        "import-model-group",
+        (group: string) => (importState.current_importing_group = group),
+      ],
+      [
+        "import-failure",
+        (reason: string) => (importState.failure_reason = reason),
+      ],
+      [
+        "import-model-total",
+        (total: number) => (importState.model_count = total),
+      ],
+      [
+        "import-all-data",
+        // Copies field by field so missing keys reset and unknown keys are ignored.
+        (state: ImportState) => {
+          importState.imported_models = state.imported_models;
+          importState.imported_models_count = state.imported_models_count;
+          importState.finished_thumbnails_count =
+            state.finished_thumbnails_count;
+          importState.model_count = state.model_count;
+          importState.status = state.status;
+          importState.origin_url = state.origin_url;
+          importState.failure_reason = state.failure_reason;
+          importState.recursive = state.recursive;
+          importState.delete_after_import = state.delete_after_import;
+          importState.current_importing_group = undefined;
+          navigateToImportPage();
+        },
+      ],
+      ["deep-link", (link: DeepLinkEmit) => this.handleDeepLink(link)],
+      [
         "download-started",
-        async (event) =>
-          await this.handleBuiltInBrowserDownloadStarted(event.payload),
-      ),
-    );
-    this.eventListeners.push(
-      await listen<DownloadFinishedEvent>(
+        (url: string) => this.handleBuiltInBrowserDownloadStarted(url),
+      ],
+      [
         "download-finished",
-        async (event) =>
-          await this.handleBuiltInBrowserDownloadFinished(event.payload),
-      ),
-    );
-    this.eventListeners.push(
-      await listen(
+        (download: DownloadFinishedEvent) =>
+          this.handleBuiltInBrowserDownloadFinished(download),
+      ],
+      [
         "tauri://drag-drop",
-        async (event: { payload?: { paths?: string[] } }) =>
-          await this.handleDragDropEvent(event),
-      ),
-    );
-    this.eventListeners.push(
-      await listen<AccountLinkEmit>(
+        (drop?: DragDropPayload) => this.handleDragDropEvent(drop),
+      ],
+      [
         "account-link",
-        async (event) => await this.setAccountLink(event.payload),
-      ),
-    );
+        (accountLink: AccountLinkEmit) => this.setAccountLink(accountLink),
+      ],
+    ];
+
+    for (const [eventName, handler] of handlers) {
+      this.eventListeners.push(
+        await listen<never>(eventName, (event) => handler(event.payload)),
+      );
+    }
+
     if (configuration.watch_downloads_folder) {
       this.eventListeners.push(await this.folderWatch());
     }
@@ -254,17 +250,11 @@ export class TauriImportApi implements ITauriImportApi {
 
   async handleFolderWatchEvent(event: WatchEvent): Promise<void> {
     console.log("Folder watch event:", event);
-    const paths = event.paths.filter((p) => {
-      const lower = p.toLowerCase();
-
-      return (
-        lower.endsWith(".stl") ||
-        lower.endsWith(".obj") ||
-        lower.endsWith(".3mf") ||
-        lower.endsWith(".gcode") ||
-        lower.endsWith(".step")
-      );
-    });
+    const paths = event.paths.filter((path) =>
+      MODEL_EXTENSIONS.some((extension) =>
+        path.toLowerCase().endsWith("." + extension),
+      ),
+    );
 
     if (paths.length <= 0) {
       return;
@@ -279,12 +269,8 @@ export class TauriImportApi implements ITauriImportApi {
     }
 
     console.log("Detected new files in Downloads folder to import:", paths);
-    const importPromise = this.startImportProcess(paths, {
-      direct_open_in_slicer: configuration.open_slicer_on_remote_model_import,
-      delete_after_import: false,
-      recursive: false,
-      import_as_path: false,
-    });
+    // Only files the app downloaded itself are deleted after import.
+    const importPromise = this.importRemoteFiles(paths, false);
 
     toast.promise(importPromise, {
       loading: `Importing ${paths.length} new file(s) from Downloads folder...`,
@@ -292,9 +278,26 @@ export class TauriImportApi implements ITauriImportApi {
       error: `Failed to import new file(s) from Downloads folder.`,
     });
 
+    await importPromise;
+  }
+
+  // Imports files that arrived from outside the app (deep link, built-in
+  // browser, Downloads folder) and opens the import page without waiting.
+  importRemoteFiles(
+    paths: string[],
+    deleteAfterImport: boolean,
+    sourceUrl?: string,
+  ): Promise<ImportState> {
+    const importPromise = this.startImportProcess(paths, {
+      source_url: sourceUrl,
+      direct_open_in_slicer: configuration.open_slicer_on_remote_model_import,
+      delete_after_import: deleteAfterImport,
+      recursive: false,
+      import_as_path: false,
+    });
     navigateToImportPage();
 
-    await importPromise;
+    return importPromise;
   }
 
   async folderWatch(): Promise<UnlistenFn> {
@@ -309,17 +312,13 @@ export class TauriImportApi implements ITauriImportApi {
   }
 
   async handleDeepLinkDownload(event: DeepLinkEmit): Promise<void> {
-    const download_result = await downloadFile(event.download_url);
-    const source_uri = event.source_url ?? download_result.source_uri;
+    const download = await downloadFile(event.download_url);
     // No await, don't want to block on this
-    this.startImportProcess([download_result.path], {
-      source_url: source_uri ?? undefined,
-      direct_open_in_slicer: configuration.open_slicer_on_remote_model_import,
-      delete_after_import: true,
-      recursive: false,
-      import_as_path: false,
-    });
-    navigateToImportPage();
+    this.importRemoteFiles(
+      [download.path],
+      true,
+      event.source_url ?? download.source_uri ?? undefined,
+    );
   }
 
   async handleDeepLink(event: DeepLinkEmit): Promise<void> {
@@ -361,28 +360,13 @@ export class TauriImportApi implements ITauriImportApi {
 
     console.log("download finished (download-finished):", event);
     // No await, don't want to block on this
-    this.startImportProcess([event.path], {
-      source_url: event.url,
-      direct_open_in_slicer: configuration.open_slicer_on_remote_model_import,
-      delete_after_import: true,
-      recursive: false,
-      import_as_path: false,
-    });
-    navigateToImportPage();
+    this.importRemoteFiles([event.path], true, event.url);
   }
 
-  async handleDragDropEvent(event: {
-    payload?: { paths?: string[] };
-  }): Promise<void> {
-    console.log(event);
+  async handleDragDropEvent(payload?: DragDropPayload): Promise<void> {
+    console.log(payload);
 
-    if (!event) {
-      return;
-    }
-
-    const payload = event.payload;
-
-    if (!payload || !payload.paths || !payload.paths.length) {
+    if (!payload?.paths?.length) {
       return;
     }
 
@@ -405,7 +389,7 @@ export class TauriImportApi implements ITauriImportApi {
       filters = [
         {
           name: "3D Models",
-          extensions: ["stl", "obj", "3mf", "gcode", "step", "zip"],
+          extensions: [...MODEL_EXTENSIONS, "zip"],
         },
       ];
     }

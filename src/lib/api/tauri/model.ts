@@ -57,10 +57,6 @@ export class ModelApi implements IModelApi {
     await invoke("edit_model", data);
   }
 
-  async deleteModel(model: Model): Promise<void> {
-    await invoke("delete_model", { modelId: model.id });
-  }
-
   async deleteModels(models: Model[]): Promise<void> {
     await invoke("delete_models", { modelIds: models.map((x) => x.id) });
   }

@@ -6,14 +6,4 @@ import Content from "./context-menu-content.svelte";
 const Root = ContextMenuPrimitive.Root;
 const Trigger = ContextMenuPrimitive.Trigger;
 
-export {
-  Root,
-  Item,
-  Trigger,
-  Content,
-  //
-  Root as ContextMenu,
-  Item as ContextMenuItem,
-  Content as ContextMenuContent,
-  Trigger as ContextMenuTrigger,
-};
+export { Root, Item, Trigger, Content };

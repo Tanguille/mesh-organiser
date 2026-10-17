@@ -193,7 +193,6 @@ export function triggerDownload(url: string, filename?: string): void {
   link.remove();
 }
 
-// Wrap blob data in an object URL and trigger a download with the given filename.
 export function triggerBlobDownload(
   data: BlobPart,
   mime: string,
@@ -242,7 +241,6 @@ export function handleGridItemKeyDown<T>(
       });
       onClick(item, syntheticEvent);
     } else {
-      // Pass the keyboard event directly
       onClick(item, event);
     }
   }

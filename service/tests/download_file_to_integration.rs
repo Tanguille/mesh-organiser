@@ -112,6 +112,25 @@ async fn get_content_disposition_filename_uses_url_path_when_header_missing() {
 }
 
 #[tokio::test]
+async fn get_content_disposition_filename_uses_url_path_when_header_unparseable() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("x")
+                .insert_header("Content-Disposition", "attachment"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let url = format!("{}/some/path/fallback.stl", mock_server.uri());
+    let response = reqwest::get(&url).await.expect("GET should succeed");
+    let name = get_content_disposition_filename(&response);
+    assert_eq!(name.as_deref(), Some("fallback.stl"));
+}
+
+#[tokio::test]
 async fn get_content_disposition_filename_rfc5987_from_header() {
     let mock_server = MockServer::start().await;
 
@@ -133,10 +152,8 @@ async fn get_content_disposition_filename_rfc5987_from_header() {
     assert_eq!(name.as_deref(), Some("my percent file.stl"));
 }
 
-// -----------------------------------------------------------------------------
 // `download_file` percent-decodes the last response-URL segment (thingiverse)
 // and the whole URL (nexprint) to derive the final filename.
-// -----------------------------------------------------------------------------
 
 /// Downloads `<mock server>/<url_path>` through `download_file` and checks the derived
 /// filename and source uri.
@@ -149,7 +166,7 @@ async fn assert_download(url_path: &str, expected_name: &str, expected_source: &
         .await;
 
     let url = format!("{}/{url_path}", mock_server.uri());
-    let result = service::download_file_service::download_file(&url)
+    let result = service::download_file_service::download_file(&url, None)
         .await
         .expect("download should succeed");
 
@@ -182,4 +199,28 @@ async fn download_file_nexprint_decodes_quoted_filename_from_url() {
         "https://nexprint.com/",
     )
     .await;
+}
+
+#[tokio::test]
+async fn download_file_explicit_filename_overrides_site_logic() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("x"))
+        .mount(&mock_server)
+        .await;
+
+    let url = format!("{}/thingiverse/other.stl", mock_server.uri());
+    let result = service::download_file_service::download_file(&url, Some("model.3mf"))
+        .await
+        .expect("download should succeed");
+
+    let path = PathBuf::from(&result.path);
+    assert_eq!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("model.3mf")
+    );
+    assert_eq!(result.source_uri, None);
+
+    fs::remove_file(&path).ok();
 }

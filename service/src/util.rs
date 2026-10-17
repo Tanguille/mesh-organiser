@@ -1,17 +1,12 @@
-use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::OnceLock};
+use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::LazyLock};
 
 use regex::Regex;
 use tokio::task::JoinSet;
 
-use db::model::blob::FileType;
-
-static COLLAPSE_WHITESPACE: OnceLock<Regex> = OnceLock::new();
+static COLLAPSE_WHITESPACE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r" {2,}").expect("valid regex literal"));
 
 /// Returns a human-friendly file name (no path); strips extension if not a directory.
-///
-/// # Panics
-///
-/// Panics if the file name is not valid UTF-8.
 #[must_use]
 pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     let extension = file.extension();
@@ -26,11 +21,9 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
         file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
     }
 
-    let remove_whitespace = COLLAPSE_WHITESPACE.get_or_init(|| Regex::new(r" {2,}").unwrap());
-
     file_name = file_name.replace(['_', '-', '+'], " ");
 
-    file_name = String::from(remove_whitespace.replace_all(&file_name, " "));
+    file_name = String::from(COLLAPSE_WHITESPACE.replace_all(&file_name, " "));
 
     file_name = String::from(file_name.trim());
 
@@ -39,10 +32,6 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
 
 /// Percent-decodes `text` into an owned string; fails if the decoded bytes are not valid UTF-8.
 /// A literal `+` is kept as-is and a malformed `%zz` sequence is left untouched.
-///
-/// # Errors
-///
-/// Returns the UTF-8 error if the decoded bytes are not valid UTF-8.
 pub fn percent_decode(text: &str) -> Result<String, std::str::Utf8Error> {
     percent_encoding::percent_decode_str(text)
         .decode_utf8()
@@ -67,10 +56,6 @@ pub fn cleanse_evil_from_name(name: &str) -> String {
 }
 
 /// Opens the given path in the system file explorer.
-///
-/// # Panics
-///
-/// Panics if the path is not valid UTF-8.
 pub fn open_folder_in_explorer(path: &Path) {
     let path = path.to_str().unwrap();
     #[cfg(target_os = "windows")]
@@ -87,16 +72,6 @@ pub fn open_folder_in_explorer(path: &Path) {
     {
         let _ = Command::new("xdg-open").arg(path).output().unwrap();
     }
-}
-
-#[must_use]
-pub fn is_zippable_file_extension(extension: &str) -> bool {
-    FileType::from_extension(extension).is_zippable()
-}
-
-#[must_use]
-pub fn is_zipped_file_extension(extension: &str) -> bool {
-    FileType::from_extension(extension).is_zipped()
 }
 
 #[must_use]
@@ -130,11 +105,7 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
 /// Spawns the future produced by `make_future` for each item, keeping at most `max` tasks in
 /// flight (throttling by awaiting a completed task once the in-flight count reaches `max`).
 /// Outputs are collected in the order tasks complete, matching `JoinSet::join_all`.
-///
-/// # Panics
-///
-/// Propagates a panicking task exactly as `JoinSet` does: a panicked task resumes the unwind
-/// (`panic::resume_unwind`), and any other `JoinError` panics.
+/// A panicking task resumes its unwind here, as `JoinSet` does.
 pub async fn run_bounded<Item, Fut, F, T>(
     mut items: Vec<Item>,
     max: usize,
@@ -168,11 +139,6 @@ where
 
     results
 }
-
-// -----------------------------------------------------------------------------
-// Tests for run_bounded: every task output is returned, at most `max` tasks run
-// concurrently, and a panicking task propagates as a panic (resume_unwind).
-// -----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod run_bounded_tests {
@@ -248,11 +214,6 @@ mod run_bounded_tests {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Tests for service::util pure helpers; IO (open_folder_in_explorer) is left
-// out unless tested via temp dir.
-// -----------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -261,10 +222,8 @@ mod tests {
 
     use super::{
         cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
-        is_zippable_file_extension, is_zipped_file_extension, prettify_file_name,
+        prettify_file_name,
     };
-
-    // ---- percent_decode ----
 
     #[test]
     fn percent_decode_decodes_multibyte_and_space() {
@@ -288,8 +247,6 @@ mod tests {
     fn percent_decode_rejects_invalid_utf8() {
         assert!(super::percent_decode("%FF").is_err());
     }
-
-    // ---- cleanse_evil_from_name ----
 
     #[test]
     fn test_cleanse_evil_empty() {
@@ -359,8 +316,6 @@ mod tests {
         assert_eq!(cleanse_evil_from_name("..."), "unnamed");
     }
 
-    // ---- prettify_file_name ----
-
     #[test]
     fn test_prettify_file_name_path_with_extension_is_file() {
         let path = PathBuf::from("some_dir/My_Cool-Model.stl");
@@ -385,75 +340,30 @@ mod tests {
         assert_eq!(prettify_file_name(&path, false), "a b c");
     }
 
-    // ---- is_zippable_file_extension ----
-
     #[test]
-    fn test_is_zippable_stl() {
-        assert!(is_zippable_file_extension("stl"));
+    fn test_prettify_file_name_separators_collapse_and_trim() {
+        let cases = [
+            ("dir/Gear - v2 + spare.stl", false, "Gear v2 spare"),
+            (
+                "_-+Leading_and_trailing+-_.obj",
+                false,
+                "Leading and trailing",
+            ),
+            ("Single  Spaced   Name.3mf", false, "Single Spaced Name"),
+            ("v1.2_final.stl", false, "v1.2 final"),
+            ("Café_Modèl.stl", false, "Café Modèl"),
+            ("parent/My__Folder-Name", true, "My Folder Name"),
+            ("archive.stl.zip", false, "archive.stl"),
+        ];
+
+        for (path, is_dir, expected) in cases {
+            assert_eq!(
+                prettify_file_name(&PathBuf::from(path), is_dir),
+                expected,
+                "prettify_file_name({path:?}, {is_dir})"
+            );
+        }
     }
-
-    #[test]
-    fn test_is_zippable_stl_uppercase() {
-        assert!(is_zippable_file_extension("STL"));
-    }
-
-    #[test]
-    fn test_is_zippable_obj() {
-        assert!(is_zippable_file_extension("obj"));
-    }
-
-    #[test]
-    fn test_is_zippable_step() {
-        assert!(is_zippable_file_extension("step"));
-    }
-
-    #[test]
-    fn test_is_zippable_gcode() {
-        assert!(is_zippable_file_extension("gcode"));
-    }
-
-    #[test]
-    fn test_is_zippable_txt_returns_false() {
-        assert!(!is_zippable_file_extension("txt"));
-    }
-
-    /// db maps "stp" to `Step`; `FileType` delegation covers this.
-    #[test]
-    fn test_is_zippable_stp() {
-        assert!(is_zippable_file_extension("stp"));
-    }
-
-    #[test]
-    fn test_is_zippable_step_uppercase() {
-        assert!(is_zippable_file_extension("STEP"));
-    }
-
-    // ---- is_zipped_file_extension ----
-
-    #[test]
-    fn test_is_zipped_stl_zip() {
-        assert!(is_zipped_file_extension("stl.zip"));
-    }
-
-    #[test]
-    fn test_is_zipped_step_zip() {
-        assert!(is_zipped_file_extension("step.zip"));
-    }
-
-    #[test]
-    fn test_is_zipped_obj_zip_gcode_zip() {
-        assert!(is_zipped_file_extension("obj.zip"));
-        assert!(is_zipped_file_extension("gcode.zip"));
-    }
-
-    #[test]
-    fn test_is_zipped_other_returns_false() {
-        assert!(!is_zipped_file_extension("stl"));
-        assert!(!is_zipped_file_extension("zip"));
-        assert!(!is_zipped_file_extension("obj"));
-    }
-
-    // ---- convert_extension_to_zip ----
 
     #[test]
     fn test_convert_extension_to_zip_stl() {
@@ -473,8 +383,6 @@ mod tests {
         assert_eq!(convert_extension_to_zip("unknown"), "unknown");
     }
 
-    // ---- convert_zip_to_extension ----
-
     #[test]
     fn test_convert_zip_to_extension_known() {
         assert_eq!(convert_zip_to_extension("stl.zip"), "stl");
@@ -488,8 +396,6 @@ mod tests {
         assert_eq!(convert_zip_to_extension("other.zip"), "other.zip");
         assert_eq!(convert_zip_to_extension("STL.ZIP"), "stl");
     }
-
-    // ---- proptest: round-trip and invariants ----
 
     const EVIL_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
 

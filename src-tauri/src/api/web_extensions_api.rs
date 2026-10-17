@@ -15,7 +15,7 @@ use tokio_util::{compat::TokioAsyncReadCompatExt, io::ReaderStream};
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState, tauri_import_state};
 
 use service::{
-    download_file_service,
+    ServiceError, download_file_service,
     export_service::get_temp_dir,
     import_service::DirectoryScanModel,
     import_state::{ImportState, ImportStatus},
@@ -124,9 +124,7 @@ async fn login(token: &str, base_url: &str) -> Result<reqwest::Client, Applicati
         .await?;
 
     if !response.status().is_success() {
-        return Err(ApplicationError::InternalError(
-            "Failed to login with token".into(),
-        ));
+        return Err(ServiceError::InternalError("Failed to login with token".into()).into());
     }
 
     Ok(client)
@@ -138,7 +136,7 @@ async fn logout(client: &reqwest::Client, base_url: &str) -> Result<(), Applicat
     let response = client.post(&url).send().await?;
 
     if !response.status().is_success() {
-        return Err(ApplicationError::InternalError("Failed to logout".into()));
+        return Err(ServiceError::InternalError("Failed to logout".into()).into());
     }
 
     Ok(())
@@ -168,8 +166,8 @@ async fn upload_model_file(
         .to_string();
     let file = File::open(path).await?;
     let len = file.metadata().await?.len();
-    // stream_with_length keeps the Content-Length header identical to the
-    // previous buffered upload instead of switching to chunked transfer.
+    // stream_with_length sends a Content-Length header instead of switching to
+    // chunked transfer.
     let part = reqwest::multipart::Part::stream_with_length(
         reqwest::Body::wrap_stream(ReaderStream::new(file)),
         len,
@@ -188,9 +186,9 @@ async fn get_ids(response: reqwest::Response) -> Result<Vec<i64>, ApplicationErr
 
         if model_ids.is_empty() {
             println!("Upload returned no model IDs");
-            return Err(ApplicationError::InternalError(
-                "No model IDs returned after upload".into(),
-            ));
+            return Err(
+                ServiceError::InternalError("No model IDs returned after upload".into()).into(),
+            );
         }
 
         Ok(model_ids)
@@ -201,7 +199,7 @@ async fn get_ids(response: reqwest::Response) -> Result<Vec<i64>, ApplicationErr
             response.text().await.unwrap_or_default()
         );
         println!("{err}");
-        Err(ApplicationError::InternalError(err))
+        Err(ServiceError::InternalError(err).into())
     }
 }
 
@@ -230,6 +228,7 @@ async fn process_uploads(
                 "Warning: Path {} does not exist, skipping upload",
                 path.path.display()
             );
+            continue;
         }
 
         {
@@ -249,9 +248,9 @@ async fn process_uploads(
             match res {
                 Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
                 Err(err) => {
-                    return Err(ApplicationError::InternalError(format!(
-                        "Upload task failed: {err}"
-                    )));
+                    return Err(
+                        ServiceError::InternalError(format!("Upload task failed: {err}")).into(),
+                    );
                 }
                 Ok(response) => {
                     let path = response.0;
@@ -304,14 +303,10 @@ pub async fn upload_models_to_remote_server(
 ) -> Result<UploadResult, ApplicationError> {
     let user = app_state.get_current_user();
     let Some(base_url) = user.sync_url else {
-        return Err(ApplicationError::InternalError(
-            "No sync URL set for user".into(),
-        ));
+        return Err(ServiceError::InternalError("No sync URL set for user".into()).into());
     };
     let Some(token) = user.sync_token else {
-        return Err(ApplicationError::InternalError(
-            "No sync token set for user".into(),
-        ));
+        return Err(ServiceError::InternalError("No sync token set for user".into()).into());
     };
     let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
 

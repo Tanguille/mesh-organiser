@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
+    paths: &paths
       - "**/*.svelte"
       - "**/*.ts"
       - "**/*.js"
@@ -12,22 +12,11 @@ on:
       - "**/package.json"
       - "**/pnpm-lock.yaml"
       - "**/*.config.*"
-      - "Cargo.toml"
       - ".github/workflows/svelte-ci.yaml"
 
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - "**/*.svelte"
-      - "**/*.ts"
-      - "**/*.js"
-      - "**/*.css"
-      - "**/package.json"
-      - "**/pnpm-lock.yaml"
-      - "**/*.config.*"
-      - "Cargo.toml"
-      - "scripts/check-package-cargo-version.mjs"
-      - ".github/workflows/svelte-ci.yaml"
+    paths: *paths
 
 permissions: read-all
 
@@ -55,6 +44,9 @@ jobs:
 
       - name: Svelte check
         run: pnpm run check
+
+      - name: Unit tests
+        run: pnpm run test
 
       - name: Prettier check
         run: pnpm run format:check

@@ -29,7 +29,6 @@ use crate::{
 /// blocking-pool round trips per file.
 const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
-/// Routes for the blob bytes, thumbnail and download endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -143,7 +142,6 @@ pub async fn get_blob_bytes(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Response {
-    // Verify that the user has access to a model with this blob
     let Ok(Some(_model_id)) =
         model_db::get_model_id_via_sha256(&app_state.db, &user, &sha256).await
     else {
@@ -161,8 +159,7 @@ pub async fn get_blob_thumb(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    // Validate that the sha256 parameter is a well-formed SHA-256 hex string.
-    // Ensures a single, safe filename component (no separators).
+    // Also keeps the value a single path component, so it cannot traverse out of the image dir.
     if sha256.len() != 64
         || !sha256
             .chars()
@@ -186,8 +183,7 @@ pub async fn get_blob_thumb(
 
 /// Streams a blob's content; shared by `download_model` and `get_blob_bytes`.
 async fn get_blob_bytes_inner(blob: &Blob, app_state: &AppState) -> Response {
-    // The plain-file vs first-zip-entry convention lives in the service
-    // layer; any open/read failure keeps the previous 500 semantics.
+    // The plain-file vs first-zip-entry convention lives in the service layer.
     let Ok(reader) = export_service::open_blob_content_reader(blob, app_state).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
@@ -204,7 +200,6 @@ pub async fn get_blobs_zip_download(
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
 
-    // zip dirs live directly under the process temp dir
     let path = match resolve_path_under_base(&std::env::temp_dir(), &zip_dir).await {
         Ok(path) => path,
         Err(e) => return e.respond(),
@@ -223,13 +218,7 @@ pub async fn get_blobs_zip_download(
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
 
-    let path = zip_file.path();
-
-    if !path.exists() {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-
-    let file = File::open(path).await?;
+    let file = File::open(zip_file.path()).await?;
     let mut response =
         Body::from_stream(ReaderStream::with_capacity(file, STREAM_CHUNK_SIZE)).into_response();
 

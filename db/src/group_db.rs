@@ -4,8 +4,9 @@ use sqlx::QueryBuilder;
 use strum::EnumString;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE, PaginatedResponse, TimestampSchema,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
+    ensure_owned,
     model::{
         Model, ModelFlags,
         blob::FileType,
@@ -14,7 +15,7 @@ use crate::{
         user::User,
     },
     model_db::{self, ModelFilterOptions},
-    push_in_i64, random_hex_32, set_timestamp_column,
+    push_in, random_hex_32, set_timestamp_column, timestamp_or_now,
     util::{time_now, validate_global_id},
 };
 
@@ -141,7 +142,7 @@ pub async fn get_groups(
 
     let group_resource_map = crate::resource_db::get_group_id_to_resource_map(db, user).await?;
 
-    // Fetch the full "fetch all" default window; actual pagination happens in-memory below.
+    // Pagination happens in-memory below, so fetch the full default window.
     let models = model_db::get_models(
         db,
         user,
@@ -206,8 +207,7 @@ pub async fn get_groups(
         }
     }
 
-    // Enforce pagination limits to prevent memory exhaustion.
-    // Normalize 0 inputs: `page` is 1-based, so 0 must be treated as 1; a
+    // `page` is 1-based, so 0 must be treated as 1; a
     // `page_size` of 0 would make `.take(0)` silently return an empty list.
     let page_size = options.page_size.clamp(1, MAX_PAGE_SIZE);
     let offset = ((options.page.max(1) - 1) * page_size) as usize;
@@ -223,17 +223,6 @@ pub async fn get_groups(
     })
 }
 
-async fn get_unique_id_from_group_id(db: &DbContext, group_id: i64) -> Result<String, DbError> {
-    let row = sqlx::query!(
-        "SELECT group_unique_global_id FROM models_group WHERE group_id = ?",
-        group_id
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.group_unique_global_id)
-}
-
 pub async fn set_group_id_on_models(
     db: &DbContext,
     user: &User,
@@ -241,30 +230,40 @@ pub async fn set_group_id_on_models(
     model_ids: Vec<i64>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
     let models = model_db::get_models_via_ids(db, user, model_ids).await?;
-    let mut old_group_ids: Vec<i64> = models
+    let mut touched_group_ids: Vec<i64> = models
         .iter()
-        .filter_map(|m| m.group.as_ref().map(|g| g.id))
+        .filter_map(|model| model.group.as_ref().map(|group| group.id))
         .unique()
         .collect();
 
-    if let Some(gid) = group_id {
-        get_unique_id_from_group_id(db, gid).await?;
-        old_group_ids.push(gid);
+    if let Some(group_id) = group_id {
+        ensure_owned(
+            db,
+            "models_group",
+            "group_id",
+            "group_user_id",
+            &[group_id],
+            user.id,
+        )
+        .await?;
+        touched_group_ids.push(group_id);
     }
 
-    let model_ids: Vec<i64> = models.iter().map(|m| m.id).collect();
+    let model_ids: Vec<i64> = models.iter().map(|model| model.id).collect();
     let mut query_builder = QueryBuilder::new("UPDATE models SET model_group_id = ");
     query_builder.push_bind(group_id);
     query_builder.push(" WHERE model_id IN ");
-    push_in_i64(&mut query_builder, &model_ids);
+    push_in(&mut query_builder, &model_ids);
     query_builder.build().execute(db).await?;
 
-    set_last_updated_on_groups(db, user, &old_group_ids, timestamp).await?;
-
-    Ok(())
+    set_last_updated_on_groups(
+        db,
+        user,
+        &touched_group_ids,
+        &timestamp_or_now(update_timestamp),
+    )
+    .await
 }
 
 pub async fn add_empty_group(
@@ -306,37 +305,14 @@ pub async fn edit_group(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    let now = time_now();
-    let timestamp = update_timestamp.unwrap_or(&now);
+    validate_global_id(global_id)?;
+    let timestamp = timestamp_or_now(update_timestamp);
 
     sqlx::query!(
-        "UPDATE models_group SET group_name = ?, group_last_modified = ? WHERE group_id = ? AND group_user_id = ?",
+        "UPDATE models_group SET group_name = ?, group_last_modified = ?, group_unique_global_id = COALESCE(?, group_unique_global_id) WHERE group_id = ? AND group_user_id = ?",
         group_name,
         timestamp,
-        group_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    if let Some(global_id) = global_id {
-        edit_group_global_id(db, user, group_id, global_id).await?;
-    }
-
-    Ok(())
-}
-
-async fn edit_group_global_id(
-    db: &DbContext,
-    user: &User,
-    group_id: i64,
-    unique_global_id: &str,
-) -> Result<(), DbError> {
-    validate_global_id(unique_global_id)?;
-
-    sqlx::query!(
-        "UPDATE models_group SET group_unique_global_id = ? WHERE group_id = ? AND group_user_id = ?",
-        unique_global_id,
+        global_id,
         group_id,
         user.id
     )
@@ -410,12 +386,10 @@ pub async fn set_last_updated_on_groups(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        TimestampSchema {
-            table: "models_group",
-            ts_col: "group_last_modified",
-            id_col: "group_id",
-            user_col: "group_user_id",
-        },
+        "models_group",
+        "group_last_modified",
+        "group_id",
+        "group_user_id",
         group_ids,
         user.id,
         timestamp,

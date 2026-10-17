@@ -1,5 +1,3 @@
-// Stuff like labels, counts
-
 import { getContainer } from "#lib/api/dependency_injection";
 import { configuration } from "#lib/configuration.svelte";
 import { IGroupApi } from "./group_api";
@@ -35,58 +33,45 @@ export function defaultSidebarState(): SidebarState {
 
 export const ISidebarStateApi = Symbol("ISidebarStateApi");
 
-export interface ISidebarStateApi {
-  getSidebarState(): Promise<SidebarState>;
-}
+// Registered under ISidebarStateApi; leaving it unregistered hides the sidebar.
+export type ISidebarStateApi = () => Promise<SidebarState>;
 
-export class DefaultSidebarStateApi implements ISidebarStateApi {
-  private includeShares: boolean;
+// Tauri-local mode passes includeShares = false: TauriProxyShareApi.getShares()
+// drains the full local and remote model lists just to count shares.
+export async function getSidebarState(
+  includeShares = true,
+): Promise<SidebarState> {
+  const container = getContainer();
+  const modelApi = container.require<IModelApi>(IModelApi);
+  const groupApi = container.require<IGroupApi>(IGroupApi);
+  const resourceApi = container.require<IResourceApi>(IResourceApi);
+  const labelApi = container.require<ILabelApi>(ILabelApi);
+  const slicerApi = container.optional<ISlicerApi>(ISlicerApi);
+  const shareApi = container.optional<IShareApi>(IShareApi);
 
-  // Tauri-local mode opts out: TauriProxyShareApi.getShares() drains the full
-  // local and remote model lists just to count shares.
-  constructor(includeShares = true) {
-    this.includeShares = includeShares;
-  }
+  const results = await Promise.all([
+    modelApi.getModelCount(null),
+    modelApi.getModelCount({ printed: true, favorite: false }),
+    modelApi.getModelCount({ printed: false, favorite: true }),
+    groupApi.getGroupCount(configuration.show_ungrouped_models_in_groups),
+    resourceApi.getResources(),
+    labelApi.getLabels(true),
+    slicerApi
+      ? slicerApi.availableSlicers()
+      : Promise.resolve([] as SlicerEntry[]),
+    includeShares && shareApi
+      ? shareApi.getShares()
+      : Promise.resolve([] as Share[]),
+  ]);
 
-  async getSidebarState(): Promise<SidebarState> {
-    const container = getContainer();
-    const modelApi = container.require<IModelApi>(IModelApi);
-    const groupApi = container.require<IGroupApi>(IGroupApi);
-    const resourceApi = container.require<IResourceApi>(IResourceApi);
-    const labelApi = container.require<ILabelApi>(ILabelApi);
-    const slicerApi = container.optional<ISlicerApi>(ISlicerApi);
-    const shareApi = container.optional<IShareApi>(IShareApi);
-
-    const results = await Promise.all([
-      modelApi.getModelCount(null),
-      modelApi.getModelCount({ printed: true, favorite: false }),
-      modelApi.getModelCount({ printed: false, favorite: true }),
-      groupApi.getGroupCount(configuration.show_ungrouped_models_in_groups),
-      resourceApi.getResources(),
-      labelApi.getLabels(true),
-      slicerApi
-        ? slicerApi.availableSlicers()
-        : Promise.resolve([] as SlicerEntry[]),
-      this.includeShares && shareApi
-        ? shareApi.getShares()
-        : Promise.resolve([] as Share[]),
-    ]);
-
-    return {
-      modelCount: results[0],
-      printHistoryCount: results[1],
-      favoriteCount: results[2],
-      groupCount: results[3],
-      projectCount: results[4].length,
-      labels: results[5],
-      availableSlicers: results[6],
-      shareCount: results[7].length,
-    };
-  }
-}
-
-export class EmptySidebarStateApi implements ISidebarStateApi {
-  async getSidebarState(): Promise<SidebarState> {
-    return defaultSidebarState();
-  }
+  return {
+    modelCount: results[0],
+    printHistoryCount: results[1],
+    favoriteCount: results[2],
+    groupCount: results[3],
+    projectCount: results[4].length,
+    labels: results[5],
+    availableSlicers: results[6],
+    shareCount: results[7].length,
+  };
 }

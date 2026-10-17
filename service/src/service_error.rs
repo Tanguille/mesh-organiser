@@ -2,10 +2,6 @@ use serde::{Serialize, Serializer, ser::SerializeStruct};
 use thiserror::Error;
 
 /// Serialises the common 3-field error shape so that service, tauri and web can share one implementation.
-///
-/// # Errors
-///
-/// Returns `S::Error` if serialisation fails.
 pub fn serialize_error_struct<S>(
     serializer: S,
     error_type: &str,
@@ -72,11 +68,8 @@ impl Serialize for ServiceError {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Regression tests: we test the serialised error shape shared by service,
-// tauri and web so that the 3-field JSON (error_type, error_message,
-// error_inner_message) remains stable and frontend/tauri don't break.
-// -----------------------------------------------------------------------------
+// The 3-field JSON shape (error_type, error_message, error_inner_message) is shared
+// by service, tauri and web; the frontend depends on it staying stable.
 
 #[cfg(test)]
 mod tests {
@@ -109,17 +102,14 @@ mod tests {
 
     #[test]
     fn serialize_error_struct_produces_object_with_exactly_three_string_fields() {
-        // Arrange
         let shape = TestErrorShape {
             error_type: "TestType",
             error_message: "Something failed",
             error_inner_message: "inner detail",
         };
 
-        // Act
         let value = serde_json::to_value(&shape).expect("serialize_error_struct should not fail");
 
-        // Assert: result is an object with exactly the three keys and string values
         assert!(value.is_object(), "expected a JSON object");
         let obj = value.as_object().unwrap();
         assert_eq!(obj.len(), 3, "expected exactly 3 keys");
@@ -139,13 +129,10 @@ mod tests {
 
     #[test]
     fn service_error_internal_error_serialises_with_three_field_shape() {
-        // Arrange
         let err = ServiceError::InternalError("custom detail".to_string());
 
-        // Act
         let value = serde_json::to_value(&err).expect("ServiceError serialisation should not fail");
 
-        // Assert: JSON has error_type, error_message, error_inner_message
         assert!(value.is_object());
         let obj = value.as_object().unwrap();
         assert_eq!(obj.len(), 3);
@@ -159,7 +146,6 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap();
         assert_eq!(error_inner, "custom detail");
-        // Display message is included in error_message
         assert!(
             error_message.contains("Internal error"),
             "error_message should contain Display text, got: {error_message}"
@@ -168,14 +154,11 @@ mod tests {
 
     #[test]
     fn service_error_json_error_serialises_with_three_field_shape() {
-        // Arrange: produce a real serde_json::Error
         let json_err = serde_json::from_str::<()>("{").unwrap_err();
         let err = ServiceError::JsonError(json_err);
 
-        // Act
         let value = serde_json::to_value(&err).expect("ServiceError serialisation should not fail");
 
-        // Assert: same 3-field shape
         assert!(value.is_object());
         let obj = value.as_object().unwrap();
         assert_eq!(obj.len(), 3);

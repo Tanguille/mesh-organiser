@@ -21,14 +21,4 @@ export {
   Separator,
   ScrollDownButton,
   ScrollUpButton,
-  //
-  Root as Select,
-  Group as SelectGroup,
-  GroupHeading as SelectGroupHeading,
-  Item as SelectItem,
-  Content as SelectContent,
-  Trigger as SelectTrigger,
-  Separator as SelectSeparator,
-  ScrollDownButton as SelectScrollDownButton,
-  ScrollUpButton as SelectScrollUpButton,
 };
