@@ -1,6 +1,6 @@
 {
   "name": "mesh-organiser",
-  "version": "4.0.2",
+  "version": "5.0.0",
   "packageManager": "pnpm@12.14.0",
   "type": "module",
   "imports": {
