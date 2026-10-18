@@ -478,5 +478,3 @@ mod tests {
         assert_eq!(o.len(), 3);
     }
 }
-=======
-
