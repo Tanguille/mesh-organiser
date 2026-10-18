@@ -7,6 +7,7 @@ use axum::{
 use axum_login::login_required;
 use serde::{Deserialize, Serialize};
 
+use service::AppState;
 use service::slice_service::{
     SliceOrchestrationResult, SliceOrchestrationSettings, slice_model_for_user,
 };
