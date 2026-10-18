@@ -18,6 +18,7 @@ use axum::{
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal, task::AbortHandle};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, Any, CorsLayer},
