@@ -111,7 +111,8 @@ fn timestamp(year: u16) -> String {
 fn assert_fresh_timestamp(value: &str, before: &str, after: &str) {
     assert!(
         value.len() == before.len() && before <= value && value <= after,
-        "{value:?} is not a time_now() value between {before:?} and {after:?}"
+        "timestamp ({} chars) is not a time_now() value between {before:?} and {after:?}",
+        value.len()
     );
 }
 
