@@ -4,7 +4,7 @@ use sqlx::QueryBuilder;
 use strum::EnumString;
 
 use crate::{
-    DbError, MAX_PAGE_SIZE, PaginatedResponse,
+    DbError, GROUPS, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
     ensure_owned,
     model::{
@@ -238,15 +238,7 @@ pub async fn set_group_id_on_models(
         .collect();
 
     if let Some(group_id) = group_id {
-        ensure_owned(
-            db,
-            "models_group",
-            "group_id",
-            "group_user_id",
-            &[group_id],
-            user.id,
-        )
-        .await?;
+        ensure_owned(db, &GROUPS, &[group_id], user).await?;
         touched_group_ids.push(group_id);
     }
 
@@ -386,12 +378,10 @@ pub async fn set_last_updated_on_groups(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        "models_group",
+        &GROUPS,
         "group_last_modified",
-        "group_id",
-        "group_user_id",
         group_ids,
-        user.id,
+        user,
         timestamp,
     )
     .await

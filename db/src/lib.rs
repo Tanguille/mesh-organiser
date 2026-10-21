@@ -18,7 +18,8 @@ pub use paginated_response::PaginatedResponse;
 mod util;
 
 pub(crate) use query_util::{
-    ensure_labels_owned, ensure_models_owned, ensure_owned, push_in, set_timestamp_column,
+    GROUPS, LABELS, RESOURCES, ensure_labels_owned, ensure_models_owned, ensure_owned, push_in,
+    set_timestamp_column,
 };
 
 pub(crate) use util::{parse_concat_ids, timestamp_or_now, validate_global_id};

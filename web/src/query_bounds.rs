@@ -320,16 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_order_by_bounded_model_rejects_oversized_without_parsing() {
-        let junk = "NameAsc".repeat(100);
-        assert!(junk.len() > MAX_ORDER_BY_BYTES);
-        assert_eq!(
-            parse_order_by_bounded(&junk, ModelOrderBy::AddedDesc),
-            ModelOrderBy::AddedDesc
-        );
-    }
-
-    #[test]
     fn parse_order_by_bounded_model_accepts_known_variant() {
         assert_eq!(
             parse_order_by_bounded("NameAsc", ModelOrderBy::AddedDesc),

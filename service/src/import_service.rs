@@ -338,12 +338,11 @@ async fn import_models_from_dir(
     group_name: String,
 ) -> Result<(), ServiceError> {
     let configuration = app_state.get_configuration();
-    import_state
-        .lock()
-        .await
-        .add_new_import_set(Some(group_name));
+    let mut locked_import_state = import_state.lock().await;
+    locked_import_state.add_new_import_set(Some(group_name));
     let (user, origin_url, delete_after_import, import_as_path) =
-        import_options(&*import_state.lock().await);
+        import_options(&locked_import_state);
+    drop(locked_import_state);
 
     let entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())

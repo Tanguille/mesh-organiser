@@ -7,7 +7,9 @@ export enum FileType {
 }
 
 // Extensions the importers accept, besides zip archives.
-export const MODEL_EXTENSIONS = ["stl", "obj", "3mf", "gcode", "step"];
+export const MODEL_EXTENSIONS = Object.values(FileType).map((fileType) =>
+  fileTypeToPlainFileExtension(fileType).slice(1),
+);
 
 /**
  * Normalizes a file-type selection for backend filters.
