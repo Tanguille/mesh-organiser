@@ -14,11 +14,11 @@ sha2 = { workspace = true }
 rand = { workspace = true }
 chrono = { workspace = true }
 sqlx = { workspace = true, features = [
-    "chrono",
-    "macros",
-    "migrate",
-    "runtime-tokio",
-    "sqlite",
+  "chrono",
+  "macros",
+  "migrate",
+  "runtime-tokio",
+  "sqlite",
 ] }
 indexmap = { workspace = true }
 itertools = { workspace = true }

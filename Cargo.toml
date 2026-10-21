@@ -62,13 +62,13 @@ tauri-plugin-deep-link = "2.4.10"
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-fs = "2.5.2"
 tauri-plugin-http = { version = "2.6.0", features = [
-    "cookies",
+  "cookies",
 ], default-features = false }
 tauri-plugin-opener = "2.5.5"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = { version = "2.13.1", features = [
-    "rustls-tls",
+  "rustls-tls",
 ], default-features = false }
 tauri-plugin-single-instance = "2.4.5"
 thiserror = "2.0.20"

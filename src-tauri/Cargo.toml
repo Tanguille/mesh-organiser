@@ -28,11 +28,11 @@ strum = { workspace = true, features = ["derive"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-process = { workspace = true }
 tokio = { workspace = true, features = [
-    "fs",
-    "io-util",
-    "macros",
-    "rt-multi-thread",
-    "sync",
+  "fs",
+  "io-util",
+  "macros",
+  "rt-multi-thread",
+  "sync",
 ] }
 tokio-util = { workspace = true, features = ["io"] }
 arboard = { workspace = true }
@@ -46,9 +46,9 @@ serde_html_form = { workspace = true }
 # "stream" enables reqwest::Body::wrap_stream for streaming multipart uploads.
 tauri-plugin-http = { workspace = true, features = ["multipart", "stream"] }
 async_zip = { workspace = true, features = [
-    "deflate",
-    "deflate64",
-    "tokio-fs",
+  "deflate",
+  "deflate64",
+  "tokio-fs",
 ] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
