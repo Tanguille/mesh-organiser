@@ -1440,3 +1440,31 @@ async fn set_model_ids_on_share_with_no_models_clears_the_share() {
     let share = share_db::get_share_via_id(&db, &share_id).await.unwrap();
     assert_eq!(share.model_ids, Vec::<i64>::new());
 }
+
+#[tokio::test]
+async fn set_labels_on_model_rejects_another_users_label_without_dropping_existing_labels() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let model_id = add_model(&db, &user, "mine").await;
+    let kept_label_id = label_db::add_label(&db, &user, "kept", 1, None)
+        .await
+        .unwrap()
+        .id;
+    label_db::add_labels_on_models(&db, &user, &[kept_label_id], &[model_id], None)
+        .await
+        .unwrap();
+    let foreign_label_id = label_db::add_label(&db, &other_user, "theirs", 1, None)
+        .await
+        .unwrap()
+        .id;
+
+    let result = label_db::set_labels_on_model(&db, &user, &[foreign_label_id], model_id).await;
+
+    assert!(matches!(result, Err(sqlx::Error::RowNotFound)));
+    let models = model_db::get_models_via_ids(&db, &user, vec![model_id])
+        .await
+        .unwrap();
+    let label_ids: Vec<i64> = models[0].labels.iter().map(|label| label.id).collect();
+    assert_eq!(label_ids, vec![kept_label_id]);
+}
