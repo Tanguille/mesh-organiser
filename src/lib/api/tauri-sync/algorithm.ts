@@ -51,9 +51,8 @@ export function filterByGlobalIds<T extends { uniqueGlobalId: string }>(
   remoteItems: T[],
   localItems: { uniqueGlobalId: string }[],
 ): T[] {
-  return remoteItems.filter((remote) =>
-    localItems.some((local) => local.uniqueGlobalId === remote.uniqueGlobalId),
-  );
+  const localIds = new Set(localItems.map((local) => local.uniqueGlobalId));
+  return remoteItems.filter((remote) => localIds.has(remote.uniqueGlobalId));
 }
 
 export interface SyncResult<T> {

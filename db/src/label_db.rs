@@ -3,7 +3,7 @@ use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError,
+    DbError, LABELS,
     db_context::DbContext,
     ensure_labels_owned, ensure_models_owned,
     model::{
@@ -401,12 +401,10 @@ pub async fn set_last_updated_on_labels(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        "labels",
+        &LABELS,
         "label_last_modified",
-        "label_id",
-        "label_user_id",
         label_ids,
-        user.id,
+        user,
         timestamp,
     )
     .await

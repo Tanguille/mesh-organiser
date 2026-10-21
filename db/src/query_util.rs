@@ -15,18 +15,56 @@ where
     builder.push(")");
 }
 
-/// Runs `UPDATE <table> SET <timestamp_column> = <timestamp> WHERE <id_column> IN (…) AND
-/// <user_column> = <user_id>`. No-op when `ids` is empty. Table and column names are pushed
-/// as raw SQL, so they must be trusted literals — never user input.
-#[allow(clippy::too_many_arguments)]
-pub async fn set_timestamp_column(
-    db: &DbContext,
-    table: &'static str,
-    timestamp_column: &'static str,
+/// A table whose rows each belong to one user. The names are pushed as raw SQL, so they must
+/// be trusted literals — never user input.
+pub struct OwnedTable {
+    name: &'static str,
     id_column: &'static str,
     user_column: &'static str,
+}
+
+pub const LABELS: OwnedTable = OwnedTable {
+    name: "labels",
+    id_column: "label_id",
+    user_column: "label_user_id",
+};
+pub const MODELS: OwnedTable = OwnedTable {
+    name: "models",
+    id_column: "model_id",
+    user_column: "model_user_id",
+};
+pub const GROUPS: OwnedTable = OwnedTable {
+    name: "models_group",
+    id_column: "group_id",
+    user_column: "group_user_id",
+};
+pub const RESOURCES: OwnedTable = OwnedTable {
+    name: "resources",
+    id_column: "resource_id",
+    user_column: "resource_user_id",
+};
+
+impl OwnedTable {
+    /// Appends `<id_column> IN (…) AND <user_column> = <user_id>`.
+    fn push_owned_ids(&self, query_builder: &mut QueryBuilder<Sqlite>, ids: &[i64], user_id: i64) {
+        query_builder.push(self.id_column);
+        query_builder.push(" IN ");
+        push_in(query_builder, ids);
+        query_builder.push(" AND ");
+        query_builder.push(self.user_column);
+        query_builder.push(" = ");
+        query_builder.push_bind(user_id);
+    }
+}
+
+/// Sets `timestamp_column` to `timestamp` on the rows of `table` in `ids` owned by `user`.
+/// No-op when `ids` is empty. `timestamp_column` is pushed as raw SQL, like the table names.
+pub async fn set_timestamp_column(
+    db: &DbContext,
+    table: &OwnedTable,
+    timestamp_column: &'static str,
     ids: &[i64],
-    user_id: i64,
+    user: &User,
     timestamp: &str,
 ) -> Result<(), DbError> {
     if ids.is_empty() {
@@ -34,49 +72,34 @@ pub async fn set_timestamp_column(
     }
 
     let mut query_builder = QueryBuilder::new("UPDATE ");
-    query_builder.push(table);
+    query_builder.push(table.name);
     query_builder.push(" SET ");
     query_builder.push(timestamp_column);
     query_builder.push(" = ");
     query_builder.push_bind(timestamp);
     query_builder.push(" WHERE ");
-    query_builder.push(id_column);
-    query_builder.push(" IN ");
-    push_in(&mut query_builder, ids);
-    query_builder.push(" AND ");
-    query_builder.push(user_column);
-    query_builder.push(" = ");
-    query_builder.push_bind(user_id);
+    table.push_owned_ids(&mut query_builder, ids, user.id);
     query_builder.build().execute(db).await?;
 
     Ok(())
 }
 
 /// Fails with `RowNotFound` unless every id in `ids` is a distinct row of `table` owned by
-/// `user_id`, so missing, foreign and duplicate ids are all rejected. Ok when `ids` is empty.
-/// Table and column names are pushed as raw SQL, so they must be trusted literals.
+/// `user`, so missing, foreign and duplicate ids are all rejected. Ok when `ids` is empty.
 pub async fn ensure_owned(
     db: &DbContext,
-    table: &'static str,
-    id_column: &'static str,
-    user_column: &'static str,
+    table: &OwnedTable,
     ids: &[i64],
-    user_id: i64,
+    user: &User,
 ) -> Result<(), DbError> {
     if ids.is_empty() {
         return Ok(());
     }
 
     let mut query_builder = QueryBuilder::new("SELECT COUNT(*) FROM ");
-    query_builder.push(table);
+    query_builder.push(table.name);
     query_builder.push(" WHERE ");
-    query_builder.push(id_column);
-    query_builder.push(" IN ");
-    push_in(&mut query_builder, ids);
-    query_builder.push(" AND ");
-    query_builder.push(user_column);
-    query_builder.push(" = ");
-    query_builder.push_bind(user_id);
+    table.push_owned_ids(&mut query_builder, ids, user.id);
     let owned: i64 = query_builder.build_query_scalar().fetch_one(db).await?;
 
     // Ids are primary keys, so a duplicated input id matches one row and the counts differ.
@@ -88,9 +111,9 @@ pub async fn ensure_owned(
 }
 
 pub async fn ensure_labels_owned(db: &DbContext, user: &User, ids: &[i64]) -> Result<(), DbError> {
-    ensure_owned(db, "labels", "label_id", "label_user_id", ids, user.id).await
+    ensure_owned(db, &LABELS, ids, user).await
 }
 
 pub async fn ensure_models_owned(db: &DbContext, user: &User, ids: &[i64]) -> Result<(), DbError> {
-    ensure_owned(db, "models", "model_id", "model_user_id", ids, user.id).await
+    ensure_owned(db, &MODELS, ids, user).await
 }

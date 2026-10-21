@@ -195,7 +195,7 @@ pub async fn download_file(
             let decoded_url = percent_decode(url).unwrap();
             quoted_filename(&decoded_url)
                 .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| current_filename.clone())
+                .unwrap_or(current_filename)
         } else {
             current_filename
         }

@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError,
+    DbError, RESOURCES,
     db_context::DbContext,
     ensure_owned,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
@@ -164,12 +164,10 @@ pub async fn set_last_updated_on_resource(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        "resources",
+        &RESOURCES,
         "resource_last_modified",
-        "resource_id",
-        "resource_user_id",
         &[resource_id],
-        user.id,
+        user,
         timestamp,
     )
     .await
@@ -198,15 +196,7 @@ pub async fn set_resource_on_group(
     };
 
     if let Some(resource_id) = resource_id {
-        ensure_owned(
-            db,
-            "resources",
-            "resource_id",
-            "resource_user_id",
-            &[resource_id],
-            user.id,
-        )
-        .await?;
+        ensure_owned(db, &RESOURCES, &[resource_id], user).await?;
     }
 
     sqlx::query!(
