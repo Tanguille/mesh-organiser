@@ -239,6 +239,9 @@ pub async fn set_labels_on_model(
     label_ids: &[i64],
     model_id: i64,
 ) -> Result<(), DbError> {
+    // Validate before the delete: the statements autocommit, so a foreign label rejected only by
+    // `add_labels_on_models` would leave the model with no labels at all.
+    ensure_labels_owned(db, user, label_ids).await?;
     remove_all_labels_from_models(db, user, &[model_id], None).await?;
 
     add_labels_on_models(db, user, label_ids, &[model_id], None).await
