@@ -55,3 +55,4 @@ tauri-plugin-single-instance = { workspace = true }
 
 [dev-dependencies]
 libmeshthumbnail = { workspace = true, features = ["step"] }
+tokio = { workspace = true, features = ["macros"] }
