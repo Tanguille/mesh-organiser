@@ -10,7 +10,7 @@ npm run build        # Build for production
 npm run preview      # Preview production build
 npm run check        # Type check (run before committing)
 npm run check:watch  # Type check with watch mode
-npm run lint         # Lint (ESLint)
+npm run lint         # Lint (oxlint)
 npm run lint:fix     # Lint and fix
 ```
 
@@ -96,7 +96,7 @@ Run these before committing, pushing, or claiming work complete. See [AGENTS.md]
 
 ```bash
 npm run check
-npm run lint   # ESLint
+npm run lint   # oxlint
 npm run test   # when tests exist
 ```
 

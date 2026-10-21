@@ -12,6 +12,7 @@ on:
       - "**/package.json"
       - "**/pnpm-lock.yaml"
       - "**/*.config.*"
+      - ".oxlintrc.json"
       - "Cargo.toml"
       - ".github/workflows/svelte-ci.yaml"
 
@@ -25,6 +26,7 @@ on:
       - "**/package.json"
       - "**/pnpm-lock.yaml"
       - "**/*.config.*"
+      - ".oxlintrc.json"
       - "Cargo.toml"
       - "scripts/check-package-cargo-version.mjs"
       - ".github/workflows/svelte-ci.yaml"
@@ -53,14 +55,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Fastest step (well under a second), so it fails first.
+      - name: Lint
+        run: pnpm run lint
+
       - name: Svelte check
         run: pnpm run check
 
       - name: Prettier check
         run: pnpm run format:check
-
-      - name: Lint
-        run: pnpm run lint
 
       - name: Build frontend
         run: pnpm run build

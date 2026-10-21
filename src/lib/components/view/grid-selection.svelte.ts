@@ -34,7 +34,6 @@ export function createGridSelection<T>(options: GridSelectionOptions<T>) {
   // A plain Set is fine here: it is rebuilt from scratch whenever the
   // selection changes and never mutated, so SvelteSet's mutation tracking
   // would buy nothing.
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const selectedSet = $derived(new Set(getSelected().map(getId)));
 
   let preventOnClick = $state.raw(false);
