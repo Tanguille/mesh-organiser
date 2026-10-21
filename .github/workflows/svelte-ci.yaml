@@ -4,34 +4,9 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "**/*.svelte"
-      - "**/*.ts"
-      - "**/*.js"
-      - "**/*.css"
-      - "**/package.json"
-      - "**/pnpm-lock.yaml"
-      - "**/*.config.*"
-      - ".oxlintrc.json"
-      - ".oxfmtrc.json"
-      - "Cargo.toml"
-      - ".github/workflows/svelte-ci.yaml"
 
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - "**/*.svelte"
-      - "**/*.ts"
-      - "**/*.js"
-      - "**/*.css"
-      - "**/package.json"
-      - "**/pnpm-lock.yaml"
-      - "**/*.config.*"
-      - ".oxlintrc.json"
-      - ".oxfmtrc.json"
-      - "Cargo.toml"
-      - "scripts/check-package-cargo-version.mjs"
-      - ".github/workflows/svelte-ci.yaml"
 
 permissions: read-all
 
@@ -57,15 +32,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Fastest step (well under a second), so it fails first.
+      # Fast checks first so they fail early.
       - name: Lint
         run: pnpm run lint
 
-      - name: Svelte check
-        run: pnpm run check
-
       - name: Format check
         run: pnpm run format:check
+
+      - name: Svelte check
+        run: pnpm run check
 
       - name: Build frontend
         run: pnpm run build

@@ -8,7 +8,7 @@ import { page } from "$app/state";
  */
 export function resolve(path: string): string {
   // SvelteKit's resolve() only accepts its typed Pathname union; callers pass plain strings
-  // oxlint-disable-next-line typescript/no-explicit-any -- dynamic route path
+  // oxlint-disable-next-line typescript/no-explicit-any
   return kitResolve(path as any);
 }
 

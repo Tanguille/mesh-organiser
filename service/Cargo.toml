@@ -32,9 +32,9 @@ tokio-util = { workspace = true, features = ["io"] }
 percent-encoding = { workspace = true }
 vek = { workspace = true }
 async_zip = { workspace = true, features = [
-  "deflate",
-  "deflate64",
-  "tokio-fs",
+    "deflate",
+    "deflate64",
+    "tokio-fs",
 ] }
 
 [dev-dependencies]

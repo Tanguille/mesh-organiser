@@ -1,6 +1,5 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript"],
   "categories": {
     "correctness": "error",
     "nursery": "error"
@@ -23,8 +22,7 @@
       {
         "argsIgnorePattern": "^_",
         "varsIgnorePattern": "^_",
-        "caughtErrorsIgnorePattern": "^_",
-        "destructuredArrayIgnorePattern": "^_"
+        "caughtErrorsIgnorePattern": "^_"
       }
     ],
     "preserve-caught-error": "error",
