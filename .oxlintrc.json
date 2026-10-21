@@ -2,13 +2,17 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript"],
   "categories": {
-    "correctness": "error"
+    "correctness": "error",
+    "nursery": "error"
   },
   "env": {
     "browser": true,
     "node": true
   },
   "rules": {
+    // TypeScript already reports undefined names; this nursery rule also misses Svelte runes
+    // and <script module> exports, since oxlint lints each <script> block on its own.
+    "no-undef": "off",
     "no-case-declarations": "error",
     "no-empty": "error",
     "no-fallthrough": "error",
