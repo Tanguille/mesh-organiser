@@ -3061,7 +3061,7 @@ dependencies = [
  "threemf",
  "vek",
  "wavefront_obj",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -3979,7 +3979,7 @@ checksum = "2896bade328c13f7042a297ea5ac5b0951f6cf989dea5f32c2fd98da398195cb"
 dependencies = [
  "base64 0.23.1",
  "indexmap 2.14.2",
- "quick-xml 0.42.0",
+ "quick-xml",
  "serde",
  "time",
 ]
@@ -4202,21 +4202,12 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quick-xml"
-version = "0.39.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
-dependencies = [
- "memchr",
- "serde",
-]
-
-[[package]]
-name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -5110,7 +5101,7 @@ dependencies = [
  "vek",
  "winreg 0.56.0",
  "wiremock",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -6211,14 +6202,14 @@ dependencies = [
 
 [[package]]
 name = "threemf"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a7b402a28a34887fd3bd06ffc49702af78454c9dd17af4bbe2c0a7255274f89"
+checksum = "cb7bb9d8a02944be801b2d113eee6330f73b8669445fb5f3b28e842f06b16f73"
 dependencies = [
- "quick-xml 0.39.4",
+ "quick-xml",
  "serde",
  "thiserror 2.0.21",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
@@ -7888,20 +7879,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
-]
-
-[[package]]
-name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap 2.14.2",
- "memchr",
- "typed-path",
- "zopfli",
 ]
 
 [[package]]
