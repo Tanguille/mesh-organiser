@@ -1,4 +1,4 @@
-//! Integration tests for `resource_service` (`open_resource_folder`, `delete_resource_folder`).
+//! Integration tests for `resource_service` (`ensure_resource_folder`, `delete_resource_folder`).
 //!
 //! Locks in sync behaviour after refactor: folders are created/removed as before.
 
@@ -16,11 +16,11 @@ use db::{
 };
 use service::{
     AppState, Configuration,
-    resource_service::{delete_resource_folder, open_resource_folder},
+    resource_service::{delete_resource_folder, ensure_resource_folder},
 };
 
 #[tokio::test]
-async fn open_resource_folder_creates_folder_when_missing() {
+async fn ensure_resource_folder_creates_folder_when_missing() {
     let dir = tempdir().unwrap();
     let data_path = dir.path().join("data");
     fs::create_dir_all(&data_path).unwrap();
@@ -51,14 +51,15 @@ async fn open_resource_folder_creates_folder_when_missing() {
     };
     let user = User::default(); // id: 1
 
-    open_resource_folder(&resource, &user, &app_state)
-        .expect("open_resource_folder should succeed");
+    let returned_path = ensure_resource_folder(&resource, &user, &app_state)
+        .expect("ensure_resource_folder should succeed");
 
     let resources_dir = app_state.get_resources_dir();
     let resource_folder = resources_dir.join("42_1");
+    assert_eq!(returned_path, resource_folder);
     assert!(
         resource_folder.exists(),
-        "resource folder 42_1 should exist after open_resource_folder"
+        "resource folder 42_1 should exist after ensure_resource_folder"
     );
 }
 
