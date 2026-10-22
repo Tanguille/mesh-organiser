@@ -184,7 +184,7 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
         configuration.data_path = default_data_dir
             .to_str()
             .ok_or_else(|| {
-                io::Error::new(ErrorKind::InvalidData, "data_path is not valid UTF-8")
+                io::Error::new(ErrorKind::InvalidData, "config path is not valid UTF-8")
             })?
             .to_string();
     }
