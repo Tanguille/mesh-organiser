@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { invoke, isTauri } from "@tauri-apps/api/core";
   import { getContainer } from "#lib/api/dependency_injection";
+  import { FileType } from "#lib/api/shared/blob_api";
   import {
     defaultModelFilter,
     IModelApi,
@@ -25,8 +25,9 @@
   let models: Model[] = $state([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let isMobileRemote = $state(false);
-  let canSliceOnServer = $state(false);
+  // Only the mobile remote client registers a slicer that can slice on the server.
+  const slicerApi = getContainer().optional<ISlicerApi>(ISlicerApi);
+  const canSliceOnServer = typeof slicerApi?.sliceOnServer === "function";
 
   let selectedModelId = $state<number | null>(null);
   let settings = $state<SlicingSettings>({
@@ -37,31 +38,22 @@
   });
   let slicing = $state(false);
 
-  async function detectRemoteSliceCapability() {
-    if (!isTauri()) {
-      isMobileRemote = false;
-      canSliceOnServer = false;
-
-      return;
-    }
-
-    try {
-      isMobileRemote = await invoke<boolean>("is_mobile");
-    } catch {
-      isMobileRemote = false;
-    }
-
-    const slicerApi = getContainer().optional<ISlicerApi>(ISlicerApi);
-    canSliceOnServer = typeof slicerApi?.sliceOnServer === "function";
-  }
-
   async function loadModels() {
     try {
       loading = true;
       error = null;
       const modelApi = getContainer().require<IModelApi>(IModelApi);
       models = await modelApi.getModels(
-        defaultModelFilter({ orderBy: ModelOrderBy.AddedDesc }),
+        defaultModelFilter({
+          orderBy: ModelOrderBy.AddedDesc,
+          // G-code is already sliced output, so keep it out of the picker.
+          fileTypes: [
+            FileType.STL,
+            FileType.OBJ,
+            FileType.THREEMF,
+            FileType.STEP,
+          ],
+        }),
         1,
         100,
       );
@@ -84,7 +76,6 @@
       return;
     }
 
-    const slicerApi = getContainer().optional<ISlicerApi>(ISlicerApi);
     if (!slicerApi?.sliceOnServer) {
       toast.error("Server slicing is not available.");
 
@@ -119,10 +110,7 @@
     }
   }
 
-  onMount(async () => {
-    await detectRemoteSliceCapability();
-    await loadModels();
-  });
+  onMount(loadModels);
 </script>
 
 <div class="space-y-6 px-4 pt-4 pb-24">
@@ -139,12 +127,6 @@
     <p class="text-sm text-muted-foreground">
       G-code is generated on your Mesh Organiser server. Pick a model, adjust
       settings, then slice.
-    </p>
-  {:else if isMobileRemote}
-    <p class="text-sm text-muted-foreground">
-      This device is not connected to server slicing yet. Open a model and use
-      <span class="font-medium">Open in slicer</span> from the model page, or configure
-      your server in settings.
     </p>
   {:else}
     <p class="text-sm text-muted-foreground">
@@ -294,12 +276,10 @@
       {/each}
     </div>
 
-    {#if !isMobileRemote}
-      <p class="text-sm text-muted-foreground">
-        Open a model, then use <span class="font-medium text-foreground"
-          >Open in slicer</span
-        > to send it to your desktop slicer.
-      </p>
-    {/if}
+    <p class="text-sm text-muted-foreground">
+      Open a model, then use <span class="font-medium text-foreground"
+        >Open in slicer</span
+      > to send it to your desktop slicer.
+    </p>
   {/if}
 </div>

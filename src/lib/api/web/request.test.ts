@@ -3,26 +3,7 @@ import { HttpMethod } from "../shared/server_request_api";
 import { ServerRequestApi } from "./request";
 
 describe("ServerRequestApi", () => {
-  it("passes credentials include to fetch for JSON requests", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      );
-    const api = new ServerRequestApi(
-      "https://example.com",
-      fetchImpl,
-      "include",
-    );
-    await api.request("/test", HttpMethod.GET);
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://example.com/api/v1/test",
-      expect.objectContaining({ credentials: "include" }),
-    );
-  });
-
-  it("defaults credentials to same-origin", async () => {
+  it("sends same-origin credentials for JSON requests", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response("{}", {
         status: 200,
@@ -37,25 +18,21 @@ describe("ServerRequestApi", () => {
     });
   });
 
-  it("uses configured credentials for requestBinary and sendBinary", async () => {
+  it("sends same-origin credentials for requestBinary and sendBinary", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(new Response(new ArrayBuffer(0), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
 
-    const api = new ServerRequestApi(
-      "https://example.com",
-      fetchImpl,
-      "include",
-    );
+    const api = new ServerRequestApi("https://example.com", fetchImpl);
     await api.requestBinary("/bin", HttpMethod.GET);
     await api.sendBinary("/up", HttpMethod.POST, new File([], "f.stl"));
 
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
-      credentials: "include",
+      credentials: "same-origin",
     });
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
-      credentials: "include",
+      credentials: "same-origin",
     });
   });
 

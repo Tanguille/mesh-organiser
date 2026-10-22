@@ -10,7 +10,6 @@
     "frontendDist": "../build"
   },
   "app": {
-    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Mesh Organiser",

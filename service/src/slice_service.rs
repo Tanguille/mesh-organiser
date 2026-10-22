@@ -19,25 +19,18 @@
 //! to CLI arguments once confirmed on real installs.
 
 use std::{
-    fmt::Write as _,
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
 
-use db::{
-    blob_db,
-    model::{blob::FileType, user::User},
-    model_db,
-};
+use db::{model::user::User, model_db};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tokio::process::Command;
 
 use crate::{
-    export_service::get_path_from_model,
-    service_error::ServiceError,
-    util::{cleanse_evil_from_name, convert_extension_to_zip, is_zippable_file_extension},
+    export_service::get_path_from_model, import_service::import_single_model,
+    service_error::ServiceError, util::cleanse_evil_from_name,
 };
 
 use super::app_state::AppState;
@@ -61,7 +54,6 @@ pub struct SliceOrchestrationSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SliceOrchestrationResult {
     pub output_model_id: i64,
-    pub output_blob_sha256: String,
 }
 
 const fn apply_slice_settings_to_command(
@@ -96,119 +88,45 @@ fn resolve_slicer_executable_path() -> Result<PathBuf, ServiceError> {
     Ok(path)
 }
 
-const fn model_is_sliceable(file_type: &FileType) -> bool {
-    matches!(
-        file_type,
-        &FileType::Stl
-            | &FileType::ZippedStl
-            | &FileType::Obj
-            | &FileType::ZippedObj
-            | &FileType::Threemf
-            | &FileType::Step
-            | &FileType::ZippedStep
-    )
-}
-
 fn find_gcode_in_output_dir(dir: &Path) -> Result<PathBuf, ServiceError> {
-    let mut candidates: Vec<PathBuf> = std::fs::read_dir(dir)?
+    // Lowest path wins so the pick is deterministic when the slicer emits several plates.
+    std::fs::read_dir(dir)?
         .filter_map(Result::ok)
-        .filter(|e| {
-            e.path().extension().is_some_and(|ext| {
-                ext.eq_ignore_ascii_case("gcode") || ext.eq_ignore_ascii_case("g")
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("gcode") || extension.eq_ignore_ascii_case("g")
             })
         })
-        .map(|e| e.path())
-        .collect();
-
-    if candidates.is_empty() {
-        return Err(ServiceError::InternalError(
-            "Slicer finished but no .gcode file was found in the output directory".to_string(),
-        ));
-    }
-
-    candidates.sort();
-
-    Ok(candidates.remove(0))
+        .min()
+        .ok_or_else(|| {
+            ServiceError::InternalError(
+                "Slicer finished but no .gcode file was found in the output directory".to_string(),
+            )
+        })
 }
 
-fn mesh_asset_sha256_prefix_hex(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut hash = String::with_capacity(32);
-    for byte in digest.iter().take(16) {
-        let _ = write!(hash, "{byte:02x}");
-    }
-
-    hash
-}
-
-/// Writes slice output bytes as a **gcode** blob and model row (same storage rules as import: zip on disk when zippable).
+/// Stores slice output as a new **gcode** model via the regular import path (hash dedupe, zipped on disk).
 async fn persist_gcode_as_new_model(
     file_contents: Vec<u8>,
     source_model_name: &str,
     app_state: &AppState,
     user: &User,
 ) -> Result<SliceOrchestrationResult, ServiceError> {
-    let file_size = file_contents.len();
-    let hash = mesh_asset_sha256_prefix_hex(&file_contents);
-
-    let existing_id = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await?;
-    if let Some(model_id) = existing_id {
-        return Ok(SliceOrchestrationResult {
-            output_model_id: model_id,
-            output_blob_sha256: hash,
-        });
-    }
-
-    let file_type = "gcode";
-    let blob_id_optional = blob_db::get_blob_via_sha256(&app_state.db, &hash).await?;
-
-    let blob_id = if let Some(blob) = blob_id_optional {
-        blob.id
-    } else {
-        let new_extension = convert_extension_to_zip(file_type);
-        let final_file_name = app_state
-            .get_model_dir()
-            .join(format!("{hash}.{new_extension}"));
-
-        let mut file_handle = tokio::fs::File::create(&final_file_name).await?;
-
-        if is_zippable_file_extension(file_type) {
-            use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
-            let mut writer = ZipFileWriter::with_tokio(&mut file_handle);
-            let builder = ZipEntryBuilder::new(
-                format!(
-                    "{}.{}",
-                    cleanse_evil_from_name(source_model_name),
-                    file_type
-                )
-                .into(),
-                Compression::Deflate,
-            );
-            writer.write_entry_whole(builder, &file_contents).await?;
-            writer.close().await?;
-        } else {
-            tokio::io::AsyncWriteExt::write_all(&mut file_handle, &file_contents).await?;
-        }
-
-        blob_db::add_blob(
-            &app_state.db,
-            &hash,
-            &new_extension,
-            i64::try_from(file_size).unwrap_or(i64::MAX),
-            None,
-        )
-        .await?
-    };
-
     let name = format!("{} (slice)", cleanse_evil_from_name(source_model_name));
-    let model_id = model_db::add_model(&app_state.db, user, &name, blob_id, None, None).await?;
+    let output_model_id = import_single_model(
+        &mut file_contents.as_slice(),
+        "gcode",
+        file_contents.len(),
+        &name,
+        None,
+        app_state,
+        user,
+        None,
+    )
+    .await?;
 
-    Ok(SliceOrchestrationResult {
-        output_model_id: model_id,
-        output_blob_sha256: hash,
-    })
+    Ok(SliceOrchestrationResult { output_model_id })
 }
 
 /// Runs the external slicer; returns the path to the primary `.gcode` file.
@@ -278,7 +196,7 @@ pub async fn slice_model_for_user(
     };
 
     let file_type = model.blob.to_file_type();
-    if !model_is_sliceable(&file_type) {
+    if file_type.is_gcode() || file_type.is_unsupported() {
         return Err(ServiceError::InternalError(format!(
             "Model file type cannot be sliced: {file_type:?}"
         )));
@@ -289,7 +207,9 @@ pub async fn slice_model_for_user(
     let work_dir = crate::export_service::get_temp_dir("slice");
     let out_dir = work_dir.join("slice_out");
 
-    let input_path = get_path_from_model(&work_dir, &model, app_state, false).await?;
+    // Lazy: zipped blobs are still extracted into `work_dir`; others are read in place from the
+    // model dir / disk path, which is safe because cleanup below only removes `work_dir`.
+    let input_path = get_path_from_model(&work_dir, &model, app_state, true).await?;
     let gcode_path =
         run_slicer_subprocess(&slicer, &work_dir, &input_path, &out_dir, settings).await?;
     let file_contents = tokio::fs::read(&gcode_path).await?;
@@ -308,7 +228,7 @@ mod tests {
     use db::db_context;
     use tempfile::tempdir;
 
-    use crate::configuration::Configuration;
+    use crate::{configuration::Configuration, util::convert_extension_to_zip};
 
     use super::*;
 
@@ -363,5 +283,42 @@ mod tests {
 
         let picked = find_gcode_in_output_dir(dir.path()).unwrap();
         assert_eq!(picked.file_name().unwrap(), "a.gcode");
+    }
+
+    #[tokio::test]
+    async fn persist_gcode_creates_zipped_model_and_dedupes_by_content() {
+        let (_dir, app_state) = app_state_with_db().await;
+        let user = User::default();
+        let gcode_bytes = b"G1 X0 Y0\nG1 X10 Y10\n".to_vec();
+
+        let first = persist_gcode_as_new_model(gcode_bytes.clone(), "Benchy", &app_state, &user)
+            .await
+            .unwrap();
+        let models =
+            model_db::get_models_via_ids(&app_state.db, &user, vec![first.output_model_id])
+                .await
+                .unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].name, "Benchy (slice)");
+        assert_eq!(models[0].blob.filetype, convert_extension_to_zip("gcode"));
+        assert_eq!(
+            model_db::get_model_count(&app_state.db, &user, None)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let second = persist_gcode_as_new_model(gcode_bytes, "Other", &app_state, &user)
+            .await
+            .unwrap();
+
+        assert_eq!(second.output_model_id, first.output_model_id);
+        assert_eq!(
+            model_db::get_model_count(&app_state.db, &user, None)
+                .await
+                .unwrap(),
+            1
+        );
     }
 }
