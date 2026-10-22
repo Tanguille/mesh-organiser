@@ -86,7 +86,8 @@ pub async fn download_files_and_open_in_folder(
         writer.close().await?;
     }
 
-    service::open_folder_in_explorer(&temp_dir);
+    tauri_plugin_opener::open_path(&temp_dir, None::<&str>)
+        .map_err(|error| ServiceError::InternalError(error.to_string()))?;
 
     Ok(())
 }
