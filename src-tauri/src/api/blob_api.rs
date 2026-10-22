@@ -6,13 +6,18 @@ use tauri::{State, ipc::Response};
 use db::blob_db;
 use service::export_service;
 
-use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
+use crate::{
+    error::ApplicationError, mobile_guard::require_local_desktop_app,
+    tauri_app_state::TauriAppState,
+};
 
 #[tauri::command]
 pub async fn get_blob_bytes(
     sha256: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
+    require_local_desktop_app()?;
+
     let Some(blob) = blob_db::get_blob_via_sha256(&state.app_state.db, sha256).await? else {
         return Err(ApplicationError::InternalError(String::from(
             "Failed to find blob",
@@ -36,6 +41,8 @@ pub async fn blobs_to_path(
     blob_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
 ) -> Result<Vec<BlobPath>, ApplicationError> {
+    require_local_desktop_app()?;
+
     let blobs = blob_db::get_blobs_via_ids(&state.app_state.db, blob_ids).await?;
     let paths = blobs
         .into_iter()
