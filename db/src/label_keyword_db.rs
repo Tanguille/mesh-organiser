@@ -2,9 +2,9 @@ use indexmap::IndexMap;
 use sqlx::QueryBuilder;
 
 use crate::{
-    DbError,
+    DbError, LABELS,
     db_context::DbContext,
-    ensure_labels_owned,
+    ensure_owned,
     label_db::set_last_updated_on_labels,
     model::{label_keyword::LabelKeyword, user::User},
     timestamp_or_now,
@@ -65,7 +65,7 @@ pub async fn set_keywords_for_label(
     keywords: Vec<String>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    ensure_labels_owned(db, user, &[label_id]).await?;
+    ensure_owned(db, &LABELS, &[label_id], user).await?;
 
     sqlx::query!(
         "DELETE FROM label_keywords WHERE keyword_label_id = ?",

@@ -3,9 +3,9 @@ use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError, LABELS,
+    DbError, LABELS, MODELS,
     db_context::DbContext,
-    ensure_labels_owned, ensure_models_owned,
+    ensure_owned,
     model::{
         label::{Label, LabelMeta},
         user::User,
@@ -192,8 +192,8 @@ pub async fn add_labels_on_models(
     model_ids: &[i64],
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    ensure_labels_owned(db, user, label_ids).await?;
-    ensure_models_owned(db, user, model_ids).await?;
+    ensure_owned(db, &LABELS, label_ids, user).await?;
+    ensure_owned(db, &MODELS, model_ids, user).await?;
 
     if !label_ids.is_empty() && !model_ids.is_empty() {
         let mut query_builder =
@@ -220,8 +220,8 @@ pub async fn remove_labels_from_models(
     model_ids: &[i64],
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    ensure_labels_owned(db, user, label_ids).await?;
-    ensure_models_owned(db, user, model_ids).await?;
+    ensure_owned(db, &LABELS, label_ids, user).await?;
+    ensure_owned(db, &MODELS, model_ids, user).await?;
 
     let mut query_builder = QueryBuilder::new("DELETE FROM models_labels WHERE label_id IN ");
     push_in(&mut query_builder, label_ids);
@@ -241,7 +241,7 @@ pub async fn set_labels_on_model(
 ) -> Result<(), DbError> {
     // Validate before the delete: the statements autocommit, so a foreign label rejected only by
     // `add_labels_on_models` would leave the model with no labels at all.
-    ensure_labels_owned(db, user, label_ids).await?;
+    ensure_owned(db, &LABELS, label_ids, user).await?;
     remove_all_labels_from_models(db, user, &[model_id], None).await?;
 
     add_labels_on_models(db, user, label_ids, &[model_id], None).await
@@ -367,8 +367,8 @@ pub async fn set_childs_on_label(
 ) -> Result<(), DbError> {
     // Sequential on purpose: SQLite serializes on the connection anyway, and this
     // keeps the db crate free of a direct tokio dependency.
-    ensure_labels_owned(db, user, &[parent_label_id]).await?;
-    ensure_labels_owned(db, user, child_label_ids).await?;
+    ensure_owned(db, &LABELS, &[parent_label_id], user).await?;
+    ensure_owned(db, &LABELS, child_label_ids, user).await?;
 
     let mut transaction = db.begin().await?;
     sqlx::query!(

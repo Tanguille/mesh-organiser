@@ -50,18 +50,6 @@ const fn validate_id_list(field: &'static str, ids: &[i64]) -> Result<(), QueryB
     Ok(())
 }
 
-fn validate_three_id_lists(
-    model_ids: &[i64],
-    group_ids: &[i64],
-    label_ids: &[i64],
-) -> Result<(), QueryBoundsError> {
-    validate_id_list("model_ids", model_ids)?;
-    validate_id_list("group_ids", group_ids)?;
-    validate_id_list("label_ids", label_ids)?;
-
-    Ok(())
-}
-
 /// Shared query fields for paginated model/group list endpoints.
 #[derive(Clone, Copy)]
 pub struct PaginatedListQueryBounds<'a> {
@@ -80,12 +68,15 @@ pub fn validate_list_query_bounds(
     query_bounds: PaginatedListQueryBounds<'_>,
     model_ids_str: Option<&str>,
 ) -> Result<(), QueryBoundsError> {
-    validate_three_id_lists(
-        query_bounds.model_ids,
-        query_bounds.group_ids,
-        query_bounds.label_ids,
+    validate_id_list("model_ids", query_bounds.model_ids)?;
+    validate_id_list("group_ids", query_bounds.group_ids)?;
+    validate_id_list("label_ids", query_bounds.label_ids)?;
+    validate_optional_str(
+        query_bounds.text_search,
+        "text_search",
+        MAX_QUERY_TEXT_BYTES,
     )?;
-    validate_list_query_strings(query_bounds.text_search, query_bounds.order_by)?;
+    validate_optional_str(query_bounds.order_by, "order_by", MAX_ORDER_BY_BYTES)?;
     validate_optional_str(model_ids_str, "model_ids_str", MAX_MODEL_IDS_STR_BYTES)?;
     validate_pagination(query_bounds.page, query_bounds.page_size)?;
 
@@ -153,16 +144,6 @@ pub fn optional_comma_separated_model_ids(
     })
 }
 
-fn validate_list_query_strings(
-    text_search: Option<&str>,
-    order_by: Option<&str>,
-) -> Result<(), QueryBoundsError> {
-    validate_optional_str(text_search, "text_search", MAX_QUERY_TEXT_BYTES)?;
-    validate_optional_str(order_by, "order_by", MAX_ORDER_BY_BYTES)?;
-
-    Ok(())
-}
-
 /// Parses an `order_by` value whose length every caller has already bounded through
 /// [`validate_list_query_bounds`]; unknown values fall back to `default`.
 #[must_use]
@@ -222,12 +203,6 @@ mod tests {
     fn validate_optional_str_rejects_long() {
         let s = "a".repeat(MAX_QUERY_TEXT_BYTES + 1);
         assert!(validate_optional_str(Some(&s), "text_search", MAX_QUERY_TEXT_BYTES).is_err());
-    }
-
-    #[test]
-    fn validate_three_id_lists_and_strings_ok_for_empty() {
-        assert!(validate_three_id_lists(&[], &[], &[]).is_ok());
-        assert!(validate_list_query_strings(None, None).is_ok());
     }
 
     #[test]

@@ -134,19 +134,7 @@ async fn import_path_inner(
     } else if is_zip_path(&path_buff) {
         import_models_from_zip(path, app_state, import_state, name).await?;
     } else if is_supported_extension(&path_buff) {
-        let (user, origin_url, delete_after_import, import_as_path) =
-            import_options(&*import_state.lock().await);
-
-        import_models_from_dir_inner(
-            app_state,
-            path_buff,
-            Arc::clone(&import_state),
-            &user,
-            origin_url.as_deref(),
-            delete_after_import,
-            import_as_path,
-        )
-        .await?;
+        import_models_from_dir_inner(app_state, path_buff, import_state).await?;
     } else {
         return Err(ServiceError::InternalError(String::from(
             "Unsupported file type",
@@ -238,17 +226,6 @@ pub async fn add_labels_by_keywords(
     }
 }
 
-/// Snapshots the per-file import settings so the import tasks need not hold the lock:
-/// `(user, origin_url, delete_after_import, import_as_path)`.
-fn import_options(import_state: &ImportState) -> (User, Option<String>, bool, bool) {
-    (
-        import_state.user.clone(),
-        import_state.origin_url.clone(),
-        import_state.delete_after_import,
-        import_state.import_as_path,
-    )
-}
-
 async fn import_models_from_dir_recursive(
     path: &Path,
     app_state: &AppState,
@@ -284,19 +261,26 @@ async fn import_models_from_dir_recursive(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn import_models_from_dir_inner(
     app_state: &AppState,
     path: PathBuf,
     import_state_mutex: Arc<Mutex<ImportState>>,
-    user: &User,
-    link: Option<&str>,
-    delete_after_import: bool,
-    import_as_path: bool,
 ) -> Result<(), ServiceError> {
     if !is_supported_extension(&path) {
         return Err(ServiceError::InternalError("Unsupported filetype".into()));
     }
+
+    // Snapshot the settings so the lock is not held across the import; they are fixed once the
+    // import starts, so reading them per file is equivalent to reading them once.
+    let (user, link, delete_after_import, import_as_path) = {
+        let import_state = import_state_mutex.lock().await;
+        (
+            import_state.user.clone(),
+            import_state.origin_url.clone(),
+            import_state.delete_after_import,
+            import_state.import_as_path,
+        )
+    };
 
     let file_name = util::prettify_file_name(&path, false);
     // Extension unwraps are guarded by the is_supported_extension check above;
@@ -312,9 +296,9 @@ async fn import_models_from_dir_inner(
         extension,
         file_size,
         &file_name,
-        link,
+        link.as_deref(),
         app_state,
-        user,
+        &user,
         permanent_disk_path,
     )
     .await?;
@@ -338,11 +322,10 @@ async fn import_models_from_dir(
     group_name: String,
 ) -> Result<(), ServiceError> {
     let configuration = app_state.get_configuration();
-    let mut locked_import_state = import_state.lock().await;
-    locked_import_state.add_new_import_set(Some(group_name));
-    let (user, origin_url, delete_after_import, import_as_path) =
-        import_options(&locked_import_state);
-    drop(locked_import_state);
+    import_state
+        .lock()
+        .await
+        .add_new_import_set(Some(group_name));
 
     let entries: Vec<PathBuf> = read_dir(path)?
         .map(|f| f.unwrap().path())
@@ -355,21 +338,8 @@ async fn import_models_from_dir(
     let _ = util::run_bounded(entries, max, |entry| {
         let app_state = app_state.clone();
         let import_state_mutex = Arc::clone(&import_state);
-        let user = user.clone();
-        let origin_url = origin_url.clone();
 
-        async move {
-            import_models_from_dir_inner(
-                &app_state,
-                entry,
-                import_state_mutex,
-                &user,
-                origin_url.as_deref(),
-                delete_after_import,
-                import_as_path,
-            )
-            .await
-        }
+        async move { import_models_from_dir_inner(&app_state, entry, import_state_mutex).await }
     })
     .await;
 
