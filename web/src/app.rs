@@ -14,6 +14,7 @@ use axum::{
     http::HeaderValue,
     middleware::{self, Next},
     response::Response,
+    Router,
 };
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
@@ -69,7 +70,7 @@ const DEFAULT_CORS_ORIGINS: &[&str] = &["http://localhost:3000", "http://localho
 /// returns an error so startup fails clearly.
 fn merge_cors_origins_from_env(
     env_value: Option<&str>,
-) -> Result<Vec<HeaderValue>, Box<dyn std::error::Error>> {
+) -> Result<Vec<HeaderValue>, Box<dyn Error>> {
     let mut origins: Vec<HeaderValue> = DEFAULT_CORS_ORIGINS
         .iter()
         .map(|s| {
@@ -121,7 +122,7 @@ fn merge_cors_origins_from_env(
     Ok(origins)
 }
 
-fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn std::error::Error>> {
+fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn Error>> {
     let extra = env::var("MESH_ORGANISER_CORS_ORIGINS").ok();
     let origins = merge_cors_origins_from_env(extra.as_deref())?;
     Ok(CorsLayer::new()
@@ -183,7 +184,7 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
         configuration.data_path = default_data_dir
             .to_str()
             .ok_or_else(|| {
-                io::Error::new(ErrorKind::InvalidData, "config path is not valid UTF-8")
+                io::Error::new(ErrorKind::InvalidData, "data_path is not valid UTF-8")
             })?
             .to_string();
     }
