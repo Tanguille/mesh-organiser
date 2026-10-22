@@ -82,6 +82,7 @@ pub fn convert_extension_to_zip(extension: &str) -> String {
         "stl" => "stl.zip",
         "obj" => "obj.zip",
         "step" => "step.zip",
+        "stp" => "stp.zip",
         "gcode" => "gcode.zip",
         _ => &lowercase,
     })
@@ -95,6 +96,7 @@ pub fn convert_zip_to_extension(extension: &str) -> String {
         "stl.zip" => "stl",
         "obj.zip" => "obj",
         "step.zip" => "step",
+        "stp.zip" => "stp",
         "gcode.zip" => "gcode",
         _ => &lowercase,
     })
@@ -389,6 +391,22 @@ mod tests {
         assert_eq!(convert_zip_to_extension("obj.zip"), "obj");
         assert_eq!(convert_zip_to_extension("step.zip"), "step");
         assert_eq!(convert_zip_to_extension("gcode.zip"), "gcode");
+    }
+
+    /// Import zips exactly the types `FileType::is_zippable` names and stores them under
+    /// `convert_extension_to_zip`; readers unzip whatever `is_zipped` names. Both maps must agree,
+    /// or a blob is stored zipped but served raw.
+    #[test]
+    fn every_zippable_extension_is_stored_as_a_zipped_type() {
+        for extension in ["stl", "obj", "step", "stp", "gcode", "STP"] {
+            assert!(db::model::blob::FileType::from_extension(extension).is_zippable());
+            let stored = convert_extension_to_zip(extension);
+            assert!(
+                db::model::blob::FileType::from_extension(&stored).is_zipped(),
+                "{extension} is stored as {stored}, which readers do not unzip"
+            );
+            assert_eq!(convert_zip_to_extension(&stored), extension.to_lowercase());
+        }
     }
 
     #[test]
