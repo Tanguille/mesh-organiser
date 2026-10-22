@@ -21,7 +21,7 @@ import { configuration } from "#lib/configuration.svelte";
 import { open } from "@tauri-apps/plugin-dialog";
 import { accountLinkData } from "#lib/account_link_data.svelte";
 import { BaseDirectory, watch, type WatchEvent } from "@tauri-apps/plugin-fs";
-import { MODEL_EXTENSIONS } from "../shared/blob_api";
+import { IMPORT_EXTENSIONS, MODEL_EXTENSIONS } from "../shared/blob_api";
 
 interface DeepLinkEmit {
   download_url: string;
@@ -391,7 +391,7 @@ export class TauriImportApi implements ITauriImportApi {
       filters = [
         {
           name: "3D Models",
-          extensions: [...MODEL_EXTENSIONS, "zip"],
+          extensions: IMPORT_EXTENSIONS,
         },
       ];
     }

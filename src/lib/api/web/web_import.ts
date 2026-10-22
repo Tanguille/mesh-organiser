@@ -1,7 +1,7 @@
 import { importState, resetImportState } from "#lib/import.svelte";
 import { updateSidebarState } from "#lib/sidebar_data.svelte";
 import { runWithLimit } from "#lib/utils";
-import { MODEL_EXTENSIONS } from "../shared/blob_api";
+import { IMPORT_EXTENSIONS } from "../shared/blob_api";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -52,9 +52,9 @@ export class WebImportApi implements IWebImportApi {
   async openFilesForImporting(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = [...MODEL_EXTENSIONS, "zip"]
-      .map((extension) => "." + extension)
-      .join(",");
+    input.accept = IMPORT_EXTENSIONS.map((extension) => "." + extension).join(
+      ",",
+    );
     input.multiple = true;
     input.click();
 
