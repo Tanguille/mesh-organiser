@@ -1,19 +1,19 @@
 <script lang="ts">
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { HttpMethod } from "$lib/api/shared/server_request_api";
-  import { ServerRequestApi } from "$lib/api/web/request";
-  import { normalizeServerBaseUrl } from "$lib/api/mobile/server_url";
-  import { setServerUrl } from "$lib/api/tauri/server_url";
+  import { HttpMethod } from "#lib/api/shared/server_request_api";
+  import { ServerRequestApi } from "#lib/api/web/request";
+  import { normalizeServerBaseUrl } from "#lib/api/mobile/server_url";
+  import { setServerUrl } from "#lib/api/tauri/server_url";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { toast } from "svelte-sonner";
-  import Spinner from "$lib/components/view/spinner.svelte";
+  import Spinner from "#lib/components/view/spinner.svelte";
 
   type Gate = "loading" | "web" | "desktop" | "mobile";
   let gate = $state<Gate>("loading");

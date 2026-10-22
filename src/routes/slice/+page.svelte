@@ -2,18 +2,19 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { invoke, isTauri } from "@tauri-apps/api/core";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
+    defaultModelFilter,
     IModelApi,
     ModelOrderBy,
     type Model,
-  } from "$lib/api/shared/model_api";
-  import { ISlicerApi, type SlicingSettings } from "$lib/api/shared/slicer_api";
-  import { toReadableSize } from "$lib/utils";
-  import Spinner from "$lib/components/view/spinner.svelte";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  } from "#lib/api/shared/model_api";
+  import { ISlicerApi, type SlicingSettings } from "#lib/api/shared/slicer_api";
+  import { toReadableSize } from "#lib/utils";
+  import Spinner from "#lib/components/view/spinner.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
@@ -60,14 +61,9 @@
       error = null;
       const modelApi = getContainer().require<IModelApi>(IModelApi);
       models = await modelApi.getModels(
-        null,
-        null,
-        null,
-        ModelOrderBy.AddedDesc,
-        null,
+        defaultModelFilter({ orderBy: ModelOrderBy.AddedDesc }),
         1,
         100,
-        null,
       );
       loading = false;
     } catch (err) {

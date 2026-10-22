@@ -2,6 +2,7 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { toast } from "svelte-sonner";
 
   import { getContainer } from "#lib/api/dependency_injection";
   import { ILocalApi } from "#lib/api/shared/local_api";
