@@ -11,6 +11,9 @@ export const MODEL_EXTENSIONS = Object.values(FileType).map((fileType) =>
   fileTypeToPlainFileExtension(fileType).slice(1),
 );
 
+// Everything the file pickers offer when importing: model files plus zip archives.
+export const IMPORT_EXTENSIONS = [...MODEL_EXTENSIONS, "zip"];
+
 /**
  * Normalizes a file-type selection for backend filters.
  *
