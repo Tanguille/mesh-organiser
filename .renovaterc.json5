@@ -2,6 +2,9 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: [
     "abandonments:recommended",
+    // pnpm rejects npm releases younger than its minimumReleaseAge (1 day) in CI's
+    // `pnpm install --frozen-lockfile`; this holds npm PRs 3 days (patches: 1, below).
+    "security:minimumReleaseAgeNpm",
     // Pin every github> preset to the same tag; an unpinned one tracks main.
     "github>home-operations/renovate-presets#10.0.0",
   ],

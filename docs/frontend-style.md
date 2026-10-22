@@ -30,7 +30,7 @@ type FileType = "stl" | "obj" | "3mf" | "step" | "gcode";
 
 - Use runes (`$state`, `$derived`, `$effect`) for reactive state
 - Prefer `.svelte` files for components, `.ts` files for logic
-- Indentation: 2 spaces (same as TypeScript/JS; matches Svelte/Prettier convention)
+- Indentation: 2 spaces (same as TypeScript/JS; matches the Svelte/oxfmt convention)
 
 ```svelte
 <script lang="ts">

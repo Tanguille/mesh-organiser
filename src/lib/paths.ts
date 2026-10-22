@@ -4,11 +4,11 @@ import { page } from "$app/state";
 
 /**
  * Resolve a route path to an absolute path. Use this instead of $app/paths resolve
- * so that both static and dynamic paths type-check and satisfy svelte/no-navigation-without-resolve.
+ * so that both static and dynamic paths type-check.
  */
 export function resolve(path: string): string {
-  // SvelteKit's resolve() only accepts typed route literals; dynamic paths need a cast
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic route path
+  // SvelteKit's resolve() only accepts its typed Pathname union; callers pass plain strings
+  // oxlint-disable-next-line typescript/no-explicit-any
   return kitResolve(path as any);
 }
 

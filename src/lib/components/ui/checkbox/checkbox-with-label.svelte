@@ -4,7 +4,7 @@
 
   let {
     value = $bindable(),
-    label: label,
+    label,
     class: className = "",
     onchange = () => {},
     disabled = false,
