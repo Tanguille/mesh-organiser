@@ -80,7 +80,10 @@ pub async fn open_resource_folder(
         );
     };
 
-    resource_service::open_resource_folder(&resource, &user, &state.app_state)?;
+    let resource_path =
+        resource_service::ensure_resource_folder(&resource, &user, &state.app_state)?;
+    service::open_folder_in_explorer(&resource_path);
+
     Ok(())
 }
 

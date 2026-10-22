@@ -1,20 +1,21 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use db::{
     model::{resource::ResourceMeta, user::User},
     resource_db,
 };
 
-use crate::{service_error::ServiceError, util::open_folder_in_explorer};
+use crate::service_error::ServiceError;
 
 use super::app_state::AppState;
 
-/// Opens the resource folder in the system file explorer.
-pub fn open_resource_folder(
+/// Returns the user's folder for `resource`, creating it (or migrating the old `<id>` folder)
+/// when missing. Opening it is left to the caller, so tests never launch a file manager.
+pub fn ensure_resource_folder(
     resource: &ResourceMeta,
     user: &User,
     app_state: &AppState,
-) -> Result<(), ServiceError> {
+) -> Result<PathBuf, ServiceError> {
     let path = app_state.get_resources_dir();
     let resource_path = path.join(format!("{}_{}", resource.id, user.id));
 
@@ -27,9 +28,7 @@ pub fn open_resource_folder(
         }
     }
 
-    open_folder_in_explorer(&resource_path);
-
-    Ok(())
+    Ok(resource_path)
 }
 
 /// Deletes the resource folder for the user.
