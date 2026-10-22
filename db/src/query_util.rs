@@ -109,11 +109,3 @@ pub async fn ensure_owned(
 
     Ok(())
 }
-
-pub async fn ensure_labels_owned(db: &DbContext, user: &User, ids: &[i64]) -> Result<(), DbError> {
-    ensure_owned(db, &LABELS, ids, user).await
-}
-
-pub async fn ensure_models_owned(db: &DbContext, user: &User, ids: &[i64]) -> Result<(), DbError> {
-    ensure_owned(db, &MODELS, ids, user).await
-}
