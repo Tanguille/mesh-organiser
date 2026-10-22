@@ -30,7 +30,7 @@ import {
   configuration,
   currentUser as globalCurrentUser,
   panicState,
-} from "$lib/configuration.svelte";
+} from "#lib/configuration.svelte";
 import { IBlobApi } from "../shared/blob_api";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";
 import { IGroupApi } from "../shared/group_api";

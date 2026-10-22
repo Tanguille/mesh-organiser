@@ -10,11 +10,11 @@ use std::{
 };
 
 use axum::{
+    Router,
     extract::{DefaultBodyLimit, Request},
     http::HeaderValue,
     middleware::{self, Next},
     response::Response,
-    Router,
 };
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
@@ -51,10 +51,6 @@ const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
 pub struct App {
     state: AppState,
     session_store: SqliteStore,
-}
-
-fn expected_env_error_msg(var_name: &str) -> String {
-    format!("Expected environment variable {var_name} to be set")
 }
 
 /// Origins always allowed for local dev; [`merge_cors_origins_from_env`] may add more.
@@ -395,19 +391,7 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
 
 #[cfg(test)]
 mod tests {
-    use super::{expected_env_error_msg, merge_cors_origins_from_env};
-
-    #[test]
-    fn expected_env_error_msg_format() {
-        assert_eq!(
-            expected_env_error_msg("FOO"),
-            "Expected environment variable FOO to be set"
-        );
-        assert_eq!(
-            expected_env_error_msg("APP_CONFIG_PATH"),
-            "Expected environment variable APP_CONFIG_PATH to be set"
-        );
-    }
+    use super::merge_cors_origins_from_env;
 
     #[test]
     fn cors_merge_none_is_defaults_only() {

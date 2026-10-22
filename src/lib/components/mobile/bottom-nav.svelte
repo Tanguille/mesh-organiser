@@ -1,7 +1,5 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import type { IconProps } from "@lucide/svelte";
-  import type { Component } from "svelte";
   import Home from "@lucide/svelte/icons/home";
   import List from "@lucide/svelte/icons/list";
   import Printer from "@lucide/svelte/icons/printer";
@@ -9,9 +7,7 @@
 
   type Tab = "library" | "import" | "slice" | "print";
 
-  type TabIcon = Component<IconProps, Record<string, unknown>, "">;
-
-  const tabs: { id: Tab; label: string; href: string; icon: TabIcon }[] = [
+  const tabs: { id: Tab; label: string; href: string; icon: typeof Home }[] = [
     { id: "library", label: "Library", href: "/", icon: Home },
     { id: "import", label: "Import", href: "/import", icon: Upload },
     { id: "slice", label: "Slice", href: "/slice", icon: Printer },

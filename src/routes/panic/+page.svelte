@@ -1,7 +1,7 @@
 <script lang="ts">
   import { panicState } from "#lib/configuration.svelte";
   import Bomb from "@lucide/svelte/icons/bomb";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
 
   const showServerSetup = $derived.by(() => {
     const m = panicState.message.toLowerCase();

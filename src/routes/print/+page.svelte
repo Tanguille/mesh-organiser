@@ -1,15 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { getContainer } from "$lib/api/dependency_injection";
+  import { getContainer } from "#lib/api/dependency_injection";
   import {
+    defaultModelFilter,
     IModelApi,
     ModelStreamManager,
     type Model,
-  } from "$lib/api/shared/model_api";
-  import { toReadableSize } from "$lib/utils";
-  import Spinner from "$lib/components/view/spinner.svelte";
-  import Button from "$lib/components/ui/button/button.svelte";
+  } from "#lib/api/shared/model_api";
+  import { toReadableSize } from "#lib/utils";
+  import Spinner from "#lib/components/view/spinner.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
 
@@ -22,10 +23,10 @@
       loading = true;
       error = null;
       const modelApi = getContainer().require<IModelApi>(IModelApi);
-      const stream = new ModelStreamManager(modelApi, null, null, null, {
-        printed: true,
-        favorite: false,
-      });
+      const stream = new ModelStreamManager(
+        modelApi,
+        defaultModelFilter({ flags: { printed: true, favorite: false } }),
+      );
       printedModels = await stream.fetch();
       loading = false;
     } catch (err) {
