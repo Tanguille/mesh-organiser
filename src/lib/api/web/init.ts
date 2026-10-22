@@ -80,7 +80,7 @@ export async function initWebApi(
   }
 
   Object.assign(globalCurrentUser, currentUser);
-  const blob = new WebBlobApi(request, currentUser);
+  const blob = new WebBlobApi(request, currentUser, baseUrl);
   const diskUsageInfo = new WebDiskUsageInfoApi(request);
   const group = new WebGroupApi(request);
   const host = new WebHostApi();

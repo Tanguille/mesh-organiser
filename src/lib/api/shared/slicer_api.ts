@@ -8,13 +8,6 @@ export interface SlicerEntry {
   installed: boolean;
 }
 
-export interface SlicingSettings {
-  layerHeight: number; // 0.1, 0.2, 0.3
-  infill: number; // 0-100
-  supports: "none" | "everywhere" | "touching buildplate";
-  material: string; // PLA, PETG, ABS, etc.
-}
-
 /** Response from `POST /api/v1/slicer/slice` (remote / web server). */
 export interface SliceServerResponse {
   success: boolean;
@@ -28,10 +21,7 @@ export const ISlicerApi = Symbol("ISlicerApi");
 export interface ISlicerApi {
   openInSlicer(models: Model[]): Promise<void>;
   availableSlicers(): Promise<SlicerEntry[]>;
-  sliceOnServer?(
-    modelId: number,
-    settings: SlicingSettings,
-  ): Promise<SliceServerResponse>;
+  sliceOnServer?(modelId: number): Promise<SliceServerResponse>;
 }
 
 function slicerNameToDeepLink(slicerName: string): string | null {
