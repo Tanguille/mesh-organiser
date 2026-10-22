@@ -53,10 +53,10 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@3e533ba6a3d463619f5a55e94e0b2a8e2d6f8d0a # v3.3.0
+        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
 
       - name: Login to Container Registry
-        uses: docker/login-action@4c7f4a84d1a4d3d4a5d7e5f7d7a8f9c0d1e2f3a4b # v3.2.0
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ github.actor }}
@@ -74,7 +74,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@4a13e500e55cf30b5371520fe84a5f054b5de8c6 # v6.10.0
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
         with:
           context: .
           file: ./Dockerfile
@@ -152,7 +152,7 @@ jobs:
 
       - name: Upload APK as artifact
         if: steps.release-settings.outputs.upload_workflow_artifacts == 'true'
-        uses: actions/upload-artifact@4a13e500e55cf30b5371520fe84a5f054b5de8c6 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mesh-organiser-android-arm64
           path: src-tauri/target/aarch64-linux-android/release/bundle/apk/*.apk
