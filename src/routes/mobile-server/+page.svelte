@@ -11,7 +11,6 @@
     normalizeServerBaseUrl,
   } from "#lib/api/mobile/server_url";
   import { setServerUrl } from "#lib/api/tauri/server_url";
-  import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { toast } from "svelte-sonner";
 
@@ -59,8 +58,8 @@
     try {
       const normalized = normalizeServerBaseUrl(serverUrl);
       await setServerUrl(normalized);
-      await goto(resolve("/"));
-      location.reload();
+      // Full load at the root so the layout re-runs API init with the new URL.
+      location.href = resolve("/");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Could not save server URL.", { description: msg });

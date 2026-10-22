@@ -8,7 +8,7 @@ use axum_login::login_required;
 use serde::{Deserialize, Serialize};
 
 use service::AppState;
-use service::slice_service::{SliceOrchestrationSettings, slice_model_for_user};
+use service::slice_service::slice_model_for_user;
 
 use crate::{
     error::ApplicationError,
@@ -25,30 +25,12 @@ pub fn router() -> Router<WebAppState> {
 }
 
 /// JSON body for `POST /api/v1/slicer/slice`. Accepts `snake_case` (Rust) and common camelCase
-/// aliases for mobile contract alignment.
+/// aliases for mobile contract alignment. Unknown fields (e.g. a `settings` object from older
+/// clients) are ignored; the slicer's own defaults apply until a CLI mapping exists.
 #[derive(Debug, Deserialize)]
 pub struct SliceRequestBody {
     #[serde(alias = "modelId")]
     pub model_id: i64,
-    #[serde(default)]
-    pub settings: SliceSettingsDto,
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub struct SliceSettingsDto {
-    #[serde(default, alias = "layerHeight")]
-    pub layer_height_mm: Option<f64>,
-    #[serde(default, alias = "infill")]
-    pub infill_percent: Option<u8>,
-}
-
-impl From<SliceSettingsDto> for SliceOrchestrationSettings {
-    fn from(d: SliceSettingsDto) -> Self {
-        Self {
-            layer_height_mm: d.layer_height_mm,
-            infill_percent: d.infill_percent,
-        }
-    }
 }
 
 /// Success payload for slice orchestration. JSON uses camelCase per `docs/api/v1-mobile-remote.md`.
@@ -66,9 +48,7 @@ async fn post_slice(
     State(state): State<AppState>,
     Json(body): Json<SliceRequestBody>,
 ) -> Result<Response, ApplicationError> {
-    let settings = SliceOrchestrationSettings::from(body.settings);
-    let result =
-        slice_model_for_user(&web_state.app_state, &user, body.model_id, &settings).await?;
+    let result = slice_model_for_user(&state, &user, body.model_id).await?;
 
     Ok(Json(SliceResponseJson {
         success: true,

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use db::{blob_db, model::user::User, model_db};
 use service::{
     AppState, Configuration,
-    slice_service::{ORCA_SLICER_EXECUTABLE_ENV, SliceOrchestrationSettings, slice_model_for_user},
+    slice_service::{ORCA_SLICER_EXECUTABLE_ENV, slice_model_for_user},
 };
 use tempfile::tempdir;
 
@@ -55,63 +55,48 @@ async fn app_state_with_stl_model() -> (tempfile::TempDir, AppState, i64) {
     (dir, app_state, model_id)
 }
 
+// Both cases mutate the process-wide slicer env var, so they live in one test: separate tests run
+// on parallel threads and would race on it.
 #[tokio::test]
-async fn slice_errors_when_slicer_env_unset() {
+async fn slice_errors_when_slicer_unset_or_missing() {
     let prior = std::env::var(ORCA_SLICER_EXECUTABLE_ENV).ok();
-
-    // SAFETY: This is test code running in single-threaded context
-    unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) };
-
     let (_dir, app_state, model_id) = app_state_with_stl_model().await;
     let user = User::default();
-    let settings = SliceOrchestrationSettings::default();
 
-    let err = slice_model_for_user(&app_state, &user, model_id, &settings)
+    // SAFETY: no other test in this binary touches this env var.
+    unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) };
+
+    let unset_message = slice_model_for_user(&app_state, &user, model_id)
         .await
-        .expect_err("missing slicer env should error");
-
-    let msg = err.to_string();
+        .expect_err("missing slicer env should error")
+        .to_string();
     assert!(
-        msg.contains("Slicer not configured")
-            || msg.contains(ORCA_SLICER_EXECUTABLE_ENV)
-            || msg.contains("Internal error"),
-        "unexpected message: {msg}"
+        unset_message.contains("Slicer not configured")
+            || unset_message.contains(ORCA_SLICER_EXECUTABLE_ENV)
+            || unset_message.contains("Internal error"),
+        "unexpected message: {unset_message}"
     );
-
-    match prior {
-        // SAFETY: This is test code running in single-threaded context
-        Some(value) => unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, value) },
-        None => unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) },
-    }
-}
-
-#[tokio::test]
-async fn slice_errors_when_slicer_path_missing() {
-    let prior = std::env::var(ORCA_SLICER_EXECUTABLE_ENV).ok();
 
     let ghost = tempdir()
         .unwrap()
         .path()
         .join("nonexistent_orca_binary.exe");
-    // SAFETY: This is test code running in single-threaded context
+    // SAFETY: no other test in this binary touches this env var.
     unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, ghost.as_os_str()) };
 
-    let (_dir, app_state, model_id) = app_state_with_stl_model().await;
-    let user = User::default();
-    let settings = SliceOrchestrationSettings::default();
-
-    let err = slice_model_for_user(&app_state, &user, model_id, &settings)
+    let missing_message = slice_model_for_user(&app_state, &user, model_id)
         .await
-        .expect_err("missing executable should error");
-
-    let msg = err.to_string();
+        .expect_err("missing executable should error")
+        .to_string();
     assert!(
-        msg.contains("not found") || msg.contains("executable") || msg.contains("Internal error"),
-        "unexpected message: {msg}"
+        missing_message.contains("not found")
+            || missing_message.contains("executable")
+            || missing_message.contains("Internal error"),
+        "unexpected message: {missing_message}"
     );
 
     match prior {
-        // SAFETY: This is test code running in single-threaded context
+        // SAFETY: no other test in this binary touches this env var.
         Some(value) => unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, value) },
         None => unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) },
     }

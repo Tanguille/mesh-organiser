@@ -9,18 +9,15 @@
     ModelOrderBy,
     type Model,
   } from "#lib/api/shared/model_api";
-  import { ISlicerApi, type SlicingSettings } from "#lib/api/shared/slicer_api";
+  import { ISlicerApi } from "#lib/api/shared/slicer_api";
   import { toReadableSize } from "#lib/utils";
   import Spinner from "#lib/components/view/spinner.svelte";
   import Button from "#lib/components/ui/button/button.svelte";
   import { Label } from "#lib/components/ui/label/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import { toast } from "svelte-sonner";
-
-  const MATERIALS = ["PLA", "PETG", "ABS", "TPU", "ASA"] as const;
 
   let models: Model[] = $state([]);
   let loading = $state(true);
@@ -30,12 +27,6 @@
   const canSliceOnServer = typeof slicerApi?.sliceOnServer === "function";
 
   let selectedModelId = $state<number | null>(null);
-  let settings = $state<SlicingSettings>({
-    layerHeight: 0.2,
-    infill: 20,
-    supports: "none",
-    material: "PLA",
-  });
   let slicing = $state(false);
 
   async function loadModels() {
@@ -82,16 +73,9 @@
       return;
     }
 
-    const payload: SlicingSettings = {
-      layerHeight: Number(settings.layerHeight),
-      infill: Number(settings.infill),
-      supports: settings.supports,
-      material: settings.material,
-    };
-
     slicing = true;
     try {
-      const res = await slicerApi.sliceOnServer(selectedModelId, payload);
+      const res = await slicerApi.sliceOnServer(selectedModelId);
       if (res.success) {
         toast.success("Slice finished on server.", {
           description:
@@ -125,8 +109,8 @@
 
   {#if canSliceOnServer}
     <p class="text-sm text-muted-foreground">
-      G-code is generated on your Mesh Organiser server. Pick a model, adjust
-      settings, then slice.
+      G-code is generated on your Mesh Organiser server. Pick a model, then
+      slice.
     </p>
   {:else}
     <p class="text-sm text-muted-foreground">
@@ -185,55 +169,6 @@
               </div>
             </button>
           {/each}
-        </div>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div class="space-y-2">
-          <Label for="layer-height">Layer height (mm)</Label>
-          <select
-            id="layer-height"
-            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-            bind:value={settings.layerHeight}
-          >
-            <option value={0.1}>0.1</option>
-            <option value={0.2}>0.2</option>
-            <option value={0.3}>0.3</option>
-          </select>
-        </div>
-        <div class="space-y-2">
-          <Label for="infill">Infill (%)</Label>
-          <Input
-            id="infill"
-            type="number"
-            min="0"
-            max="100"
-            bind:value={settings.infill}
-          />
-        </div>
-        <div class="space-y-2">
-          <Label for="supports">Supports</Label>
-          <select
-            id="supports"
-            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-            bind:value={settings.supports}
-          >
-            <option value="none">None</option>
-            <option value="everywhere">Everywhere</option>
-            <option value="touching buildplate">Touching build plate</option>
-          </select>
-        </div>
-        <div class="space-y-2">
-          <Label for="material">Material</Label>
-          <select
-            id="material"
-            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-            bind:value={settings.material}
-          >
-            {#each MATERIALS as mat (mat)}
-              <option value={mat}>{mat}</option>
-            {/each}
-          </select>
         </div>
       </div>
 

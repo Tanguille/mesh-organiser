@@ -15,8 +15,8 @@
 //!
 //! Exact flags and optional `--load-settings` / `--datadir` behaviour are **product-dependent**; see
 //! [OrcaSlicer CLI discussions](https://github.com/SoftFever/OrcaSlicer/discussions) and run
-//! `{binary} --help` on your install. [`SliceOrchestrationSettings`] fields are reserved for mapping
-//! to CLI arguments once confirmed on real installs.
+//! `{binary} --help` on your install. Per-request settings (layer height, infill, ...) are not
+//! accepted until a CLI mapping is verified on real installs; the slicer's own defaults apply.
 
 use std::{
     path::{Path, PathBuf},
@@ -41,26 +41,10 @@ pub const ORCA_SLICER_EXECUTABLE_ENV: &str = "MESH_ORGANISER_ORCA_PATH";
 /// Subprocess wall-clock limit (large models can be slow).
 const SLICE_TIMEOUT: Duration = Duration::from_secs(600);
 
-/// Basic slicing options for HTTP / JSON (Orca CLI mapping is partial in v1).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct SliceOrchestrationSettings {
-    /// Layer height in millimetres (CLI mapping **TBD**).
-    pub layer_height_mm: Option<f64>,
-    /// Infill percentage 0–100 (CLI mapping **TBD**).
-    pub infill_percent: Option<u8>,
-}
-
 /// Result of a successful slice: new model row pointing at stored g-code blob.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SliceOrchestrationResult {
     pub output_model_id: i64,
-}
-
-const fn apply_slice_settings_to_command(
-    _cmd: &mut Command,
-    _settings: &SliceOrchestrationSettings,
-) {
-    // TBD: map `layer_height_mm`, `infill_percent`, etc. to verified Orca/Prusa CLI flags.
 }
 
 /// Resolves the slicer binary from [`ORCA_SLICER_EXECUTABLE_ENV`].
@@ -88,22 +72,25 @@ fn resolve_slicer_executable_path() -> Result<PathBuf, ServiceError> {
     Ok(path)
 }
 
-fn find_gcode_in_output_dir(dir: &Path) -> Result<PathBuf, ServiceError> {
+async fn find_gcode_in_output_dir(dir: &Path) -> Result<PathBuf, ServiceError> {
     // Lowest path wins so the pick is deterministic when the slicer emits several plates.
-    std::fs::read_dir(dir)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension().is_some_and(|extension| {
-                extension.eq_ignore_ascii_case("gcode") || extension.eq_ignore_ascii_case("g")
-            })
-        })
-        .min()
-        .ok_or_else(|| {
-            ServiceError::InternalError(
-                "Slicer finished but no .gcode file was found in the output directory".to_string(),
-            )
-        })
+    let mut entries = tokio::fs::read_dir(dir).await?;
+    let mut lowest: Option<PathBuf> = None;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        let is_gcode = path.extension().is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("gcode") || extension.eq_ignore_ascii_case("g")
+        });
+        if is_gcode && lowest.as_ref().is_none_or(|current| path < *current) {
+            lowest = Some(path);
+        }
+    }
+
+    lowest.ok_or_else(|| {
+        ServiceError::InternalError(
+            "Slicer finished but no .gcode file was found in the output directory".to_string(),
+        )
+    })
 }
 
 /// Stores slice output as a new **gcode** model via the regular import path (hash dedupe, zipped on disk).
@@ -135,7 +122,6 @@ async fn run_slicer_subprocess(
     work_dir: &Path,
     input_path: &Path,
     out_dir: &Path,
-    settings: &SliceOrchestrationSettings,
 ) -> Result<PathBuf, ServiceError> {
     tokio::fs::create_dir_all(out_dir).await?;
 
@@ -150,8 +136,6 @@ async fn run_slicer_subprocess(
         .arg("--outputdir")
         .arg(out_dir)
         .arg(input_path);
-
-    apply_slice_settings_to_command(&mut cmd, settings);
 
     let output = tokio::time::timeout(SLICE_TIMEOUT, cmd.output())
         .await
@@ -173,7 +157,7 @@ async fn run_slicer_subprocess(
         )));
     }
 
-    find_gcode_in_output_dir(out_dir)
+    find_gcode_in_output_dir(out_dir).await
 }
 
 /// Resolves the model, runs the configured slicer, stores g-code as a new model.
@@ -186,7 +170,6 @@ pub async fn slice_model_for_user(
     app_state: &AppState,
     user: &User,
     model_id: i64,
-    settings: &SliceOrchestrationSettings,
 ) -> Result<SliceOrchestrationResult, ServiceError> {
     let models = model_db::get_models_via_ids(&app_state.db, user, vec![model_id]).await?;
     let Some(model) = models.into_iter().next() else {
@@ -210,13 +193,12 @@ pub async fn slice_model_for_user(
     // Lazy: zipped blobs are still extracted into `work_dir`; others are read in place from the
     // model dir / disk path, which is safe because cleanup below only removes `work_dir`.
     let input_path = get_path_from_model(&work_dir, &model, app_state, true).await?;
-    let gcode_path =
-        run_slicer_subprocess(&slicer, &work_dir, &input_path, &out_dir, settings).await?;
+    let gcode_path = run_slicer_subprocess(&slicer, &work_dir, &input_path, &out_dir).await?;
     let file_contents = tokio::fs::read(&gcode_path).await?;
 
     let result = persist_gcode_as_new_model(file_contents, &model.name, app_state, user).await;
 
-    let _ = std::fs::remove_dir_all(&work_dir);
+    let _ = tokio::fs::remove_dir_all(&work_dir).await;
 
     result
 }
@@ -260,9 +242,8 @@ mod tests {
     async fn slice_rejects_unknown_model() {
         let (_dir, app_state) = app_state_with_db().await;
         let user = User::default();
-        let settings = SliceOrchestrationSettings::default();
 
-        let err = slice_model_for_user(&app_state, &user, 999_999, &settings)
+        let err = slice_model_for_user(&app_state, &user, 999_999)
             .await
             .expect_err("unknown model_id should error");
 
@@ -281,7 +262,7 @@ mod tests {
         std::fs::write(dir.path().join("a.gcode"), b";a").unwrap();
         std::fs::write(dir.path().join("b.gcode"), b";b").unwrap();
 
-        let picked = find_gcode_in_output_dir(dir.path()).unwrap();
+        let picked = find_gcode_in_output_dir(dir.path()).await.unwrap();
         assert_eq!(picked.file_name().unwrap(), "a.gcode");
     }
 

@@ -6,7 +6,6 @@ import type { IBlobApi } from "../shared/blob_api";
 import {
   DefaultSlicerApi,
   type SliceServerResponse,
-  type SlicingSettings,
 } from "../shared/slicer_api";
 
 /**
@@ -20,14 +19,11 @@ export class MobileRemoteSlicerApi extends DefaultSlicerApi {
     this.request = request;
   }
 
-  sliceOnServer(
-    modelId: number,
-    settings: SlicingSettings,
-  ): Promise<SliceServerResponse> {
+  sliceOnServer(modelId: number): Promise<SliceServerResponse> {
     return this.request.request<SliceServerResponse>(
       "/slicer/slice",
       HttpMethod.POST,
-      { modelId, settings },
+      { modelId },
     );
   }
 }

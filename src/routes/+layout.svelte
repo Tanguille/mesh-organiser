@@ -17,22 +17,26 @@
     configuration,
     configurationMeta,
     panicState,
-    scheduleConfigurationPersist,
-  } from "$lib/configuration.svelte";
-  import { updateSidebarState } from "$lib/sidebar_data.svelte";
-  import { updateState } from "$lib/update_data.svelte";
-  import Spinner from "$lib/components/view/spinner.svelte";
-  import { getContainer } from "$lib/api/dependency_injection";
-  import { ISidebarStateApi } from "$lib/api/shared/sidebar_state_api";
-  import { IUserApi } from "$lib/api/shared/user_api";
-  import { accountLinkData } from "$lib/account_link_data.svelte";
-  import WebAccountLinkPopup from "$lib/components/view/web-account-link-popup.svelte";
-  import BottomNav from "$lib/components/mobile/bottom-nav.svelte";
+    updateConfiguration,
+  } from "#lib/configuration.svelte";
+  import { updateSidebarState } from "#lib/sidebar_data.svelte";
+  import { updateState } from "#lib/update_data.svelte";
+  import Spinner from "#lib/components/view/spinner.svelte";
+  import { getContainer } from "#lib/api/dependency_injection";
+  import { ISidebarStateApi } from "#lib/api/shared/sidebar_state_api";
+  import { IUserApi } from "#lib/api/shared/user_api";
+  import { accountLinkData } from "#lib/account_link_data.svelte";
+  import WebAccountLinkPopup from "#lib/components/view/web-account-link-popup.svelte";
+  import BottomNav from "#lib/components/mobile/bottom-nav.svelte";
+  import { isMobileApp } from "#lib/api/mobile/server_url";
 
   let { children } = $props();
   let initializationDone = $state(false);
   let hasSidebar = $state(true);
   const isMobile = new IsMobile();
+  // The mobile app swaps the sidebar for a bottom nav; desktop and web keep the
+  // sidebar at any window width.
+  const isMobileRemote = isMobileApp();
 
   /** Vite 8 dev client can race HMR transport `send` before `connect` (see `vite/dist/client/client.mjs`). */
   function isViteDevClientNoise(message: string): boolean {
@@ -104,8 +108,7 @@
 
       if (getContainer().optional<ISidebarStateApi>(ISidebarStateApi) == null) {
         hasSidebar = false;
-      } else if (isMobile.current) {
-        // Hide sidebar on mobile, use bottom nav instead
+      } else if (isMobileRemote) {
         hasSidebar = false;
       } else {
         await updateSidebarState();
@@ -161,11 +164,14 @@
             class="absolute z-10 aspect-square h-10 w-10 bg-background"
           />
         {/if}
-        <div class="flex-1 pb-16 pl-2" style="min-width: 0;">
+        <div
+          class="flex-1 pl-2 {isMobileRemote ? 'pb-16' : ''}"
+          style="min-width: 0;"
+        >
           {@render children?.()}
         </div>
       </main>
-      {#if isMobile.current && !hasSidebar}
+      {#if isMobileRemote}
         <BottomNav />
       {/if}
       {#if updateState.update}

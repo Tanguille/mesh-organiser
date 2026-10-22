@@ -158,7 +158,7 @@ HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api
 
 - **Content-Type:** `application/json`
 - **Auth:** `login_required` (session); unauthenticated requests receive **401** / **403**.
-- **Request:** accepts `modelId` (camelCase) or `model_id` (snake_case). Nested `settings` may use `layerHeight` / `layer_height_mm` and `infill` / `infill_percent` per `web` DTOs (`SliceRequestBody` / `SliceSettingsDto`).
+- **Request:** `{ "modelId": number }` (`model_id` is also accepted). Per-request slicer settings are not supported yet; the slicer's own defaults apply, and unknown fields such as `settings` are ignored.
 - **Success (200):** JSON body is camelCase:
 
 | Field           | Type             | Meaning                                                                                                       |
@@ -170,16 +170,8 @@ HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api
 TypeScript sketch (align clients with the table above):
 
 ```typescript
-export interface SlicingSettings {
-  layerHeight: number;
-  infill: number;
-  supports: "none" | "everywhere" | "touching buildplate";
-  material: string;
-}
-
 export interface SliceRequest {
   modelId: number;
-  settings: SlicingSettings;
 }
 
 export interface SliceResponse {
@@ -217,12 +209,11 @@ Per [§1.2 Non-goals](../superpowers/specs/2026-03-29-remote-client-and-http-api
 
 **Purpose:** `service::slice_service` runs a **console** slicer on the host for `POST /api/v1/slicer/slice` (Task 3). This appendix documents the **environment variable** and the **v1 subprocess shape**; exact flags may need tuning per install.
 
-| Item                      | Detail                                                                                                                                                                                                                                      |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Executable**            | Set **`MESH_ORGANISER_ORCA_PATH`** to the full path of **OrcaSlicer** or **PrusaSlicer-family** binary. On Windows, prefer **`orca-slicer-console.exe`** (or equivalent) when available so stdout/stderr are usable.                        |
-| **v1 invocation**         | `{MESH_ORGANISER_ORCA_PATH} --slice 0 --outputdir <dir> <input_model_path>`                                                                                                                                                                 |
-| **Settings JSON**         | Fields such as layer height and infill are modeled in Rust as `SliceOrchestrationSettings` in `service/src/slice_service.rs` for HTTP alignment; **CLI mapping is partial** until flags are verified on a real install (`{binary} --help`). |
-| **Further options (TBD)** | Community docs mention `--load-settings`, `--datadir`, `--export-3mf`, etc.; confirm against your OrcaSlicer version before wiring into production.                                                                                         |
+| Item                      | Detail                                                                                                                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Executable**            | Set **`MESH_ORGANISER_ORCA_PATH`** to the full path of **OrcaSlicer** or **PrusaSlicer-family** binary. On Windows, prefer **`orca-slicer-console.exe`** (or equivalent) when available so stdout/stderr are usable. |
+| **v1 invocation**         | `{MESH_ORGANISER_ORCA_PATH} --slice 0 --outputdir <dir> <input_model_path>`                                                                                                                                          |
+| **Further options (TBD)** | Community docs mention `--load-settings`, `--datadir`, `--export-3mf`, etc.; confirm against your OrcaSlicer version before wiring into production.                                                                  |
 
 If the variable is unset, empty, or the path does not exist, the service returns a clear **`InternalError`** message (no silent failure).
 
