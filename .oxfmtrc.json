@@ -5,5 +5,5 @@
     "stylesheet": "./src/app.css"
   },
   "svelte": {},
-  "ignorePatterns": ["*.toml"]
+  "ignorePatterns": ["*.toml", "CHANGELOG.md"]
 }
