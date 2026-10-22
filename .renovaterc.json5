@@ -46,6 +46,12 @@
       automerge: true,
     },
     {
+      // pnpm's default minimumReleaseAge fails `pnpm install` in CI on anything younger.
+      description: "Hold every npm update until it has aged 1 day, matching pnpm",
+      matchManagers: ["npm"],
+      minimumReleaseAge: "1 day",
+    },
+    {
       description: "Hold tower-sessions below 0.15 until axum-login publishes tower-sessions 0.15 support",
       matchPackageNames: ["tower-sessions", "tower-sessions-core"],
       allowedVersions: "<0.15",
