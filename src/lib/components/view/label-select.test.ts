@@ -60,13 +60,12 @@ describe("LabelSelect", () => {
     const onchange = vi.fn();
     render(LabelSelect, { value: [], availableLabels: available, onchange });
 
-    await fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Select some labels" }),
-      {
-        button: 0,
-        pointerType: "mouse",
-      },
-    );
+    // bits-ui 2.20 renders the trigger as a combobox, which takes no accessible
+    // name from its placeholder text.
+    await fireEvent.pointerDown(screen.getByRole("combobox"), {
+      button: 0,
+      pointerType: "mouse",
+    });
 
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent?.trim())).toEqual([
