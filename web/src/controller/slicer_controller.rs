@@ -8,13 +8,11 @@ use axum_login::login_required;
 use serde::{Deserialize, Serialize};
 
 use service::AppState;
-use service::slice_service::{
-    SliceOrchestrationResult, SliceOrchestrationSettings, slice_model_for_user,
-};
+use service::slice_service::{SliceOrchestrationSettings, slice_model_for_user};
 
 use crate::{
     error::ApplicationError,
-    user::{AuthSession, Backend},
+    user::{Backend, CurrentUser},
 };
 
 pub fn router() -> Router<AppState> {
@@ -59,28 +57,22 @@ impl From<SliceSettingsDto> for SliceOrchestrationSettings {
 pub struct SliceResponseJson {
     pub success: bool,
     pub output_model_id: i64,
-    pub output_blob_sha256: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
 
 async fn post_slice(
-    auth_session: AuthSession,
+    CurrentUser(user): CurrentUser,
     State(state): State<AppState>,
     Json(body): Json<SliceRequestBody>,
 ) -> Result<Response, ApplicationError> {
-    let user = auth_session.user.unwrap().to_user();
     let settings = SliceOrchestrationSettings::from(body.settings);
     let result = slice_model_for_user(&state, &user, body.model_id, &settings).await?;
 
-    Ok(Json(slice_response_from_result(result)).into_response())
-}
-
-fn slice_response_from_result(result: SliceOrchestrationResult) -> SliceResponseJson {
-    SliceResponseJson {
+    Ok(Json(SliceResponseJson {
         success: true,
         output_model_id: result.output_model_id,
-        output_blob_sha256: result.output_blob_sha256,
         message: None,
-    }
+    })
+    .into_response())
 }

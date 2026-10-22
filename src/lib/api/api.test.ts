@@ -3,14 +3,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   mockIsTauri: vi.fn(),
-  mockInvoke: vi.fn(),
+  mockPlatform: vi.fn(),
   mockInitRemote: vi.fn().mockResolvedValue(undefined),
   mockInitLocal: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => hoisted.mockIsTauri(),
-  invoke: (cmd: string, ...args: unknown[]) => hoisted.mockInvoke(cmd, ...args),
+}));
+
+vi.mock("@tauri-apps/plugin-os", () => ({
+  platform: () => hoisted.mockPlatform(),
 }));
 
 vi.mock("./tauri/init_remote", () => ({
@@ -27,7 +30,7 @@ describe("initApi", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     hoisted.mockIsTauri.mockReturnValue(true);
-    hoisted.mockInvoke.mockReset();
+    hoisted.mockPlatform.mockReset();
     hoisted.mockInitRemote.mockClear();
     hoisted.mockInitLocal.mockClear();
   });
@@ -38,12 +41,7 @@ describe("initApi", () => {
 
   it("calls initTauriRemoteApis when running under Tauri mobile", async () => {
     vi.stubEnv("VITE_API_PLATFORM", "tauri");
-    hoisted.mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "is_mobile") {
-        return Promise.resolve(true);
-      }
-      return Promise.resolve(undefined);
-    });
+    hoisted.mockPlatform.mockReturnValue("android");
 
     await initApi();
 
@@ -53,12 +51,7 @@ describe("initApi", () => {
 
   it("calls initTauriLocalApis when running under Tauri desktop", async () => {
     vi.stubEnv("VITE_API_PLATFORM", "tauri");
-    hoisted.mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "is_mobile") {
-        return Promise.resolve(false);
-      }
-      return Promise.resolve(undefined);
-    });
+    hoisted.mockPlatform.mockReturnValue("linux");
 
     await initApi();
 

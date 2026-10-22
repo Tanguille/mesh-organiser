@@ -8,16 +8,10 @@ interface Fetch {
 export class ServerRequestApi implements IServerRequestApi {
   public baseUrl: string;
   private fetch: Fetch;
-  private readonly credentials: RequestCredentials;
 
-  constructor(
-    baseUrl: string,
-    fetchImpl: Fetch,
-    credentials: RequestCredentials = "same-origin",
-  ) {
+  constructor(baseUrl: string, fetchImpl: Fetch) {
     this.baseUrl = baseUrl;
     this.fetch = fetchImpl;
-    this.credentials = credentials;
   }
 
   private async throwIfNotOk(
@@ -53,7 +47,7 @@ export class ServerRequestApi implements IServerRequestApi {
 
     const options: RequestInit = {
       method: method,
-      credentials: this.credentials,
+      credentials: "same-origin",
     };
 
     if (data != null) {
@@ -93,7 +87,7 @@ export class ServerRequestApi implements IServerRequestApi {
 
     const options: RequestInit = {
       method: method,
-      credentials: this.credentials,
+      credentials: "same-origin",
     };
 
     if (data != null) {
@@ -129,7 +123,7 @@ export class ServerRequestApi implements IServerRequestApi {
     const response = await this.fetch(url, {
       method: method,
       body: formData,
-      credentials: this.credentials,
+      credentials: "same-origin",
     });
 
     await this.throwIfNotOk(response, endpoint);

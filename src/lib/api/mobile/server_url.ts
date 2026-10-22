@@ -1,3 +1,14 @@
+import { isTauri } from "@tauri-apps/api/core";
+import { platform } from "@tauri-apps/plugin-os";
+
+/**
+ * True inside the Tauri mobile app, which has no local library and always talks
+ * to a remote server. `platform()` is only defined inside the Tauri webview.
+ */
+export function isMobileApp(): boolean {
+  return isTauri() && ["android", "ios"].includes(platform());
+}
+
 /**
  * Normalise a remote mesh-organiser server base URL for the mobile / web client.
  * Behaviour aligns with `src-tauri/src/commands/server_url.rs` (`normalize_remote_server_url`).

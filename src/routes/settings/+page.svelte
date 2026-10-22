@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Input } from "#lib/components/ui/input/index.js";
-  import { invoke, isTauri } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
 
@@ -13,7 +12,10 @@
   } from "#lib/api/shared/settings_api";
   import { IThumbnailApi } from "#lib/api/shared/thumbnail_api";
   import { IAdminUserApi } from "#lib/api/shared/user_api";
-  import { normalizeServerBaseUrl } from "#lib/api/mobile/server_url";
+  import {
+    isMobileApp,
+    normalizeServerBaseUrl,
+  } from "#lib/api/mobile/server_url";
   import {
     getServerUrl,
     setServerUrl,
@@ -120,16 +122,10 @@
     projects: "Projects",
   };
 
-  let isMobileRemote = $state(false);
+  const isMobileRemote = isMobileApp();
   let serverUrl = $state("");
 
   async function loadServerUrl() {
-    if (!isTauri()) return;
-    try {
-      isMobileRemote = await invoke<boolean>("is_mobile");
-    } catch {
-      return;
-    }
     if (!isMobileRemote) return;
     const url = await getServerUrl();
     serverUrl = url ?? "";

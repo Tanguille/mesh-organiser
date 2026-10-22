@@ -4,35 +4,21 @@
   import { Label } from "#lib/components/ui/label/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-  import { invoke, isTauri } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
   import { HttpMethod } from "#lib/api/shared/server_request_api";
   import { ServerRequestApi } from "#lib/api/web/request";
-  import { normalizeServerBaseUrl } from "#lib/api/mobile/server_url";
+  import {
+    isMobileApp,
+    normalizeServerBaseUrl,
+  } from "#lib/api/mobile/server_url";
   import { setServerUrl } from "#lib/api/tauri/server_url";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { toast } from "svelte-sonner";
-  import Spinner from "#lib/components/view/spinner.svelte";
 
-  type Gate = "loading" | "web" | "desktop" | "mobile";
-  let gate = $state<Gate>("loading");
   let serverUrl = $state("");
   let checking = $state(false);
   let saving = $state(false);
   let testHint = $state<string | null>(null);
-
-  onMount(async () => {
-    if (!isTauri()) {
-      gate = "web";
-      return;
-    }
-    try {
-      gate = (await invoke<boolean>("is_mobile")) ? "mobile" : "desktop";
-    } catch {
-      gate = "desktop";
-    }
-  });
 
   function stripBaseInput(raw: string): string {
     return raw.trim().replace(/\/+$/, "");
@@ -48,7 +34,7 @@
 
     checking = true;
     try {
-      const api = new ServerRequestApi(base, tauriFetch, "include");
+      const api = new ServerRequestApi(base, tauriFetch);
       await api.request<unknown>("/users/me", HttpMethod.GET);
       testHint = "Connected. You are signed in on this device.";
       toast.success("Server reachable (authenticated).");
@@ -85,15 +71,9 @@
 </script>
 
 <div class="flex h-full items-center justify-center p-4">
-  {#if gate === "loading"}
-    <Spinner />
-  {:else if gate === "web"}
+  {#if !isMobileApp()}
     <p class="text-center text-sm text-muted-foreground">
       Remote server setup is only available in the Mesh Organiser mobile app.
-    </p>
-  {:else if gate === "desktop"}
-    <p class="text-center text-sm text-muted-foreground">
-      Remote server setup is only available on mobile builds.
     </p>
   {:else}
     <Card.Root class="w-full max-w-md">

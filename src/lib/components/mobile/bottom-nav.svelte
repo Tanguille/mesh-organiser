@@ -5,13 +5,13 @@
   import Printer from "@lucide/svelte/icons/printer";
   import Upload from "@lucide/svelte/icons/upload";
 
-  type Tab = "library" | "import" | "slice" | "print";
+  type Tab = "library" | "import" | "slice" | "printed";
 
   const tabs: { id: Tab; label: string; href: string; icon: typeof Home }[] = [
     { id: "library", label: "Library", href: "/", icon: Home },
     { id: "import", label: "Import", href: "/import", icon: Upload },
     { id: "slice", label: "Slice", href: "/slice", icon: Printer },
-    { id: "print", label: "Printed", href: "/print", icon: List },
+    { id: "printed", label: "Printed", href: "/printed", icon: List },
   ];
 
   let currentPath = $derived(page.url.pathname);

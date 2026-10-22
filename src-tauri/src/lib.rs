@@ -7,42 +7,13 @@ use std::{
 };
 
 use arboard::Clipboard;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use strum::IntoEnumIterator;
 use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
-
-/// Platform type for the application
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Platform {
-    Desktop,
-    Android,
-    Ios,
-}
-
-/// Get the current platform
-#[tauri::command]
-const fn get_platform() -> Platform {
-    #[cfg(target_os = "android")]
-    return Platform::Android;
-    #[cfg(target_os = "ios")]
-    return Platform::Ios;
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return Platform::Desktop;
-}
-
-/// Check if running on mobile
-#[tauri::command]
-const fn is_mobile() -> bool {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return true;
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return false;
-}
 
 use db::{
     group_db,
@@ -680,8 +651,6 @@ pub fn run() {
             api::upload_models_to_remote_server,
             api::blobs_to_path,
             api::set_last_sync_time,
-            get_platform,
-            is_mobile,
             commands::server_url::get_server_url,
             commands::server_url::set_server_url,
             commands::server_url::clear_server_url,

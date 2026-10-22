@@ -36,4 +36,3 @@ tower-sessions-core = { workspace = true, features = ["deletion-task"] }
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
-tower = { version = "0.5.2", features = ["util", "full"] }

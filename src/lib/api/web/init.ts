@@ -48,11 +48,16 @@ import { WebUserAdminApi } from "./user_admin";
 import { WebShareApi } from "./share";
 import { IShareApi } from "../shared/share_api";
 
-export async function initWebApi(): Promise<void> {
+// The Tauri mobile client reuses this against a remote server, passing the
+// server URL and the plugin-http fetch (the webview origin is not the server).
+export async function initWebApi(
+  baseUrl: string = document.location.origin,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<void> {
   resetContainer();
 
   const container = getContainer();
-  const request = new ServerRequestApi(document.location.origin, fetch);
+  const request = new ServerRequestApi(baseUrl, fetchImplementation);
   const user = new WebUserApi(request);
   const login = new WebUserLoginApi(request);
 

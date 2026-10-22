@@ -15,19 +15,11 @@ export interface SlicingSettings {
   material: string; // PLA, PETG, ABS, etc.
 }
 
-export interface SliceResult {
-  success: boolean;
-  slicedFileUrl: string;
-  printTimeEstimate: number; // in minutes
-  filamentUsed: number; // in grams
-}
-
 /** Response from `POST /api/v1/slicer/slice` (remote / web server). */
 export interface SliceServerResponse {
   success: boolean;
   /** Model id of the registered slice output. */
   outputModelId: number;
-  outputBlobSha256: string;
   message?: string | null;
 }
 
