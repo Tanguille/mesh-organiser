@@ -1468,3 +1468,62 @@ async fn set_labels_on_model_rejects_another_users_label_without_dropping_existi
     let label_ids: Vec<i64> = models[0].labels.iter().map(|label| label.id).collect();
     assert_eq!(label_ids, vec![kept_label_id]);
 }
+
+async fn count_rows(db: &DbContext, sql: &'static str, user_id: i64) -> i64 {
+    sqlx::query_scalar::<_, i64>(sql)
+        .bind(user_id)
+        .fetch_one(db)
+        .await
+        .unwrap()
+}
+
+/// Pins that `PRAGMA foreign_keys` is on for the pool, so `ON DELETE CASCADE` fires.
+#[tokio::test]
+async fn delete_user_cascades_to_every_owned_row() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let control_model_id = add_model(&db, &user, "control").await;
+    let model_id = add_model(&db, &other_user, "theirs").await;
+    let label_id = label_db::add_label(&db, &other_user, "theirs", 1, None)
+        .await
+        .unwrap()
+        .id;
+    label_db::add_labels_on_models(&db, &other_user, &[label_id], &[model_id], None)
+        .await
+        .unwrap();
+    add_group_with_model(&db, &other_user, "group").await;
+    resource_db::add_resource(&db, &other_user, "resource", None)
+        .await
+        .unwrap();
+    let share_id = share_db::create_share(&db, &other_user, "share")
+        .await
+        .unwrap();
+    share_db::set_model_ids_on_share(&db, &other_user, &share_id, vec![model_id])
+        .await
+        .unwrap();
+
+    user_db::delete_user(&db, other_user.id).await.unwrap();
+
+    for sql in [
+        "SELECT COUNT(*) FROM models WHERE model_user_id = ?",
+        "SELECT COUNT(*) FROM labels WHERE label_user_id = ?",
+        "SELECT COUNT(*) FROM models_group WHERE group_user_id = ?",
+        "SELECT COUNT(*) FROM resources WHERE resource_user_id = ?",
+        "SELECT COUNT(*) FROM shares WHERE share_user_id = ?",
+    ] {
+        assert_eq!(count_rows(&db, sql, other_user.id).await, 0, "{sql}");
+    }
+    let link_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models_labels")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(link_count, 0);
+    let control_count = count_rows(
+        &db,
+        "SELECT COUNT(*) FROM models WHERE model_id = ?",
+        control_model_id,
+    )
+    .await;
+    assert_eq!(control_count, 1);
+}
