@@ -82,7 +82,8 @@ pub async fn open_resource_folder(
 
     let resource_path =
         resource_service::ensure_resource_folder(&resource, &user, &state.app_state)?;
-    service::open_folder_in_explorer(&resource_path);
+    tauri_plugin_opener::open_path(&resource_path, None::<&str>)
+        .map_err(|error| service::ServiceError::InternalError(error.to_string()))?;
 
     Ok(())
 }

@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, future::Future, panic, path::Path, process::Command, sync::LazyLock};
+use std::{ffi::OsStr, future::Future, panic, path::Path, sync::LazyLock};
 
 use regex::Regex;
 use tokio::task::JoinSet;
@@ -53,25 +53,6 @@ pub fn cleanse_evil_from_name(name: &str) -> String {
     }
 
     cleansed
-}
-
-/// Opens the given path in the system file explorer.
-pub fn open_folder_in_explorer(path: &Path) {
-    let path = path.to_str().unwrap();
-    #[cfg(target_os = "windows")]
-    {
-        let _ = Command::new("explorer").arg(path).output().unwrap();
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let _ = Command::new("open").arg(path).output().unwrap();
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let _ = Command::new("xdg-open").arg(path).output().unwrap();
-    }
 }
 
 #[must_use]

@@ -152,7 +152,8 @@ async fn open_in_folder(
         temp_dir
     };
 
-    service::open_folder_in_explorer(&temp_dir);
+    tauri_plugin_opener::open_path(&temp_dir, None::<&str>)
+        .map_err(|error| service::ServiceError::InternalError(error.to_string()))?;
 
     Ok(())
 }
