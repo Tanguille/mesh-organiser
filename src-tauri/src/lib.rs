@@ -547,6 +547,9 @@ pub fn run() {
                     tauri::async_runtime::spawn(async move {
                         let _ = group_db::delete_dead_groups(&app_state.db).await;
                         let _ = export_service::delete_dead_blobs(&app_state).await;
+                        if let Err(e) = export_service::purge_expired_trash(&app_state).await {
+                            eprintln!("Purging expired trash failed: {e}");
+                        }
 
                         // Thumbnails are cached per machine in the app data directory while
                         // models and the database can sit on a shared data path, so a library
@@ -591,6 +594,8 @@ pub fn run() {
             api::add_models_to_group,
             api::remove_models_from_group,
             api::delete_models,
+            api::get_trashed_models,
+            api::restore_models,
             api::edit_label,
             api::delete_label,
             api::set_sync_state,

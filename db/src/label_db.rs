@@ -81,16 +81,17 @@ pub async fn get_labels(
     user: &User,
     include_ungrouped_models: bool,
 ) -> Result<Vec<Label>, DbError> {
+    // Trashed models join as NULLs, which the counts skip, so the stats cover live models only.
     let rows = sqlx::query(
     "WITH label_stats AS (
         SELECT 
             labels.label_id,
-            COUNT(DISTINCT models_labels.model_id) as model_count,
+            COUNT(DISTINCT models.model_id) as model_count,
             COUNT(DISTINCT models.model_group_id) as group_count,
-            COUNT(DISTINCT CASE WHEN models.model_group_id IS NULL THEN models_labels.model_id END) as ungrouped_count
+            COUNT(DISTINCT CASE WHEN models.model_group_id IS NULL THEN models.model_id END) as ungrouped_count
         FROM labels
         LEFT JOIN models_labels ON labels.label_id = models_labels.label_id
-        LEFT JOIN models ON models_labels.model_id = models.model_id
+        LEFT JOIN models ON models_labels.model_id = models.model_id AND models.model_deleted IS NULL
         WHERE labels.label_user_id = ?
         GROUP BY labels.label_id
     )
