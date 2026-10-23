@@ -14,12 +14,22 @@ use crate::{
     user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
 };
 
-pub fn router() -> Router<AppState> {
+/// The credential checks, which the caller rate-limits against guessing.
+pub fn login_router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
             .route("/login/password", post(password))
-            .route("/login/token", post(token))
+            .route("/login/token", post(token)),
+    )
+}
+
+/// Session routes. Kept out of the login rate limit: every page load calls `/users/me`, and a
+/// 429 there reads as logged out.
+pub fn router() -> Router<AppState> {
+    Router::new().nest(
+        "/api/v1",
+        Router::new()
             .route("/users/me", get(me))
             .route("/logout", post(logout)),
     )
@@ -86,4 +96,54 @@ pub async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
     }
 
     StatusCode::NO_CONTENT.into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    /// Whether `router` has a route for `method path`. A held route answers anything but 404:
+    /// with no auth layer installed, its session extractor fails with a 500.
+    async fn holds_route(
+        router: axum::Router<service::AppState>,
+        method: axum::http::Method,
+        path: &str,
+    ) -> bool {
+        // The pool is lazy and never connects: no request gets past the session extractor.
+        let app_state = service::AppState {
+            db: std::sync::Arc::new(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()),
+            configuration: std::sync::Mutex::new(service::Configuration::default()),
+            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: String::new(),
+        };
+        let request = axum::http::Request::builder()
+            .method(method)
+            .uri(path)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = tower::ServiceExt::oneshot(router.with_state(app_state), request)
+            .await
+            .unwrap();
+
+        response.status() != axum::http::StatusCode::NOT_FOUND
+    }
+
+    #[tokio::test]
+    async fn login_router_holds_only_the_credential_checks_and_router_the_session_routes() {
+        // The caller rate-limits all of `login_router`; `/users/me` runs on every page load, so a
+        // 429 there would read as logged out.
+        for (method, path, is_credential_check) in [
+            (axum::http::Method::POST, "/api/v1/login/password", true),
+            (axum::http::Method::POST, "/api/v1/login/token", true),
+            (axum::http::Method::GET, "/api/v1/users/me", false),
+            (axum::http::Method::POST, "/api/v1/logout", false),
+        ] {
+            let in_login_router = holds_route(super::login_router(), method.clone(), path).await;
+            let in_router = holds_route(super::router(), method, path).await;
+
+            assert_eq!(
+                (in_login_router, in_router),
+                (is_credential_check, !is_credential_check),
+                "{path}"
+            );
+        }
+    }
 }
