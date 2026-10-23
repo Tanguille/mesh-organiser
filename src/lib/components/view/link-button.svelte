@@ -20,12 +20,28 @@
     withFallback?: boolean;
   } = $props();
   const variant = $derived(props.variant ?? "default");
+  // Links come from imports, the REST API and MCP agents; only http(s) ones may
+  // open, so a stored `javascript:` URL can never run in the app. A bare domain
+  // ("www.printables.com/model/1") is how people type links, so it gets https.
+  const link = $derived.by(() => {
+    const value = props.link?.trim();
+    if (!value) {
+      return null;
+    }
+    if (/^https?:\/\//i.test(value)) {
+      return value;
+    }
+
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/|$)/i.test(value)
+      ? `https://${value}`
+      : null;
+  });
   let internalBrowserApi =
     getContainer().optional<IInternalBrowserApi>(IInternalBrowserApi);
 
   async function openLink() {
-    if (props.link && internalBrowserApi) {
-      await internalBrowserApi.openInternalBrowser(props.link);
+    if (link && internalBrowserApi) {
+      await internalBrowserApi.openInternalBrowser(link);
     }
   }
 </script>
@@ -37,10 +53,10 @@
   {/if}
 {/snippet}
 
-{#if props.visible ?? !!props.link}
+{#if (props.visible ?? true) && link}
   {#if configuration.open_links_in_external_browser || !internalBrowserApi}
     <a
-      href={props.link}
+      href={link}
       rel="external"
       target="_blank"
       title={props.title}

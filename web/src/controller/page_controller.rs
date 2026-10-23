@@ -5,40 +5,22 @@ use axum::{
     routing::get,
 };
 use tokio::fs;
-use tower_http::services::ServeFile;
 
 use service::AppState;
 
 use crate::{controller::share_controller::ShareScope, error::ApplicationError};
 
-/// Serves the SPA shell for client-side routes; unauthenticated, the SPA handles login itself.
+/// Serves share links with the share's name in the link-preview meta tags. Every other client-side
+/// route gets the plain SPA shell from the static-file fallback in `app.rs`.
 pub fn router() -> Router<AppState> {
-    let index = ServeFile::new("www/index.html");
-    let sub_index = ServeFile::new("www/group/1.html");
-
-    Router::new()
-        .route_service("/about", index.clone())
-        .route_service("/settings", index.clone())
-        .route_service("/favorite", index.clone())
-        .route_service("/group", index.clone())
-        .route_service("/import", index.clone())
-        .route_service("/login", index.clone())
-        .route_service("/model", index.clone())
-        .route_service("/printed", index.clone())
-        .route_service("/resource", index)
-        .route_service("/group/", sub_index.clone())
-        .route_service("/label/", sub_index.clone())
-        .route_service("/share/", sub_index.clone())
-        .route_service("/group/{group_id}", sub_index.clone())
-        .route_service("/label/{label_id}", sub_index)
-        .route("/share/{share_id}", get(serve_share_page))
+    Router::new().route("/share/{share_id}", get(serve_share_page))
 }
 
 async fn serve_share_page(
     Path(share_id): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Html<String>, ApplicationError> {
-    let mut html = fs::read_to_string("www/group/1.html").await?;
+    let mut html = fs::read_to_string("www/index.html").await?;
 
     let Ok(ShareScope { share, owner }) = ShareScope::resolve(&app_state, &share_id).await else {
         return Ok(Html(html));
