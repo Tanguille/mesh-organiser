@@ -6,7 +6,7 @@
     // `pnpm install --frozen-lockfile`; this holds npm PRs 3 days (patches: 1, below).
     "security:minimumReleaseAgeNpm",
     // Pin every github> preset to the same tag; an unpinned one tracks main.
-    "github>home-operations/renovate-presets#10.0.0",
+    "github>home-operations/renovate-presets#10.0.1",
   ],
   // This repo is a fork; only a committed config makes Renovate process it.
   forkProcessing: "enabled",
