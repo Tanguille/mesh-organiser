@@ -494,3 +494,46 @@ async fn get_groups_lists_a_group_whose_models_sit_past_the_first_page() {
         vec![late_model_id]
     );
 }
+
+#[tokio::test]
+async fn get_models_label_filter_keeps_every_label_of_a_matching_model() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let label_ids = add_labels(&db, &user, &["wanted", "other"]).await;
+    let (wanted_label_id, other_label_id) = (label_ids[0], label_ids[1]);
+    let blob_id = blob_db::add_blob(&db, "labeled", "stl", 1, None)
+        .await
+        .unwrap();
+    let carrier_id = model_db::add_model(&db, &user, "carrier", blob_id, None, None)
+        .await
+        .unwrap();
+    let other_only_id = model_db::add_model(&db, &user, "other-only", blob_id, None, None)
+        .await
+        .unwrap();
+    label_db::add_labels_on_models(&db, &user, &label_ids, &[carrier_id], None)
+        .await
+        .unwrap();
+    label_db::add_labels_on_models(&db, &user, &[other_label_id], &[other_only_id], None)
+        .await
+        .unwrap();
+
+    let models = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            label_ids: Some(vec![wanted_label_id]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .items;
+
+    assert_eq!(
+        models.iter().map(|model| model.id).collect::<Vec<_>>(),
+        vec![carrier_id]
+    );
+    let mut carried_label_ids: Vec<i64> = models[0].labels.iter().map(|label| label.id).collect();
+    carried_label_ids.sort_unstable();
+    assert_eq!(carried_label_ids, vec![wanted_label_id, other_label_id]);
+}

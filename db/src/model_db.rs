@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
-use strum::EnumString;
+use strum::{EnumString, VariantNames};
 
 use crate::{
     DbError, GROUPS, LABELS, MAX_PAGE_SIZE, MODELS, PaginatedResponse,
@@ -11,7 +11,7 @@ use crate::{
     util::{parse_concat_ids, random_hex_32, time_now, timestamp_or_now, validate_global_id},
 };
 
-#[derive(Debug, PartialEq, Eq, EnumString)]
+#[derive(Debug, PartialEq, Eq, EnumString, VariantNames)]
 pub enum ModelOrderBy {
     AddedAsc,
     AddedDesc,
@@ -154,9 +154,13 @@ async fn query_models(
         push_in(&mut query_builder, group_ids);
     }
 
+    // A subquery rather than a filter on the joined labels, so each match keeps its full
+    // label list.
     if let Some(label_ids) = &options.label_ids {
-        query_builder.push(" AND labels.label_id IN ");
+        query_builder
+            .push(" AND models.model_id IN (SELECT model_id FROM models_labels WHERE label_id IN ");
         push_in(&mut query_builder, label_ids);
+        query_builder.push(")");
     }
 
     if let Some(model_flags) = options.model_flags {

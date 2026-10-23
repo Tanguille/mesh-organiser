@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_zip::tokio::read::seek::ZipFileReader;
+use futures::AsyncReadExt as _;
 use indexmap::IndexMap;
 use itertools::join;
 use regex::Regex;
@@ -68,6 +69,17 @@ static MODEL_SETTINGS_PART_NAME: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#)
         .expect("valid regex literal")
 });
+
+/// `<metadata name="Title">…</metadata>` in a 3MF model XML. Values are XML-escaped, so they
+/// never contain a raw `<`.
+static MODEL_METADATA: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"<metadata\s+name="([^"]+)"[^>]*>([^<]*)</metadata>"#)
+        .expect("valid regex literal")
+});
+
+/// How much of `3D/3dmodel.model` to decompress when looking for metadata. The 3MF spec puts
+/// `<metadata>` before `<resources>`, so the (possibly huge) mesh data after it is never read.
+const MODEL_METADATA_READ_LIMIT: u64 = 256 * 1024;
 
 #[derive(Deserialize)]
 pub struct ProjectSettingsConfig {
@@ -149,19 +161,25 @@ pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
 }
 
 /// Reads a zip entry whose filename ends with `filename_suffix` and returns its contents as UTF-8.
+///
+/// The suffix ignores ASCII case, like OPC part names. With a `read_limit` only that many
+/// decompressed bytes are read, so the checksum can't be verified and a char cut in half is
+/// replaced rather than failing.
 async fn read_zip_entry_by_suffix(
     path: PathBuf,
     filename_suffix: &str,
+    read_limit: Option<u64>,
 ) -> Result<String, ServiceError> {
     let zip_file = File::open(path).await?;
     let mut buffered_reader = BufReader::new(zip_file);
     let mut zip = ZipFileReader::with_tokio(&mut buffered_reader).await?;
 
     let Some(index) = zip.file().entries().iter().position(|entry| {
-        entry
-            .filename()
-            .as_str()
-            .is_ok_and(|s| s.ends_with(filename_suffix))
+        entry.filename().as_str().is_ok_and(|name| {
+            // `get` is `None` off a char boundary, where an ASCII suffix can't match anyway.
+            name.get(name.len().saturating_sub(filename_suffix.len())..)
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(filename_suffix))
+        })
     }) else {
         return Err(ServiceError::InternalError(
             "No zip entry matching suffix".to_string(),
@@ -169,17 +187,43 @@ async fn read_zip_entry_by_suffix(
     };
 
     let mut file = zip.reader_with_entry(index).await?;
-    let mut contents = String::default();
-    file.read_to_string_checked(&mut contents).await?;
+    let contents = if let Some(read_limit) = read_limit {
+        let mut head = Vec::new();
+        file.take(read_limit).read_to_end(&mut head).await?;
+        String::from_utf8_lossy(&head).into_owned()
+    } else {
+        let mut contents = String::default();
+        file.read_to_string_checked(&mut contents).await?;
+        contents
+    };
 
     Ok(contents)
+}
+
+/// Reads the non-empty `<metadata name="…">` entries (Title, Designer, Description, …) of a 3MF
+/// model, in file order. Values are returned as stored, still XML-escaped.
+pub async fn read_model_metadata(
+    model: &Model,
+    app_state: &AppState,
+) -> Result<IndexMap<String, String>, ServiceError> {
+    ensure_3mf(model)?;
+
+    let path = export_service::get_model_path_for_blob(&model.blob, app_state);
+    let head =
+        read_zip_entry_by_suffix(path, "3D/3dmodel.model", Some(MODEL_METADATA_READ_LIMIT)).await?;
+
+    Ok(MODEL_METADATA
+        .captures_iter(&head)
+        .filter(|captures| !captures[2].trim().is_empty())
+        .map(|captures| (captures[1].to_string(), captures[2].trim().to_string()))
+        .collect())
 }
 
 /// Reads `model_settings.config` from a 3MF zip.
 pub async fn fetch_model_settings_config_from_3mf(
     threemf_path: PathBuf,
 ) -> Result<IndexMap<u32, String>, ServiceError> {
-    let contents = read_zip_entry_by_suffix(threemf_path, "model_settings.config").await?;
+    let contents = read_zip_entry_by_suffix(threemf_path, "model_settings.config", None).await?;
     Ok(parse_model_settings_config(&contents))
 }
 
@@ -203,12 +247,12 @@ pub async fn extract_metadata(
     let threemf_path = export_service::get_model_path_for_blob(&model.blob, app_state);
 
     if let Ok(contents) =
-        read_zip_entry_by_suffix(threemf_path.clone(), "project_settings.config").await
+        read_zip_entry_by_suffix(threemf_path.clone(), "project_settings.config", None).await
     {
         return parse_project_settings_config(&contents);
     }
 
-    if let Ok(contents) = read_zip_entry_by_suffix(threemf_path, "Slic3r_PE.config").await {
+    if let Ok(contents) = read_zip_entry_by_suffix(threemf_path, "Slic3r_PE.config", None).await {
         return Ok(parse_slicer_pe_config(&contents));
     }
 

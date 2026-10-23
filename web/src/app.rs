@@ -43,6 +43,7 @@ use crate::{
         page_controller, resource_controller, share_controller, threemf_controller,
         user_controller,
     },
+    mcp,
     session_store::SqliteStore,
     user::{AuthSession, Backend},
     web_import_state::WebImportStateEmitter,
@@ -319,6 +320,7 @@ impl App {
 
         let login_router =
             auth_controller::login_router().layer(GovernorLayer::new(governor_config));
+        let mcp_router = mcp::router(self.state.clone());
 
         // In each controller's router, `login_required!` is a route layer, so it guards only
         // the routes registered before it; public routes are registered after it.
@@ -344,6 +346,8 @@ impl App {
             )
             .nest_service("/_app", ServeDir::new("www/_app"))
             .with_state(self.state)
+            // Authenticated by its own bearer-token layer, not the session login.
+            .merge(mcp_router)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(auth_layer)
