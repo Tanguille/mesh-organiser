@@ -997,7 +997,7 @@ impl MeshServer {
     }
 
     #[tool(
-        description = "Move meshes to the trash. They can be restored with restore_meshes until the trash retention period purges them.",
+        description = "Move meshes to the trash. They can be restored with restore_meshes until the trash retention period (`trash_retention_days`, default 30) purges them, after which they are deleted for good.",
         annotations(destructive_hint = true)
     )]
     async fn delete_meshes(
