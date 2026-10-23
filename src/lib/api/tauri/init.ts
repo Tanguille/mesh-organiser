@@ -72,6 +72,7 @@ interface InitialState {
   max_parallelism?: number;
   collapse_sidebar?: boolean;
   account_link?: AccountLinkEmit;
+  open_in_slicer_sha256s?: string[];
 }
 
 async function getInitialState(): Promise<InitialState> {
@@ -157,6 +158,12 @@ export async function initTauriLocalApis(): Promise<void> {
           currentUser.syncUrl,
           appDataDirPath,
         );
+
+        if (state.open_in_slicer_sha256s) {
+          await tauriImport.handleOpenInSlicerLink(
+            state.open_in_slicer_sha256s,
+          );
+        }
         return;
       } else {
         const remoteModelApi = new WebModelApi(tauriRequestApi);
@@ -211,6 +218,12 @@ export async function initTauriLocalApis(): Promise<void> {
   container.addSingleton(IThumbnailApi, thumbnailApi);
 
   await tauriImport.initImportListeners();
+
+  // Unlike the download deep link this needs the model and slicer apis, so it
+  // runs once they are registered (here, or in the online-account branch).
+  if (state.open_in_slicer_sha256s) {
+    await tauriImport.handleOpenInSlicerLink(state.open_in_slicer_sha256s);
+  }
 }
 
 async function checkForUpdates(): Promise<void> {
