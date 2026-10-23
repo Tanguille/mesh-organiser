@@ -28,18 +28,34 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
         "Custom slicer path not set"
     );
 
-    // Relative paths resolve against the crate root, where cargo runs tests. An
-    // absolute Unix path would be split off as a `/flag` by the command parser.
-    set_custom_slicer_path(&app_state, "missing-slicer --single-instance");
-    assert_eq!(
-        open_without_paths(&Slicer::Custom, &app_state),
-        "Custom slicer executable not found: missing-slicer"
+    // An absolute Unix path would be split off as a `/flag` by the command parser.
+    let current_dir = std::env::current_dir().unwrap();
+    let slicer_dir = tempfile::Builder::new()
+        .prefix("slicer-test-")
+        .tempdir_in(&current_dir)
+        .unwrap();
+    let slicer_path = format!(
+        "./{}/slicer",
+        slicer_dir
+            .path()
+            .strip_prefix(&current_dir)
+            .unwrap()
+            .display()
     );
 
-    // Cargo.toml exists but is not executable, so a missed empty-paths check
-    // fails to spawn instead of launching something.
-    for configured in ["Cargo.toml", "\"Cargo.toml\" --single-instance"] {
-        set_custom_slicer_path(&app_state, configured);
+    set_custom_slicer_path(&app_state, &format!("{slicer_path} --single-instance"));
+    assert_eq!(
+        open_without_paths(&Slicer::Custom, &app_state),
+        format!("Custom slicer executable not found: {slicer_path}")
+    );
+
+    // A plain file makes a missed empty-paths check fail instead of launching anything.
+    std::fs::write(slicer_dir.path().join("slicer"), []).unwrap();
+    for configured in [
+        slicer_path.clone(),
+        format!("\"{slicer_path}\" --single-instance"),
+    ] {
+        set_custom_slicer_path(&app_state, &configured);
         assert_eq!(
             open_without_paths(&Slicer::Custom, &app_state),
             "No models to open",

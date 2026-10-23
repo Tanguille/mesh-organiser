@@ -144,10 +144,13 @@ pub fn optional_comma_separated_model_ids(
     })
 }
 
-/// Parses an `order_by` value whose length every caller has already bounded through
-/// [`validate_list_query_bounds`]; unknown values fall back to `default`.
+/// Parses an `order_by` value; oversized or unknown values fall back to `default`.
 #[must_use]
 pub fn parse_order_by_bounded<T: std::str::FromStr>(order_by: &str, default: T) -> T {
+    if order_by.len() > MAX_ORDER_BY_BYTES {
+        return default;
+    }
+
     T::from_str(order_by).unwrap_or(default)
 }
 
@@ -300,6 +303,39 @@ mod tests {
             parse_order_by_bounded("NameAsc", ModelOrderBy::AddedDesc),
             ModelOrderBy::NameAsc
         );
+    }
+
+    #[test]
+    fn parse_order_by_bounded_skips_parsing_above_byte_limit() {
+        #[derive(Debug, PartialEq)]
+        struct ParsedLength(usize);
+
+        impl std::str::FromStr for ParsedLength {
+            type Err = std::convert::Infallible;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                assert!(
+                    value.len() <= MAX_ORDER_BY_BYTES,
+                    "oversized input was parsed"
+                );
+
+                Ok(Self(value.len()))
+            }
+        }
+
+        assert_eq!(
+            parse_order_by_bounded(&"a".repeat(MAX_ORDER_BY_BYTES), ParsedLength(0)),
+            ParsedLength(MAX_ORDER_BY_BYTES)
+        );
+        for oversized in [
+            "a".repeat(MAX_ORDER_BY_BYTES + 1),
+            "é".repeat(MAX_ORDER_BY_BYTES / 2 + 1),
+        ] {
+            assert_eq!(
+                parse_order_by_bounded(&oversized, ParsedLength(0)),
+                ParsedLength(0)
+            );
+        }
     }
 
     /// Handlers return this response verbatim, so the status and text are client-visible.

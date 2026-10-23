@@ -131,8 +131,8 @@ async fn get_model_count_dispatches_on_path_kind() {
 }
 
 /// One entry per import set: whether a group was created, its name, and the
-/// `(model name, blob filetype)` of each model, sorted because directory imports
-/// run concurrently.
+/// `(model name, blob filetype)` of each model, sorted because models within a
+/// directory import concurrently. Sets retain the sequential children-first order.
 type SetSummary = (bool, Option<String>, Vec<(String, String)>);
 
 async fn summarize(app_state: &AppState, import_state: &ImportState) -> Vec<SetSummary> {

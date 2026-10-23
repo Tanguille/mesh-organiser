@@ -92,6 +92,8 @@ pub async fn add_label(
     Ok(Json(label_meta).into_response())
 }
 
+/// Replaces each model's link to this label by removing and re-adding it,
+/// refreshing the label timestamp even when the link already exists.
 pub async fn set_label_on_models(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,

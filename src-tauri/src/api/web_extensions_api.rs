@@ -208,13 +208,8 @@ async fn process_uploads(
     client: &reqwest::Client,
     base_url: &str,
     paths: &mut Vec<DirectoryScanModel>,
-    source_url: Option<String>,
-    app_state: &TauriAppState,
-    app_handle: &AppHandle,
+    mut import_state: ImportState,
 ) -> Result<ImportState, ApplicationError> {
-    let mut import_state = tauri_import_state::import_state_new_tauri(
-        source_url, false, false, false, app_state, app_handle,
-    );
     import_state.update_status(ImportStatus::ProcessingModels);
     import_state.update_total_model_count(paths.len());
 
@@ -229,6 +224,7 @@ async fn process_uploads(
                 "Warning: Path {} does not exist, skipping upload",
                 path.path.display()
             );
+            import_state.update_total_model_count(import_state.model_count - 1);
             continue;
         }
 
@@ -274,6 +270,10 @@ async fn process_uploads(
         let path = response.0;
         let response = response.1?;
         let ids = get_ids(response).await?;
+        for model_id in &ids {
+            import_state.add_model_id_to_current_set(*model_id);
+        }
+        import_state.update_total_model_count(import_state.model_count + ids.len() - 1);
         results.push((path, ids));
     }
 
@@ -313,15 +313,15 @@ pub async fn upload_models_to_remote_server(
 
     let client = login(&token, &base_url).await?;
     let mut scan = service::import_service::expand_paths(&paths, recursive).await?;
-    let import_state = process_uploads(
-        &client,
-        &base_url,
-        &mut scan,
+    let import_state = tauri_import_state::import_state_new_tauri(
         source_url,
+        false,
+        false,
+        false,
         &app_state,
         &app_handle,
-    )
-    .await?;
+    );
+    let import_state = process_uploads(&client, &base_url, &mut scan, import_state).await?;
 
     logout(&client, &base_url).await?;
 
@@ -337,4 +337,129 @@ pub async fn upload_models_to_remote_server(
         import_state,
         uploaded_models: scan,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    struct UploadDirectory(std::path::PathBuf);
+
+    impl Drop for UploadDirectory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    fn upload_server(upload_count: usize) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let timeout = std::time::Duration::from_secs(5);
+            for index in 0..upload_count {
+                let started = std::time::Instant::now();
+                let (stream, _) = loop {
+                    match listener.accept() {
+                        Ok(connection) => break connection,
+                        Err(e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                && started.elapsed() < timeout =>
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        Err(e) => panic!("mock upload server failed to accept: {e}"),
+                    }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(timeout)).unwrap();
+                stream.set_write_timeout(Some(timeout)).unwrap();
+                let mut reader = std::io::BufReader::new(stream);
+                let mut line = String::new();
+                std::io::BufRead::read_line(&mut reader, &mut line).unwrap();
+                assert!(line.starts_with("POST /api/v1/models HTTP/1.1"));
+                let mut content_length = None;
+                loop {
+                    line.clear();
+                    assert!(std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some(length) = line.to_ascii_lowercase().strip_prefix("content-length:")
+                    {
+                        content_length = Some(length.trim().parse::<usize>().unwrap());
+                    }
+                }
+                let mut body = vec![0; content_length.unwrap()];
+                std::io::Read::read_exact(&mut reader, &mut body).unwrap();
+                let first_id = index * 2 + 1;
+                let second_id = first_id + 1;
+                let body = format!("[{first_id},{second_id}]");
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                std::io::Write::write_all(reader.get_mut(), response.as_bytes()).unwrap();
+            }
+        });
+
+        (base_url, server)
+    }
+
+    #[tokio::test]
+    async fn process_uploads_counts_only_uploaded_models_including_drained_tasks() {
+        for (existing_count, missing_count) in [(0, 0), (0, 2), (1, 1), (5, 1)] {
+            let directory = UploadDirectory(super::get_temp_dir("upload-test"));
+            let mut paths = Vec::new();
+            for index in 0..existing_count + missing_count {
+                let path = directory.0.join(format!("model-{index}.stl"));
+                if index < existing_count {
+                    std::fs::write(&path, b"test model").unwrap();
+                }
+                paths.push(super::DirectoryScanModel {
+                    path,
+                    group_set: None,
+                    group_name: None,
+                    model_ids: None,
+                });
+            }
+
+            let (base_url, server) = upload_server(existing_count);
+
+            let state = service::import_state::ImportState::new(
+                None,
+                false,
+                false,
+                false,
+                db::model::user::User::default(),
+            );
+            let client = super::reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .unwrap();
+            let result = super::process_uploads(&client, &base_url, &mut paths, state)
+                .await
+                .unwrap();
+            server.join().unwrap();
+
+            assert_eq!(result.model_count, existing_count * 2);
+            assert_eq!(result.imported_model_count, existing_count * 2);
+            assert!(matches!(result.status, super::ImportStatus::Finished));
+            let mut imported_ids = result.all_model_ids();
+            imported_ids.sort_unstable();
+            let expected_ids: Vec<i64> = (1..=i64::try_from(existing_count * 2).unwrap()).collect();
+            assert_eq!(imported_ids, expected_ids);
+            let mut mapped_ids = Vec::new();
+            for (index, path) in paths.iter().enumerate() {
+                if index < existing_count {
+                    let ids = path.model_ids.as_ref().unwrap();
+                    assert_eq!(ids.len(), 2);
+                    mapped_ids.extend_from_slice(ids);
+                } else {
+                    assert!(path.model_ids.is_none());
+                }
+            }
+            mapped_ids.sort_unstable();
+            assert_eq!(mapped_ids, expected_ids);
+        }
+    }
 }

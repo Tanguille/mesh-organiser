@@ -172,6 +172,8 @@ pub async fn get_model_count(
     Ok(Json(GetModelCountResponse { count }))
 }
 
+/// Serializes `export_service::ModelDiskSpaceUsage` as the API response;
+/// changing its fields changes this endpoint's wire format.
 pub async fn get_model_disk_space_usage(
     CurrentUser(user): CurrentUser,
     State(app_state): State<AppState>,

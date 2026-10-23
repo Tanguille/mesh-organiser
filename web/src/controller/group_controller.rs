@@ -56,7 +56,7 @@ impl GetGroupParams {
     /// bounds check runs before any allocation from request data.
     fn paginated_bounds(&self) -> query_bounds::PaginatedListQueryBounds<'_> {
         query_bounds::PaginatedListQueryBounds {
-            model_ids: &[], // groups cannot be filtered by model id
+            model_ids: &[], // model_ids_str is bounded separately before parsing
             group_ids: &self.group_ids,
             label_ids: &self.label_ids,
             text_search: self.text_search.as_deref(),
@@ -123,6 +123,7 @@ pub async fn get_share_groups(
         return Ok(query_bounds::bad_request(&e));
     }
 
+    // Share membership replaces the request's model filter, including for an empty share.
     let groups = group_db::get_groups(
         &app_state.db,
         &scope.owner,
