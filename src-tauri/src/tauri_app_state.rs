@@ -26,6 +26,7 @@ pub struct InitialState {
     pub max_parallelism: usize,
     pub collapse_sidebar: bool,
     pub account_link: Option<AccountLinkEmit>,
+    pub open_in_slicer_sha256s: Option<Vec<String>>,
 }
 
 impl InitialState {
@@ -36,6 +37,7 @@ impl InitialState {
                 .map_or(6, std::num::NonZeroUsize::get),
             collapse_sidebar: config.collapse_sidebar,
             account_link: None,
+            open_in_slicer_sha256s: None,
         }
     }
 }

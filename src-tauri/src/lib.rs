@@ -7,7 +7,7 @@ use std::{
 };
 
 use arboard::Clipboard;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
@@ -379,6 +379,31 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
     serde_html_form::from_str(query).ok()
 }
 
+/// Parses `meshorganiser://open_in_slicer?sha256=<a>[,<b>...]` into its blob sha256s.
+///
+/// Entries that are not a stored blob sha256 (32 lowercase hex chars) are dropped; a link left
+/// with none is not an open-in-slicer link.
+fn extract_open_in_slicer_via_deep_link(data: &str) -> Option<Vec<String>> {
+    #[derive(Deserialize)]
+    struct OpenInSlicerQuery {
+        sha256: String,
+    }
+
+    // Accept both `open_in_slicer/?` and `open_in_slicer?`, like the other meshorganiser links.
+    let query = data
+        .strip_prefix("meshorganiser://open_in_slicer/?")
+        .or_else(|| data.strip_prefix("meshorganiser://open_in_slicer?"))?;
+    let query: OpenInSlicerQuery = serde_html_form::from_str(query).ok()?;
+    let sha256s: Vec<String> = query
+        .sha256
+        .split(',')
+        .filter(|sha256| db::is_blob_sha256(sha256))
+        .map(String::from)
+        .collect();
+
+    (!sha256s.is_empty()).then_some(sha256s)
+}
+
 /// Reads the configuration from the settings file.
 ///
 /// # Panics
@@ -425,6 +450,7 @@ pub fn run() {
             {
                 let deep_link = extract_deep_link(&argv[1]);
                 let account_link = extract_account_link_via_deep_link(&argv[1]);
+                let open_in_slicer = extract_open_in_slicer_via_deep_link(&argv[1]);
 
                 if let Some(deep_link) = deep_link
                 {
@@ -435,6 +461,11 @@ pub fn run() {
                 {
                     println!("Emitting account link");
                     app.emit("account-link", account_link ).unwrap();
+                }
+                else if let Some(sha256s) = open_in_slicer
+                {
+                    println!("Emitting open in slicer link {sha256s:?}");
+                    app.emit("open-in-slicer", sha256s).unwrap();
                 }
                 else
                 {
@@ -522,6 +553,7 @@ pub fn run() {
                     let arg = argv.nth(1).unwrap();
                     initial_state.deep_link_url = extract_deep_link(&arg);
                     initial_state.account_link = extract_account_link_via_deep_link(&arg);
+                    initial_state.open_in_slicer_sha256s = extract_open_in_slicer_via_deep_link(&arg);
                 }
 
                 let user = user_db::get_user_by_id(&db, config.last_user_id)
@@ -694,5 +726,154 @@ mod tests {
     #[test]
     fn extract_deep_link_unknown_scheme_returns_none() {
         assert_eq!(super::extract_deep_link("evil://open/?file=a.stl"), None);
+    }
+
+    // Stored blob sha256s are the first 128 bits of the digest as 32 lowercase hex chars.
+    const FIRST_SHA256: &str = "0123456789abcdef0123456789abcdef";
+    const SECOND_SHA256: &str = "fedcba9876543210fedcba9876543210";
+
+    #[test]
+    fn extract_open_in_slicer_single_sha256() {
+        let link = format!("meshorganiser://open_in_slicer?sha256={FIRST_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(sha256s, Some(vec![FIRST_SHA256.to_string()]));
+    }
+
+    #[test]
+    fn extract_open_in_slicer_several_sha256s_keep_link_order() {
+        let link = format!("meshorganiser://open_in_slicer?sha256={SECOND_SHA256},{FIRST_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(
+            sha256s,
+            Some(vec![SECOND_SHA256.to_string(), FIRST_SHA256.to_string()])
+        );
+    }
+
+    #[test]
+    fn extract_open_in_slicer_accepts_slash_before_query() {
+        let link = format!("meshorganiser://open_in_slicer/?sha256={FIRST_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(sha256s, Some(vec![FIRST_SHA256.to_string()]));
+    }
+
+    #[test]
+    fn extract_open_in_slicer_drops_invalid_entries() {
+        let link = format!(
+            "meshorganiser://open_in_slicer?sha256=junk,{FIRST_SHA256},,../etc/passwd,{SECOND_SHA256}"
+        );
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(
+            sha256s,
+            Some(vec![FIRST_SHA256.to_string(), SECOND_SHA256.to_string()])
+        );
+    }
+
+    #[test]
+    fn extract_open_in_slicer_rejects_uppercase_hex() {
+        for sha256 in [
+            FIRST_SHA256.to_uppercase(),
+            format!("{}A", &FIRST_SHA256[..31]),
+        ] {
+            let link = format!("meshorganiser://open_in_slicer?sha256={sha256}");
+
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{sha256}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_rejects_wrong_length() {
+        // 31 and 33 chars, and a full 64-char sha256 digest instead of the stored 32-char prefix.
+        for sha256 in [
+            FIRST_SHA256[..31].to_string(),
+            format!("{FIRST_SHA256}0"),
+            format!("{FIRST_SHA256}{SECOND_SHA256}"),
+        ] {
+            let link = format!("meshorganiser://open_in_slicer?sha256={sha256}");
+
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{sha256}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_without_valid_entries_returns_none() {
+        for list in [
+            "",
+            ",",
+            "junk",
+            "junk,,zz",
+            "g123456789abcdef0123456789abcdef",
+        ] {
+            let link = format!("meshorganiser://open_in_slicer?sha256={list}");
+
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{list:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_ignores_other_links() {
+        for link in [
+            format!("meshorganiser://link_account?sha256={FIRST_SHA256}"),
+            "meshorganiser://link_account/?base_url=a&user_name=b&link_token=c".to_string(),
+            format!("meshorganiser://open?file={FIRST_SHA256}"),
+            format!("meshorganiser://open_in_slicer?file={FIRST_SHA256}"),
+            format!("orcaslicer://open_in_slicer?sha256={FIRST_SHA256}"),
+            format!("evil://open_in_slicer?sha256={FIRST_SHA256}"),
+            format!("MESHORGANISER://open_in_slicer?sha256={FIRST_SHA256}"),
+        ] {
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{link}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_splits_encoded_commas() {
+        // The query is form-decoded first, so a percent-encoded `,` separates entries like a
+        // literal one.
+        let link =
+            format!("meshorganiser://open_in_slicer?sha256={FIRST_SHA256}%2C{SECOND_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(
+            sha256s,
+            Some(vec![FIRST_SHA256.to_string(), SECOND_SHA256.to_string()])
+        );
+    }
+
+    #[test]
+    fn open_in_slicer_link_is_not_a_download_or_account_link() {
+        for link in [
+            format!("meshorganiser://open_in_slicer?sha256={FIRST_SHA256}"),
+            format!("meshorganiser://open_in_slicer/?sha256={FIRST_SHA256}"),
+        ] {
+            assert_eq!(super::extract_deep_link(&link), None, "{link}");
+            assert!(
+                super::extract_account_link_via_deep_link(&link).is_none(),
+                "{link}"
+            );
+        }
     }
 }

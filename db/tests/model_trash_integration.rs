@@ -717,3 +717,45 @@ async fn trash_models_keeps_the_original_deleted_timestamp_of_a_trashed_model() 
 
     assert_eq!(model_deleted(&db, model_id).await, Some(timestamp(2000)));
 }
+
+#[tokio::test]
+async fn group_model_counts_count_live_models_per_user_ordered_by_name() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let zeta_ids = vec![
+        add_model(&db, &user, "zeta-1").await,
+        add_model(&db, &user, "zeta-2").await,
+    ];
+    let alpha_live_id = add_model(&db, &user, "alpha-live").await;
+    let alpha_trashed_id = add_model(&db, &user, "alpha-trashed").await;
+    let gone_id = add_model(&db, &user, "gone").await;
+    let foreign_id = add_model(&db, &other_user, "foreign").await;
+    // Created before "alpha", so name order and id order disagree.
+    let zeta_group_id = add_group(&db, &user, "zeta", zeta_ids).await;
+    let alpha_group_id =
+        add_group(&db, &user, "alpha", vec![alpha_live_id, alpha_trashed_id]).await;
+    add_group(&db, &user, "gone", vec![gone_id]).await;
+    let foreign_group_id = add_group(&db, &other_user, "aardvark", vec![foreign_id]).await;
+    trash(&db, &user, &[alpha_trashed_id, gone_id]).await;
+    let counts = async |user: &User| -> Vec<(i64, String, i64)> {
+        group_db::get_group_model_counts(&db, user)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|group| (group.id, group.name, group.model_count))
+            .collect()
+    };
+
+    assert_eq!(
+        counts(&user).await,
+        vec![
+            (alpha_group_id, "alpha".to_string(), 1),
+            (zeta_group_id, "zeta".to_string(), 2),
+        ]
+    );
+    assert_eq!(
+        counts(&other_user).await,
+        vec![(foreign_group_id, "aardvark".to_string(), 1)]
+    );
+}
