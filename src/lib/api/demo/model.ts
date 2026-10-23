@@ -97,4 +97,14 @@ export class DemoModelApi implements IModelApi {
       modelLabelsMap.delete(model.id);
     }
   }
+
+  // ponytail: demo deletes stay permanent, so its trash is always empty; keep
+  // trashed models in memory if the demo should show the restore flow.
+  async getTrashedModels(): Promise<Model[]> {
+    return [];
+  }
+
+  async restoreModels(_models: Model[]): Promise<void> {
+    throw new Error("Demo mode: Cannot restore models");
+  }
 }

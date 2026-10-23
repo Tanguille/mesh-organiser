@@ -78,6 +78,7 @@ export interface Configuration {
   thumbnail_rotation: [number, number, number];
   watch_downloads_folder: boolean;
   startup_page: StartupPages;
+  trash_retention_days: number;
 }
 
 export const MODEL_ORDER_LABELS: Record<OrderOptionModels, string> = {
@@ -181,6 +182,7 @@ export function configurationDefault(): Configuration {
     thumbnail_rotation: [35, 30, 0],
     watch_downloads_folder: false,
     startup_page: "",
+    trash_retention_days: 30,
   };
 }
 

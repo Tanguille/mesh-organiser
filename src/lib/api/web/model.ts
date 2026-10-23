@@ -5,7 +5,12 @@ import type {
   ModelFilter,
   ModelFlags,
 } from "../shared/model_api";
-import { convertModelFlagsToRaw, fetchModelPage } from "../shared/raw_model";
+import {
+  convertModelFlagsToRaw,
+  fetchModelPage,
+  parseRawModel,
+  type RawModel,
+} from "../shared/raw_model";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -73,5 +78,26 @@ export class WebModelApi implements IModelApi {
         data,
       )
     ).count;
+  }
+
+  async getTrashedModels(): Promise<Model[]> {
+    const response = await this.requestApi.request<RawModel[]>(
+      "/models/trash",
+      HttpMethod.GET,
+    );
+
+    return response.map((rawModel) => parseRawModel(rawModel));
+  }
+
+  async restoreModels(models: Model[]): Promise<void> {
+    const data = {
+      model_ids: models.map((model) => model.id),
+    };
+
+    await this.requestApi.request<void>(
+      "/models/restore",
+      HttpMethod.POST,
+      data,
+    );
   }
 }

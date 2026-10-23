@@ -66,6 +66,8 @@ pub struct Configuration {
     pub thumbnail_rotation: [i16; 3],
     pub watch_downloads_folder: bool,
     pub startup_page: String,
+    /// Days a trashed model is kept before it is permanently deleted.
+    pub trash_retention_days: u32,
 }
 
 impl Default for Configuration {
@@ -119,6 +121,7 @@ impl Default for Configuration {
             thumbnail_rotation: [35, 30, 0],
             watch_downloads_folder: false,
             startup_page: String::default(),
+            trash_retention_days: 30,
         }
     }
 }

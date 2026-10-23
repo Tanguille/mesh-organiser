@@ -38,4 +38,10 @@ export class WebShareModelApi implements IModelApi {
   async getModelCount(_flags: ModelFlags | null): Promise<number> {
     return this.share.modelIds.length;
   }
+
+  async getTrashedModels(): Promise<Model[]> {
+    return [];
+  }
+
+  async restoreModels(_models: Model[]): Promise<void> {}
 }

@@ -1,9 +1,6 @@
-use std::{env, time::Duration};
+use std::env;
 
-use tokio::time;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-
-use service::export_service;
 
 use crate::app::App;
 
@@ -18,13 +15,6 @@ mod web_import_state;
 
 const ENV_RUST_LOG: &str = "RUST_LOG";
 
-async fn loop_remove_temp_paths() {
-    loop {
-        time::sleep(Duration::from_hours(1)).await;
-        let _ = export_service::remove_stale_temp_dirs();
-    }
-}
-
 #[allow(clippy::future_not_send)] // App and its state are not Send; run on main thread via block_on
 async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
@@ -33,8 +23,6 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
         )))
         .with(tracing_subscriber::fmt::layer())
         .try_init()?;
-
-    tokio::spawn(loop_remove_temp_paths());
 
     // Fail fast on a bad PORT before touching the database.
     let port = app::parse_port()?;

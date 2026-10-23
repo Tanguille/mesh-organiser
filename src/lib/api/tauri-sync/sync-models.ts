@@ -26,7 +26,7 @@ import {
   resolveDirection,
   type ResourceSet,
 } from "./algorithm";
-import { getAllModels } from "../shared/model_api";
+import { defaultModelFilter, getAllModels } from "../shared/model_api";
 import { runWithLimit } from "#lib/utils";
 
 interface BlobPath {
@@ -45,7 +45,21 @@ async function finalizeSingleModelUpload(
   const model = toUpload.find((x) => x.blob.id === blobId)!;
 
   model.id = upload.model_ids![0];
-  await serverGroupApi.removeModelsFromGroup([model]);
+  // The upload's own import may have put the model in a new group, which group sync replaces.
+  // A model the server still had in its trash comes back as that same row with its real group,
+  // though; detaching it would stamp that group newer than the local one and group sync would
+  // then drop the model from it on both sides.
+  const [serverModel] = await serverModelApi.getModels(
+    defaultModelFilter({ modelIds: [model.id] }),
+    1,
+    1,
+  );
+  if (
+    serverModel?.group &&
+    serverModel.group.uniqueGlobalId !== model.group?.uniqueGlobalId
+  ) {
+    await serverGroupApi.removeModelsFromGroup([model]);
+  }
   await serverModelApi.editModel(model, true, true);
   globalSyncState.processedItems += 1;
 }

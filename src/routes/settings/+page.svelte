@@ -425,6 +425,29 @@
             bind:value={configuration.open_links_in_external_browser}
             label="Open links in external browser"
           />
+
+          <div class="flex flex-col space-y-1.5">
+            <Label for="trash_retention_days">Days to keep deleted models</Label
+            >
+            <!-- Only whole days from 1 to 36500 are saved: 0 would purge the whole
+            trash at the next startup, and the backend's u32 rejects fractions
+            and values past its range. -->
+            <Input
+              id="trash_retention_days"
+              type="number"
+              min="1"
+              max="36500"
+              step="1"
+              bind:value={
+                () => configuration.trash_retention_days,
+                (days) => {
+                  if (Number.isInteger(days) && days >= 1 && days <= 36500) {
+                    configuration.trash_retention_days = days;
+                  }
+                }
+              }
+            />
+          </div>
         {/if}
         <CheckboxWithLabel
           bind:value={configuration.label_exported_model_as_printed}

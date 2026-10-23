@@ -47,6 +47,8 @@ pub async fn add_blob(
 
 /// Deletes every blob no model references and returns the deleted rows. One statement, so a
 /// model added concurrently can't have its blob removed between a select and the delete.
+///
+/// Trashed models still reference their blob, so restoring one finds its file in place.
 pub async fn get_and_delete_dead_blobs(db: &DbContext) -> Result<Vec<Blob>, DbError> {
     sqlx::query_as(
         "DELETE FROM blobs

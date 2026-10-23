@@ -3,7 +3,7 @@ use std::fmt::{self, Debug};
 use serde::Serialize;
 use strum::Display;
 
-use db::{group_db, model::user::User};
+use db::{group_db, model::user::User, model_db};
 
 use crate::{app_state::AppState, service_error::ServiceError};
 
@@ -185,7 +185,10 @@ impl ImportState {
             .collect()
     }
 
-    /// Creates groups from all import sets and assigns model group ids.
+    /// Creates a group per named import set for the set's models that are still ungrouped.
+    ///
+    /// A model the import deduped or restored was already in the library, so it keeps its group;
+    /// a set with no ungrouped models gets no group.
     pub async fn create_groups_from_all_sets(
         &mut self,
         state: &AppState,
@@ -193,6 +196,17 @@ impl ImportState {
         let user = &self.user;
         for set in &mut self.imported_models {
             if set.group_id.is_some() || set.group_name.is_none() || set.model_ids.is_empty() {
+                continue;
+            }
+
+            let ungrouped_model_ids: Vec<i64> =
+                model_db::get_models_via_ids(&state.db, user, set.model_ids.clone())
+                    .await?
+                    .into_iter()
+                    .filter(|model| model.group.is_none())
+                    .map(|model| model.id)
+                    .collect();
+            if ungrouped_model_ids.is_empty() {
                 continue;
             }
 
@@ -205,7 +219,7 @@ impl ImportState {
                 &state.db,
                 user,
                 Some(group_id),
-                set.model_ids.clone(),
+                ungrouped_model_ids,
                 None,
             )
             .await?;
