@@ -198,7 +198,7 @@
 
 {#if deleted}
   <div class="flex h-64 items-center justify-center">
-    <span class="text-2xl">Model Deleted</span>
+    <span class="text-2xl">Model moved to trash</span>
   </div>
 {:else}
   <Card class={props.class}>
@@ -311,7 +311,7 @@
               </DropdownMenu.Item>
               <DropdownMenu.Separator />
               <DropdownMenu.Item onclick={onDelete}>
-                <Trash2 /> Delete model
+                <Trash2 /> Move to trash
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>

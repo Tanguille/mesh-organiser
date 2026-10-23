@@ -34,7 +34,9 @@ use db::{
     model::user::User,
     user_db,
 };
-use service::{AppState, Configuration, import_state::ImportState, thumbnail_service};
+use service::{
+    AppState, Configuration, export_service, import_state::ImportState, thumbnail_service,
+};
 
 use crate::{
     controller::{
@@ -116,7 +118,7 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
 }
 
 /// Resets the local (user 1) account to a fresh random password, scrambles its
-/// validity token and drops dead groups, so no credential from a previous run
+/// validity token and drops dead groups and blobs, so no credential from a previous run
 /// survives. Uses `ENV_LOCAL_ACCOUNT_PASSWORD` when set.
 async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>> {
     let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
@@ -132,8 +134,29 @@ async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>>
     user_db::edit_user_password(&app_state.db, 1, &local_pass).await?;
     user_db::scramble_validity_token(&app_state.db, 1).await?;
     group_db::delete_dead_groups(&app_state.db).await?;
+    // Catches blobs a user deletion left while an import held the lock, or a purge that
+    // stopped before its sweep; nothing holds the import lock yet at this point.
+    export_service::delete_dead_blobs(app_state).await?;
 
     Ok(())
+}
+
+/// Removes stale temp dirs and purges expired trash (with the blobs and groups that leaves
+/// dead) right away, then every hour.
+fn spawn_hourly_cleanup(app_state: &AppState) {
+    let app_state = app_state.clone();
+    tokio::spawn(async move {
+        // The first tick completes immediately.
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_hours(1));
+        loop {
+            interval.tick().await;
+            let _ = export_service::remove_stale_temp_dirs();
+
+            if let Err(e) = export_service::purge_expired_trash(&app_state).await {
+                eprintln!("Purging expired trash failed: {e}");
+            }
+        }
+    });
 }
 
 /// Spawns the `REGENERATE_THUMBNAILS=all|missing` pass as a background task so
@@ -230,6 +253,7 @@ impl App {
 
         apply_local_account(&app_state).await?;
         spawn_thumbnail_regeneration(&app_state);
+        spawn_hourly_cleanup(&app_state);
 
         Ok(Self {
             state: app_state,
@@ -371,4 +395,69 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     }
 
     db.close().await;
+}
+
+#[cfg(test)]
+mod tests {
+    /// Adds a blob whose model file and thumbnail exist on disk, as an import leaves them.
+    async fn add_blob_with_files(
+        app_state: &service::AppState,
+        sha256: &str,
+    ) -> (i64, std::path::PathBuf, std::path::PathBuf) {
+        let blob_id = db::blob_db::add_blob(&app_state.db, sha256, "stl", 1, None)
+            .await
+            .unwrap();
+        let blob = db::blob_db::get_blob_via_sha256(&app_state.db, sha256)
+            .await
+            .unwrap()
+            .unwrap();
+        let model_path = service::export_service::get_model_path_for_blob(&blob, app_state);
+        let image_path = service::export_service::get_image_path_for_blob(&blob, app_state);
+        std::fs::write(&model_path, sha256).unwrap();
+        std::fs::write(&image_path, sha256).unwrap();
+
+        (blob_id, model_path, image_path)
+    }
+
+    #[tokio::test]
+    async fn apply_local_account_sweeps_dead_blobs_and_keeps_referenced_ones() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let data_path = dir.path().to_string_lossy().to_string();
+        let backup_dir = dir.path().join("backups");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        // The migrations seed the local account as user 1, which `apply_local_account` edits.
+        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
+        let app_state = service::AppState {
+            db: std::sync::Arc::new(db),
+            configuration: std::sync::Mutex::new(service::Configuration {
+                data_path: data_path.clone(),
+                ..Default::default()
+            }),
+            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path,
+        };
+        // No model references this blob, as a skipped or interrupted sweep leaves it.
+        let (_, dead_model_path, dead_image_path) = add_blob_with_files(&app_state, "dead").await;
+        let (kept_blob_id, kept_model_path, kept_image_path) =
+            add_blob_with_files(&app_state, "kept").await;
+        let local_user = db::model::user::User::default();
+        db::model_db::add_model(&app_state.db, &local_user, "kept", kept_blob_id, None, None)
+            .await
+            .unwrap();
+
+        super::apply_local_account(&app_state).await.unwrap();
+
+        let dead_blob = db::blob_db::get_blob_via_sha256(&app_state.db, "dead")
+            .await
+            .unwrap();
+        let kept_blob = db::blob_db::get_blob_via_sha256(&app_state.db, "kept")
+            .await
+            .unwrap();
+        assert!(dead_blob.is_none(), "dead blob row survived");
+        assert!(!dead_model_path.exists(), "dead blob model file survived");
+        assert!(!dead_image_path.exists(), "dead blob thumbnail survived");
+        assert_eq!(kept_blob.unwrap().id, kept_blob_id);
+        assert!(kept_model_path.exists());
+        assert!(kept_image_path.exists());
+    }
 }

@@ -18,7 +18,7 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 
 use db::{model::user::User, model_db};
 use service::{
-    AppState,
+    AppState, ServiceError, export_service,
     import_service::{get_model_count, import_path},
     import_state::ImportState,
 };
@@ -317,6 +317,53 @@ async fn import_path_zip_groups_supported_entries_under_zip_name() {
         )]
     );
     assert!(!zip_path.exists(), "delete_after_import removes the zip");
+}
+
+#[tokio::test]
+async fn import_path_zip_reimport_keeps_live_and_trashed_models_in_their_group_and_adds_none() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let root = TempDir::new().unwrap();
+    let zip_path = root.path().join("Parts_Pack.ZIP");
+    write_zip(&zip_path, ZIP_ENTRIES);
+    let import = || {
+        import_path(
+            zip_path.to_str().unwrap(),
+            &app_state,
+            import_state(false, false, false),
+        )
+    };
+    let first = import().await.unwrap();
+    let group_id = first.imported_models[0].group_id.unwrap();
+    let mut model_ids = first.imported_models[0].model_ids.clone();
+    model_ids.sort_unstable();
+    // The re-import restores the trashed model through the sha256 dedupe.
+    export_service::delete_models(&app_state, &user, vec![model_ids[0]])
+        .await
+        .unwrap();
+
+    let reimport = import().await.unwrap();
+
+    assert_eq!(reimport.imported_models.len(), 1);
+    assert_eq!(reimport.imported_models[0].group_id, None);
+    let mut reimported_ids = reimport.imported_models[0].model_ids.clone();
+    reimported_ids.sort_unstable();
+    assert_eq!(reimported_ids, model_ids);
+    let models = model_db::get_models_via_ids(&app_state.db, &user, model_ids)
+        .await
+        .unwrap();
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.group.as_ref().map(|group| group.id))
+            .collect::<Vec<_>>(),
+        vec![Some(group_id); 3]
+    );
+    let group_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models_group")
+        .fetch_one(&*app_state.db)
+        .await
+        .unwrap();
+    assert_eq!(group_count, 1);
 }
 
 #[tokio::test]

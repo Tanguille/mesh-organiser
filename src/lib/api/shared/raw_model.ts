@@ -66,6 +66,7 @@ export interface RawModel {
   labels: RawLabelMeta[];
   flags: string[];
   unique_global_id: string;
+  deleted: string | null;
 }
 
 /** Builds query parameters for the web and web-share model endpoints. */
@@ -233,6 +234,7 @@ export function parseRawModel(raw: RawModel): Model {
     raw.labels.map((label) => parseRawLabelMeta(label)),
     raw.flags,
     raw.unique_global_id,
+    raw.deleted,
   );
 }
 

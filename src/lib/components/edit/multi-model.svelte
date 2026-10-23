@@ -194,9 +194,9 @@
     let promise = modelApi.deleteModels(affected_models);
 
     toast.promise(promise, {
-      loading: `Deleting ${countWriter("model", affected_models)}...`,
+      loading: `Moving ${countWriter("model", affected_models)} to trash...`,
       success: (_) => {
-        return `Deleted ${countWriter("model", affected_models)}`;
+        return `Moved ${countWriter("model", affected_models)} to trash`;
       },
     });
 
@@ -232,7 +232,7 @@
           </DropdownMenu.Trigger>
           <DropdownMenu.Content side="right" align="start">
             <DropdownMenu.Item onclick={onDelete}>
-              <Trash2 /> Delete selected models
+              <Trash2 /> Move selected models to trash
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>

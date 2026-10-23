@@ -1,19 +1,23 @@
 /**
- * Characterization tests for the read-only resource/label API stubs used by
- * demo mode and public share pages. The stubs differ in how mutators fail: demo
+ * Characterization tests for the read-only resource/label/model-trash API stubs
+ * used by demo mode and public share pages. The stubs differ in how mutators fail: demo
  * mutators throw a "Demo mode: ..." error, web-share mutators are silent no-ops
  * except the creators, which throw "Method not implemented.". Reads return
  * empty lists.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DemoLabelApi } from "../demo/label";
+import { DemoModelApi } from "../demo/model";
 import { DemoResourceApi } from "../demo/resource";
 import { WebShareLabelApi } from "../web_share/label";
+import { WebShareModelApi } from "../web_share/model";
 import { WebShareResourceApi } from "../web_share/resource";
 import type { LabelMeta } from "./label_api";
 import type { Model } from "./model_api";
 import type { ResourceMeta } from "./resource_api";
+import type { IServerRequestApi } from "./server_request_api";
+import type { Share } from "./share_api";
 
 const resource: ResourceMeta = {
   id: 1,
@@ -134,5 +138,40 @@ describe("DemoLabelApi stubs", () => {
     await expect(api.setChildrenOnLabel(label, [label])).rejects.toThrow(
       "Demo mode: Cannot modify label hierarchy",
     );
+  });
+});
+
+describe("DemoModelApi trash stubs", () => {
+  const api = new DemoModelApi();
+
+  it("getTrashedModels returns an empty list", async () => {
+    await expect(api.getTrashedModels()).resolves.toEqual([]);
+  });
+
+  it("restoreModels throws a demo-mode error", async () => {
+    await expect(api.restoreModels([model])).rejects.toThrow(
+      "Demo mode: Cannot restore models",
+    );
+  });
+});
+
+describe("WebShareModelApi trash stubs", () => {
+  const request = vi.fn();
+  const share: Share = {
+    id: "share-1",
+    createdAt: new Date(0),
+    shareName: "share",
+    userName: "alice",
+    modelIds: [1],
+  };
+  const api = new WebShareModelApi(
+    { request } as unknown as IServerRequestApi,
+    share,
+  );
+
+  it("getTrashedModels returns an empty list and restoreModels is a silent no-op, without a request", async () => {
+    await expect(api.getTrashedModels()).resolves.toEqual([]);
+    await expect(api.restoreModels([model])).resolves.toBeUndefined();
+    expect(request).not.toHaveBeenCalled();
   });
 });

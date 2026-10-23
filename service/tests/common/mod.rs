@@ -69,5 +69,6 @@ pub fn model_with_blob(id: i64, name: &str, sha256: &str, filetype: &str) -> Mod
         labels: Vec::new(),
         flags: ModelFlags::empty(),
         unique_global_id: format!("model-{id}"),
+        deleted: None,
     }
 }

@@ -13,6 +13,7 @@
 
   import Tag from "@lucide/svelte/icons/tag";
   import Tags from "@lucide/svelte/icons/tags";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import Bomb from "@lucide/svelte/icons/bomb";
 
   import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
@@ -120,6 +121,13 @@
         count: sidebarState.shareCount,
       });
     }
+
+    base.push({
+      title: "Trash",
+      icon: Trash2,
+      url: "/trash",
+      count: 0,
+    });
 
     if (panicState.inPanic) {
       return [
