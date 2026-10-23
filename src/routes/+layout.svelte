@@ -27,6 +27,7 @@
   import { IUserApi } from "#lib/api/shared/user_api";
   import { accountLinkData } from "#lib/account_link_data.svelte";
   import WebAccountLinkPopup from "#lib/components/view/web-account-link-popup.svelte";
+  import { isCommandError } from "#lib/utils";
 
   let { children } = $props();
   let initializationDone = $state(false);
@@ -59,12 +60,7 @@
       return;
     }
 
-    if (
-      typeof reason === "object" &&
-      reason !== null &&
-      typeof reason.error_message === "string" &&
-      typeof reason.error_inner_message === "string"
-    ) {
+    if (isCommandError(reason)) {
       toast.error(reason.error_message, {
         description: reason.error_inner_message,
       });
