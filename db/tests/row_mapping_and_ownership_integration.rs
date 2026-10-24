@@ -4,7 +4,7 @@
 
 use db::{
     blob_db,
-    db_context::{self, DbContext},
+    db_context::DbContext,
     group_db, label_db, label_keyword_db,
     model::{
         ModelFlags,
@@ -15,6 +15,10 @@ use db::{
     },
     model_db, random_hex_32, resource_db, share_db, time_now, user_db,
 };
+
+use common::test_db;
+
+mod common;
 
 const MISSING_ID: i64 = 999_999;
 const NEW_GLOBAL_ID: &str = "0123456789abcdef0123456789abcdef";
@@ -27,16 +31,6 @@ const INVALID_GLOBAL_IDS: [&str; 2] = [
 type BlobFields = (i64, String, String, i64, String, Option<String>);
 type ResourceFields = (i64, String, u32, String, String, String);
 type ShareFields = (String, String, String, i64, Vec<i64>);
-
-async fn test_db() -> (tempfile::TempDir, DbContext) {
-    let dir = tempfile::tempdir().unwrap();
-    let db_path = dir.path().join("db.sqlite");
-    let backup_dir = dir.path().join("backups");
-    std::fs::create_dir_all(&backup_dir).unwrap();
-    let db = db_context::setup_db(&db_path, &backup_dir).await;
-
-    (dir, db)
-}
 
 async fn add_other_user(db: &DbContext) -> User {
     let user_id = user_db::add_user(db, "other", "other@example.com", &random_hex_32())
@@ -1492,6 +1486,15 @@ async fn delete_user_cascades_to_every_owned_row() {
     label_db::add_labels_on_models(&db, &other_user, &[label_id], &[model_id], None)
         .await
         .unwrap();
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &other_user,
+        label_id,
+        vec!["keyword".to_string()],
+        None,
+    )
+    .await
+    .unwrap();
     add_group_with_model(&db, &other_user, "group").await;
     resource_db::add_resource(&db, &other_user, "resource", None)
         .await
@@ -1502,6 +1505,16 @@ async fn delete_user_cascades_to_every_owned_row() {
     share_db::set_model_ids_on_share(&db, &other_user, &share_id, vec![model_id])
         .await
         .unwrap();
+
+    let link_queries = [
+        "SELECT COUNT(*) FROM models_labels",
+        "SELECT COUNT(*) FROM shares_models",
+        "SELECT COUNT(*) FROM label_keywords",
+    ];
+    for sql in link_queries {
+        let count: i64 = sqlx::query_scalar(sql).fetch_one(&db).await.unwrap();
+        assert_eq!(count, 1, "{sql}");
+    }
 
     user_db::delete_user(&db, other_user.id).await.unwrap();
 
@@ -1514,11 +1527,10 @@ async fn delete_user_cascades_to_every_owned_row() {
     ] {
         assert_eq!(count_rows(&db, sql, other_user.id).await, 0, "{sql}");
     }
-    let link_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models_labels")
-        .fetch_one(&db)
-        .await
-        .unwrap();
-    assert_eq!(link_count, 0);
+    for sql in link_queries {
+        let count: i64 = sqlx::query_scalar(sql).fetch_one(&db).await.unwrap();
+        assert_eq!(count, 0, "{sql}");
+    }
     let control_count = count_rows(
         &db,
         "SELECT COUNT(*) FROM models WHERE model_id = ?",

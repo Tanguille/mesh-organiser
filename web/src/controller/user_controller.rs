@@ -12,7 +12,7 @@ use db::{
     model::user::{User, UserPermissions},
     user_db,
 };
-use service::{AppState, export_service};
+use service::{AppState, user_service};
 
 use crate::{
     error::ApplicationError,
@@ -173,7 +173,7 @@ pub async fn delete_user(
 ) -> Result<StatusCode, ApplicationError> {
     require_admin_or_self(&user, user_id, "delete this user")?;
 
-    export_service::delete_user(&app_state, user_id).await?;
+    user_service::delete_user(&app_state, user_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
