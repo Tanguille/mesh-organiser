@@ -181,6 +181,8 @@ async fn export_metadata_json_is_identical_in_folder_and_zip_exports() {
     let zip_result = export_zip_to_temp_folder(exported_models(&app_state), &app_state)
         .await
         .unwrap();
+    // Read without yielding: export must finish writing the ZIP footer before returning.
+    let exported_zip_entries = zip_entries(&zip_result.zip_path);
 
     let folder_metadata = fs::read(folder.join("metadata.json")).unwrap();
     assert_eq!(
@@ -199,7 +201,7 @@ async fn export_metadata_json_is_identical_in_folder_and_zip_exports() {
         Some("Robot Arm.zip")
     );
     assert_eq!(
-        zip_entries(&zip_result.zip_path),
+        exported_zip_entries,
         vec![
             (String::from("metadata.json"), expected_metadata),
             (String::from("Gear.stl"), GEAR_BYTES.to_vec()),

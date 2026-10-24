@@ -208,6 +208,8 @@ pub async fn export_zip_to_temp_folder(
     }
 
     writer.close().await?;
+    // Finalizing the ZIP footer can leave a Tokio file write pending.
+    tokio::io::AsyncWriteExt::flush(&mut file).await?;
 
     Ok(ExportZipResult {
         temp_dir,
