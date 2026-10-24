@@ -75,10 +75,79 @@ describe("LinkButton", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("renders the anchor when visible is forced even without a link", () => {
-    render(LinkButton, { link: null, visible: true });
+  it.each([
+    ["  https://example.com/model  ", LINK],
+    ["www.printables.com/model/1", "https://www.printables.com/model/1"],
+    ["printables.com/x", "https://printables.com/x"],
+    [" printables.com ", "https://printables.com"],
+  ])("links %j to %s", (rawLink, expectedHref) => {
+    render(LinkButton, { link: rawLink });
 
-    // An <a> without href has no implicit link role.
-    expect(screen.getByText("Open Link").closest("a")).not.toBeNull();
+    expect(screen.getByRole("link").getAttribute("href")).toBe(expectedHref);
+  });
+
+  it("opens a bare domain in the internal browser over https", async () => {
+    const openInternalBrowser = vi.fn().mockResolvedValue(undefined);
+    getContainer().addSingleton(IInternalBrowserApi, { openInternalBrowser });
+
+    render(LinkButton, { link: " www.printables.com/model/1 " });
+    await fireEvent.click(screen.getByRole("button", { name: "Open Link" }));
+
+    expect(openInternalBrowser).toHaveBeenCalledWith(
+      "https://www.printables.com/model/1",
+    );
+  });
+
+  describe.each([
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "file:///etc/passwd",
+    "not a link",
+    "   ",
+  ])("with the unusable link %j", (unusableLink) => {
+    it("renders nothing by default", () => {
+      const { container } = render(LinkButton, { link: unusableLink });
+
+      expect(container.textContent?.trim()).toBe("");
+    });
+
+    it("renders nothing even when visible is forced", () => {
+      const { container } = render(LinkButton, {
+        link: unusableLink,
+        visible: true,
+      });
+
+      expect(container.textContent?.trim()).toBe("");
+    });
+
+    it("renders no button that could open the internal browser when visible is forced", () => {
+      const openInternalBrowser = vi.fn().mockResolvedValue(undefined);
+      getContainer().addSingleton(IInternalBrowserApi, {
+        openInternalBrowser,
+      });
+
+      render(LinkButton, { link: unusableLink, visible: true });
+
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    it("renders only the disabled fallback button when withFallback is set", () => {
+      render(LinkButton, {
+        link: unusableLink,
+        visible: true,
+        withFallback: true,
+      });
+
+      const button = screen.getByRole("button", { name: "Open Link" });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText("Open Link").closest("a")).toBeNull();
+    });
+  });
+
+  it("renders nothing when visible is forced without a link", () => {
+    const { container } = render(LinkButton, { link: null, visible: true });
+
+    expect(container.textContent?.trim()).toBe("");
   });
 });

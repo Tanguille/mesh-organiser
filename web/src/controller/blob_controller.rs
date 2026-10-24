@@ -159,12 +159,9 @@ pub async fn get_blob_thumb(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    // Also keeps the value a single path component, so it cannot traverse out of the image dir.
-    if sha256.len() != 64
-        || !sha256
-            .chars()
-            .all(|character: char| character.is_ascii_hexdigit())
-    {
+    // The stored-hash shape also keeps the value a single path component, so it cannot traverse
+    // out of the image dir.
+    if !db::is_blob_sha256(&sha256) {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
 
@@ -261,4 +258,82 @@ pub async fn create_blobs_zip_download(
             .to_string(),
     )
     .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    /// The thumbnail handler only reads the image dir, so the pool is lazy and never connects.
+    fn app_state(dir: &tempfile::TempDir) -> service::AppState {
+        let data_path = dir.path().to_string_lossy().to_string();
+
+        service::AppState {
+            db: std::sync::Arc::new(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()),
+            configuration: std::sync::Mutex::new(service::Configuration {
+                data_path: data_path.clone(),
+                ..Default::default()
+            }),
+            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path,
+        }
+    }
+
+    /// Called directly rather than through the router: axum's `Path` never carries a `/` in one
+    /// segment, and the handler must still refuse one.
+    async fn thumb(app_state: &service::AppState, sha256: &str) -> axum::response::Response {
+        let result = super::get_blob_thumb(
+            axum::extract::Path(sha256.to_string()),
+            axum::extract::State(app_state.clone()),
+        )
+        .await;
+
+        axum::response::IntoResponse::into_response(result)
+    }
+
+    #[tokio::test]
+    async fn get_blob_thumb_serves_the_png_of_a_stored_32_hex_sha256() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let app_state = app_state(&dir);
+        let sha256 = db::u128_to_hex_32(0xabc);
+        let png = b"\x89PNG\r\n\x1a\nthumbnail".to_vec();
+        std::fs::write(
+            app_state.get_image_dir().join(format!("{sha256}.png")),
+            &png,
+        )
+        .unwrap();
+
+        let response = thumb(&app_state, &sha256).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body, png);
+    }
+
+    #[tokio::test]
+    async fn get_blob_thumb_is_not_found_without_a_png() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let app_state = app_state(&dir);
+
+        let response = thumb(&app_state, &db::u128_to_hex_32(0xabc)).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_blob_thumb_rejects_a_value_that_is_not_all_hex() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let app_state = app_state(&dir);
+        let non_hex = "z".repeat(32);
+
+        for sha256 in ["../etc", "abc/def", non_hex.as_str(), ""] {
+            let response = thumb(&app_state, sha256).await;
+
+            assert_eq!(
+                response.status(),
+                axum::http::StatusCode::BAD_REQUEST,
+                "{sha256:?}"
+            );
+        }
+    }
 }

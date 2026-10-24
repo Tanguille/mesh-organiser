@@ -1,4 +1,5 @@
 import { HttpMethod, IServerRequestApi } from "../shared/server_request_api";
+import { isCommandError } from "#lib/utils";
 import qs from "qs";
 
 interface Fetch {
@@ -27,8 +28,15 @@ export class ServerRequestApi implements IServerRequestApi {
         // Intentionally ignore JSON parse errors
       }
 
-      if (obj) {
-        throw new Error(obj);
+      if (isCommandError(obj)) {
+        // Same fields as a Tauri command rejection, so one error check serves
+        // both platforms, while it stays an Error with a readable message.
+        throw Object.assign(
+          new Error(`${obj.error_message}: ${obj.error_inner_message}`),
+          obj,
+        );
+      } else if (obj) {
+        throw new Error(JSON.stringify(obj));
       } else {
         throw new Error(
           `Request to ${endpoint} failed with status ${response.status}: ${response.statusText}`,

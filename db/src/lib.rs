@@ -17,8 +17,8 @@ pub(crate) use query_util::{
     GROUPS, LABELS, MODELS, RESOURCES, ensure_owned, push_in, set_timestamp_column,
 };
 
+pub use util::{is_blob_sha256, random_hex_32, time_now, u128_to_hex_32};
 pub(crate) use util::{parse_concat_ids, timestamp_or_now, validate_global_id};
-pub use util::{random_hex_32, time_now, u128_to_hex_32};
 
 pub type DbError = sqlx::Error;
 
