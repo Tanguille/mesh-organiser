@@ -83,14 +83,13 @@ async fn generate_all_thumbnails_survives_blobs_without_model_files() {
 #[tokio::test]
 async fn generated_thumbnails_are_400_by_400() {
     let (_dir, app_state) = common::test_app_state().await;
-    app_state.configuration.lock().unwrap().prefer_3mf_thumbnail = true;
 
     blob_db::add_blob(&app_state.db, "rendered", "stl", 10, None)
         .await
         .unwrap();
     fs::write(app_state.get_model_dir().join("rendered.stl"), TRIANGLE_STL).unwrap();
 
-    // A wide embedded image proves the resize fills the square instead of keeping 40x20.
+    // Defaults prefer embedded 3MF images; a wide input proves resizing fills the square.
     let mut embedded_png = Vec::new();
     image::DynamicImage::ImageRgba8(image::RgbaImage::new(40, 20))
         .write_to(

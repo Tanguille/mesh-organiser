@@ -18,7 +18,7 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 
 use db::{model::user::User, model_db};
 use service::{
-    AppState, ServiceError,
+    AppState,
     import_service::{get_model_count, import_path},
     import_state::ImportState,
 };
@@ -81,14 +81,6 @@ const ZIP_ENTRIES: &[&str] = &[
     "e.stl.zip",
 ];
 
-fn internal_error_message<T>(result: Result<T, ServiceError>) -> String {
-    match result {
-        Err(ServiceError::InternalError(message)) => message,
-        Err(e) => panic!("expected InternalError, got {e:?}"),
-        Ok(_) => panic!("expected InternalError, got Ok"),
-    }
-}
-
 #[tokio::test]
 async fn get_model_count_dispatches_on_path_kind() {
     let root = TempDir::new().unwrap();
@@ -114,7 +106,7 @@ async fn get_model_count_dispatches_on_path_kind() {
         1
     );
     assert_eq!(
-        internal_error_message(
+        common::internal_error_message(
             get_model_count(
                 root.path().join("My_Folder/notes.txt").to_str().unwrap(),
                 false,
@@ -125,7 +117,9 @@ async fn get_model_count_dispatches_on_path_kind() {
         "Unsupported file type"
     );
     assert_eq!(
-        internal_error_message(get_model_count(zip_path.to_str().unwrap(), false, true).await),
+        common::internal_error_message(
+            get_model_count(zip_path.to_str().unwrap(), false, true).await
+        ),
         "Cannot import a zip as path"
     );
 }
@@ -335,7 +329,7 @@ async fn import_path_rejects_unsupported_and_conflicting_options() {
     write_file(&supported);
 
     assert_eq!(
-        internal_error_message(
+        common::internal_error_message(
             import_path(
                 unsupported.to_str().unwrap(),
                 &app_state,
@@ -346,7 +340,7 @@ async fn import_path_rejects_unsupported_and_conflicting_options() {
         "Unsupported file type"
     );
     assert_eq!(
-        internal_error_message(
+        common::internal_error_message(
             import_path(
                 supported.to_str().unwrap(),
                 &app_state,

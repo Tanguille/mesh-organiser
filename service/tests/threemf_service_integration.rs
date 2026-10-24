@@ -10,7 +10,7 @@ use serde_json::json;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 use db::model::{Model, user::User};
-use service::{AppState, ServiceError, extract_metadata, extract_models};
+use service::{AppState, extract_metadata, extract_models};
 
 const PROJECT_SETTINGS: &str = r#"{
     "enable_support": "1",
@@ -47,25 +47,17 @@ async fn metadata_json(app_state: &AppState, entries: &[(&str, &str)]) -> serde_
     serde_json::to_value(metadata).unwrap()
 }
 
-fn internal_error_message<T>(result: Result<T, ServiceError>) -> String {
-    match result {
-        Err(ServiceError::InternalError(message)) => message,
-        Err(e) => panic!("expected InternalError, got {e:?}"),
-        Ok(_) => panic!("expected InternalError, got Ok"),
-    }
-}
-
 #[tokio::test]
 async fn extract_metadata_and_models_reject_non_3mf_models() {
     let (_dir, app_state) = common::test_app_state().await;
     let model = common::model_with_blob(1, "Plain", "dddddddddddddddddddddddddddddddd", "stl");
 
     assert_eq!(
-        internal_error_message(extract_metadata(&model, &app_state).await),
+        common::internal_error_message(extract_metadata(&model, &app_state).await),
         "Model is not a 3MF file"
     );
     assert_eq!(
-        internal_error_message(extract_models(&model, &User::default(), &app_state).await),
+        common::internal_error_message(extract_models(&model, &User::default(), &app_state).await),
         "Model is not a 3MF file"
     );
 }
@@ -140,7 +132,7 @@ async fn extract_metadata_without_slicer_config_fails() {
     );
 
     assert_eq!(
-        internal_error_message(extract_metadata(&model, &app_state).await),
+        common::internal_error_message(extract_metadata(&model, &app_state).await),
         "Failed to extract metadata"
     );
 }

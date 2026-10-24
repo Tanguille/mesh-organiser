@@ -14,7 +14,7 @@ use db::{
     db_context,
     model::{Model, ModelFlags, blob::Blob},
 };
-use service::{AppState, Configuration};
+use service::{AppState, Configuration, ServiceError};
 
 /// Builds an `AppState` whose data and app-data paths both point at a fresh
 /// temporary directory, so models, thumbnails and the database are isolated per test.
@@ -38,6 +38,14 @@ pub async fn test_app_state() -> (TempDir, AppState) {
     };
 
     (dir, app_state)
+}
+
+pub fn internal_error_message<T>(result: Result<T, ServiceError>) -> String {
+    match result {
+        Err(ServiceError::InternalError(message)) => message,
+        Err(e) => panic!("expected InternalError, got {e:?}"),
+        Ok(_) => panic!("expected InternalError, got Ok"),
+    }
 }
 
 /// A model whose blob lives in the app's model dir as `<sha256>.<filetype>`.
