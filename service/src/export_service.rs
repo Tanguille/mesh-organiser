@@ -122,10 +122,8 @@ pub async fn export_to_temp_folder(
     let temp_dir = get_temp_dir(action);
 
     if configuration.export_metadata {
-        fs::write(
-            temp_dir.join(METADATA_FILE_NAME),
-            serde_json::to_vec_pretty(&models)?,
-        )?;
+        let metadata_file = fs::File::create(temp_dir.join(METADATA_FILE_NAME))?;
+        serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 
     let max = configuration.core_parallelism * ASYNC_MULT;

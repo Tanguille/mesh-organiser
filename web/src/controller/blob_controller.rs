@@ -159,7 +159,7 @@ pub async fn get_blob_thumb(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    // Also keeps the value a single path component, so it cannot traverse out of the image dir.
+    // The length and hex checks keep the value a single path component, preventing traversal out of the image dir.
     if sha256.len() != 64
         || !sha256
             .chars()
@@ -218,7 +218,10 @@ pub async fn get_blobs_zip_download(
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
 
-    let file = File::open(zip_file.path()).await?;
+    let file = match File::open(zip_file.path()).await {
+        Ok(file) => file,
+        Err(e) => return crate::path_safety::OpenUnderBaseError::from(e).respond(),
+    };
     let mut response =
         Body::from_stream(ReaderStream::with_capacity(file, STREAM_CHUNK_SIZE)).into_response();
 
@@ -261,4 +264,67 @@ pub async fn create_blobs_zip_download(
             .to_string(),
     )
     .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    fn zip_download_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(service::export_service::TEMP_DIR_PREFIX)
+            .tempdir()
+            .unwrap()
+    }
+
+    async fn download_response(dir: &std::path::Path) -> axum::response::Response {
+        let zip_dir = dir.file_name().unwrap().to_str().unwrap().to_string();
+
+        axum::response::IntoResponse::into_response(
+            super::get_blobs_zip_download(axum::extract::Path(zip_dir)).await,
+        )
+    }
+
+    #[tokio::test]
+    async fn zip_download_streams_file_with_attachment_name() {
+        let dir = zip_download_dir();
+        let contents = b"zip contents";
+        std::fs::write(dir.path().join("export.zip"), contents).unwrap();
+
+        let response = download_response(dir.path()).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response.headers()[axum::http::header::CONTENT_DISPOSITION],
+            "attachment; filename=\"export.zip\""
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), contents);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn zip_download_returns_not_found_when_file_disappears() {
+        let dir = zip_download_dir();
+        // read_dir still sees the entry, but opening its missing target returns NotFound.
+        std::os::unix::fs::symlink("missing.zip", dir.path().join("export.zip")).unwrap();
+
+        let response = download_response(dir.path()).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn zip_download_keeps_other_open_errors_as_internal_server_error() {
+        let dir = zip_download_dir();
+        std::os::unix::fs::symlink("export.zip", dir.path().join("export.zip")).unwrap();
+
+        let response = download_response(dir.path()).await;
+
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
 }

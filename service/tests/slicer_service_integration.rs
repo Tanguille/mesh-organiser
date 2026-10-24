@@ -1,9 +1,14 @@
-//! Characterization tests for `Slicer::open` with no model paths: it must fail
-//! before launching anything, and which check fails first decides the message.
+//! Characterization tests for `Slicer::open`: validation order decides the error,
+//! and Linux launch resolves the installed Flatpak package without probing twice.
 
-mod common;
+use std::{env, fs};
+
+#[cfg(target_os = "linux")]
+use std::time::Duration;
 
 use service::{AppState, ServiceError, slicer_service::Slicer};
+
+mod common;
 
 /// Opens `slicer` with no paths; `Ok` would mean a process was spawned.
 fn open_without_paths(slicer: &Slicer, app_state: &AppState) -> String {
@@ -29,7 +34,7 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
     );
 
     // An absolute Unix path would be split off as a `/flag` by the command parser.
-    let current_dir = std::env::current_dir().unwrap();
+    let current_dir = env::current_dir().unwrap();
     let slicer_dir = tempfile::Builder::new()
         .prefix("slicer-test-")
         .tempdir_in(&current_dir)
@@ -50,7 +55,7 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
     );
 
     // A plain file makes a missed empty-paths check fail instead of launching anything.
-    std::fs::write(slicer_dir.path().join("slicer"), []).unwrap();
+    fs::write(slicer_dir.path().join("slicer"), []).unwrap();
     for configured in [
         slicer_path.clone(),
         format!("\"{slicer_path}\" --single-instance"),
@@ -82,4 +87,143 @@ async fn builtin_slicer_checks_installation_before_empty_paths() {
 
         assert_eq!(open_without_paths(&slicer, &app_state), expected);
     }
+}
+
+#[cfg(target_os = "linux")]
+fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str]) {
+    let dir = tempfile::tempdir().unwrap();
+    let shim = dir.path().join("flatpak");
+    let log = dir.path().join("commands");
+    fs::write(
+        &shim,
+        "#!/bin/sh\nprintf '%s|' \"$@\" >> \"$MESH_TEST_FLATPAK_LOG\"\nprintf '\\n' >> \"$MESH_TEST_FLATPAK_LOG\"\ncase \"$1\" in\n  info) [ \"$2\" = \"$MESH_TEST_FLATPAK_INSTALLED\" ] ;;\n  run) : > \"$MESH_TEST_FLATPAK_READY\" ;;\n  *) exit 1 ;;\nesac\n",
+    )
+    .unwrap();
+    fs::set_permissions(
+        &shim,
+        <fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
+    )
+    .unwrap();
+
+    // PATH is changed only for this child, so parallel tests cannot launch a real slicer.
+    let output = std::process::Command::new(env::current_exe().unwrap())
+        .args(["--exact", "linux_flatpak_child", "--nocapture"])
+        .env("PATH", dir.path())
+        .env("MESH_TEST_FLATPAK_CASE", case)
+        .env("MESH_TEST_FLATPAK_INSTALLED", installed_package)
+        .env("MESH_TEST_FLATPAK_LOG", &log)
+        .env("MESH_TEST_FLATPAK_READY", dir.path().join("ready"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{case}: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(log).unwrap();
+
+    assert_eq!(commands.lines().collect::<Vec<_>>(), expected, "{case}");
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn linux_flatpak_child() {
+    let Ok(case) = env::var("MESH_TEST_FLATPAK_CASE") else {
+        return;
+    };
+    let (_dir, app_state) = common::test_app_state().await;
+    // Configuration defaults probe installed slicers too; only count the explicit open below.
+    fs::write(env::var("MESH_TEST_FLATPAK_LOG").unwrap(), []).unwrap();
+    let paths = if case.ends_with("empty") {
+        Vec::new()
+    } else {
+        vec![std::path::PathBuf::from("/tmp/model with spaces.stl")]
+    };
+    let result = Slicer::OrcaSlicer.open(paths, &app_state);
+    if case.starts_with("missing") || case == "empty" {
+        let expected = if case.starts_with("missing") {
+            "Slicer not installed"
+        } else {
+            "No models to open"
+        };
+        assert!(matches!(result, Err(ServiceError::InternalError(message)) if message == expected));
+
+        return;
+    }
+    result.unwrap();
+
+    // spawn() returns before the shim logs its arguments; wait for its completion marker.
+    let ready = env::var("MESH_TEST_FLATPAK_READY").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !std::path::Path::new(&ready).exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Flatpak shim did not run"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_launch_probes_current_flatpak_package_once() {
+    assert_flatpak_commands(
+        "current",
+        "com.orcaslicer.OrcaSlicer",
+        &[
+            "info|com.orcaslicer.OrcaSlicer|",
+            "run|--file-forwarding|com.orcaslicer.OrcaSlicer|@@|/tmp/model with spaces.stl|@@|",
+        ],
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_launch_uses_legacy_flatpak_package_without_probing_twice() {
+    assert_flatpak_commands(
+        "legacy",
+        "io.github.softfever.OrcaSlicer",
+        &[
+            "info|com.orcaslicer.OrcaSlicer|",
+            "info|io.github.softfever.OrcaSlicer|",
+            "run|--file-forwarding|io.github.softfever.OrcaSlicer|@@|/tmp/model with spaces.stl|@@|",
+        ],
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_missing_flatpak_package_never_launches() {
+    assert_flatpak_commands(
+        "missing",
+        "",
+        &[
+            "info|com.orcaslicer.OrcaSlicer|",
+            "info|io.github.softfever.OrcaSlicer|",
+        ],
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_missing_flatpak_package_is_reported_before_empty_paths() {
+    assert_flatpak_commands(
+        "missing-empty",
+        "",
+        &[
+            "info|com.orcaslicer.OrcaSlicer|",
+            "info|io.github.softfever.OrcaSlicer|",
+        ],
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_installed_flatpak_package_with_empty_paths_never_launches() {
+    assert_flatpak_commands(
+        "empty",
+        "com.orcaslicer.OrcaSlicer",
+        &["info|com.orcaslicer.OrcaSlicer|"],
+    );
 }

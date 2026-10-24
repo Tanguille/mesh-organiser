@@ -17,12 +17,13 @@ pub use base::*;
 impl Slicer {
     #[must_use]
     pub fn is_installed(&self) -> bool {
-        matches!(self, Self::Custom) || self.detect_installed()
+        matches!(self, Self::Custom) || self.find_installed().is_some()
     }
 
     /// Opens the slicer application with the given paths. A missing or misconfigured
     /// slicer is reported before an empty `paths`.
     pub fn open(&self, paths: Vec<PathBuf>, app_state: &AppState) -> Result<(), ServiceError> {
+        let installed_slicer = self.find_installed();
         let custom_command = if matches!(self, Self::Custom) {
             let command = app_state.get_configuration().custom_slicer_path;
             if command.is_empty() {
@@ -40,7 +41,7 @@ impl Slicer {
 
             println!("Executable: {executable_path}, Custom args: {args:?}");
             Some((executable_path, args))
-        } else if self.is_installed() {
+        } else if installed_slicer.is_some() {
             None
         } else {
             return Err(ServiceError::InternalError(String::from(
@@ -60,7 +61,7 @@ impl Slicer {
             Some((executable_path, args)) => {
                 open_with_args_and_paths(&executable_path, &args, paths)
             }
-            None => self.spawn_with_paths(paths),
+            None => Self::spawn_with_paths(installed_slicer.unwrap(), paths),
         }
     }
 }
