@@ -29,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
-      OCCT_ROOT: ${{ runner.temp }}/occt
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +61,8 @@ jobs:
       - name: Fetch OCCT sources
         shell: bash
         run: |
+          OCCT_ROOT="$RUNNER_TEMP/occt"
+          echo "OCCT_ROOT=$OCCT_ROOT" >> "$GITHUB_ENV"
           cadrum_manifest=$(cargo metadata --locked --format-version 1 | jq -er '.packages[] | select(.name == "cadrum") | .manifest_path')
           occt_version=$(sed -n 's/^const OCCT_VERSION: &str = "\(.*\)";/\1/p' "${cadrum_manifest%/*}/build.rs")
           test -n "$occt_version"
