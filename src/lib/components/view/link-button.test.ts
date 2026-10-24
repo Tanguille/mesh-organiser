@@ -39,6 +39,24 @@ describe("LinkButton", () => {
     );
   });
 
+  it.each(["link", "button"] as const)(
+    "forwards the title to the rendered %s",
+    (role) => {
+      if (role === "button") {
+        getContainer().addSingleton(IInternalBrowserApi, {
+          openInternalBrowser: vi.fn().mockResolvedValue(undefined),
+        });
+      }
+      const title = "View model details";
+
+      render(LinkButton, { link: LINK, title });
+
+      expect(
+        screen.getByRole(role, { name: "Open Link" }).getAttribute("title"),
+      ).toBe(title);
+    },
+  );
+
   it("renders a button that opens the internal browser when one is available", async () => {
     const openInternalBrowser = vi.fn().mockResolvedValue(undefined);
     getContainer().addSingleton(IInternalBrowserApi, { openInternalBrowser });
