@@ -5,14 +5,14 @@ use crate::service_error::ServiceError;
 use super::Slicer;
 
 impl Slicer {
-    pub(super) fn detect_installed(&self) -> bool {
-        installed_flatpak_package(self).is_some()
+    pub(super) fn find_installed(&self) -> Option<&'static str> {
+        installed_flatpak_package(self)
     }
 
-    pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-        let package = installed_flatpak_package(self)
-            .ok_or_else(|| ServiceError::InternalError(String::from("Slicer not installed")))?;
-
+    pub(super) fn spawn_with_paths(
+        package: &'static str,
+        paths: Vec<PathBuf>,
+    ) -> Result<(), ServiceError> {
         let _ = Command::new("flatpak")
             .arg("run")
             .arg("--file-forwarding")

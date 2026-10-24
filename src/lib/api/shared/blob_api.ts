@@ -62,6 +62,8 @@ function plainFileExtensionToFileType(extension: string): FileType {
     case "obj":
       return FileType.OBJ;
     case "step":
+    case "stp":
+    case "stp.zip":
       return FileType.STEP;
     case "gcode":
       return FileType.GCODE;
