@@ -1,7 +1,7 @@
 //! Characterization tests for `Slicer::open`: validation order decides the error,
 //! and Linux launch resolves the installed Flatpak package without probing twice.
 
-use std::{env, fs};
+use std::{env, fs, process::Command};
 
 #[cfg(target_os = "linux")]
 use std::time::Duration;
@@ -25,6 +25,28 @@ fn set_custom_slicer_path(app_state: &AppState, path: &str) {
 
 #[tokio::test]
 async fn custom_slicer_checks_configuration_before_empty_paths() {
+    if env::var_os("MESH_TEST_CUSTOM_SLICER_CHILD").is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = Command::new(env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "custom_slicer_checks_configuration_before_empty_paths",
+                "--nocapture",
+            ])
+            .current_dir(dir.path())
+            .env("MESH_TEST_CUSTOM_SLICER_CHILD", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        return;
+    }
+
     let (_dir, app_state) = common::test_app_state().await;
 
     set_custom_slicer_path(&app_state, "");
@@ -34,19 +56,7 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
     );
 
     // An absolute Unix path would be split off as a `/flag` by the command parser.
-    let current_dir = env::current_dir().unwrap();
-    let slicer_dir = tempfile::Builder::new()
-        .prefix("slicer-test-")
-        .tempdir_in(&current_dir)
-        .unwrap();
-    let slicer_path = format!(
-        "./{}/slicer",
-        slicer_dir
-            .path()
-            .strip_prefix(&current_dir)
-            .unwrap()
-            .display()
-    );
+    let slicer_path = "./slicer";
 
     set_custom_slicer_path(&app_state, &format!("{slicer_path} --single-instance"));
     assert_eq!(
@@ -55,12 +65,9 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
     );
 
     // A plain file makes a missed empty-paths check fail instead of launching anything.
-    fs::write(slicer_dir.path().join("slicer"), []).unwrap();
-    for configured in [
-        slicer_path.clone(),
-        format!("\"{slicer_path}\" --single-instance"),
-    ] {
-        set_custom_slicer_path(&app_state, &configured);
+    fs::write(slicer_path, []).unwrap();
+    for configured in [slicer_path, "\"./slicer\" --single-instance"] {
+        set_custom_slicer_path(&app_state, configured);
         assert_eq!(
             open_without_paths(&Slicer::Custom, &app_state),
             "No models to open",
@@ -70,9 +77,10 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
 }
 
 #[tokio::test]
-async fn builtin_slicer_checks_installation_before_empty_paths() {
+async fn builtin_slicer_empty_paths_reports_host_installation_status() {
     let (_dir, app_state) = common::test_app_state().await;
 
+    // This is a host-dependent smoke check; the Linux shim tests below pin validation order.
     for slicer in [
         Slicer::PrusaSlicer,
         Slicer::OrcaSlicer,
@@ -106,7 +114,7 @@ fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str
     .unwrap();
 
     // PATH is changed only for this child, so parallel tests cannot launch a real slicer.
-    let output = std::process::Command::new(env::current_exe().unwrap())
+    let output = Command::new(env::current_exe().unwrap())
         .args(["--exact", "linux_flatpak_child", "--nocapture"])
         .env("PATH", dir.path())
         .env("MESH_TEST_FLATPAK_CASE", case)
@@ -133,8 +141,6 @@ async fn linux_flatpak_child() {
         return;
     };
     let (_dir, app_state) = common::test_app_state().await;
-    // Configuration defaults probe installed slicers too; only count the explicit open below.
-    fs::write(env::var("MESH_TEST_FLATPAK_LOG").unwrap(), []).unwrap();
     let paths = if case.ends_with("empty") {
         Vec::new()
     } else {

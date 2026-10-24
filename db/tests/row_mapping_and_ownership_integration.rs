@@ -1463,9 +1463,9 @@ async fn set_labels_on_model_rejects_another_users_label_without_dropping_existi
     assert_eq!(label_ids, vec![kept_label_id]);
 }
 
-async fn count_rows(db: &DbContext, sql: &'static str, user_id: i64) -> i64 {
+async fn count_rows(db: &DbContext, sql: &'static str, id: i64) -> i64 {
     sqlx::query_scalar::<_, i64>(sql)
-        .bind(user_id)
+        .bind(id)
         .fetch_one(db)
         .await
         .unwrap()
@@ -1478,11 +1478,31 @@ async fn delete_user_cascades_to_every_owned_row() {
     let user = User::default();
     let other_user = add_other_user(&db).await;
     let control_model_id = add_model(&db, &user, "control").await;
+    let control_label_id = label_db::add_label(&db, &user, "control", 0, None)
+        .await
+        .unwrap()
+        .id;
+    let control_group_id = group_db::add_empty_group(&db, &user, "control", None)
+        .await
+        .unwrap()
+        .id;
+    let control_resource_id = resource_db::add_resource(&db, &user, "control", None)
+        .await
+        .unwrap()
+        .id;
+    let control_share_id = share_db::create_share(&db, &user, "control").await.unwrap();
     let model_id = add_model(&db, &other_user, "theirs").await;
     let label_id = label_db::add_label(&db, &other_user, "theirs", 1, None)
         .await
         .unwrap()
         .id;
+    let child_label_id = label_db::add_label(&db, &other_user, "child", 1, None)
+        .await
+        .unwrap()
+        .id;
+    label_db::set_childs_on_label(&db, &other_user, label_id, &[child_label_id])
+        .await
+        .unwrap();
     label_db::add_labels_on_models(&db, &other_user, &[label_id], &[model_id], None)
         .await
         .unwrap();
@@ -1508,6 +1528,7 @@ async fn delete_user_cascades_to_every_owned_row() {
 
     let link_queries = [
         "SELECT COUNT(*) FROM models_labels",
+        "SELECT COUNT(*) FROM labels_labels",
         "SELECT COUNT(*) FROM shares_models",
         "SELECT COUNT(*) FROM label_keywords",
     ];
@@ -1531,11 +1552,28 @@ async fn delete_user_cascades_to_every_owned_row() {
         let count: i64 = sqlx::query_scalar(sql).fetch_one(&db).await.unwrap();
         assert_eq!(count, 0, "{sql}");
     }
-    let control_count = count_rows(
-        &db,
-        "SELECT COUNT(*) FROM models WHERE model_id = ?",
-        control_model_id,
-    )
-    .await;
-    assert_eq!(control_count, 1);
+    for (sql, id) in [
+        (
+            "SELECT COUNT(*) FROM models WHERE model_id = ?",
+            control_model_id,
+        ),
+        (
+            "SELECT COUNT(*) FROM labels WHERE label_id = ?",
+            control_label_id,
+        ),
+        (
+            "SELECT COUNT(*) FROM models_group WHERE group_id = ?",
+            control_group_id,
+        ),
+        (
+            "SELECT COUNT(*) FROM resources WHERE resource_id = ?",
+            control_resource_id,
+        ),
+    ] {
+        assert_eq!(count_rows(&db, sql, id).await, 1, "{sql}");
+    }
+    let control_share = share_db::get_share_via_id(&db, &control_share_id)
+        .await
+        .unwrap();
+    assert_eq!(control_share.user_id, user.id);
 }

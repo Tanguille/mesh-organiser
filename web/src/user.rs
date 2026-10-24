@@ -112,6 +112,7 @@ pub type AuthSession = axum_login::AuthSession<Backend>;
 /// don't each repeat the auth-session unwrap. Rejects
 /// with 401 when no user is logged in (matching `login_required!` semantics;
 /// the route layers stay in place as defense in depth).
+/// Credentials are stripped from the handler-facing user.
 pub struct CurrentUser(pub User);
 
 impl<S> FromRequestParts<S> for CurrentUser
@@ -125,7 +126,14 @@ where
 
         auth_session
             .user
-            .map(|user| Self(user.0))
+            .map(|user| {
+                Self(User {
+                    password_hash: String::new(),
+                    sync_token: None,
+                    sync_url: None,
+                    ..user.0
+                })
+            })
             .ok_or((StatusCode::UNAUTHORIZED, "Not logged in"))
     }
 }
@@ -148,25 +156,87 @@ mod tests {
         }
     }
 
-    #[test]
-    fn stored_user_round_trip_preserves_identity_and_every_permission_combination() {
+    // AuthSession has private metadata, so middleware supplies the fixture without database I/O.
+    async fn current_user_response(user: Option<super::AuthUser>) -> axum::response::Response {
+        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let store = crate::session_store::SqliteStore::new(pool.clone());
+        let layer = axum_login::AuthManagerLayerBuilder::new(
+            super::Backend::new(std::sync::Arc::new(pool)),
+            tower_sessions::SessionManagerLayer::new(store),
+        )
+        .build();
+        let handler = move |mut auth_session: super::AuthSession,
+                            request: axum::extract::Request| async move {
+            auth_session.user = user;
+            let (mut parts, _) = request.into_parts();
+            parts.extensions.insert(auth_session);
+            let extracted =
+                <super::CurrentUser as axum::extract::FromRequestParts<()>>::from_request_parts(
+                    &mut parts,
+                    &(),
+                )
+                .await;
+            if let Ok(super::CurrentUser(user)) = &extracted {
+                assert!(
+                    user.password_hash.is_empty(),
+                    "extractor exposed password hash"
+                );
+                assert!(user.sync_url.is_none(), "extractor exposed sync url");
+                assert!(user.sync_token.is_none(), "extractor exposed sync token");
+            }
+
+            axum::response::IntoResponse::into_response(
+                extracted.map(|super::CurrentUser(user)| axum::Json(user)),
+            )
+        };
+
+        axum::handler::Handler::call(
+            axum::handler::Handler::layer(handler, layer),
+            axum::http::Request::new(axum::body::Body::empty()),
+            (),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn current_user_extractor_preserves_identity_and_redacts_credentials() {
         for bits in 0..=UserPermissions::all().bits() {
             let permissions = UserPermissions::from_bits(bits).expect("bits should be known flags");
-            let auth_user = super::AuthUser(stored_user(permissions, None));
+            let auth_user = super::AuthUser(stored_user(permissions, Some("sync-url-secret")));
             assert_eq!(axum_login::AuthUser::id(&auth_user), 7);
 
-            let user = auth_user.0;
+            let response = current_user_response(Some(auth_user)).await;
 
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let user: serde_json::Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(
-                (
-                    user.id,
-                    user.username.as_str(),
-                    user.email.as_str(),
-                    user.permissions
-                ),
-                (7, "alice", "alice@example.com", permissions)
+                user,
+                serde_json::json!({
+                    "id": 7,
+                    "username": "alice",
+                    "email": "alice@example.com",
+                    "created_at": "2024-01-02 03:04:05",
+                    "last_sync": "2024-05-06 07:08:09",
+                    "permissions": permissions,
+                    "sync_url": null,
+                    "sync_token": null,
+                })
             );
         }
+    }
+
+    #[tokio::test]
+    async fn current_user_extractor_rejects_unauthenticated_session() {
+        let response = current_user_response(None).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), b"Not logged in");
     }
 
     /// Existing sessions stay valid only while this hash is byte-for-byte unchanged.

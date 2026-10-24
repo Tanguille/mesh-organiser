@@ -126,13 +126,17 @@ const GROUP_ORDER_BY: Record<OrderOptionGroups, GroupOrderBy> = {
 export function convertOrderOptionModelsToEnum(
   orderOption: OrderOptionModels,
 ): ModelOrderBy {
-  return MODEL_ORDER_BY[orderOption] ?? ModelOrderBy.AddedDesc;
+  return Object.hasOwn(MODEL_ORDER_BY, orderOption)
+    ? MODEL_ORDER_BY[orderOption]
+    : ModelOrderBy.AddedDesc;
 }
 
 export function convertOrderOptionGroupsToEnum(
   orderOption: OrderOptionGroups,
 ): GroupOrderBy {
-  return GROUP_ORDER_BY[orderOption] ?? GroupOrderBy.CreatedDesc;
+  return Object.hasOwn(GROUP_ORDER_BY, orderOption)
+    ? GROUP_ORDER_BY[orderOption]
+    : GroupOrderBy.CreatedDesc;
 }
 
 export function configurationDefault(): Configuration {

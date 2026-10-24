@@ -27,7 +27,7 @@ pub async fn test_app_state() -> (TempDir, AppState) {
     let db = db_context::setup_db(&data_path.join("db.sqlite"), &backup_dir).await;
     let config = Configuration {
         data_path: data_path.to_string_lossy().to_string(),
-        ..Default::default()
+        ..Configuration::without_slicer_detection()
     };
 
     let app_state = AppState {

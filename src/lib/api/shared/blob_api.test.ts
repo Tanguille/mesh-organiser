@@ -32,27 +32,27 @@ describe("createBlobInstance", () => {
 });
 
 describe("import extensions", () => {
-  it("keeps every model format available to scanners and import file pickers", () => {
-    for (const fileType of Object.values(FileType)) {
-      const extension = fileTypeToPlainFileExtension(fileType).slice(1);
-      expect(MODEL_EXTENSIONS).toContain(extension);
-      expect(IMPORT_EXTENSIONS).toContain(extension);
-    }
+  it("lists every supported model extension, including both STEP aliases", () => {
+    expect(MODEL_EXTENSIONS).toEqual([
+      "stl",
+      "obj",
+      "3mf",
+      "step",
+      "gcode",
+      "stp",
+    ]);
   });
 
-  it("accepts both STEP filename aliases", () => {
-    for (const extension of ["step", "stp"]) {
-      expect(MODEL_EXTENSIONS).toContain(extension);
-      expect(IMPORT_EXTENSIONS).toContain(extension);
-    }
-  });
-
-  it("offers zip only for imports and does not duplicate filter entries", () => {
-    expect(MODEL_EXTENSIONS).not.toContain("zip");
-    expect(IMPORT_EXTENSIONS).toContain("zip");
-    for (const extensions of [MODEL_EXTENSIONS, IMPORT_EXTENSIONS]) {
-      expect(new Set(extensions).size).toBe(extensions.length);
-    }
+  it("offers the supported model extensions and zip archives in import file pickers", () => {
+    expect(IMPORT_EXTENSIONS).toEqual([
+      "stl",
+      "obj",
+      "3mf",
+      "step",
+      "gcode",
+      "stp",
+      "zip",
+    ]);
   });
 });
 

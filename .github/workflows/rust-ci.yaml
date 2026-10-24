@@ -9,6 +9,7 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/rust-ci.yaml"
+      - "scripts/fetch-occt.sh"
 
   pull_request:
     types: [opened, synchronize, reopened]
@@ -17,6 +18,7 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/rust-ci.yaml"
+      - "scripts/fetch-occt.sh"
 
 permissions: read-all
 
@@ -60,14 +62,7 @@ jobs:
       # shortcut: prefetch sources until cadrum's downloader accepts GitHub's larger headers.
       - name: Fetch OCCT sources
         shell: bash
-        run: |
-          OCCT_ROOT="$RUNNER_TEMP/occt"
-          echo "OCCT_ROOT=$OCCT_ROOT" >> "$GITHUB_ENV"
-          cadrum_manifest=$(cargo metadata --locked --format-version 1 | jq -er '.packages[] | select(.name == "cadrum") | .manifest_path')
-          occt_version=$(sed -n 's/^const OCCT_VERSION: &str = "\(.*\)";/\1/p' "${cadrum_manifest%/*}/build.rs")
-          test -n "$occt_version"
-          mkdir -p "$OCCT_ROOT"
-          curl --fail --location --retry 3 "https://codeload.github.com/Open-Cascade-SAS/OCCT/tar.gz/refs/tags/${occt_version}" | tar -xz -C "$OCCT_ROOT"
+        run: bash scripts/fetch-occt.sh
 
       # src-tauri ships `step`, so feature unification builds and tests the STEP
       # path in these workspace runs. On Linux this compiles OCCT from source via
