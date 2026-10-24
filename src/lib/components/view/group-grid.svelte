@@ -53,7 +53,10 @@
   const showRightSide = $derived(!isMobile.current || selected.length > 0);
 
   // Below 1600px wide there is no room for the split view.
-  const tooNarrowForSplit = new MediaQuery("max-width: 1599px");
+  const SPLIT_GRID_BREAKPOINT = 1600;
+  const tooNarrowForSplit = new MediaQuery(
+    `max-width: ${SPLIT_GRID_BREAKPOINT - 1}px`,
+  );
 
   let effectiveSplitSetting = $derived.by(() => {
     if (tooNarrowForSplit.current) {

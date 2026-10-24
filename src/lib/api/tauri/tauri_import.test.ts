@@ -465,6 +465,7 @@ describe("remote imports", () => {
       "/dl/c.3mf",
       "/dl/d.gcode",
       "/dl/e.step",
+      "/dl/f.stp",
     ];
 
     await watchCallback!({

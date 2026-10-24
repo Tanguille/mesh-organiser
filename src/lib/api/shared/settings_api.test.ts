@@ -77,7 +77,7 @@ describe("convertOrderOptionModelsToEnum", () => {
     expect(new Set(mapped)).toEqual(new Set(Object.values(ModelOrderBy)));
   });
 
-  it.each(["", "unknown", "SizeAsc"])(
+  it.each(["", "unknown", "SizeAsc", "constructor", "toString", "__proto__"])(
     "falls back to AddedDesc for unrecognised value %j",
     (orderOption) => {
       expect(
@@ -99,12 +99,17 @@ describe("convertOrderOptionGroupsToEnum", () => {
     expect(convertOrderOptionGroupsToEnum(orderOption)).toBe(expected);
   });
 
-  it.each(["", "unknown", "size-asc", "size-desc"])(
-    "falls back to CreatedDesc for unrecognised value %j",
-    (orderOption) => {
-      expect(
-        convertOrderOptionGroupsToEnum(orderOption as OrderOptionGroups),
-      ).toBe(GroupOrderBy.CreatedDesc);
-    },
-  );
+  it.each([
+    "",
+    "unknown",
+    "size-asc",
+    "size-desc",
+    "constructor",
+    "toString",
+    "__proto__",
+  ])("falls back to CreatedDesc for unrecognised value %j", (orderOption) => {
+    expect(
+      convertOrderOptionGroupsToEnum(orderOption as OrderOptionGroups),
+    ).toBe(GroupOrderBy.CreatedDesc);
+  });
 });

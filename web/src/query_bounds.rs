@@ -523,6 +523,7 @@ mod tests {
         let ids_over_limit = format!("{ids_at_limit},5");
 
         assert_eq!(optional_comma_separated_model_ids(None), Ok(None));
+        // Pins the deferred bug: an empty value matches no groups rather than disabling the filter.
         assert_eq!(
             optional_comma_separated_model_ids(Some("")),
             Ok(Some(vec![]))
