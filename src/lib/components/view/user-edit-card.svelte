@@ -139,6 +139,30 @@
   });
 </script>
 
+{#snippet iconTrigger(Icon: typeof Trash)}
+  <Popover.Trigger class={buttonVariants({ variant: "ghost", size: "mi" })}>
+    <Icon />
+  </Popover.Trigger>
+{/snippet}
+
+{#snippet userFields(user: User)}
+  <div class="grid grid-cols-3 items-center gap-4">
+    <Label for="username">Username</Label>
+    <Input id="username" class="col-span-2 h-8" bind:value={user.username} />
+  </div>
+  {#if !isDesktop}
+    <div class="grid grid-cols-3 items-center gap-4">
+      <Label for="email">Email</Label>
+      <Input
+        id="email"
+        class="col-span-2 h-8"
+        type="email"
+        bind:value={user.email}
+      />
+    </div>
+  {/if}
+{/snippet}
+
 <Card>
   <CardHeader>
     <CardTitle>User administration</CardTitle>
@@ -149,11 +173,7 @@
         <p class="grow truncate text-sm capitalize">{user.username}</p>
         {#if !isDesktop}
           <Popover.Root>
-            <Popover.Trigger
-              class={buttonVariants({ variant: "ghost", size: "mi" })}
-            >
-              <KeyRound />
-            </Popover.Trigger>
+            {@render iconTrigger(KeyRound)}
             <Popover.Content class="flex w-80 flex-col gap-10">
               <h1 class="text-center font-bold">Reset password</h1>
               <Button variant="destructive" onclick={() => resetPassword(user)}
@@ -169,11 +189,7 @@
             }
           }}
         >
-          <Popover.Trigger
-            class={buttonVariants({ variant: "ghost", size: "mi" })}
-          >
-            <Pencil />
-          </Popover.Trigger>
+          {@render iconTrigger(Pencil)}
           <Popover.Content class="w-80">
             <div class="grid gap-4">
               <div class="space-y-2">
@@ -182,24 +198,8 @@
                 </h4>
               </div>
               <div class="grid gap-2">
-                <div class="grid grid-cols-3 items-center gap-4">
-                  <Label for="username">Username</Label>
-                  <Input
-                    id="username"
-                    class="col-span-2 h-8"
-                    bind:value={user.username}
-                  />
-                </div>
+                {@render userFields(user)}
                 {#if !isDesktop}
-                  <div class="grid grid-cols-3 items-center gap-4">
-                    <Label for="email">Email</Label>
-                    <Input
-                      id="email"
-                      class="col-span-2 h-8"
-                      type="email"
-                      bind:value={user.email}
-                    />
-                  </div>
                   <CheckboxWithLabel
                     bind:value={user.permissions.admin}
                     label="Admin user"
@@ -210,11 +210,7 @@
           </Popover.Content>
         </Popover.Root>
         <Popover.Root>
-          <Popover.Trigger
-            class={buttonVariants({ variant: "ghost", size: "mi" })}
-          >
-            <Trash />
-          </Popover.Trigger>
+          {@render iconTrigger(Trash)}
           <Popover.Content class="flex w-80 flex-col gap-10">
             <h1 class="text-center font-bold">Are you sure?</h1>
             <Button variant="destructive" onclick={() => deleteUser(user)}
@@ -241,24 +237,8 @@
             <h4 class="leading-none font-medium">Create user</h4>
           </div>
           <div class="grid gap-2">
-            <div class="grid grid-cols-3 items-center gap-4">
-              <Label for="username">Username</Label>
-              <Input
-                id="username"
-                class="col-span-2 h-8"
-                bind:value={newUser.username}
-              />
-            </div>
+            {@render userFields(newUser)}
             {#if !isDesktop}
-              <div class="grid grid-cols-3 items-center gap-4">
-                <Label for="email">Email</Label>
-                <Input
-                  id="email"
-                  class="col-span-2 h-8"
-                  type="email"
-                  bind:value={newUser.email}
-                />
-              </div>
               <div class="grid grid-cols-3 items-center gap-4">
                 <Label for="password">Password</Label>
                 <Input

@@ -1,7 +1,7 @@
 use tauri::State;
 
 use db::{model::user::User, user_db};
-use service::export_service;
+use service::user_service;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 
@@ -24,9 +24,7 @@ pub async fn set_current_user(
 
 #[tauri::command]
 pub async fn get_users(state: State<'_, TauriAppState>) -> Result<Vec<User>, ApplicationError> {
-    let users = user_db::get_users(&state.app_state.db).await?;
-
-    Ok(users)
+    Ok(user_db::get_users(&state.app_state.db).await?)
 }
 
 #[tauri::command]
@@ -36,9 +34,7 @@ pub async fn add_user(
     user_password: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<i64, ApplicationError> {
-    let id = user_db::add_user(&state.app_state.db, user_name, user_email, user_password).await?;
-
-    Ok(id)
+    Ok(user_db::add_user(&state.app_state.db, user_name, user_email, user_password).await?)
 }
 
 #[tauri::command]
@@ -96,14 +92,13 @@ pub async fn delete_user(
     state: State<'_, TauriAppState>,
 ) -> Result<(), ApplicationError> {
     if state.get_current_user().id == user_id {
-        return Err(ApplicationError::InternalError(
+        return Err(service::ServiceError::InternalError(
             "Cannot delete the currently logged in user.".into(),
-        ));
+        )
+        .into());
     }
 
-    user_db::delete_user(&state.app_state.db, user_id).await?;
-
-    export_service::delete_dead_blobs(&state.app_state).await?;
+    user_service::delete_user(&state.app_state, user_id).await?;
 
     Ok(())
 }

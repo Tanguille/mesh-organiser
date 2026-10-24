@@ -8,13 +8,11 @@
     value = $bindable(),
     availableResources = [],
     clazz = undefined,
-    placeholder = "Select a project",
     onchange = () => {},
   }: {
     value: ResourceMeta | null;
     availableResources: ResourceMeta[];
     clazz?: ClassValue;
-    placeholder?: string;
     onchange?: VoidFunction;
   } = $props();
 </script>
@@ -32,11 +30,7 @@
   }
 >
   <Select.Trigger class="h-fit {clazz}">
-    {#if !value}
-      {placeholder}
-    {:else}
-      {value.name}
-    {/if}
+    {value?.name ?? "Select a project"}
   </Select.Trigger>
   <Select.Content>
     <Select.Group>

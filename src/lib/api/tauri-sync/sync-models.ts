@@ -9,14 +9,17 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { getContainer } from "../dependency_injection";
 import { IModelApi, type Model } from "../shared/model_api";
-import type {
-  UploadResult,
-  DirectoryScanModel,
+import {
+  uploadModels,
+  type DirectoryScanModel,
 } from "../tauri-online/tauri_import";
 import { importState } from "#lib/import.svelte";
 import { ImportStatus, ITauriImportApi } from "../shared/tauri_import_api";
 import { IGroupApi } from "../shared/group_api";
-import type { IBlobApi } from "../shared/blob_api";
+import {
+  fileTypeToPlainFileExtension,
+  type IBlobApi,
+} from "../shared/blob_api";
 import { downloadFile } from "../tauri/tauri_import";
 import {
   computeDifferences,
@@ -57,12 +60,13 @@ async function stepUpload(
   const paths = await invoke<BlobPath[]>("blobs_to_path", {
     blobIds: toUpload.map((x) => x.blob.id),
   });
-  const uploads = await invoke<UploadResult>("upload_models_to_remote_server", {
-    paths: paths.map((x) => x.blob_path),
-    recursive: false,
-    openInSlicer: false,
-    sourceUrl: null,
-  });
+  // Arguments: paths, recursive, sourceUrl, openInSlicer.
+  const uploads = await uploadModels(
+    paths.map((x) => x.blob_path),
+    false,
+    null,
+    false,
+  );
   importState.status = ImportStatus.Idle;
 
   await runWithLimit(uploads.uploaded_models, (upload) =>
@@ -83,7 +87,9 @@ async function downloadSingleModel(
   localImportApi: ITauriImportApi,
 ): Promise<void> {
   const downloadUrl = await serverBlobApi.getBlobDownloadUrl(serverModel.blob);
-  const download = await downloadFile(downloadUrl);
+  // The server download returns unpacked bytes for zipped blob types.
+  const extension = fileTypeToPlainFileExtension(serverModel.blob.filetype);
+  const download = await downloadFile(downloadUrl, `model${extension}`);
 
   // TODO: This isn't great
   const localImportState = await localImportApi.startImportProcess(
@@ -96,7 +102,12 @@ async function downloadSingleModel(
     },
   );
 
-  const id = localImportState.imported_models[0].model_ids[0];
+  const id = localImportState.imported_models[0]?.model_ids[0];
+  if (localImportState.status === ImportStatus.Failure || id === undefined) {
+    throw new Error(
+      `Failed to import synced model "${serverModel.name}": ${localImportState.failure_reason ?? "No model was imported"}`,
+    );
+  }
   serverModel.id = id;
   await localModelApi.editModel(serverModel, true, true);
   globalSyncState.processedItems += 1;

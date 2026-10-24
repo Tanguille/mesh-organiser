@@ -17,7 +17,7 @@
 
     let lastSync = timeSinceDate(currentUser.lastSync);
 
-    // This is a bit of a hack: Todo: improve this
+    // Under a minute timeSinceDate counts seconds; show "just now" instead of a ticking counter.
     if (lastSync.includes("second")) {
       return "Last synced just now";
     }

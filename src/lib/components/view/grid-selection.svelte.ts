@@ -14,12 +14,9 @@ interface GridSelectionOptions<T> {
   onEndOfList?: () => void;
 }
 
-// Shared selection state machine for the model/group grids: shift-range
-// select, ctrl/meta toggle, single-select with scrollIntoView, the
-// mousedown-before-click suppression, right-click select, and the 1s
-// end-of-list scroll polling. The selection array itself stays owned by the
-// component (model-grid-inner binds it as a prop, group-grid reassigns it
-// from pruning/delete paths), so everything goes through accessors.
+// Selection state shared by the model/group grids. The selection array stays
+// owned by the component (model-grid-inner binds it as a prop, group-grid
+// reassigns it from pruning/delete paths), so everything goes through accessors.
 export function createGridSelection<T>(options: GridSelectionOptions<T>) {
   const {
     getItems,

@@ -6,6 +6,17 @@ export enum FileType {
   GCODE = "gcode.zip",
 }
 
+// Extensions the importers accept, besides zip archives.
+export const MODEL_EXTENSIONS = [
+  ...Object.values(FileType).map((fileType) =>
+    fileTypeToPlainFileExtension(fileType).slice(1),
+  ),
+  "stp", // Import alias for STEP, rather than a separate stored file type.
+];
+
+// Everything the file pickers offer when importing: model files plus zip archives.
+export const IMPORT_EXTENSIONS = [...MODEL_EXTENSIONS, "zip"];
+
 /**
  * Normalizes a file-type selection for backend filters.
  *
@@ -51,6 +62,8 @@ function plainFileExtensionToFileType(extension: string): FileType {
     case "obj":
       return FileType.OBJ;
     case "step":
+    case "stp":
+    case "stp.zip":
       return FileType.STEP;
     case "gcode":
       return FileType.GCODE;
@@ -75,7 +88,6 @@ export function createBlobInstance(
   };
 }
 
-// Builds the blob thumbnail URL shared by the web and web-share blob APIs.
 export function blobThumbnailUrl(origin: string, sha256: string): string {
   return origin + "/api/v1/blobs/" + sha256 + "/thumb";
 }

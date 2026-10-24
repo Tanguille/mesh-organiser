@@ -13,10 +13,10 @@ import type { Model } from "../shared/model_api";
 import {
   applySyncResult,
   computeDifferences,
-  forceApplyFieldToObject,
-  metaFieldExtractor,
+  remoteCounterparts,
   resolveDirection,
   stepDelete,
+  withMetaSyncFields,
   type ResourceSet,
 } from "./algorithm";
 
@@ -25,9 +25,7 @@ async function finalizeSingleGroupUpload(
   remoteApi: IGroupApi,
   remoteModelsById: Map<string, Model>,
 ): Promise<void> {
-  const relatedModels = group.models.flatMap(
-    (model) => remoteModelsById.get(model.uniqueGlobalId) ?? [],
-  );
+  const relatedModels = remoteCounterparts(group.models, remoteModelsById);
   const newGroup = await remoteApi.addGroup(group.meta.name);
   group.meta.id = newGroup.id;
   await remoteApi.addModelsToGroup(group.meta, relatedModels);
@@ -62,9 +60,7 @@ async function finalizeSyncToRemote(
     isServerToLocal,
   );
 
-  const relatedModels = localGroup.models.flatMap(
-    (model) => remoteModelsById.get(model.uniqueGlobalId) ?? [],
-  );
+  const relatedModels = remoteCounterparts(localGroup.models, remoteModelsById);
 
   await remoteApi.removeModelsFromGroup(remoteGroup.models);
   await remoteApi.addModelsToGroup(remoteGroup.meta, relatedModels);
@@ -97,8 +93,8 @@ async function stepSyncToRemote(
 
 export async function syncGroups(
   serverGroupApi: IGroupApi,
-  serverModels: Model[],
-  localModels: Model[],
+  serverModelsById: Map<string, Model>,
+  localModelsById: Map<string, Model>,
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
   resetSyncState(SyncStage.Groups);
@@ -110,27 +106,9 @@ export async function syncGroups(
     getAllGroups(localGroupApi),
   ]);
 
-  // Index the shared model lists once so per-group member resolution is
-  // O(group size) instead of a full model-library scan per group.
-  const serverModelsById = new Map(
-    serverModels.map((x) => [x.uniqueGlobalId, x]),
-  );
-  const localModelsById = new Map(
-    localModels.map((x) => [x.uniqueGlobalId, x]),
-  );
-
-  const modifiedServerGroups = forceApplyFieldToObject(
-    serverGroups,
-    metaFieldExtractor,
-  );
-  const modifiedLocalGroups = forceApplyFieldToObject(
-    localGroups,
-    metaFieldExtractor,
-  );
-
   const syncState = computeDifferences(
-    modifiedLocalGroups,
-    modifiedServerGroups,
+    withMetaSyncFields(localGroups),
+    withMetaSyncFields(serverGroups),
     lastSynced,
   );
 

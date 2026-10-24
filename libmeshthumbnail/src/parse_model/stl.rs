@@ -6,18 +6,12 @@ use vek::Vec3;
 use crate::{
     error::MeshThumbnailError,
     mesh::Mesh,
-    parse_model::find_zip_entry_bytes,
-    path_ext::{is_zip_of, matches_ext},
+    parse_model::{find_zip_entry_bytes, parse_by_extension},
+    path_ext::matches_ext,
 };
 
 pub fn handle_stl(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
-    if is_zip_of(path, "stl") {
-        Ok(Some(parse_stl_zip(path)?))
-    } else if matches_ext(path, "stl") {
-        Ok(Some(parse_stl(path)?))
-    } else {
-        Ok(None)
-    }
+    parse_by_extension(path, "stl", parse_stl, parse_stl_zip)
 }
 
 fn parse_stl(path: &Path) -> Result<Mesh, MeshThumbnailError> {

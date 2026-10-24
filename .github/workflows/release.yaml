@@ -16,9 +16,6 @@ on:
     tags:
       - "v*"
 
-env:
-  MESH_THUMBNAIL_REPO: suchmememanyskill/mesh-thumbnail
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -66,12 +63,10 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
           install: false
 
-      # Matches rust-ci.yaml. dtolnay/rust-toolchain publishes no tags, so
-      # Dependabot cannot resolve a SHA pin to it and errors out the entire
-      # github-actions update batch; this action is tagged and resolves fine.
-      # cache/rustflags are disabled to keep the previous behaviour: caching
-      # stays with the explicit Swatinem step below, and the release build must
-      # not fail on warnings.
+      # Matches rust-ci.yaml. dtolnay/rust-toolchain publishes no tags to pin a
+      # SHA against; this action is tagged. cache/rustflags are disabled because
+      # caching stays with the explicit Swatinem step below, and the release
+      # build must not fail on warnings.
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
@@ -90,6 +85,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Fetch OCCT sources
+        if: matrix.name == 'linux-amd64'
+        shell: bash
+        run: bash scripts/fetch-occt.sh
+
       - name: Install dependencies (macOS)
         if: matrix.name == 'macos-amd64' || matrix.name == 'macos-arm64'
         run: |
@@ -107,16 +107,13 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual trigger: use inputs
             if [ "${{ github.event.inputs.releaseType }}" = "build-only" ]; then
               echo "tag_name=" >> $GITHUB_OUTPUT
               echo "release_name=" >> $GITHUB_OUTPUT
-              echo "upload_workflow_artifacts=true" >> $GITHUB_OUTPUT
               echo "release_draft=false" >> $GITHUB_OUTPUT
             else
               echo "tag_name=v__VERSION__" >> $GITHUB_OUTPUT
               echo "release_name=Mesh Organiser v__VERSION__" >> $GITHUB_OUTPUT
-              echo "upload_workflow_artifacts=false" >> $GITHUB_OUTPUT
               if [ "${{ github.event.inputs.releaseType }}" = "draft" ]; then
                 echo "release_draft=true" >> $GITHUB_OUTPUT
               else
@@ -124,10 +121,8 @@ jobs:
               fi
             fi
           else
-            # Tag push: use the tag directly
             echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "release_name=Mesh Organiser ${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "upload_workflow_artifacts=false" >> $GITHUB_OUTPUT
             echo "release_draft=false" >> $GITHUB_OUTPUT
           fi
 

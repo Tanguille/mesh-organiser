@@ -9,7 +9,9 @@ use tauri::AppHandle;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 use db::model::user::User;
-use service::{AppState, Configuration};
+use service::{AppState, Configuration, ServiceError};
+
+use crate::error::ApplicationError;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AccountLinkEmit {
@@ -68,31 +70,19 @@ impl TauriAppState {
     }
 
     /// Fetches a model for the current user, erroring when it does not exist.
-    pub async fn require_model(
-        &self,
-        model_id: i64,
-    ) -> Result<db::model::Model, crate::error::ApplicationError> {
+    pub async fn require_model(&self, model_id: i64) -> Result<db::model::Model, ApplicationError> {
         db::model_db::get_model_via_id(&self.app_state.db, &self.get_current_user(), model_id)
             .await?
-            .ok_or_else(|| {
-                crate::error::ApplicationError::InternalError(String::from("Failed to find model"))
-            })
+            .ok_or_else(|| ServiceError::InternalError(String::from("Failed to find model")).into())
     }
 
-    pub async fn set_current_user_by_id(
-        &self,
-        user_id: i64,
-    ) -> Result<(), crate::error::ApplicationError> {
+    pub async fn set_current_user_by_id(&self, user_id: i64) -> Result<(), ApplicationError> {
         let path = self.get_settings_path();
-        let user = db::user_db::get_user_by_id(&self.app_state.db, user_id).await?;
+        let Some(user) = db::user_db::get_user_by_id(&self.app_state.db, user_id).await? else {
+            return Err(ServiceError::InternalError("User not found".into()).into());
+        };
 
-        if user.is_none() {
-            return Err(crate::error::ApplicationError::InternalError(
-                "User not found".into(),
-            ));
-        }
-
-        *self.current_user.lock().unwrap() = user.unwrap();
+        *self.current_user.lock().unwrap() = user;
 
         {
             let mut configuration = self.app_state.configuration.lock().unwrap();

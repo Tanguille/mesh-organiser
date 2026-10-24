@@ -22,15 +22,37 @@ export function resolveDirection<T>(
   };
 }
 
-// DiffableExtractor for items that carry their sync fields on `.meta`
-// (groups and labels).
-export function metaFieldExtractor<T extends { meta: DiffableItem }>(
-  item: T,
-): DiffableItem {
-  return {
+// Groups and labels carry their sync fields on `.meta`; lift them to the top
+// level so computeDifferences can diff them.
+export function withMetaSyncFields<T extends { meta: DiffableItem }>(
+  items: T[],
+): (T & DiffableItem)[] {
+  return items.map((item) => ({
+    ...item,
     uniqueGlobalId: item.meta.uniqueGlobalId,
     lastModified: item.meta.lastModified,
-  };
+  }));
+}
+
+// The remote counterparts of the local items, in local order; local items
+// without one are dropped.
+export function remoteCounterparts<T>(
+  localItems: { uniqueGlobalId: string }[],
+  remoteById: Map<string, T>,
+): T[] {
+  return localItems.flatMap(
+    (item) => remoteById.get(item.uniqueGlobalId) ?? [],
+  );
+}
+
+// The remote items sharing a uniqueGlobalId with any local item, in remote
+// order.
+export function filterByGlobalIds<T extends { uniqueGlobalId: string }>(
+  remoteItems: T[],
+  localItems: { uniqueGlobalId: string }[],
+): T[] {
+  const localIds = new Set(localItems.map((local) => local.uniqueGlobalId));
+  return remoteItems.filter((remote) => localIds.has(remote.uniqueGlobalId));
 }
 
 export interface SyncResult<T> {
@@ -53,9 +75,8 @@ export function defaultSyncResult<T>(): SyncResult<T> {
   };
 }
 
-// Per-branch handlers for the six sync steps, each receiving the matching
-// SyncResult bucket. Files bind their own local/remote api arg-swapping inside
-// these closures so the runner stays direction-agnostic.
+// Callers bind their own local/remote api arg-swapping inside these closures
+// so the runner stays direction-agnostic.
 export interface SyncResultHandlers<T> {
   upload: (toUpload: T[]) => Promise<void>;
   download: (toDownload: T[]) => Promise<void>;
@@ -65,9 +86,8 @@ export interface SyncResultHandlers<T> {
   deleteLocal: (toDelete: T[]) => Promise<void>;
 }
 
-// Runs the six conditional sync steps in a fixed order, each gated by its
-// `.length > 0` guard. sync-models stays inline because it interleaves extra
-// steps between toDownload and syncToServer.
+// sync-models doesn't use this runner: it interleaves extra steps between
+// toDownload and syncToServer.
 export async function applySyncResult<T>(
   syncState: SyncResult<T>,
   handlers: SyncResultHandlers<T>,
@@ -97,7 +117,6 @@ export async function applySyncResult<T>(
   }
 }
 
-// SyncStep.Delete progress loop; the caller supplies the per-entity delete call.
 export async function stepDelete<T>(
   toDelete: T[],
   deleteItem: (item: T) => Promise<void>,
@@ -108,22 +127,6 @@ export async function stepDelete<T>(
     await deleteItem(item);
     globalSyncState.processedItems += 1;
   }
-}
-
-interface DiffableExtractor<T> {
-  (item: T): DiffableItem;
-}
-
-export function forceApplyFieldToObject<T>(
-  objects: T[],
-  fieldExtractor: DiffableExtractor<T>,
-): (T & DiffableItem)[] {
-  return objects.map((obj) => {
-    return {
-      ...obj,
-      ...fieldExtractor(obj),
-    };
-  });
 }
 
 export function computeDifferences<T extends DiffableItem>(

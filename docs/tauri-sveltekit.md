@@ -7,7 +7,8 @@ This repo follows the [Tauri 2 SvelteKit guide](https://v2.tauri.app/start/front
 - **Vite** listens on **`http://127.0.0.1:9435`** with **`strictPort: true`** when **`TAURI_DEV_HOST`** is unset ([`vite.config.js`](../vite.config.js)), matching Tauri’s **`devUrl`** probe. That avoids a **blank WebView** (hostname/`::1` mismatch) and avoids **`tauri dev`** hanging on “Waiting for … `127.0.0.1:9435`” when Vite was only bound in a way that did not accept IPv4 loopback.
 - **`src-tauri/tauri.conf.json`** sets **`devUrl`** to **`http://127.0.0.1:9435`**. Override **`TAURI_DEV_HOST`** for LAN/device testing and align **`devUrl`**, HMR, and CSP as described below.
 - **`beforeDevCommand`** is `pnpm run dev:web`.
-- **`pnpm run dev`** runs **`tauri dev`**. If port **9435** is busy, Vite fails fast (`strictPort`); free the port manually.
+- **`pnpm run dev`** runs **`tauri dev`**. If port **9435** is busy, Vite fails fast with `Port 9435 is already in use` (`strictPort`); stop the other `pnpm run dev:web` / `vite preview` or the stuck Node process. On Windows (PowerShell):
+  `Get-NetTCPConnection -LocalPort 9435 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
 
 ### Debugging a blank window in dev
 
@@ -19,13 +20,11 @@ This repo follows the [Tauri 2 SvelteKit guide](https://v2.tauri.app/start/front
 
 ### Vite: `transport invoke timed out after 60000ms` (SSR / `fetchModule`)
 
-If the terminal shows **`(ssr) Error when evaluating SSR module`** … **`transport invoke timed out after 60000ms`**, or the browser **never finishes loading** the first document while Vite says **ready**, Vite’s SSR **ModuleRunner** RPC may be taking longer than the default **60s** per `fetchModule` (common on Windows + long `pnpm` paths + AV scanning). This is separate from SQLite/Tauri Rust.
+The UI is client-only (`ssr = false`), but SvelteKit’s dev server still boots through Vite’s SSR **ModuleRunner**, whose `fetchModule` RPC times out after **60s**. If the terminal shows **`(ssr) Error when evaluating SSR module`** … **`transport invoke timed out after 60000ms`**, or the WebView stays blank until the timeout, the first compile is too slow (common on Windows + long `pnpm` paths + AV scanning) or startup raced. This is separate from SQLite/Tauri Rust.
 
-**This repo** applies a **`pnpm` patch** on [`vite@8.0.1`](../patches/vite@8.0.1.patch) (see [`package.json`](../package.json) `pnpm.patchedDependencies`) so the SSR transport uses a **300s** default `fetchModule` timeout instead of 60s. Override with **`VITE_SSR_FETCH_MODULE_TIMEOUT_MS`** if needed (minimum **60000**).
+Try:
 
-Also try:
-
-1. **`server.warmup.ssrFiles`** in [`vite.config.js`](../vite.config.js) to front-load SvelteKit SSR transforms.
+1. Extend **`server.warmup.ssrFiles`** in [`vite.config.js`](../vite.config.js), which front-loads SvelteKit’s SSR entry, with any other slow module.
 2. Delete **`node_modules/.vite`** and run **`pnpm run dev:web -- --force`**.
 3. Exclude the repo and **`pnpm store path`** from aggressive real-time AV scanning.
 4. If you use **pnpm’s global virtual store**, extend Vite **`server.fs.allow`** ([docs](https://vite.dev/config/server-options.html#server-fs-allow); [sveltejs/kit#14162](https://github.com/sveltejs/kit/issues/14162)).
@@ -33,7 +32,7 @@ Also try:
 
 ## SPA shell vs prerender
 
-- Root [`src/routes/+layout.ts`](../src/routes/+layout.ts) uses **`export const ssr = false`** (no Node SSR in the WebView).
+- Root [`src/routes/+layout.ts`](../src/routes/+layout.ts) uses **`export const ssr = false`** and **`prerender = false`** (no Node SSR in the WebView).
 - **`@sveltejs/adapter-static`** is configured with **`fallback: 'index.html'`** in the `sveltekit({ ... })` plugin call in [`vite.config.js`](../vite.config.js) (SvelteKit 3 no longer reads `svelte.config.js`) so **deep links** (e.g. `/group/123`, `/share/...`) work when served as static files inside Tauri.
 - Dynamic `[slug]` routes do **not** use stub `entries()` for build-time paths; the client router resolves params at runtime.
 

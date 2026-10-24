@@ -12,10 +12,11 @@ import { getAllModels, IModelApi, type Model } from "../shared/model_api";
 import {
   applySyncResult,
   computeDifferences,
-  forceApplyFieldToObject,
-  metaFieldExtractor,
+  filterByGlobalIds,
+  remoteCounterparts,
   resolveDirection,
   stepDelete,
+  withMetaSyncFields,
   type ResourceSet,
 } from "./algorithm";
 
@@ -24,18 +25,12 @@ async function stepUploadToRemote(
   localApi: ILabelApi,
   remoteApi: ILabelApi,
   localModelApi: IModelApi,
-  remoteModels: Model[],
+  remoteModelsById: Map<string, Model>,
   isDownload: boolean,
 ): Promise<void> {
   beginSyncStep(
     isDownload ? SyncStep.Download : SyncStep.Upload,
     toUpload.length,
-  );
-
-  // Index the remote models once so per-label member resolution is
-  // O(label size) instead of a full model-library scan per label.
-  const remoteModelsById = new Map(
-    remoteModels.map((x) => [x.uniqueGlobalId, x]),
   );
 
   // Fetch the remote labels once instead of per-iteration. `toUpload` is sorted
@@ -57,15 +52,14 @@ async function stepUploadToRemote(
     const localModelsForLabel = await getAllModels(localModelApi, [
       label.meta.id,
     ]);
-    const relatedRemoteModels = localModelsForLabel.flatMap(
-      (model) => remoteModelsById.get(model.uniqueGlobalId) ?? [],
+    await remoteApi.addLabelToModels(
+      newLabel,
+      remoteCounterparts(localModelsForLabel, remoteModelsById),
     );
-    await remoteApi.addLabelToModels(newLabel, relatedRemoteModels);
-
-    const relatedRemoteChildLabels = remoteLabelMetas.filter((x) =>
-      label.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
+    await remoteApi.setChildrenOnLabel(
+      newLabel,
+      filterByGlobalIds(remoteLabelMetas, label.children),
     );
-    await remoteApi.setChildrenOnLabel(newLabel, relatedRemoteChildLabels);
 
     label.meta.id = newLabel.id;
     await remoteApi.editLabel(label.meta, true, true);
@@ -80,20 +74,13 @@ async function stepSyncToRemote(
   remoteApi: ILabelApi,
   localModelApi: IModelApi,
   remoteModelApi: IModelApi,
-  remoteModels: Model[],
+  remoteModelsById: Map<string, Model>,
   isServerToLocal: boolean,
 ): Promise<void> {
   beginSyncStep(SyncStep.UpdateMetadata, toSync.length);
 
-  // Index the remote models once so per-label member resolution is
-  // O(label size) instead of a full model-library scan per label.
-  const remoteModelsById = new Map(
-    remoteModels.map((x) => [x.uniqueGlobalId, x]),
-  );
-
-  // Fetch the remote labels once instead of per-iteration. Unlike the upload
-  // step no per-loop maintenance is needed: this step creates no remote labels
-  // and pairs are matched by uniqueGlobalId, so the list never changes mid-loop.
+  // Fetched once; unlike in the upload step it needs no per-loop maintenance,
+  // as this step creates no remote labels.
   const remoteLabelMetas = (await remoteApi.getLabels(false)).map(
     (x) => x.meta,
   );
@@ -115,18 +102,13 @@ async function stepSyncToRemote(
       remoteLabel.meta,
       remoteModelsForLabel,
     );
-    const relatedRemoteModels = localModelsForLabel.flatMap(
-      (model) => remoteModelsById.get(model.uniqueGlobalId) ?? [],
+    await remoteApi.addLabelToModels(
+      remoteLabel.meta,
+      remoteCounterparts(localModelsForLabel, remoteModelsById),
     );
-    await remoteApi.addLabelToModels(remoteLabel.meta, relatedRemoteModels);
-
-    const relatedRemoteChildLabels = remoteLabelMetas.filter((x) =>
-      localLabel.children.some((y) => y.uniqueGlobalId === x.uniqueGlobalId),
-    );
-
     await remoteApi.setChildrenOnLabel(
       remoteLabel.meta,
-      relatedRemoteChildLabels,
+      filterByGlobalIds(remoteLabelMetas, localLabel.children),
     );
 
     localLabel.meta.id = remoteLabel.meta.id;
@@ -142,8 +124,8 @@ async function stepSyncToRemote(
 export async function syncLabels(
   serverModelApi: IModelApi,
   serverLabelApi: ILabelApi,
-  serverModels: Model[],
-  localModels: Model[],
+  serverModelsById: Map<string, Model>,
+  localModelsById: Map<string, Model>,
 ): Promise<void> {
   const lastSynced = currentUser.lastSync ?? new Date("2000");
   resetSyncState(SyncStage.Labels);
@@ -156,18 +138,9 @@ export async function syncLabels(
     localLabelApi.getLabels(false),
   ]);
 
-  const modifiedServerLabels = forceApplyFieldToObject(
-    serverLabels,
-    metaFieldExtractor,
-  );
-  const modifiedLocalLabels = forceApplyFieldToObject(
-    localLabels,
-    metaFieldExtractor,
-  );
-
   const syncState = computeDifferences(
-    modifiedLocalLabels,
-    modifiedServerLabels,
+    withMetaSyncFields(localLabels),
+    withMetaSyncFields(serverLabels),
     lastSynced,
   );
 
@@ -195,7 +168,7 @@ export async function syncLabels(
         localLabelApi,
         serverLabelApi,
         localModelApi,
-        serverModels,
+        serverModelsById,
         false,
       ),
     download: (toDownload) =>
@@ -204,7 +177,7 @@ export async function syncLabels(
         serverLabelApi,
         localLabelApi,
         serverModelApi,
-        localModels,
+        localModelsById,
         true,
       ),
     syncToServer: (toSync) =>
@@ -214,7 +187,7 @@ export async function syncLabels(
         serverLabelApi,
         localModelApi,
         serverModelApi,
-        serverModels,
+        serverModelsById,
         false,
       ),
     syncToLocal: (toSync) =>
@@ -224,7 +197,7 @@ export async function syncLabels(
         localLabelApi,
         serverModelApi,
         localModelApi,
-        localModels,
+        localModelsById,
         true,
       ),
     deleteServer: (toDelete) =>

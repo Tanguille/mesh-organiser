@@ -290,6 +290,8 @@ impl App {
 
         let auth_router = auth_controller::router().layer(GovernorLayer::new(governor_config));
 
+        // In each controller's router, `login_required!` is a route layer, so it guards only
+        // the routes registered before it; public routes are registered after it.
         let app = Router::new()
             .merge(auth_router)
             .merge(blob_controller::router())

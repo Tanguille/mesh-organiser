@@ -30,7 +30,6 @@ tauri-plugin-process = { workspace = true }
 tokio = { workspace = true, features = [
     "fs",
     "io-util",
-    "macros",
     "rt-multi-thread",
     "sync",
 ] }
@@ -56,3 +55,4 @@ tauri-plugin-single-instance = { workspace = true }
 
 [dev-dependencies]
 libmeshthumbnail = { workspace = true, features = ["step"] }
+tokio = { workspace = true, features = ["macros"] }
