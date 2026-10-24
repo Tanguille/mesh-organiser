@@ -1,7 +1,7 @@
 use tauri::State;
 
 use db::{model::user::User, user_db};
-use service::export_service;
+use service::user_service;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 
@@ -98,7 +98,7 @@ pub async fn delete_user(
         .into());
     }
 
-    export_service::delete_user(&state.app_state, user_id).await?;
+    user_service::delete_user(&state.app_state, user_id).await?;
 
     Ok(())
 }

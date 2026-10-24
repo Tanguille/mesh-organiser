@@ -1,4 +1,4 @@
-//! Characterization tests for `export_to_temp_folder` and `export_zip_to_temp_folder`.
+//! Characterization tests for model disk usage and folder/zip exports.
 //!
 //! Both write a `metadata.json` when `export_metadata` is on; it must stay the
 //! pretty-printed model list, byte-identical between the folder and zip exports.
@@ -13,10 +13,15 @@ use std::{
 
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
-use db::model::{Model, ModelFlags, label::LabelMeta, model_group::ModelGroupMeta};
+use db::{
+    model::{Model, ModelFlags, label::LabelMeta, model_group::ModelGroupMeta, user::User},
+    user_db,
+};
 use service::{
     AppState,
-    export_service::{export_to_temp_folder, export_zip_to_temp_folder},
+    export_service::{
+        export_to_temp_folder, export_zip_to_temp_folder, get_model_disk_space_usage,
+    },
 };
 
 const GEAR_BYTES: &[u8] = b"solid gear\nendsolid gear\n";
@@ -86,6 +91,81 @@ fn sorted_file_names(paths: &[PathBuf]) -> Vec<String> {
     names.sort();
 
     names
+}
+
+#[tokio::test]
+async fn model_disk_usage_counts_only_the_users_imported_blobs() {
+    let (dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let empty = get_model_disk_space_usage(&app_state, &user).await.unwrap();
+    assert_eq!((empty.size_uncompressed, empty.size_compressed), (0, 0));
+
+    let other_user_id = user_db::add_user(
+        &app_state.db,
+        "other",
+        "other@example.com",
+        &db::random_hex_32(),
+    )
+    .await
+    .unwrap();
+    let other_user = user_db::get_user_by_id(&app_state.db, other_user_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let other_bytes = b"solid another users model\nendsolid another users model\n";
+    let model_dir = app_state.get_model_dir();
+    let mut stored_sizes = [0; 3];
+
+    for (index, (name, bytes, owner)) in [
+        ("gear.stl", GEAR_BYTES, &user),
+        ("bracket.stl", BRACKET_BYTES, &user),
+        ("other.stl", other_bytes.as_slice(), &other_user),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source_path = dir.path().join(name);
+        fs::write(&source_path, bytes).unwrap();
+        let imported = service::import_service::import_path(
+            source_path.to_str().unwrap(),
+            &app_state,
+            service::import_state::ImportState::new(None, false, false, false, owner.clone()),
+        )
+        .await
+        .unwrap();
+        let models =
+            db::model_db::get_models_via_ids(&app_state.db, owner, imported.all_model_ids())
+                .await
+                .unwrap();
+        assert_eq!(models.len(), 1);
+        let blob = &models[0].blob;
+        stored_sizes[index] =
+            fs::metadata(model_dir.join(format!("{}.{}", blob.sha256, blob.filetype)))
+                .unwrap()
+                .len();
+
+        if index == 0 {
+            fs::create_dir(model_dir.join(format!("{}.directory", blob.sha256))).unwrap();
+        }
+    }
+    fs::write(model_dir.join("unrelated.stl.zip"), b"not an imported blob").unwrap();
+
+    let usage = get_model_disk_space_usage(&app_state, &user).await.unwrap();
+    assert_eq!(
+        usage.size_uncompressed,
+        u64::try_from(GEAR_BYTES.len() + BRACKET_BYTES.len()).unwrap()
+    );
+    assert_eq!(usage.size_compressed, stored_sizes[0] + stored_sizes[1]);
+    assert_ne!(usage.size_uncompressed, usage.size_compressed);
+
+    let other_usage = get_model_disk_space_usage(&app_state, &other_user)
+        .await
+        .unwrap();
+    assert_eq!(
+        other_usage.size_uncompressed,
+        u64::try_from(other_bytes.len()).unwrap()
+    );
+    assert_eq!(other_usage.size_compressed, stored_sizes[2]);
 }
 
 #[tokio::test]

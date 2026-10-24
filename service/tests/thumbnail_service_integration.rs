@@ -3,42 +3,12 @@
 //! The startup backfill re-runs `generate_all_thumbnails` on every launch, so
 //! skipping blobs that already have a thumbnail is what keeps it cheap.
 
-use std::{
-    fs,
-    sync::{Arc, Mutex},
-};
+mod common;
 
-use tempfile::tempdir;
+use std::fs;
 
-use db::{blob_db, db_context, model::user::User};
-use service::{
-    AppState, Configuration, import_state::ImportState, thumbnail_service::generate_all_thumbnails,
-};
-
-/// Builds an `AppState` whose data and app-data paths both point at a fresh
-/// temporary directory, so models, thumbnails and the database are isolated
-/// per test.
-async fn test_app_state() -> (tempfile::TempDir, AppState) {
-    let dir = tempdir().unwrap();
-    let data_path = dir.path().join("data");
-    let backup_dir = data_path.join("backup");
-    fs::create_dir_all(&backup_dir).unwrap();
-
-    let db = db_context::setup_db(&data_path.join("db.sqlite"), &backup_dir).await;
-    let config = Configuration {
-        data_path: data_path.to_string_lossy().to_string(),
-        ..Default::default()
-    };
-
-    let app_state = AppState {
-        db: Arc::new(db),
-        configuration: Mutex::new(config),
-        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
-        app_data_path: data_path.to_string_lossy().to_string(),
-    };
-
-    (dir, app_state)
-}
+use db::{blob_db, model::user::User};
+use service::{import_state::ImportState, thumbnail_service::generate_all_thumbnails};
 
 /// A single triangle is enough for the renderer to produce a real thumbnail.
 const TRIANGLE_STL: &str = "solid t
@@ -54,7 +24,7 @@ endsolid t
 
 #[tokio::test]
 async fn generate_all_thumbnails_leaves_existing_thumbnails_untouched() {
-    let (_dir, app_state) = test_app_state().await;
+    let (_dir, app_state) = common::test_app_state().await;
 
     blob_db::add_blob(&app_state.db, "aa", "stl", 10, None)
         .await
@@ -91,7 +61,7 @@ async fn generate_all_thumbnails_leaves_existing_thumbnails_untouched() {
 
 #[tokio::test]
 async fn generate_all_thumbnails_survives_blobs_without_model_files() {
-    let (_dir, app_state) = test_app_state().await;
+    let (_dir, app_state) = common::test_app_state().await;
 
     blob_db::add_blob(&app_state.db, "missing", "stl", 10, None)
         .await
@@ -112,7 +82,7 @@ async fn generate_all_thumbnails_survives_blobs_without_model_files() {
 /// produce images of the service's fixed 400x400 thumbnail size.
 #[tokio::test]
 async fn generated_thumbnails_are_400_by_400() {
-    let (_dir, app_state) = test_app_state().await;
+    let (_dir, app_state) = common::test_app_state().await;
     app_state.configuration.lock().unwrap().prefer_3mf_thumbnail = true;
 
     blob_db::add_blob(&app_state.db, "rendered", "stl", 10, None)

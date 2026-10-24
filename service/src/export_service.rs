@@ -19,7 +19,7 @@ use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use db::{
     blob_db,
     model::{Model, blob::Blob, user::User},
-    model_db, user_db,
+    model_db,
 };
 
 use crate::{
@@ -346,13 +346,6 @@ pub async fn delete_models(
     delete_dead_blobs(app_state).await?;
 
     Ok(())
-}
-
-/// Deletes the user, then the files of blobs nothing references any more.
-pub async fn delete_user(app_state: &AppState, user_id: i64) -> Result<(), ServiceError> {
-    user_db::delete_user(&app_state.db, user_id).await?;
-
-    delete_dead_blobs(app_state).await
 }
 
 /// Removes on-disk files for blobs that are no longer referenced.

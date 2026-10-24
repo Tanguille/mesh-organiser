@@ -7,9 +7,12 @@ export enum FileType {
 }
 
 // Extensions the importers accept, besides zip archives.
-export const MODEL_EXTENSIONS = Object.values(FileType).map((fileType) =>
-  fileTypeToPlainFileExtension(fileType).slice(1),
-);
+export const MODEL_EXTENSIONS = [
+  ...Object.values(FileType).map((fileType) =>
+    fileTypeToPlainFileExtension(fileType).slice(1),
+  ),
+  "stp", // Import alias for STEP, rather than a separate stored file type.
+];
 
 // Everything the file pickers offer when importing: model files plus zip archives.
 export const IMPORT_EXTENSIONS = [...MODEL_EXTENSIONS, "zip"];
