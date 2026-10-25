@@ -18,7 +18,7 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 
 use db::{model::user::User, model_db};
 use service::{
-    AppState, ServiceError, export_service,
+    AppState, export_service,
     import_service::{get_model_count, import_path},
     import_state::ImportState,
 };
