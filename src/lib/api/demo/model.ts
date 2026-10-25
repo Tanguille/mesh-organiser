@@ -6,7 +6,16 @@ import {
   type ModelFilter,
   type ModelFlags,
 } from "../shared/model_api";
-import { mockModels, modelGroupMap, modelLabelsMap } from "./mock_data";
+import {
+  mockGroups,
+  mockLabels,
+  mockModels,
+  modelGroupMap,
+  modelLabelsMap,
+  resolveLabels,
+} from "./mock_data";
+
+const trashedModels = new Map<number, Model>();
 
 export class DemoModelApi implements IModelApi {
   private filterByFlags(models: Model[], flags: ModelFlags | null): Model[] {
@@ -91,20 +100,53 @@ export class DemoModelApi implements IModelApi {
   }
 
   async deleteModels(models: Model[]): Promise<void> {
-    for (const model of models) {
+    for (const { id } of models) {
+      const model = mockModels.get(id);
+      if (!model) continue;
+
+      model.deleted = new Date();
+      model.group = model.group
+        ? (mockGroups.get(model.group.id) ?? null)
+        : null;
+      model.labels = resolveLabels(model.labels.map((label) => label.id));
+      trashedModels.set(model.id, model);
       mockModels.delete(model.id);
       modelGroupMap.delete(model.id);
       modelLabelsMap.delete(model.id);
     }
   }
 
-  // ponytail: demo deletes stay permanent, so its trash is always empty; keep
-  // trashed models in memory if the demo should show the restore flow.
   async getTrashedModels(): Promise<Model[]> {
-    return [];
+    return [...trashedModels.values()].sort(
+      (left, right) =>
+        (right.deleted?.getTime() ?? 0) - (left.deleted?.getTime() ?? 0),
+    );
   }
 
-  async restoreModels(_models: Model[]): Promise<void> {
-    throw new Error("Demo mode: Cannot restore models");
+  async restoreModels(models: Model[]): Promise<void> {
+    if (models.some((model) => !trashedModels.has(model.id))) {
+      throw new Error("Failed to find model to restore");
+    }
+
+    for (const id of new Set(models.map((model) => model.id))) {
+      const model = trashedModels.get(id)!;
+      model.deleted = null;
+      // Demo ids can be reused after deletion; only retain the original associations.
+      if (model.group && mockGroups.get(model.group.id) !== model.group) {
+        model.group = null;
+      }
+      model.labels = model.labels.filter(
+        (label) => mockLabels.get(label.id) === label,
+      );
+      mockModels.set(id, model);
+      if (model.group) modelGroupMap.set(id, model.group.id);
+      if (model.labels.length > 0) {
+        modelLabelsMap.set(
+          id,
+          model.labels.map((label) => label.id),
+        );
+      }
+      trashedModels.delete(id);
+    }
   }
 }

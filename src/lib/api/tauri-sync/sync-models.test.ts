@@ -7,12 +7,19 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { currentUser } from "#lib/configuration.svelte";
+import {
+  globalSyncState,
+  resetSyncState,
+  SyncStage,
+  SyncStep,
+} from "#lib/sync.svelte";
 import { getContainer, resetContainer } from "../dependency_injection";
 import { createBlobInstance, type IBlobApi } from "../shared/blob_api";
 import { createGroupMetaInstance, IGroupApi } from "../shared/group_api";
 import {
   createModelInstance,
   IModelApi,
+  MAX_PAGE_SIZE,
   type Model,
   type ModelFilter,
 } from "../shared/model_api";
@@ -71,8 +78,10 @@ async function syncOneUpload(
   const localModel = model(1, localGroupGlobalId);
   const serverModelApi = {
     // Empty for the initial listing; the post-upload lookup filters on the new id.
-    getModels: vi.fn(async (filter: ModelFilter) =>
-      filter.modelIds ? [model(SERVER_MODEL_ID, serverGroupGlobalId)] : [],
+    getModels: vi.fn(async (filter: ModelFilter, page: number) =>
+      filter.modelIds && page === 1
+        ? [model(SERVER_MODEL_ID, serverGroupGlobalId)]
+        : [],
     ),
     editModel: vi.fn().mockResolvedValue(undefined),
   };
@@ -111,12 +120,72 @@ async function syncOneUpload(
   return { localModel, serverModelApi, serverGroupApi };
 }
 
+async function syncMultipleUploads(
+  localModels: Model[],
+  serverModels: Model[],
+) {
+  const paths = localModels.map((localModel, index) => {
+    localModel.blob.id = LOCAL_BLOB_ID + index;
+    localModel.blob.sha256 = `sha-${index}`;
+    localModel.uniqueGlobalId = `model-gid-${index}`;
+
+    return {
+      blob_id: localModel.blob.id,
+      blob_path: `/blobs/model-${index}.stl`,
+    };
+  });
+  const serverModelApi = {
+    getModels: vi.fn(
+      async (filter: ModelFilter, page: number, pageSize: number) => {
+        const ids = filter.modelIds;
+        const matching = ids
+          ? serverModels.filter((serverModel) => ids.includes(serverModel.id))
+          : [];
+
+        return matching.slice((page - 1) * pageSize, page * pageSize);
+      },
+    ),
+    editModel: vi.fn().mockResolvedValue(undefined),
+  };
+  const serverGroupApi = {
+    removeModelsFromGroup: vi.fn().mockResolvedValue(undefined),
+  };
+  const container = getContainer();
+  container.addSingleton(IModelApi, {
+    getModels: vi.fn(
+      async (_filter: ModelFilter, page: number, pageSize: number) =>
+        localModels.slice((page - 1) * pageSize, page * pageSize),
+    ),
+  });
+  container.addSingleton(IGroupApi, {});
+  container.addSingleton(ITauriImportApi, {});
+  mocks.invoke.mockResolvedValue(paths);
+  mocks.uploadModels.mockResolvedValue({
+    import_state: {},
+    uploaded_models: paths.map((path, index) => ({
+      path: path.blob_path,
+      group_set: null,
+      group_name: null,
+      model_ids: [serverModels[index].id],
+    })),
+  });
+
+  await syncModels(
+    serverModelApi as unknown as IModelApi,
+    serverGroupApi as unknown as IGroupApi,
+    {} as IBlobApi,
+  );
+
+  return { serverModelApi, serverGroupApi };
+}
+
 describe("syncModels upload", () => {
   afterEach(() => {
     resetContainer();
     mocks.invoke.mockReset();
     mocks.uploadModels.mockReset();
     currentUser.lastSync = null;
+    resetSyncState();
   });
 
   it.each([
@@ -136,7 +205,7 @@ describe("syncModels upload", () => {
       expect(serverModelApi.getModels).toHaveBeenCalledWith(
         expect.objectContaining({ modelIds: [SERVER_MODEL_ID] }),
         1,
-        1,
+        expect.any(Number),
       );
       expect(serverGroupApi.removeModelsFromGroup.mock.calls).toEqual(
         detaches ? [[[localModel]]] : [],
@@ -146,4 +215,83 @@ describe("syncModels upload", () => {
       ]);
     },
   );
+
+  it("looks up all uploaded models in one paginated sequence and preserves group decisions", async () => {
+    currentUser.lastSync = new Date("2025-01-01T00:00:00Z");
+    const localModels = [model(1, "kept"), model(2, "local"), model(3, null)];
+    const serverModels = [
+      model(42, "kept"),
+      model(43, "auto"),
+      model(44, null),
+    ];
+    const { serverModelApi, serverGroupApi } = await syncMultipleUploads(
+      localModels,
+      serverModels,
+    );
+
+    const ids = serverModels.map((serverModel) => serverModel.id);
+    const lookupCalls = serverModelApi.getModels.mock.calls.filter(
+      ([filter]) => filter.modelIds !== null,
+    );
+    expect(lookupCalls).toEqual([
+      [expect.objectContaining({ modelIds: ids }), 1, MAX_PAGE_SIZE],
+      [expect.objectContaining({ modelIds: ids }), 2, MAX_PAGE_SIZE],
+    ]);
+    expect(localModels.map((localModel) => localModel.id)).toEqual(ids);
+    expect(serverGroupApi.removeModelsFromGroup.mock.calls).toEqual([
+      [[localModels[1]]],
+    ]);
+    expect(serverModelApi.editModel).toHaveBeenCalledTimes(3);
+    for (const localModel of localModels) {
+      expect(serverModelApi.editModel).toHaveBeenCalledWith(
+        localModel,
+        true,
+        true,
+      );
+    }
+    expect(globalSyncState).toEqual({
+      stage: SyncStage.Models,
+      step: SyncStep.Upload,
+      processableItems: 3,
+      processedItems: 3,
+    });
+  });
+
+  it("bounds id batches for uploads larger than one page and completes every edit", async () => {
+    currentUser.lastSync = new Date("2025-01-01T00:00:00Z");
+    const localModels = Array.from({ length: MAX_PAGE_SIZE + 1 }, (_, index) =>
+      model(index + 1, null),
+    );
+    const serverModels = localModels.map((localModel) =>
+      model(localModel.id + MAX_PAGE_SIZE, null),
+    );
+
+    const { serverModelApi } = await syncMultipleUploads(
+      localModels,
+      serverModels,
+    );
+
+    const lookupCalls = serverModelApi.getModels.mock.calls.filter(
+      ([filter]) => filter.modelIds !== null,
+    );
+    const firstPages = lookupCalls.filter(([, page]) => page === 1);
+    expect(firstPages.map(([filter]) => filter.modelIds?.length)).toEqual([
+      MAX_PAGE_SIZE,
+      1,
+    ]);
+    expect(firstPages.flatMap(([filter]) => filter.modelIds ?? [])).toEqual(
+      serverModels.map((serverModel) => serverModel.id),
+    );
+    expect(lookupCalls.map(([, page]) => page)).toEqual([1, 2, 1, 2]);
+    for (const [filter] of lookupCalls) {
+      expect(filter.modelIds!.length).toBeLessThanOrEqual(MAX_PAGE_SIZE);
+    }
+    expect(serverModelApi.editModel).toHaveBeenCalledTimes(localModels.length);
+    expect(
+      serverModelApi.editModel.mock.calls
+        .map(([uploaded]) => uploaded.id)
+        .sort((left, right) => left - right),
+    ).toEqual(serverModels.map((serverModel) => serverModel.id));
+    expect(globalSyncState.processedItems).toBe(localModels.length);
+  });
 });

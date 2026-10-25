@@ -7,7 +7,7 @@
   import ModelTinyList from "#lib/components/view/model-tiny-list.svelte";
   import { configuration, currentUser } from "#lib/configuration.svelte";
   import { updateSidebarState } from "#lib/sidebar_data.svelte";
-  import { countWriter, isCommandError, timeSinceDate } from "#lib/utils";
+  import { countWriter, timeSinceDate } from "#lib/utils";
   import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import { onMount } from "svelte";
@@ -24,11 +24,18 @@
 
   let models = $state<Model[]>([]);
   let loading = $state(true);
+  let loadFailed = $state(false);
   const selected = new SvelteSet<number>();
 
   onMount(async () => {
-    models = await modelApi.getTrashedModels();
-    loading = false;
+    try {
+      models = await modelApi.getTrashedModels();
+    } catch {
+      loadFailed = true;
+      toast.error("Failed to load the trash");
+    } finally {
+      loading = false;
+    }
   });
 
   function selectAll(checked: boolean) {
@@ -50,17 +57,26 @@
       success: (_) => {
         return `Restored ${countWriter("model", restored)}`;
       },
-      error: (reason) =>
-        isCommandError(reason)
-          ? reason.error_inner_message
-          : "Failed to restore models",
+      error: () => "Failed to restore models. Refresh the trash and try again.",
     });
 
     // The toast reports a failure. Refetch either way instead of filtering
     // locally: a refused batch, or a restore made elsewhere (sync, MCP, another
     // tab), would otherwise leave stale rows that fail every retry.
-    await promise.catch(() => {});
-    models = await modelApi.getTrashedModels();
+    const restoreSucceeded = await promise.then(
+      () => true,
+      () => false,
+    );
+    try {
+      models = await modelApi.getTrashedModels();
+    } catch {
+      // A successful restore must not leave live models available for another restore.
+      if (restoreSucceeded) {
+        const restoredIds = new Set(restored.map((model) => model.id));
+        models = models.filter((model) => !restoredIds.has(model.id));
+      }
+      toast.error("Failed to refresh the trash. Reload the page to try again.");
+    }
     const remaining = new Set(models.map((model) => model.id));
     for (const id of selected) {
       if (!remaining.has(id)) {
@@ -141,7 +157,12 @@
     <div class="mb-2 rounded-md bg-primary p-2">
       <Trash2 />
     </div>
-    The trash is empty. Deleted models show up here until they are restored.
+    {#if loadFailed}
+      Could not load the trash.
+    {:else}
+      The trash is empty. Deleted models show up here until they are restored or
+      permanently deleted.
+    {/if}
     {@render retention()}
   </div>
 {/if}

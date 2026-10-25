@@ -1,14 +1,13 @@
 /**
- * Characterization tests for the read-only resource/label/model-trash API stubs
- * used by demo mode and public share pages. The stubs differ in how mutators fail: demo
- * mutators throw a "Demo mode: ..." error, web-share mutators are silent no-ops
+ * Characterization tests for the read-only resource/label API stubs used by demo
+ * mode, and resource/label/model-trash API stubs used by public share pages.
+ * Demo mutators throw a "Demo mode: ..." error; web-share mutators are silent no-ops
  * except the creators, which throw "Method not implemented.". Reads return
  * empty lists.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { DemoLabelApi } from "../demo/label";
-import { DemoModelApi } from "../demo/model";
 import { DemoResourceApi } from "../demo/resource";
 import { WebShareLabelApi } from "../web_share/label";
 import { WebShareModelApi } from "../web_share/model";
@@ -137,20 +136,6 @@ describe("DemoLabelApi stubs", () => {
     );
     await expect(api.setChildrenOnLabel(label, [label])).rejects.toThrow(
       "Demo mode: Cannot modify label hierarchy",
-    );
-  });
-});
-
-describe("DemoModelApi trash stubs", () => {
-  const api = new DemoModelApi();
-
-  it("getTrashedModels returns an empty list", async () => {
-    await expect(api.getTrashedModels()).resolves.toEqual([]);
-  });
-
-  it("restoreModels throws a demo-mode error", async () => {
-    await expect(api.restoreModels([model])).rejects.toThrow(
-      "Demo mode: Cannot restore models",
     );
   });
 });

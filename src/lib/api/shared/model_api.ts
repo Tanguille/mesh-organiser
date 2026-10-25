@@ -169,6 +169,7 @@ export interface IModelApi {
   getModelCount(flags: ModelFlags | null): Promise<number>;
   /** Returns every trashed model, most recently deleted first. */
   getTrashedModels(): Promise<Model[]>;
+  /** Restores nothing unless every requested model is still in the user's trash. */
   restoreModels(models: Model[]): Promise<void>;
 }
 

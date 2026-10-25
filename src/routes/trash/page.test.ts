@@ -25,8 +25,11 @@ import { configuration, currentUser } from "#lib/configuration.svelte";
 import Page from "./+page.svelte";
 
 const toastPromise = vi.hoisted(() => vi.fn());
+const toastError = vi.hoisted(() => vi.fn());
 
-vi.mock("svelte-sonner", () => ({ toast: { promise: toastPromise } }));
+vi.mock("svelte-sonner", () => ({
+  toast: { promise: toastPromise, error: toastError },
+}));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -85,6 +88,7 @@ describe("trash +page", () => {
   afterEach(() => {
     resetContainer();
     toastPromise.mockReset();
+    toastError.mockReset();
     currentUser.permissions.onlineAccount = false;
     configuration.trash_retention_days =
       configurationDefault().trash_retention_days;
@@ -124,6 +128,17 @@ describe("trash +page", () => {
     expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 
+  it("shows a load error instead of an empty or stuck-loading trash when the first fetch fails", async () => {
+    const { modelApi } = provideApis([]);
+    modelApi.getTrashedModels.mockRejectedValueOnce(new Error("offline"));
+
+    render(Page);
+
+    expect(await screen.findByText("Could not load the trash.")).toBeTruthy();
+    expect(screen.queryByText(/The trash is empty\./)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
+  });
+
   it("restores only the selected model, drops it from the list and refreshes the sidebar", async () => {
     const benchy = trashedModel(1, "Benchy", 3);
     const cube = trashedModel(2, "Cube", 1);
@@ -148,6 +163,27 @@ describe("trash +page", () => {
     );
   });
 
+  it("removes successfully restored rows and refreshes the sidebar even when reloading the trash fails", async () => {
+    const { modelApi, loadSidebarState } = provideApis([
+      trashedModel(1, "Benchy", 3),
+      trashedModel(2, "Cube", 1),
+    ]);
+    render(Page);
+    await screen.findByText("Benchy");
+    modelApi.getTrashedModels.mockRejectedValueOnce(new Error("offline"));
+
+    await fireEvent.click(rowCheckboxes()[1]);
+    await fireEvent.click(restoreButton());
+
+    await vi.waitFor(() => expect(screen.queryByText("Cube")).toBeNull());
+    expect(screen.getByText("Benchy")).toBeTruthy();
+    expect(modelApi.restoreModels).toHaveBeenCalledExactlyOnceWith([
+      expect.objectContaining({ id: 2 }),
+    ]);
+    expect(modelApi.getTrashedModels).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(loadSidebarState).toHaveBeenCalledTimes(1));
+  });
+
   it("select all restores every model and leaves the empty state", async () => {
     const { modelApi } = provideApis([
       trashedModel(1, "Benchy", 3),
@@ -168,7 +204,7 @@ describe("trash +page", () => {
     ).toEqual([1, 2]);
   });
 
-  it("a failed restore shows the command error's inner message, refetches and stays usable", async () => {
+  it("a failed restore reports retry guidance, refetches and stays usable", async () => {
     const { modelApi, loadSidebarState } = provideApis([
       trashedModel(1, "Benchy", 3),
       trashedModel(2, "Cube", 1),
@@ -191,10 +227,10 @@ describe("trash +page", () => {
     await vi.waitFor(() => expect(loadSidebarState).toHaveBeenCalledTimes(1));
     const [[, toastMessages]] = toastPromise.mock.calls;
     expect(toastMessages.error(failure)).toBe(
-      "Failed to find model to restore",
+      "Failed to restore models. Refresh the trash and try again.",
     );
     expect(toastMessages.error(new Error("offline"))).toBe(
-      "Failed to restore models",
+      "Failed to restore models. Refresh the trash and try again.",
     );
     expect(screen.getByText("Benchy")).toBeTruthy();
     expect(screen.getByText("Cube")).toBeTruthy();
@@ -205,6 +241,27 @@ describe("trash +page", () => {
 
     await vi.waitFor(() => expect(screen.queryByText("Cube")).toBeNull());
     expect(modelApi.restoreModels).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps unrestored rows and refreshes the sidebar when both restore and reload fail", async () => {
+    const { modelApi, loadSidebarState } = provideApis([
+      trashedModel(1, "Benchy", 3),
+      trashedModel(2, "Cube", 1),
+    ]);
+    render(Page);
+    await screen.findByText("Benchy");
+    modelApi.restoreModels.mockRejectedValueOnce(new Error("restore refused"));
+    modelApi.getTrashedModels.mockRejectedValueOnce(new Error("offline"));
+
+    await fireEvent.click(rowCheckboxes()[1]);
+    await fireEvent.click(restoreButton());
+
+    await vi.waitFor(() => expect(loadSidebarState).toHaveBeenCalledTimes(1));
+    expect(modelApi.getTrashedModels).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Benchy")).toBeTruthy();
+    expect(screen.getByText("Cube")).toBeTruthy();
+    expect(screen.getByText("2 models")).toBeTruthy();
+    expect(restoreButton().disabled).toBe(true);
   });
 
   it("prunes a row selected during the restore once the refetch no longer lists it", async () => {
@@ -250,13 +307,19 @@ describe("trash +page", () => {
   it.each([
     ["an online account", [SettingSection.Behaviour], true],
     ["no Behaviour settings section", [], false],
-  ])("hides the retention for %s", async (_name, sections, onlineAccount) => {
-    currentUser.permissions.onlineAccount = onlineAccount;
-    provideApis([], sections);
+  ])(
+    "hides the desktop retention but explains permanent purging for %s",
+    async (_name, sections, onlineAccount) => {
+      currentUser.permissions.onlineAccount = onlineAccount;
+      provideApis([], sections);
 
-    render(Page);
+      render(Page);
 
-    await screen.findByText(/The trash is empty\./);
-    expect(screen.queryByText(/permanently deleted/)).toBeNull();
-  });
+      await screen.findByText(/The trash is empty\./);
+      expect(
+        screen.queryByText(/permanently deleted \d+\s+days? after/),
+      ).toBeNull();
+      expect(screen.getByText(/permanently (?:deleted|purged)/)).toBeTruthy();
+    },
+  );
 });

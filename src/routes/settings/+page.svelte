@@ -438,14 +438,16 @@
               min="1"
               max="36500"
               step="1"
-              bind:value={
-                () => configuration.trash_retention_days,
-                (days) => {
-                  if (Number.isInteger(days) && days >= 1 && days <= 36500) {
-                    configuration.trash_retention_days = days;
-                  }
+              value={configuration.trash_retention_days}
+              onchange={(event) => {
+                const input = event.currentTarget as HTMLInputElement;
+                const days = Number(input.value);
+                if (Number.isInteger(days) && days >= 1 && days <= 36500) {
+                  configuration.trash_retention_days = days;
+                } else {
+                  input.value = String(configuration.trash_retention_days);
                 }
-              }
+              }}
             />
           </div>
         {/if}
