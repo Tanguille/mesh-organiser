@@ -22,7 +22,7 @@ use tokio::{fs, signal, task::AbortHandle};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
-    cors::{AllowOrigin, Any, CorsLayer},
+    cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
@@ -36,7 +36,12 @@ use db::{
 use service::{AppState, Configuration, import_state::ImportState, thumbnail_service};
 
 use crate::{
-    controller::api_router,
+    controller::{
+        auth_controller, blob_controller, group_controller, label_controller, model_controller,
+        page_controller, resource_controller, share_controller, slicer_controller,
+        threemf_controller, user_controller,
+    },
+    session_store::SqliteStore,
     user::{AuthSession, Backend},
     web_import_state::WebImportStateEmitter,
 };
@@ -118,13 +123,16 @@ fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn Error>> {
     let origins = merge_cors_origins_from_env(extra.as_deref())?;
     Ok(CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
-        .allow_methods(Any)
-        .allow_headers(Any)
+        // Wildcards are illegal (and panic in tower-http) together with
+        // allow_credentials; mirroring the request is the permissive-but-legal
+        // equivalent for credentialed CORS.
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_headers(AllowHeaders::mirror_request())
         .allow_credentials(true))
 }
 
-fn parse_port() -> Result<u16, Box<dyn std::error::Error>> {
-    env::var("SERVER_PORT")
+pub fn parse_port() -> Result<u16, Box<dyn Error>> {
+    env::var(ENV_SERVER_PORT)
         .unwrap_or_else(|_| "3000".into())
         .parse::<u16>()
         .map_err(|e| {
@@ -334,8 +342,31 @@ impl App {
 
         let cors_layer = cors_layer_from_env()?;
 
-        let app = api_router::merged_api_router()?
-            .with_state(self.app_state)
+        let governor_config = Arc::new(
+            GovernorConfigBuilder::default()
+                .per_second(5)
+                .burst_size(10)
+                .finish()
+                .ok_or_else(|| {
+                    io::Error::new(ErrorKind::InvalidData, "Failed to create governor config")
+                })?,
+        );
+
+        let auth_router = auth_controller::router().layer(GovernorLayer::new(governor_config));
+
+        let app = Router::new()
+            .merge(auth_router)
+            .merge(blob_controller::router())
+            .merge(model_controller::router())
+            .merge(group_controller::router())
+            .merge(label_controller::router())
+            .merge(resource_controller::router())
+            .merge(user_controller::router())
+            .merge(threemf_controller::router())
+            .merge(page_controller::router())
+            .merge(share_controller::router())
+            .merge(slicer_controller::router())
+            .with_state(self.state)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(auth_layer)

@@ -81,14 +81,10 @@ pub struct SlicerEntry {
 async fn get_slicers() -> Result<Vec<SlicerEntry>, ApplicationError> {
     require_local_desktop_app()?;
 
-    Slicer::iter()
-        .map(|f| {
-            let installed = f.is_installed();
-
-            Ok(SlicerEntry {
-                slicer: f,
-                installed,
-            })
+    Ok(Slicer::iter()
+        .map(|slicer| SlicerEntry {
+            installed: slicer.is_installed(),
+            slicer,
         })
         .collect())
 }
@@ -184,12 +180,7 @@ async fn get_threemf_metadata(
 ) -> Result<ThreemfMetadata, ApplicationError> {
     require_local_desktop_app()?;
 
-    let model = model_db::get_models_via_ids(
-        &state.app_state.db,
-        &state.get_current_user(),
-        vec![model_id],
-    )
-    .await?;
+    let model = state.require_model(model_id).await?;
 
     let metadata = threemf_service::extract_metadata(&model, &state.app_state).await?;
 
@@ -203,51 +194,15 @@ async fn extract_threemf_models(
 ) -> Result<ModelGroupMeta, ApplicationError> {
     require_local_desktop_app()?;
 
-    let model = model_db::get_models_via_ids(
-        &state.app_state.db,
+    let model = state.require_model(model_id).await?;
+
+    Ok(threemf_service::extract_models_with_thumbnails(
+        &model,
         &state.get_current_user(),
         &state.app_state,
         None,
     )
-    .await?;
-
-    let mut import_state =
-        threemf_service::extract_models(&model[0], &state.get_current_user(), &state.app_state)
-            .await?;
-
-    let model_ids: Vec<i64> = import_state
-        .imported_models
-        .iter()
-        .flat_map(|f| f.model_ids.iter().copied())
-        .collect();
-
-    let models =
-        model_db::get_models_via_ids(&state.app_state.db, &state.get_current_user(), model_ids)
-            .await?;
-    let blobs: Vec<&Blob> = models.iter().map(|m| &m.blob).collect();
-
-    thumbnail_service::generate_thumbnails(&blobs, &state.app_state, false, &mut import_state)
-        .await?;
-
-    Ok(ModelGroupMeta {
-        id: import_state.imported_models[0].group_id.unwrap(),
-        name: import_state.imported_models[0].group_name.clone().unwrap(),
-        created: time_now(),
-        last_modified: time_now(),
-        resource_id: None,
-        unique_global_id: random_hex_32(),
-    })
-}
-
-#[tauri::command]
-async fn compute_model_folder_size(
-    state: State<'_, TauriAppState>,
-) -> Result<u64, ApplicationError> {
-    require_local_desktop_app()?;
-
-    let size = service::get_folder_size(&state.get_model_dir());
-
-    Ok(size)
+    .await?)
 }
 
 #[derive(Serialize, Clone)]

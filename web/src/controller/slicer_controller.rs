@@ -15,7 +15,7 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
-pub fn router() -> Router<WebAppState> {
+pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()

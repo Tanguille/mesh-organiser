@@ -351,36 +351,3 @@ pub async fn upload_models_to_remote_server(
         uploaded_models: scan,
     })
 }
-
-#[tauri::command]
-pub async fn expand_paths(
-    paths: Vec<String>,
-    recursive: bool,
-) -> Result<Vec<DirectoryScanModel>, ApplicationError> {
-    require_local_desktop_app()?;
-
-    let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-
-    Ok(import_service::expand_paths(&paths, recursive).await?)
-}
-
-#[tauri::command]
-pub async fn get_file_bytes(path: String) -> Result<Response, ApplicationError> {
-    require_local_desktop_app()?;
-
-    let path = PathBuf::from(path);
-
-    if !(is_supported_extension(&path)
-        || path
-            .extension()
-            .is_some_and(|e| e.to_string_lossy().to_lowercase().ends_with("zip")))
-    {
-        return Err(ApplicationError::InternalError(
-            "Unsupported file extension for getting bytes".into(),
-        ));
-    }
-
-    let bytes = tokio::fs::read(&path).await?;
-
-    Ok(Response::new(bytes))
-}

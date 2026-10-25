@@ -67,13 +67,15 @@ tauri-plugin-http = { version = "2.6.0", features = [
 tauri-plugin-opener = "2.5.5"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-process = "2.3.1"
-tauri-plugin-updater = "2.10.0"
-tauri-plugin-single-instance = "2.4.0"
+tauri-plugin-updater = { version = "2.13.1", features = [
+    "rustls-tls",
+], default-features = false }
+tauri-plugin-single-instance = "2.4.5"
 tauri-plugin-store = "2.4.2"
-thiserror = "2.0.18"
-time = "0.3.47"
-tokio = "1.50.0"
-tokio-util = "0.7.18"
+thiserror = "2.0.20"
+time = "0.3.55"
+tokio = "1.53.1"
+tokio-util = "0.7.19"
 tower_governor = "0.8.0"
 tower-http = "0.7.1"
 tower-sessions = { version = "0.14.0", default-features = false }

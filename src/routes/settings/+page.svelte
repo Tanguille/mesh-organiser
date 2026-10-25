@@ -20,8 +20,8 @@
     getServerUrl,
     setServerUrl,
     clearServerUrl,
-  } from "$lib/api/tauri/server_url";
-  import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
+  } from "#lib/api/tauri/server_url";
+  import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
   import {
     Card,
     CardContent,
@@ -45,10 +45,9 @@
   import Moon from "@lucide/svelte/icons/moon";
   import Sun from "@lucide/svelte/icons/sun";
   import { resetMode, setMode } from "mode-watcher";
-  import CurrentUserEditCard from "$lib/components/view/current-user-edit-card.svelte";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
-  import { ITauriImportApi } from "$lib/api/shared/tauri_import_api";
-  import { toast } from "svelte-sonner";
+  import CurrentUserEditCard from "#lib/components/view/current-user-edit-card.svelte";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
+  import { ITauriImportApi } from "#lib/api/shared/tauri_import_api";
 
   const thumbnailApi = getContainer().optional<IThumbnailApi>(IThumbnailApi);
   const localApi = getContainer().optional<ILocalApi>(ILocalApi);

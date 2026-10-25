@@ -33,7 +33,7 @@ pub async fn add_resource(
 ) -> Result<ResourceMeta, ApplicationError> {
     require_local_desktop_app()?;
 
-    let id = resource_db::add_resource(
+    let resource_meta = resource_db::add_resource(
         &state.app_state.db,
         &state.get_current_user(),
         resource_name,
@@ -76,20 +76,7 @@ pub async fn remove_resource(
 ) -> Result<(), ApplicationError> {
     require_local_desktop_app()?;
 
-    let user = state.get_current_user();
-    let resource =
-        resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?;
-
-    if resource.is_none() {
-        return Err(ApplicationError::InternalError(String::from(
-            "Resource not found",
-        )));
-    }
-
-    let resource = resource.unwrap();
-
-    resource_service::delete_resource_folder(&resource, &user, &state.app_state)?;
-    resource_db::delete_resource(&state.app_state.db, &state.get_current_user(), resource.id)
+    resource_service::delete_resource(resource_id, &state.get_current_user(), &state.app_state)
         .await?;
 
     Ok(())

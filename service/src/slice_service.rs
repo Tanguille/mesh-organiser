@@ -39,7 +39,7 @@ use super::app_state::AppState;
 pub const ORCA_SLICER_EXECUTABLE_ENV: &str = "MESH_ORGANISER_ORCA_PATH";
 
 /// Subprocess wall-clock limit (large models can be slow).
-const SLICE_TIMEOUT: Duration = Duration::from_secs(600);
+const SLICE_TIMEOUT: Duration = Duration::from_mins(10);
 
 /// Result of a successful slice: new model row pointing at stored g-code blob.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

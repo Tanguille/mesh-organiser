@@ -31,7 +31,6 @@ pub async fn get_groups(
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
     require_local_desktop_app()?;
 
-    let instant = Instant::now();
     let groups = group_db::get_groups(
         &state.app_state.db,
         &state.get_current_user(),
@@ -78,7 +77,7 @@ pub async fn add_group(
 ) -> Result<ModelGroupMeta, ApplicationError> {
     require_local_desktop_app()?;
 
-    let id = group_db::add_empty_group(
+    let group_meta = group_db::add_empty_group(
         &state.app_state.db,
         &state.get_current_user(),
         group_name,

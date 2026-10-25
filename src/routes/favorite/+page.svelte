@@ -11,8 +11,8 @@
 </script>
 
 <ModelGrid
-  modelStream={new ModelStreamManager(modelApi, null, null, null, {
-    favorite: true,
-    printed: false,
-  })}
+  modelStream={new ModelStreamManager(
+    modelApi,
+    defaultModelFilter({ flags: { favorite: true, printed: false } }),
+  )}
 />

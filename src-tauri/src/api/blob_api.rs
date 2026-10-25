@@ -12,34 +12,12 @@ use crate::{
 };
 
 #[tauri::command]
-pub async fn get_model_bytes(
-    model_id: i64,
+pub async fn get_blob_bytes(
+    sha256: &str,
     state: State<'_, TauriAppState>,
 ) -> Result<Response, ApplicationError> {
     require_local_desktop_app()?;
 
-    let model = model_db::get_models_via_ids(
-        &state.app_state.db,
-        &state.get_current_user(),
-        vec![model_id],
-    )
-    .await?;
-
-    if model.is_empty() {
-        return Err(ApplicationError::InternalError(String::from(
-            "Failed to find model",
-        )));
-    }
-
-    let model = &model[0];
-
-    get_blob_bytes_impl(&model.blob.sha256, state).await
-}
-
-async fn get_blob_bytes_impl(
-    sha256: &str,
-    state: State<'_, TauriAppState>,
-) -> Result<Response, ApplicationError> {
     let Some(blob) = blob_db::get_blob_via_sha256(&state.app_state.db, sha256).await? else {
         return Err(ApplicationError::InternalError(String::from(
             "Failed to find blob",
@@ -50,16 +28,6 @@ async fn get_blob_bytes_impl(
     let bytes = export_service::get_bytes_from_blob(&blob, &state.app_state).await?;
 
     Ok(Response::new(bytes))
-}
-
-#[tauri::command]
-pub async fn get_blob_bytes(
-    sha256: &str,
-    state: State<'_, TauriAppState>,
-) -> Result<Response, ApplicationError> {
-    require_local_desktop_app()?;
-
-    get_blob_bytes_impl(sha256, state).await
 }
 
 #[derive(Serialize)]

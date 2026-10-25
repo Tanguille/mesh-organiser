@@ -1,4 +1,3 @@
-pub mod api_router;
 pub mod auth_controller;
 pub mod blob_controller;
 pub mod group_controller;

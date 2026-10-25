@@ -68,30 +68,6 @@ cargo clippy --workspace --all-targets
 cargo test --workspace --all-targets
 ```
 
-#### Troubleshooting: OCCT compile fails after CMake configure
-
-If configuration succeeds (you only see a CMake _deprecation_ warning) but the build stops during `cmake --build` / `install` with little or no compiler output, Cargo is often hiding **MSBuild** or **ninja** errors.
-
-1. **Verbose OCCT rebuild (Windows, PowerShell):** from repo root, after a failed run:
-
-   ```powershell
-   .\scripts\log-occt-build.ps1
-   ```
-
-   That re-runs the compile for `target\OCCT\build` with **`cmake --build … --verbose`**. If you use a custom **`CARGO_TARGET_DIR`**, run the same against `%CARGO_TARGET_DIR%\OCCT\build` instead.
-
-2. **Install Ninja and clean stale CMake files** so the next run uses **Ninja** (the `build-with-step` scripts set `CMAKE_GENERATOR=Ninja` when `ninja` exists). Then remove the old tree and rebuild:
-
-   ```powershell
-   Remove-Item -Recurse -Force .\target\OCCT -ErrorAction SilentlyContinue
-   cargo clean -p opencascade-sys
-   .\scripts\build-with-step.ps1
-   ```
-
-3. **Shorter paths:** extreme Windows path lengths can break the OCCT build; try e.g. `CARGO_TARGET_DIR=D:\t\mo` (short directory) for the STEP build.
-
-4. **Single job:** `MESH_STEP_SINGLE_JOB=1 .\scripts\build-with-step.ps1`
-
 ## Web server (`web` crate)
 
 The Axum **`web`** binary is run directly with Cargo (e.g. `cargo run -p web`). It reads:
