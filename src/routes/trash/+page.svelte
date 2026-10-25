@@ -5,6 +5,7 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import ModelTinyList from "#lib/components/view/model-tiny-list.svelte";
+  import Spinner from "#lib/components/view/spinner.svelte";
   import { configuration, currentUser } from "#lib/configuration.svelte";
   import { updateSidebarState } from "#lib/sidebar_data.svelte";
   import { countWriter, timeSinceDate } from "#lib/utils";
@@ -90,9 +91,9 @@
 {#snippet retention()}
   {#if retentionKnown}
     <p class="text-sm text-muted-foreground">
-      Items are permanently deleted {configuration.trash_retention_days}
-      {configuration.trash_retention_days === 1 ? "day" : "days"} after they are moved
-      here.
+      Items older than {configuration.trash_retention_days}
+      {configuration.trash_retention_days === 1 ? "day" : "days"} are permanently
+      deleted the next time the app starts.
     </p>
   {/if}
 {/snippet}
@@ -150,7 +151,15 @@
       {/each}
     </div>
   </div>
-{:else if !loading}
+{:else if loading}
+  <div
+    role="status"
+    aria-label="Loading the trash"
+    class="flex h-full w-full items-center justify-center"
+  >
+    <Spinner />
+  </div>
+{:else}
   <div
     class="flex h-full w-full flex-col items-center justify-center gap-2 text-center"
   >

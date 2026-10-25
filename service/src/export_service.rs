@@ -17,10 +17,9 @@ use tokio::{
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use db::{
-    blob_db, group_db,
+    blob_db,
     model::{Model, blob::Blob, user::User},
     model_db::{self, ModelFilterOptions},
-    user_db,
 };
 
 use crate::{
@@ -401,37 +400,20 @@ pub async fn get_trashed_models(
 }
 
 /// Permanently deletes models trashed longer than `trash_retention_days` ago, for every user,
-/// then the files and groups nothing references any more.
+/// then the files nothing references any more.
 pub async fn purge_expired_trash(app_state: &AppState) -> Result<(), ServiceError> {
     let retention_days = app_state.get_configuration().trash_retention_days;
-    // Sweep only the dead rows a purge leaves: REST create-then-add, sync and the MCP server
-    // each leave a new group empty for a moment without the import lock, and an hourly sweep
-    // would sometimes delete it in between. Startup sweeps any other dead groups.
+    // Sweep only after a purge leaves dead blobs, avoiding an unnecessary library-wide scan.
     if model_db::purge_trashed_models(&app_state.db, retention_days).await? == 0 {
         return Ok(());
     }
 
-    // An import creates each group empty before moving its models in; the import lock keeps
-    // this sweep from deleting the group in between.
+    // Imports insert blobs before their model rows. Empty groups are swept only at startup:
+    // REST create-then-add, sync and MCP can leave one empty without holding the import lock.
     let _import_guard = app_state.import_mutex.lock().await;
     delete_dead_blobs_locked(app_state).await?;
-    group_db::delete_dead_groups(&app_state.db).await?;
 
     Ok(())
-}
-
-/// Deletes the user, then the files of blobs nothing references any more.
-pub async fn delete_user(app_state: &AppState, user_id: i64) -> Result<(), ServiceError> {
-    user_db::delete_user(&app_state.db, user_id).await?;
-
-    // A thumbnail regeneration can hold the import lock for hours, so skip the sweep rather
-    // than wait; the next trash purge that removes something, or the next startup, sweeps
-    // these blobs.
-    let Ok(_import_guard) = app_state.import_mutex.try_lock() else {
-        return Ok(());
-    };
-
-    delete_dead_blobs_locked(app_state).await
 }
 
 /// Removes on-disk files for blobs that are no longer referenced.
@@ -444,7 +426,7 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
 }
 
 /// [`delete_dead_blobs`] for a caller that holds the import lock.
-async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(), ServiceError> {
+pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(), ServiceError> {
     // An import inserts its blob row before the model that references it; the caller's import
     // lock keeps this sweep from deleting that blob in between.
     let blobs = blob_db::get_and_delete_dead_blobs(&app_state.db).await?;

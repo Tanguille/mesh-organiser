@@ -128,6 +128,49 @@ describe("trash +page", () => {
     expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 
+  it.each(["models", "empty", "error"] as const)(
+    "shows accessible loading feedback until the initial fetch settles with %s",
+    async (outcome) => {
+      const benchy = trashedModel(1, "Benchy", 3);
+      const { modelApi } = provideApis([]);
+      let resolveLoad!: (models: Model[]) => void;
+      let rejectLoad!: (reason: Error) => void;
+      modelApi.getTrashedModels.mockImplementationOnce(
+        () =>
+          new Promise<Model[]>((resolve, reject) => {
+            resolveLoad = resolve;
+            rejectLoad = reject;
+          }),
+      );
+
+      render(Page);
+
+      await vi.waitFor(() =>
+        expect(modelApi.getTrashedModels).toHaveBeenCalledTimes(1),
+      );
+      expect(
+        screen.getByRole("status", { name: "Loading the trash" }),
+      ).toBeTruthy();
+      expect(screen.queryByText(/The trash is empty\./)).toBeNull();
+      expect(screen.queryByText("Could not load the trash.")).toBeNull();
+
+      if (outcome === "error") {
+        rejectLoad(new Error("offline"));
+      } else {
+        resolveLoad(outcome === "models" ? [benchy] : []);
+      }
+
+      const expected =
+        outcome === "models"
+          ? "Benchy"
+          : outcome === "empty"
+            ? /The trash is empty\./
+            : "Could not load the trash.";
+      expect(await screen.findByText(expected)).toBeTruthy();
+      expect(screen.queryByRole("status")).toBeNull();
+    },
+  );
+
   it("shows a load error instead of an empty or stuck-loading trash when the first fetch fails", async () => {
     const { modelApi } = provideApis([]);
     modelApi.getTrashedModels.mockRejectedValueOnce(new Error("offline"));
@@ -293,16 +336,24 @@ describe("trash +page", () => {
     expect(restoreButton().disabled).toBe(false);
   });
 
-  it("shows the retention for an offline user when the Behaviour settings exist", async () => {
-    configuration.trash_retention_days = 14;
-    provideApis([], [SettingSection.Behaviour]);
+  it.each([
+    [1, "day"],
+    [14, "days"],
+  ] as const)(
+    "explains that offline items older than %i %s are purged at the next app start",
+    async (days, unit) => {
+      configuration.trash_retention_days = days;
+      provideApis([], [SettingSection.Behaviour]);
 
-    render(Page);
+      render(Page);
 
-    expect(
-      await screen.findByText(/permanently deleted 14\s+days after/),
-    ).toBeTruthy();
-  });
+      expect(
+        await screen.findByText(
+          `Items older than ${days} ${unit} are permanently deleted the next time the app starts.`,
+        ),
+      ).toBeTruthy();
+    },
+  );
 
   it.each([
     ["an online account", [SettingSection.Behaviour], true],
@@ -316,9 +367,7 @@ describe("trash +page", () => {
       render(Page);
 
       await screen.findByText(/The trash is empty\./);
-      expect(
-        screen.queryByText(/permanently deleted \d+\s+days? after/),
-      ).toBeNull();
+      expect(screen.queryByText(/Items older than \d+\s+days?/)).toBeNull();
       expect(screen.getByText(/permanently (?:deleted|purged)/)).toBeTruthy();
     },
   );

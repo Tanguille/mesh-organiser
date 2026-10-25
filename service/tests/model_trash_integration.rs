@@ -301,18 +301,11 @@ async fn get_trashed_models_returns_more_rows_than_a_page_holds() {
 }
 
 #[tokio::test]
-async fn purge_expired_trash_removes_expired_models_with_their_files_and_group() {
+async fn purge_expired_trash_removes_expired_models_with_their_files() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
     let expired = add_model_with_files(&app_state, &user, "expired").await;
     let recent = add_model_with_files(&app_state, &user, "recent").await;
-    let group_id = group_db::add_empty_group(&app_state.db, &user, "expired-group", None)
-        .await
-        .unwrap()
-        .id;
-    group_db::set_group_id_on_models(&app_state.db, &user, Some(group_id), vec![expired.id], None)
-        .await
-        .unwrap();
     export_service::delete_models(&app_state, &user, vec![expired.id, recent.id])
         .await
         .unwrap();
@@ -333,16 +326,6 @@ async fn purge_expired_trash_removes_expired_models_with_their_files_and_group()
     );
     assert!(recent.model_path.exists());
     assert!(recent.image_path.exists());
-    let remaining_groups: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM models_group WHERE group_id = ?")
-            .bind(group_id)
-            .fetch_one(&*app_state.db)
-            .await
-            .unwrap();
-    assert_eq!(
-        remaining_groups, 0,
-        "the purged model's group must be removed"
-    );
 }
 
 #[tokio::test]
@@ -389,18 +372,32 @@ async fn delete_user_skips_the_blob_sweep_while_an_import_holds_the_lock() {
     // A thumbnail regeneration can hold the lock for hours, so the deletion must not wait on it.
     let while_locked = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        export_service::delete_user(&app_state, other_user.id),
+        service::user_service::delete_user(&app_state, other_user.id),
     )
     .await;
 
     while_locked
         .expect("the user deletion waited for the lock")
         .unwrap();
+    assert!(
+        user_db::get_user_by_id(&app_state.db, other_user.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        blob_db::get_blob_via_sha256(&app_state.db, "owned")
+            .await
+            .unwrap()
+            .is_some()
+    );
     assert!(model.model_path.exists(), "blob swept under the lock");
+    assert!(model.image_path.exists(), "thumbnail swept under the lock");
     drop(import_guard);
     // A later sweep still finds the deleted user's blob dead.
     export_service::delete_dead_blobs(&app_state).await.unwrap();
     assert!(!model.model_path.exists());
+    assert!(!model.image_path.exists());
 }
 
 #[tokio::test]
@@ -555,7 +552,7 @@ async fn import_of_a_trashed_file_purged_before_the_restore_imports_it_afresh() 
 }
 
 #[tokio::test]
-async fn purge_expired_trash_sweeps_dead_groups_and_blobs_only_when_it_purged_something() {
+async fn purge_expired_trash_preserves_empty_groups_and_sweeps_blobs_only_after_expiry() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
     let recent = add_model_with_files(&app_state, &user, "recent").await;
@@ -601,7 +598,13 @@ async fn purge_expired_trash_sweeps_dead_groups_and_blobs_only_when_it_purged_so
         .await
         .unwrap();
 
-    assert!(!group_exists(&app_state, empty_group_id).await);
+    assert!(
+        group_exists(&app_state, empty_group_id).await,
+        "purging unrelated expired trash must preserve a newly created empty group"
+    );
+    assert_eq!(trashed_model_ids(&app_state, &user).await, vec![recent.id]);
+    assert!(!expired.model_path.exists());
+    assert!(!expired.image_path.exists());
     assert!(
         blob_db::get_blob_via_sha256(&app_state.db, "orphan")
             .await

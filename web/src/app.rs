@@ -142,8 +142,8 @@ async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
-/// Removes stale temp dirs and purges expired trash (with the blobs and groups that leaves
-/// dead) right away, then every hour. The first blob sweep may wait for thumbnail
+/// Removes stale temp dirs and purges expired trash (with the blobs that leaves dead)
+/// right away, then every hour. The first blob sweep may wait for thumbnail
 /// regeneration's import lock without blocking app startup because it runs in the background.
 fn spawn_hourly_cleanup(app_state: &AppState) {
     let app_state = app_state.clone();

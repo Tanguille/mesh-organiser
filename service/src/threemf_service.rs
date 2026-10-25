@@ -14,7 +14,7 @@ use tokio::{fs::File, io::BufReader};
 
 use db::{
     model::{Model, model_group::ModelGroupMeta, user::User},
-    random_hex_32, time_now,
+    model_db,
 };
 
 use crate::{
@@ -23,28 +23,29 @@ use crate::{
     thumbnail_service,
 };
 
-/// Builds the `ModelGroupMeta` for the group produced by a 3MF extraction.
+/// Returns the group of the first model imported by a 3MF extraction.
 ///
 /// Shared by the Tauri command and the web controller so the (previously
 /// divergent) safe-extraction logic lives in one place.
-pub fn group_meta_from_import(import_state: &ImportState) -> Result<ModelGroupMeta, ServiceError> {
-    let (id, name) = import_state
+pub async fn group_meta_from_import(
+    import_state: &ImportState,
+    app_state: &AppState,
+) -> Result<ModelGroupMeta, ServiceError> {
+    let model_id = import_state
         .imported_models
         .first()
-        .and_then(|m| m.group_id.zip(m.group_name.clone()))
+        .and_then(|set| set.model_ids.first())
         .ok_or_else(|| {
             ServiceError::InternalError("3MF extract produced no imported group".to_string())
         })?;
 
-    let now = time_now();
-    Ok(ModelGroupMeta {
-        id,
-        name,
-        created: now.clone(),
-        last_modified: now,
-        resource_id: None,
-        unique_global_id: random_hex_32(),
-    })
+    // A repeated extraction can deduplicate to models in existing groups without creating one.
+    model_db::get_model_via_id(&app_state.db, &import_state.user, *model_id)
+        .await?
+        .and_then(|model| model.group)
+        .ok_or_else(|| {
+            ServiceError::InternalError("3MF extract produced no imported group".to_string())
+        })
 }
 
 static MODEL_SETTINGS_PART_NAME: LazyLock<Regex> = LazyLock::new(|| {
@@ -338,7 +339,7 @@ pub async fn extract_models_with_thumbnails(
     )
     .await?;
 
-    group_meta_from_import(&import_state)
+    group_meta_from_import(&import_state, app_state).await
 }
 
 #[cfg(test)]

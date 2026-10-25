@@ -292,21 +292,48 @@ async fn trash_models_excludes_model_from_counts_and_size() {
 async fn trash_models_excludes_model_from_label_model_count() {
     let (_dir, db) = test_db().await;
     let user = User::default();
-    let live_id = add_model(&db, &user, "live").await;
-    let trashed_id = add_model(&db, &user, "trashed").await;
+    let live_grouped_id = add_model(&db, &user, "live-grouped").await;
+    let trashed_grouped_id = add_model(&db, &user, "trashed-grouped").await;
+    let live_ungrouped_id = add_model(&db, &user, "live-ungrouped").await;
+    let trashed_ungrouped_id = add_model(&db, &user, "trashed-ungrouped").await;
+    add_group(&db, &user, "live", vec![live_grouped_id]).await;
+    add_group(&db, &user, "trashed", vec![trashed_grouped_id]).await;
     let label_id = label_db::add_label(&db, &user, "label", 0, None)
         .await
         .unwrap()
         .id;
-    label_db::add_labels_on_models(&db, &user, &[label_id], &[live_id, trashed_id], None)
-        .await
-        .unwrap();
+    label_db::add_labels_on_models(
+        &db,
+        &user,
+        &[label_id],
+        &[
+            live_grouped_id,
+            trashed_grouped_id,
+            live_ungrouped_id,
+            trashed_ungrouped_id,
+        ],
+        None,
+    )
+    .await
+    .unwrap();
 
-    trash(&db, &user, &[trashed_id]).await;
+    trash(&db, &user, &[trashed_grouped_id, trashed_ungrouped_id]).await;
 
-    let labels = label_db::get_labels(&db, &user, false).await.unwrap();
-    assert_eq!(labels.len(), 1);
-    assert_eq!(labels[0].model_count, 1);
+    for (include_ungrouped_models, expected_groups) in [(false, 1), (true, 2)] {
+        let labels = label_db::get_labels(&db, &user, include_ungrouped_models)
+            .await
+            .unwrap();
+        assert_eq!(labels.len(), 1);
+        assert_eq!(
+            (
+                labels[0].model_count,
+                labels[0].group_count,
+                labels[0].self_group_count
+            ),
+            (2, expected_groups, expected_groups),
+            "include_ungrouped_models: {include_ungrouped_models}"
+        );
+    }
 }
 
 #[tokio::test]
