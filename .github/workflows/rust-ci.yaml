@@ -9,6 +9,7 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/rust-ci.yaml"
+      - "scripts/fetch-occt.sh"
 
   pull_request:
     types: [opened, synchronize, reopened]
@@ -17,6 +18,7 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/rust-ci.yaml"
+      - "scripts/fetch-occt.sh"
 
 permissions: read-all
 
@@ -38,12 +40,9 @@ jobs:
         with:
           components: rustfmt, clippy
           cache-on-failure: false
-          # cadrum's OCCT build output lives directly under target/, outside the
-          # directories cargo's own fingerprinting revalidates on every build. A
-          # restored cache can silently carry an incomplete copy of it forward
-          # while cargo still considers the crate's build script up to date,
-          # so caching target/ here trades a one-time corruption for a
-          # recurring one. Always rebuild OCCT from scratch (~25-30 min) instead.
+          # OCCT is rebuilt under runner.temp every run. Restored target/
+          # artifacts can retain native library paths from another runner,
+          # so cache only Cargo's downloads.
           cache-targets: false
 
       - name: Install system dependencies
@@ -59,6 +58,11 @@ jobs:
       - run: cargo fmt --all -- --check
       - name: Detect unused dependencies
         uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
+
+      # shortcut: prefetch sources until cadrum's downloader accepts GitHub's larger headers.
+      - name: Fetch OCCT sources
+        shell: bash
+        run: bash scripts/fetch-occt.sh
 
       # src-tauri ships `step`, so feature unification builds and tests the STEP
       # path in these workspace runs. On Linux this compiles OCCT from source via

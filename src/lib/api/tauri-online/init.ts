@@ -8,10 +8,7 @@ import { ILocalApi } from "../shared/local_api";
 import { IModelApi } from "../shared/model_api";
 import { IResourceApi } from "../shared/resource_api";
 import { IServerRequestApi } from "../shared/server_request_api";
-import {
-  DefaultSidebarStateApi,
-  ISidebarStateApi,
-} from "../shared/sidebar_state_api";
+import { getSidebarState, ISidebarStateApi } from "../shared/sidebar_state_api";
 import { ISlicerApi } from "../shared/slicer_api";
 import { ITauriImportApi } from "../shared/tauri_import_api";
 import { IThreemfApi } from "../shared/threemf_api";
@@ -45,7 +42,6 @@ export async function initTauriOnlineAccountApi(
   const label = new WebLabelApi(requestApi);
   const model = new WebModelApi(requestApi);
   const resource = new WebResourceApi(requestApi);
-  const sidebarApi = new DefaultSidebarStateApi();
   const threemf = new WebThreemfApi(requestApi);
   const userAdmin = new WebUserAdminApi(requestApi, currentUser);
   const localApi = new OnlineLocalApi(
@@ -68,7 +64,7 @@ export async function initTauriOnlineAccountApi(
   container.addSingleton(ILabelApi, label);
   container.addSingleton(IModelApi, model);
   container.addSingleton(IResourceApi, resource);
-  container.addSingleton(ISidebarStateApi, sidebarApi);
+  container.addSingleton(ISidebarStateApi, getSidebarState);
   container.addSingleton(IThreemfApi, threemf);
   container.addSingleton(IUserManageSelfApi, userAdmin);
   container.addSingleton(ILocalApi, localApi);

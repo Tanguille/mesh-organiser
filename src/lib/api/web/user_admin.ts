@@ -93,14 +93,6 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   }
 
   async editSelfPassword(newPassword: string): Promise<void> {
-    const data = {
-      new_password: newPassword,
-    };
-
-    await this.requestApi.request<void>(
-      `/users/${this.currentUser.id}/password`,
-      HttpMethod.PUT,
-      data,
-    );
+    await this.editUserPassword(this.currentUser, newPassword);
   }
 }

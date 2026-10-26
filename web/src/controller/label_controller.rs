@@ -18,7 +18,6 @@ use crate::{
     user::{Backend, CurrentUser},
 };
 
-/// Routes for the label endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -93,16 +92,15 @@ pub async fn add_label(
     Ok(Json(label_meta).into_response())
 }
 
+/// Replaces each model's link to this label by removing and re-adding it,
+/// refreshing the label timestamp even when the link already exists.
 pub async fn set_label_on_models(
     CurrentUser(user): CurrentUser,
     Path(label_id): Path<i64>,
     State(app_state): State<AppState>,
     Json(params): Json<ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_labels_from_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
-        .await?;
-    label_db::add_labels_on_models(&app_state.db, &user, &[label_id], &params.model_ids, None)
-        .await?;
+    label_db::set_label_on_models(&app_state.db, &user, label_id, &params.model_ids).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -147,9 +145,7 @@ pub async fn set_labels_on_model(
     State(app_state): State<AppState>,
     Json(params): Json<SetLabelsOnModelParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    label_db::remove_all_labels_from_models(&app_state.db, &user, &[model_id], None).await?;
-    label_db::add_labels_on_models(&app_state.db, &user, &params.label_ids, &[model_id], None)
-        .await?;
+    label_db::set_labels_on_model(&app_state.db, &user, &params.label_ids, model_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

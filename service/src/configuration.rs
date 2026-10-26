@@ -68,9 +68,10 @@ pub struct Configuration {
     pub startup_page: String,
 }
 
-impl Default for Configuration {
-    fn default() -> Self {
-        let installed_slicer = Slicer::iter().find(Slicer::is_installed);
+impl Configuration {
+    /// Builds the default settings without probing for installed slicers.
+    #[must_use]
+    pub fn without_slicer_detection() -> Self {
         let parallelism = (thread::available_parallelism().map_or(3, NonZeroUsize::get) / 2).max(1);
 
         Self {
@@ -81,7 +82,7 @@ impl Default for Configuration {
             orca_deep_link: false,
             open_slicer_on_remote_model_import: false,
             show_ungrouped_models_in_groups: true,
-            slicer: installed_slicer,
+            slicer: None,
             focus_after_link_import: true,
             thumbnail_color: String::from("#EEEEEE"),
             size_option_models: String::from("Grid_Medium"),
@@ -123,14 +124,28 @@ impl Default for Configuration {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Tests for Configuration::default() and serde deserialization: defaults apply
-// and the slicer stays None for missing/null keys.
-// -----------------------------------------------------------------------------
+impl Default for Configuration {
+    fn default() -> Self {
+        Self {
+            slicer: Slicer::iter().find(Slicer::is_installed),
+            ..Self::without_slicer_detection()
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configuration_without_slicer_detection_preserves_other_defaults() {
+        let config = Configuration::without_slicer_detection();
+        assert!(config.slicer.is_none());
+
+        let mut expected = serde_json::to_value(Configuration::default()).unwrap();
+        expected["slicer"] = serde_json::Value::Null;
+        assert_eq!(serde_json::to_value(config).unwrap(), expected);
+    }
 
     #[test]
     fn configuration_default_has_expected_values() {

@@ -32,32 +32,11 @@
   let initializationDone = $state(false);
   let hasSidebar = $state(true);
 
-  /** Vite 8 dev client can race HMR transport `send` before `connect` (see `vite/dist/client/client.mjs`). */
-  function isViteDevClientNoise(message: string): boolean {
-    return (
-      message.includes("send was called before connect") ||
-      message.includes("invoke was called before connect")
-    );
-  }
-
   function rejectionPlainMessage(reason: unknown): string {
     if (typeof reason === "object" && reason !== null && "message" in reason) {
       return String((reason as { message?: unknown }).message);
     }
     return String(reason);
-  }
-
-  function isApiRejectionPayload(
-    reason: unknown,
-  ): reason is { error_message: string; error_inner_message: string } {
-    if (typeof reason !== "object" || reason === null) {
-      return false;
-    }
-    const r = reason as Record<string, unknown>;
-    return (
-      typeof r.error_message === "string" &&
-      typeof r.error_inner_message === "string"
-    );
   }
 
   function handleWindowError(event: Event) {
@@ -67,15 +46,25 @@
   }
 
   function handleUnhandledRejection(event: PromiseRejectionEvent) {
-    const plain = rejectionPlainMessage(event.reason);
-    if (import.meta.env.DEV && isViteDevClientNoise(plain)) {
+    const reason = event.reason;
+    const plain = rejectionPlainMessage(reason);
+    // Vite 8 dev client can race HMR transport `send` before `connect` (see `vite/dist/client/client.mjs`).
+    if (
+      import.meta.env.DEV &&
+      (plain.includes("send was called before connect") ||
+        plain.includes("invoke was called before connect"))
+    ) {
       console.warn("[vite dev]", plain);
       event.preventDefault();
       return;
     }
 
-    const reason = event.reason;
-    if (isApiRejectionPayload(reason)) {
+    if (
+      typeof reason === "object" &&
+      reason !== null &&
+      typeof reason.error_message === "string" &&
+      typeof reason.error_inner_message === "string"
+    ) {
       toast.error(reason.error_message, {
         description: reason.error_inner_message,
       });

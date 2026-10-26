@@ -17,9 +17,7 @@
 
 {#if shares.length >= 1}
   <div class="hide-scrollbar h-full w-full overflow-y-auto">
-    <div
-      class="fix-card-width relative my-3 flex flex-row flex-wrap justify-center gap-5"
-    >
+    <div class="relative my-3 flex flex-row flex-wrap justify-center gap-5">
       {#each shares as share (share.id)}
         <ShareEdit
           {share}

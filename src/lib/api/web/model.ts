@@ -53,13 +53,6 @@ export class WebModelApi implements IModelApi {
     );
   }
 
-  async deleteModel(model: Model): Promise<void> {
-    await this.requestApi.request<void>(
-      `/models/${model.id}`,
-      HttpMethod.DELETE,
-    );
-  }
-
   async deleteModels(models: Model[]): Promise<void> {
     const data = {
       model_ids: models.map((model) => model.id),

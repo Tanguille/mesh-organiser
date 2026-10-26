@@ -1,40 +1,29 @@
 # Build & Development Commands
 
-## Frontend (Node.js)
+## Frontend
 
 ```bash
-npm install          # Install dependencies
-npm run dev          # Start full app (Tauri + frontend dev server)
-npm run dev:web      # Start frontend-only dev server (browser at localhost)
-npm run build        # Build for production
-npm run preview      # Preview production build
-npm run check        # Type check (run before committing)
-npm run check:watch  # Type check with watch mode
-npm run lint         # Lint (oxlint)
-npm run lint:fix     # Lint and fix
+pnpm install          # Install dependencies
+pnpm run dev          # Start full app (Tauri + frontend dev server)
+pnpm run dev:web      # Start frontend-only dev server (browser at localhost)
+pnpm run build        # Build for production
+pnpm run preview      # Preview production build
+pnpm run check        # Type check (run before committing)
+pnpm run check:watch  # Type check with watch mode
+pnpm run lint         # Lint (oxlint)
+pnpm run lint:fix     # Lint and fix
+pnpm run format       # Format (oxfmt)
+pnpm run format:check # Format check (oxfmt, as in CI)
 ```
 
 ## Tauri (Desktop App)
 
 ```bash
-npm run dev          # Same as tauri dev: full app with hot reload
-npm run tauri dev    # Start Tauri dev mode (runs dev:web then opens desktop window)
-npm run tauri:build  # Build production desktop app
+pnpm tauri dev       # Start Tauri dev mode (runs dev:web then opens desktop window)
+pnpm run tauri:build # Build production desktop app with the release CSP
 ```
 
-**Official setup:** SSR is disabled via the root layout (`src/routes/+layout.ts` with `export const ssr = false` and `prerender = false`) as in the [Tauri SvelteKit guide](https://v2.tauri.app/start/frontend/sveltekit/). **`@sveltejs/adapter-static`** uses **`fallback: 'index.html'`** so deep links work as a static SPA inside the WebView. See [docs/tauri-sveltekit.md](tauri-sveltekit.md) for port, CSP, and release merge details.
-
-**Release desktop build** applies a stricter CSP via `pnpm run tauri:build` (merges `src-tauri/tauri.release-csp.json`). Use that for production-like verification, not plain `tauri build` without `--config` unless you intentionally want the looser dev CSP string.
-
-### Port 9435 already in use
-
-Vite uses **`strictPort: true`**, so if **9435** is busy the dev server fails fast with **`Port 9435 is already in use`**. Free the port manually: another terminal with **`pnpm run dev:web`** or **`vite preview`**, or a stuck **Node** process. On Windows, run:
-
-`Get-NetTCPConnection -LocalPort 9435 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }` (PowerShell).
-
-### Dev server hang / `transport invoke timed out` in dev
-
-The UI is **client-only** (`ssr = false`), but SvelteKit’s **dev server** still uses Vite’s internal SSR machinery to boot. If you see **`transport invoke timed out after 60000ms`** or a **blank WebView** until the timeout, the Vite **module runner** is not getting responses (startup ordering, port conflict, antivirus on `node_modules`, or a very busy first compile). Try: free port **9435**, run **`pnpm run dev:web`** and wait until Vite prints **ready**, then run **`pnpm tauri dev`** in another terminal (or use **`pnpm run dev`**, which starts Tauri). Reload the window once both are up.
+Dev port, SPA/SSR setup, release CSP, and dev-server troubleshooting (port **9435** in use, `transport invoke timed out`): see [docs/tauri-sveltekit.md](tauri-sveltekit.md).
 
 ## Rust Backend (entire workspace)
 
@@ -60,6 +49,13 @@ OpenCASCADE install is needed:
   libstdc++ collides with the system one loaded by GTK/WebKit and segfaults the app at
   startup (see `libmeshthumbnail/Cargo.toml`).
 
+New stored `.stp` imports use `.stp.zip`. Legacy stored `.stp` blobs can contain ZIP
+bytes despite their old file type, and their metadata is not migrated automatically.
+Re-importing alone reuses the existing hash and leaves that storage unchanged. Keep
+the original source file before permanently removing affected models; re-import
+only after every reference to the old blob is gone and blob cleanup has removed it.
+In-place `.stp` imports retain their original plain format and are unaffected.
+
 The regular workspace commands cover the STEP path — no special flags or scripts:
 
 ```bash
@@ -70,42 +66,13 @@ cargo test --workspace --all-targets
 
 ## Testing
 
-- **Rust**: `cargo test --workspace` or per-crate (e.g. `cargo test -p service`). Use `crate/tests/` for integration tests.
-- **Frontend**: Vitest for unit tests (`src/**/*.test.ts`). Run `npm run test` (or `vitest` / `vitest run file`).
-
 ```bash
 # Rust
-cargo test -p service    # Single crate
-cargo test --workspace   # All crates
+cargo test -p service             # Single crate
+cargo test --workspace            # All crates
 
-# Frontend (when configured)
-npm run test
-vitest run               # Single run
-vitest run path/to/file  # Single file
+# Frontend
+pnpm run test                     # Single run
+pnpm run test:watch               # Watch mode
+pnpm exec vitest run path/to/file # Single file
 ```
-
-## Dependency advisories
-
-Security/maintenance advisories (RUSTSEC/GHSA) in the dependency tree are documented in [docs/advisories.md](advisories.md). Optional `cargo audit` ignore list: `.cargo/audit.toml`.
-
-## Pre-Push / Verification Checklist
-
-Run these before committing, pushing, or claiming work complete. See [AGENTS.md](../AGENTS.md) Pre-Completion Checklist.
-
-### Frontend
-
-```bash
-npm run check
-npm run lint   # oxlint
-npm run test   # when tests exist
-```
-
-### Rust (entire workspace)
-
-```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets
-cargo test --workspace   # or -p <crate> for specific crate
-```
-
-STEP is included in the regular workspace commands (see [STEP support](#step-support-cadrumocct)); on Linux the first build compiles OCCT from source via cadrum.

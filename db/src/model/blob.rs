@@ -15,38 +15,24 @@ pub enum FileType {
     Unknown,
 }
 
-#[derive(Serialize, Clone)]
+/// Maps from the `blobs` columns by name, so it also reads a blob out of a joined row.
+#[derive(Serialize, Clone, sqlx::FromRow)]
 pub struct Blob {
+    #[sqlx(rename = "blob_id")]
     pub id: i64,
+    #[sqlx(rename = "blob_sha256")]
     pub sha256: String,
+    #[sqlx(rename = "blob_filetype")]
     pub filetype: String,
+    #[sqlx(rename = "blob_size")]
     pub size: i64,
+    #[sqlx(rename = "blob_added")]
     pub added: String,
+    #[sqlx(rename = "blob_path")]
     pub disk_path: Option<String>,
 }
 
 impl Blob {
-    /// Builds a `Blob` from its raw DB columns, centralizing the field list shared by every
-    /// blob query (both the `query!` macro and `QueryBuilder` paths).
-    #[must_use]
-    pub const fn from_parts(
-        id: i64,
-        sha256: String,
-        filetype: String,
-        size: i64,
-        added: String,
-        disk_path: Option<String>,
-    ) -> Self {
-        Self {
-            id,
-            sha256,
-            filetype,
-            size,
-            added,
-            disk_path,
-        }
-    }
-
     #[must_use]
     pub fn to_file_type(&self) -> FileType {
         FileType::from_extension(&self.filetype)
@@ -58,24 +44,24 @@ impl FileType {
     pub fn from_pathbuf(path: &Path) -> Self {
         let name_lower = path
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_lowercase();
-        // Compound extensions first so "file.stl.zip" is recognized as ZippedStl
-        if name_lower.ends_with(".stl.zip") {
-            return Self::from_extension("stl.zip");
+        // Compound extensions first: `Path::extension` alone would see "file.stl.zip" as "zip".
+        for compound in [
+            ".stl.zip",
+            ".obj.zip",
+            ".gcode.zip",
+            ".step.zip",
+            ".stp.zip",
+        ] {
+            if name_lower.ends_with(compound) {
+                return Self::from_extension(&compound[1..]);
+            }
         }
-        if name_lower.ends_with(".obj.zip") {
-            return Self::from_extension("obj.zip");
-        }
-        if name_lower.ends_with(".gcode.zip") {
-            return Self::from_extension("gcode.zip");
-        }
-        if name_lower.ends_with(".step.zip") || name_lower.ends_with(".stp.zip") {
-            return Self::from_extension("step.zip");
-        }
-        path.extension().map_or(Self::Unknown, |ext| {
-            Self::from_extension(&ext.to_string_lossy())
+
+        path.extension().map_or(Self::Unknown, |extension| {
+            Self::from_extension(&extension.to_string_lossy())
         })
     }
 

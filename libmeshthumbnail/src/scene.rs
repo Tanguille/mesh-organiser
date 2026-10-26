@@ -19,8 +19,7 @@ impl euc::math::WeightedSum for VertexData {
             world_pos += values[i].world_pos * weights[i];
         }
 
-        // Normal should be the same for all vertices in a triangle (flat shading)
-        // Just take the first one
+        // Every vertex of a triangle carries the same normal (flat shading, see `geometry`).
         Self {
             world_pos,
             normal: values[0].normal,
@@ -28,7 +27,6 @@ impl euc::math::WeightedSum for VertexData {
     }
 }
 
-// Rendering pipeline with flat per-face normals and rim lighting
 pub struct Scene {
     model_view_projection: Mat4<f32>,
     model: Mat4<f32>,
@@ -110,14 +108,11 @@ impl Pipeline<'_> for Scene {
             .try_normalized()
             .unwrap_or(FALLBACK_NORMAL);
 
-        // Light direction follows camera (as in the original shader)
         let light_dir = view_dir;
 
-        // Compute diffuse lighting - use absolute value to handle both front and back faces
-        let diffuse = normal.dot(light_dir).abs().max(0.1); // Add ambient minimum
+        // abs(): lit the same from both faces; the 0.1 floor is the ambient minimum.
+        let diffuse = normal.dot(light_dir).abs().max(0.1);
 
-        // Soft rim light effect
-        // rim = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0)
         let rim = (1.0 - view_dir.dot(normal).abs()).powi(3);
 
         let base_color = Vec3::new(

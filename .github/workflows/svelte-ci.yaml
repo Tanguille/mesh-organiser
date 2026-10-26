@@ -42,5 +42,8 @@ jobs:
       - name: Svelte check
         run: pnpm run check
 
+      - name: Unit tests
+        run: pnpm run test
+
       - name: Build frontend
         run: pnpm run build

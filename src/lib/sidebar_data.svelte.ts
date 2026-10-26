@@ -7,12 +7,11 @@ import {
 export const sidebarState = $state(defaultSidebarState());
 
 export async function updateSidebarState(): Promise<void> {
-  const sidebarStateApi =
+  const loadSidebarState =
     getContainer().optional<ISidebarStateApi>(ISidebarStateApi);
-  if (!sidebarStateApi) {
+  if (!loadSidebarState) {
     return;
   }
 
-  const newState = await sidebarStateApi.getSidebarState();
-  Object.assign(sidebarState, newState);
+  Object.assign(sidebarState, await loadSidebarState());
 }

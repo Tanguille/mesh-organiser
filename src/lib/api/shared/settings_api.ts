@@ -1,13 +1,6 @@
 import { GroupOrderBy } from "./group_api";
 import { ModelOrderBy } from "./model_api";
 
-export type SizeOptionModels =
-  | "Grid_Small"
-  | "Grid_Medium"
-  | "Grid_Large"
-  | "List_Small"
-  | "List_Medium"
-  | "List_Large";
 export const SizeOptionModelsAsList = [
   "Grid_Small",
   "Grid_Medium",
@@ -15,7 +8,8 @@ export const SizeOptionModelsAsList = [
   "List_Small",
   "List_Medium",
   "List_Large",
-] as SizeOptionModels[];
+] as const;
+export type SizeOptionModels = (typeof SizeOptionModelsAsList)[number];
 
 export type OrderOptionModels =
   | "date-asc"
@@ -26,13 +20,10 @@ export type OrderOptionModels =
   | "size-desc"
   | "modified-asc"
   | "modified-desc";
-export type OrderOptionGroups =
-  | "date-asc"
-  | "date-desc"
-  | "name-asc"
-  | "name-desc"
-  | "modified-asc"
-  | "modified-desc";
+export type OrderOptionGroups = Exclude<
+  OrderOptionModels,
+  "size-asc" | "size-desc"
+>;
 export type StartupPages =
   | ""
   | "models"
@@ -111,50 +102,41 @@ const {
 export const GROUP_ORDER_LABELS: Record<OrderOptionGroups, string> =
   groupOrderLabels;
 
+const MODEL_ORDER_BY: Record<OrderOptionModels, ModelOrderBy> = {
+  "date-asc": ModelOrderBy.AddedAsc,
+  "date-desc": ModelOrderBy.AddedDesc,
+  "name-asc": ModelOrderBy.NameAsc,
+  "name-desc": ModelOrderBy.NameDesc,
+  "size-asc": ModelOrderBy.SizeAsc,
+  "size-desc": ModelOrderBy.SizeDesc,
+  "modified-asc": ModelOrderBy.ModifiedAsc,
+  "modified-desc": ModelOrderBy.ModifiedDesc,
+};
+
+const GROUP_ORDER_BY: Record<OrderOptionGroups, GroupOrderBy> = {
+  "date-asc": GroupOrderBy.CreatedAsc,
+  "date-desc": GroupOrderBy.CreatedDesc,
+  "name-asc": GroupOrderBy.NameAsc,
+  "name-desc": GroupOrderBy.NameDesc,
+  "modified-asc": GroupOrderBy.ModifiedAsc,
+  "modified-desc": GroupOrderBy.ModifiedDesc,
+};
+
+// The fallbacks cover values persisted by older versions.
 export function convertOrderOptionModelsToEnum(
   orderOption: OrderOptionModels,
 ): ModelOrderBy {
-  switch (orderOption) {
-    case "date-asc":
-      return ModelOrderBy.AddedAsc;
-    case "date-desc":
-      return ModelOrderBy.AddedDesc;
-    case "name-asc":
-      return ModelOrderBy.NameAsc;
-    case "name-desc":
-      return ModelOrderBy.NameDesc;
-    case "size-asc":
-      return ModelOrderBy.SizeAsc;
-    case "size-desc":
-      return ModelOrderBy.SizeDesc;
-    case "modified-asc":
-      return ModelOrderBy.ModifiedAsc;
-    case "modified-desc":
-      return ModelOrderBy.ModifiedDesc;
-    default:
-      return ModelOrderBy.AddedDesc;
-  }
+  return Object.hasOwn(MODEL_ORDER_BY, orderOption)
+    ? MODEL_ORDER_BY[orderOption]
+    : ModelOrderBy.AddedDesc;
 }
 
 export function convertOrderOptionGroupsToEnum(
   orderOption: OrderOptionGroups,
 ): GroupOrderBy {
-  switch (orderOption) {
-    case "date-asc":
-      return GroupOrderBy.CreatedAsc;
-    case "date-desc":
-      return GroupOrderBy.CreatedDesc;
-    case "name-asc":
-      return GroupOrderBy.NameAsc;
-    case "name-desc":
-      return GroupOrderBy.NameDesc;
-    case "modified-asc":
-      return GroupOrderBy.ModifiedAsc;
-    case "modified-desc":
-      return GroupOrderBy.ModifiedDesc;
-    default:
-      return GroupOrderBy.CreatedDesc;
-  }
+  return Object.hasOwn(GROUP_ORDER_BY, orderOption)
+    ? GROUP_ORDER_BY[orderOption]
+    : GroupOrderBy.CreatedDesc;
 }
 
 export function configurationDefault(): Configuration {

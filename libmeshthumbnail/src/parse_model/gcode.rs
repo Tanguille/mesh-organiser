@@ -12,8 +12,8 @@ use vek::{Mat4, Quaternion, Vec3};
 use crate::{
     error::MeshThumbnailError,
     mesh::Mesh,
-    parse_model::find_zip_entry_bytes,
-    path_ext::{is_zip_of, matches_ext},
+    parse_model::{find_zip_entry_bytes, parse_by_extension},
+    path_ext::matches_ext,
 };
 
 /// Extruding move (`X.. Y.. E`). Checked before [`REGEX_XY_NO_EXTRUSION`], which
@@ -25,13 +25,7 @@ static REGEX_XY_NO_EXTRUSION: LazyLock<Regex> =
 static REGEX_Z: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"Z([\d.]+)").unwrap());
 
 pub fn handle_gcode(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
-    if matches_ext(path, "gcode") {
-        Ok(Some(parse_gcode(path)?))
-    } else if is_zip_of(path, "gcode") {
-        Ok(Some(parse_gcode_zip(path)?))
-    } else {
-        Ok(None)
-    }
+    parse_by_extension(path, "gcode", parse_gcode, parse_gcode_zip)
 }
 
 struct Point {
@@ -120,7 +114,6 @@ where
             continue;
         }
 
-        // Skip degenerate edges (zero length or too small)
         let p1 = entries[i].v;
         let p2 = entries[i + 1].v;
         let length = (p1 - p2).magnitude();

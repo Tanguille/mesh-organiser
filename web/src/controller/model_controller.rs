@@ -28,7 +28,6 @@ use crate::{
     web_import_state::WebImportStateEmitter,
 };
 
-/// Routes for the model endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -39,7 +38,6 @@ pub fn router() -> Router<AppState> {
             .route("/models/count", get(get_model_count))
             .route("/models/disk_usage", get(get_model_disk_space_usage))
             .route("/models/{model_id}", put(edit_model))
-            .route("/models/{model_id}", delete(delete_model))
             .route_layer(login_required!(Backend))
             .route("/shares/{share_id}/models", get(get_share_models)),
     )
@@ -87,7 +85,7 @@ async fn get_models_inner(
     params: GetModelParams,
     share: Option<&ShareScope>,
 ) -> Result<Response, ApplicationError> {
-    if let Err(e) = query_bounds::validate_model_list_query_bounds(params.paginated_bounds()) {
+    if let Err(e) = query_bounds::validate_list_query_bounds(params.paginated_bounds(), None) {
         return Ok(query_bounds::bad_request(&e));
     }
 
@@ -174,23 +172,15 @@ pub async fn get_model_count(
     Ok(Json(GetModelCountResponse { count }))
 }
 
-#[derive(Serialize)]
-pub struct GetModelDiskSpaceUsageResponse {
-    pub size_compressed: u64,
-    pub size_uncompressed: u64,
-}
-
+/// Serializes `export_service::ModelDiskSpaceUsage` as the API response;
+/// changing its fields changes this endpoint's wire format.
 pub async fn get_model_disk_space_usage(
     CurrentUser(user): CurrentUser,
     State(app_state): State<AppState>,
-) -> Result<Json<GetModelDiskSpaceUsageResponse>, ApplicationError> {
-    let data = model_db::get_size_of_models(&app_state.db, &user).await?;
-    let local = export_service::get_size_of_blobs(&data.blob_sha256, &app_state)?;
-
-    Ok(Json(GetModelDiskSpaceUsageResponse {
-        size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
-        size_compressed: local,
-    }))
+) -> Result<Json<export_service::ModelDiskSpaceUsage>, ApplicationError> {
+    Ok(Json(
+        export_service::get_model_disk_space_usage(&app_state, &user).await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -222,16 +212,6 @@ pub async fn edit_model(
         params.model_global_id.as_deref(),
     )
     .await?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-pub async fn delete_model(
-    CurrentUser(user): CurrentUser,
-    Path(model_id): Path<i64>,
-    State(app_state): State<AppState>,
-) -> Result<StatusCode, ApplicationError> {
-    export_service::delete_models(&app_state, &user, vec![model_id]).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -295,25 +275,21 @@ pub async fn add_model(
 
     let mut model_ids: Vec<i64> = vec![];
 
-    let mut import_state = ImportState::new_with_emitter(
-        None,
-        false,
-        true,
-        false,
-        user.clone(),
-        Box::new(WebImportStateEmitter {}),
-    );
-
-    for path in paths {
-        println!("Importing file: {}", path.to_string_lossy());
-        import_state = ImportState::new_with_emitter(
-            link.clone(),
+    let new_import_state = |link| {
+        ImportState::new_with_emitter(
+            link,
             false,
             true,
             false,
             user.clone(),
             Box::new(WebImportStateEmitter {}),
-        );
+        )
+    };
+    let mut import_state = new_import_state(None);
+
+    for path in paths {
+        println!("Importing file: {}", path.to_string_lossy());
+        import_state = new_import_state(link.clone());
         import_state =
             import_service::import_path(&path.to_string_lossy(), &app_state, import_state).await?;
 

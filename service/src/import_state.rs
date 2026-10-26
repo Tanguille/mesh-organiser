@@ -155,10 +155,6 @@ impl ImportState {
     }
 
     /// Appends a model id to the current import set; ensures a set exists.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the current set cannot be obtained (logic bug).
     pub fn add_model_id_to_current_set(&mut self, model_id: i64) {
         if self.imported_models.is_empty() {
             self.add_new_import_set(None);
@@ -190,14 +186,6 @@ impl ImportState {
     }
 
     /// Creates groups from all import sets and assigns model group ids.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a set has no group name (logic bug).
     pub async fn create_groups_from_all_sets(
         &mut self,
         state: &AppState,

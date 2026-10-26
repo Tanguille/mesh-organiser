@@ -5,16 +5,10 @@ use db::{
     model::{blob::FileType, user::User},
     model_db,
 };
-use tempfile::tempdir;
 
-async fn test_db() -> (tempfile::TempDir, db_context::DbContext) {
-    let dir = tempdir().unwrap();
-    let db_path = dir.path().join("db.sqlite");
-    let backup_dir = dir.path().join("backups");
-    std::fs::create_dir_all(&backup_dir).unwrap();
-    let db = db_context::setup_db(&db_path, &backup_dir).await;
-    (dir, db)
-}
+use common::test_db;
+
+mod common;
 
 #[tokio::test]
 async fn get_blobs_via_ids_returns_matching_blobs() {
@@ -419,4 +413,28 @@ async fn get_labels_returns_labels_with_children_attached() {
     let child_label = labels.iter().find(|label| label.meta.id == child).unwrap();
     assert!(child_label.has_parent);
     assert!(child_label.children.is_empty());
+}
+
+#[tokio::test]
+async fn get_models_reports_blob_added_not_model_added() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let blob_id = blob_db::add_blob(&db, "dated", "stl", 1, None)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE blobs SET blob_added = '2000-01-01T00:00:00Z' WHERE blob_id = ?")
+        .bind(blob_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    let model_id = model_db::add_model(&db, &user, "dated", blob_id, None, None)
+        .await
+        .unwrap();
+
+    let models = model_db::get_models_via_ids(&db, &user, vec![model_id])
+        .await
+        .unwrap();
+
+    assert_eq!(models[0].blob.added, "2000-01-01T00:00:00Z");
+    assert_ne!(models[0].added, models[0].blob.added);
 }

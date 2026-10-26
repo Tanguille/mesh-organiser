@@ -1,42 +1,23 @@
 use indexmap::IndexMap;
 
 use crate::{
-    DbError, TimestampSchema,
+    DbError, RESOURCES,
     db_context::DbContext,
+    ensure_owned,
     group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
         model_group::ModelGroup,
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    random_hex_32, set_timestamp_column, time_now, validate_global_id,
+    random_hex_32, set_timestamp_column, time_now, timestamp_or_now, validate_global_id,
 };
 
 pub async fn get_resources(db: &DbContext, user: &User) -> Result<Vec<ResourceMeta>, DbError> {
-    let rows = sqlx::query!(
-        "SELECT resources.resource_id, resources.resource_name, resources.resource_flags, resources.resource_created, resources.resource_unique_global_id, resources.resource_last_modified
-            FROM resources
-            WHERE resources.resource_user_id = ?
-            ORDER BY resources.resource_name ASC",
-            user.id
-    )
-    .fetch_all(db)
-    .await?;
-
-    let mut resources: Vec<ResourceMeta> = Vec::with_capacity(rows.len());
-
-    for row in rows {
-        resources.push(ResourceMeta::from_parts(
-            row.resource_id,
-            row.resource_name,
-            row.resource_flags,
-            row.resource_created,
-            row.resource_unique_global_id,
-            row.resource_last_modified,
-        ));
-    }
-
-    Ok(resources)
+    sqlx::query_as("SELECT * FROM resources WHERE resource_user_id = ? ORDER BY resource_name ASC")
+        .bind(user.id)
+        .fetch_all(db)
+        .await
 }
 
 pub async fn get_groups_for_resource(
@@ -70,33 +51,24 @@ pub async fn get_group_id_to_resource_map(
     db: &DbContext,
     user: &User,
 ) -> Result<IndexMap<i64, ResourceMeta>, DbError> {
-    let rows = sqlx::query!(
-        "SELECT models_group.group_id, resources.resource_id, resources.resource_name, resources.resource_flags, resources.resource_created, resources.resource_unique_global_id, resources.resource_last_modified
+    let rows = sqlx::query(
+        "SELECT models_group.group_id, resources.*
             FROM models_group
             INNER JOIN resources ON models_group.group_resource_id = resources.resource_id
             WHERE resources.resource_user_id = ?",
-            user.id
     )
+    .bind(user.id)
     .fetch_all(db)
     .await?;
 
-    let mut map: IndexMap<i64, ResourceMeta> = IndexMap::new();
-
-    for row in rows {
-        map.insert(
-            row.group_id,
-            ResourceMeta::from_parts(
-                row.resource_id,
-                row.resource_name,
-                row.resource_flags,
-                row.resource_created,
-                row.resource_unique_global_id,
-                row.resource_last_modified,
-            ),
-        );
-    }
-
-    Ok(map)
+    rows.iter()
+        .map(|row| {
+            Ok((
+                sqlx::Row::try_get(row, "group_id")?,
+                sqlx::FromRow::from_row(row)?,
+            ))
+        })
+        .collect()
 }
 
 pub async fn get_resource_meta_by_id(
@@ -104,26 +76,11 @@ pub async fn get_resource_meta_by_id(
     user: &User,
     id: i64,
 ) -> Result<Option<ResourceMeta>, DbError> {
-    let row = sqlx::query!(
-        "SELECT resources.resource_id, resources.resource_name, resources.resource_flags, resources.resource_created, resources.resource_unique_global_id, resources.resource_last_modified
-            FROM resources
-            WHERE resources.resource_id = ? AND resources.resource_user_id = ?",
-        id,
-        user.id
-    )
-    .fetch_optional(db)
-    .await?;
-
-    Ok(row.map(|row| {
-        ResourceMeta::from_parts(
-            row.resource_id,
-            row.resource_name,
-            row.resource_flags,
-            row.resource_created,
-            row.resource_unique_global_id,
-            row.resource_last_modified,
-        )
-    }))
+    sqlx::query_as("SELECT * FROM resources WHERE resource_id = ? AND resource_user_id = ?")
+        .bind(id)
+        .bind(user.id)
+        .fetch_optional(db)
+        .await
 }
 
 pub async fn add_resource(
@@ -159,22 +116,6 @@ pub async fn add_resource(
     })
 }
 
-pub async fn get_unique_id_from_resource_id(
-    db: &DbContext,
-    user: &User,
-    resource_id: i64,
-) -> Result<String, DbError> {
-    let row = sqlx::query!(
-        "SELECT resource_unique_global_id FROM resources WHERE resource_id = ? AND resource_user_id = ?",
-        resource_id,
-        user.id
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.resource_unique_global_id)
-}
-
 pub async fn delete_resource(db: &DbContext, user: &User, resource_id: i64) -> Result<(), DbError> {
     sqlx::query!(
         "DELETE FROM resources WHERE resource_id = ? AND resource_user_id = ?",
@@ -196,39 +137,16 @@ pub async fn edit_resource(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
+    validate_global_id(global_id)?;
     let bits = i64::from(flags.bits());
-    let current_time = time_now();
-    let timestamp = update_timestamp.unwrap_or(&current_time);
+    let timestamp = timestamp_or_now(update_timestamp);
 
     sqlx::query!(
-        "UPDATE resources SET resource_name = ?, resource_flags = ?, resource_last_modified = ? WHERE resource_id = ? AND resource_user_id = ?",
+        "UPDATE resources SET resource_name = ?, resource_flags = ?, resource_last_modified = ?, resource_unique_global_id = COALESCE(?, resource_unique_global_id) WHERE resource_id = ? AND resource_user_id = ?",
         name,
         bits,
         timestamp,
-        resource_id,
-        user.id
-    )
-    .execute(db)
-    .await?;
-
-    if let Some(global_id) = global_id {
-        edit_resource_global_id(db, user, resource_id, global_id).await?;
-    }
-
-    Ok(())
-}
-
-async fn edit_resource_global_id(
-    db: &DbContext,
-    user: &User,
-    resource_id: i64,
-    unique_global_id: &str,
-) -> Result<(), DbError> {
-    validate_global_id(unique_global_id)?;
-
-    sqlx::query!(
-        "UPDATE resources SET resource_unique_global_id = ? WHERE resource_id = ? AND resource_user_id = ?",
-        unique_global_id,
+        global_id,
         resource_id,
         user.id
     )
@@ -246,14 +164,10 @@ pub async fn set_last_updated_on_resource(
 ) -> Result<(), DbError> {
     set_timestamp_column(
         db,
-        TimestampSchema {
-            table: "resources",
-            ts_col: "resource_last_modified",
-            id_col: "resource_id",
-            user_col: "resource_user_id",
-        },
+        &RESOURCES,
+        "resource_last_modified",
         &[resource_id],
-        user.id,
+        user,
         timestamp,
     )
     .await
@@ -281,9 +195,8 @@ pub async fn set_resource_on_group(
         return Err(DbError::RowNotFound);
     };
 
-    // Permission check
-    if let Some(rid) = resource_id {
-        get_unique_id_from_resource_id(db, user, rid).await?;
+    if let Some(resource_id) = resource_id {
+        ensure_owned(db, &RESOURCES, &[resource_id], user).await?;
     }
 
     sqlx::query!(
@@ -295,14 +208,13 @@ pub async fn set_resource_on_group(
     .execute(db)
     .await?;
 
-    let current_time = time_now();
-    let timestamp = update_timestamp.unwrap_or(&current_time);
+    let timestamp = timestamp_or_now(update_timestamp);
     if let Some(resource_id) = resource_id {
-        set_last_updated_on_resource(db, user, resource_id, timestamp).await?;
+        set_last_updated_on_resource(db, user, resource_id, &timestamp).await?;
     }
 
     if let Some(resource_id) = group_row.group_resource_id {
-        set_last_updated_on_resource(db, user, resource_id, timestamp).await?;
+        set_last_updated_on_resource(db, user, resource_id, &timestamp).await?;
     }
 
     Ok(())
