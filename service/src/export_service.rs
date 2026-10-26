@@ -17,7 +17,7 @@ use tokio::{
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use db::{
-    blob_db,
+    blob_db, group_db,
     model::{Model, blob::Blob, user::User},
     model_db::{self, ModelFilterOptions},
 };
@@ -403,17 +403,29 @@ pub async fn get_trashed_models(
 /// then the files nothing references any more.
 pub async fn purge_expired_trash(app_state: &AppState) -> Result<(), ServiceError> {
     let retention_days = app_state.get_configuration().trash_retention_days;
-    // Sweep only after a purge leaves dead blobs, avoiding an unnecessary library-wide scan.
-    if model_db::purge_trashed_models(&app_state.db, retention_days).await? == 0 {
-        return Ok(());
+    // Even a zero-row purge must retry blobs left by a deferred or failed sweep.
+    model_db::purge_trashed_models(&app_state.db, retention_days).await?;
+
+    // The blob sweep takes the import lock. Empty groups are swept only at startup:
+    // REST create-then-add, sync and MCP can leave one empty without holding the import lock.
+    delete_dead_blobs(app_state).await
+}
+
+/// Expires model rows before sweeping orphaned groups and files at startup.
+/// Expiry errors are logged so startup and the remaining cleanup can still proceed.
+pub async fn cleanup_library_on_startup(app_state: &AppState) -> Result<(), ServiceError> {
+    let retention_days = app_state.get_configuration().trash_retention_days;
+    if let Err(e) = model_db::purge_trashed_models(&app_state.db, retention_days).await {
+        eprintln!("Purging expired trash failed: {e}");
     }
 
-    // Imports insert blobs before their model rows. Empty groups are swept only at startup:
-    // REST create-then-add, sync and MCP can leave one empty without holding the import lock.
-    let _import_guard = app_state.import_mutex.lock().await;
-    delete_dead_blobs_locked(app_state).await?;
+    // Sweep groups before waiting for a long-running import or thumbnail regeneration;
+    // otherwise groups created during that wait could be deleted later in the session.
+    let group_cleanup = group_db::delete_dead_groups(&app_state.db).await;
+    let blob_cleanup = delete_dead_blobs(app_state).await;
+    group_cleanup?;
 
-    Ok(())
+    blob_cleanup
 }
 
 /// Removes on-disk files for blobs that are no longer referenced.

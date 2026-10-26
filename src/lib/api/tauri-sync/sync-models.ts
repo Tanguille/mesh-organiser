@@ -30,7 +30,6 @@ import {
   defaultModelFilter,
   getAllModels,
   MAX_PAGE_SIZE,
-  modelStream,
 } from "../shared/model_api";
 import { runWithLimit } from "#lib/utils";
 
@@ -90,16 +89,16 @@ async function stepUpload(
   );
   const serverGroups = new Map<number, string | undefined>();
   for (let start = 0; start < uploadedIds.length; start += MAX_PAGE_SIZE) {
-    for await (const models of modelStream(
-      serverModelApi,
+    // At most one model can match each id, so the complete batch fits in one page.
+    const models = await serverModelApi.getModels(
       defaultModelFilter({
         modelIds: uploadedIds.slice(start, start + MAX_PAGE_SIZE),
       }),
+      1,
       MAX_PAGE_SIZE,
-    )) {
-      for (const model of models) {
-        serverGroups.set(model.id, model.group?.uniqueGlobalId);
-      }
+    );
+    for (const model of models) {
+      serverGroups.set(model.id, model.group?.uniqueGlobalId);
     }
   }
 

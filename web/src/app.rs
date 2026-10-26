@@ -30,7 +30,6 @@ use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
 
 use db::{
     db_context::{self, DbContext},
-    group_db,
     model::user::User,
     user_db,
 };
@@ -134,10 +133,9 @@ async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>>
     });
     user_db::edit_user_password(&app_state.db, 1, &local_pass).await?;
     user_db::scramble_validity_token(&app_state.db, 1).await?;
-    group_db::delete_dead_groups(&app_state.db).await?;
-    // Catches blobs a user deletion left while an import held the lock, or a purge that
-    // stopped before its sweep; nothing holds the import lock yet at this point.
-    export_service::delete_dead_blobs(app_state).await?;
+    // Expire models before the group/blob sweeps, including blobs a user deletion deferred;
+    // nothing holds the import lock yet at this point.
+    export_service::cleanup_library_on_startup(app_state).await?;
 
     Ok(())
 }

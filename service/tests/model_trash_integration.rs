@@ -6,6 +6,8 @@ mod common;
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
 };
 
 use tempfile::TempDir;
@@ -116,6 +118,14 @@ fn gear_stl() -> (TempDir, PathBuf) {
 async fn group_exists(app_state: &AppState, group_id: i64) -> bool {
     sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM models_group WHERE group_id = ?)")
         .bind(group_id)
+        .fetch_one(&*app_state.db)
+        .await
+        .unwrap()
+}
+
+async fn model_row_exists(app_state: &AppState, model_id: i64) -> bool {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM models WHERE model_id = ?)")
+        .bind(model_id)
         .fetch_one(&*app_state.db)
         .await
         .unwrap()
@@ -331,6 +341,7 @@ async fn purge_expired_trash_removes_expired_models_with_their_files() {
 #[tokio::test]
 async fn purge_expired_trash_sweeps_blobs_only_once_an_import_releases_the_lock() {
     let (_dir, app_state) = common::test_app_state().await;
+    let app_state = Arc::new(app_state);
     let user = User::default();
     let expired = add_model_with_files(&app_state, &user, "expired").await;
     export_service::delete_models(&app_state, &user, vec![expired.id])
@@ -339,13 +350,21 @@ async fn purge_expired_trash_sweeps_blobs_only_once_an_import_releases_the_lock(
     set_model_deleted(&app_state, expired.id, &timestamp(2000)).await;
     let import_guard = app_state.import_mutex.lock().await;
 
-    let mut purge = std::pin::pin!(export_service::purge_expired_trash(&app_state));
-    // A purge that skipped the lock would finish well within this on a test-sized database.
-    let while_locked =
-        tokio::time::timeout(std::time::Duration::from_millis(100), purge.as_mut()).await;
+    let purge_state = Arc::clone(&app_state);
+    let mut purge =
+        tokio::spawn(async move { export_service::purge_expired_trash(&purge_state).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while model_row_exists(&app_state, expired.id).await {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the purge never deleted the expired model row");
+    // Observe the row deletion first so a slow initial query cannot masquerade as lock waiting.
+    let while_locked = tokio::time::timeout(Duration::from_millis(100), &mut purge).await;
 
     assert!(while_locked.is_err(), "the purge finished under the lock");
-    // Only the dead-blob sweep waits for the lock; the expired model row may already be gone.
+    // Only the dead-blob sweep waits for the lock; the expired model row is already gone.
     assert!(expired.model_path.exists(), "blob swept under the lock");
     assert!(
         blob_db::get_blob_via_sha256(&app_state.db, "expired")
@@ -354,7 +373,7 @@ async fn purge_expired_trash_sweeps_blobs_only_once_an_import_releases_the_lock(
             .is_some()
     );
     drop(import_guard);
-    purge.await.unwrap();
+    purge.await.unwrap().unwrap();
     assert_eq!(
         trashed_model_ids(&app_state, &user).await,
         Vec::<i64>::new()
@@ -371,7 +390,7 @@ async fn delete_user_skips_the_blob_sweep_while_an_import_holds_the_lock() {
 
     // A thumbnail regeneration can hold the lock for hours, so the deletion must not wait on it.
     let while_locked = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        Duration::from_secs(5),
         service::user_service::delete_user(&app_state, other_user.id),
     )
     .await;
@@ -394,8 +413,10 @@ async fn delete_user_skips_the_blob_sweep_while_an_import_holds_the_lock() {
     assert!(model.model_path.exists(), "blob swept under the lock");
     assert!(model.image_path.exists(), "thumbnail swept under the lock");
     drop(import_guard);
-    // A later sweep still finds the deleted user's blob dead.
-    export_service::delete_dead_blobs(&app_state).await.unwrap();
+    // The next purge must sweep deferred blobs even when no trash rows expire.
+    export_service::purge_expired_trash(&app_state)
+        .await
+        .unwrap();
     assert!(!model.model_path.exists());
     assert!(!model.image_path.exists());
 }
@@ -552,7 +573,124 @@ async fn import_of_a_trashed_file_purged_before_the_restore_imports_it_afresh() 
 }
 
 #[tokio::test]
-async fn purge_expired_trash_preserves_empty_groups_and_sweeps_blobs_only_after_expiry() {
+async fn startup_cleanup_purges_rows_and_groups_before_waiting_for_the_import_lock() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let app_state = Arc::new(app_state);
+    let user = User::default();
+    let expired = add_model_with_files(&app_state, &user, "expired").await;
+    let recent = add_model_with_files(&app_state, &user, "recent").await;
+    let mut group_ids = Vec::new();
+    for model_id in [expired.id, recent.id] {
+        let group_id = group_db::add_empty_group(&app_state.db, &user, "parts", None)
+            .await
+            .unwrap()
+            .id;
+        group_db::set_group_id_on_models(
+            &app_state.db,
+            &user,
+            Some(group_id),
+            vec![model_id],
+            None,
+        )
+        .await
+        .unwrap();
+        group_ids.push(group_id);
+    }
+    export_service::delete_models(&app_state, &user, vec![expired.id, recent.id])
+        .await
+        .unwrap();
+    set_model_deleted(&app_state, expired.id, &timestamp(2000)).await;
+    let import_guard = app_state.import_mutex.lock().await;
+    let cleanup_state = Arc::clone(&app_state);
+    let mut cleanup =
+        tokio::spawn(
+            async move { export_service::cleanup_library_on_startup(&cleanup_state).await },
+        );
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while model_row_exists(&app_state, expired.id).await
+            || group_exists(&app_state, group_ids[0]).await
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("startup did not purge expired rows and their empty groups before waiting on the lock");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut cleanup)
+            .await
+            .is_err()
+    );
+    assert!(group_exists(&app_state, group_ids[1]).await);
+    assert!(expired.model_path.exists());
+    assert!(expired.image_path.exists());
+    let fresh_group_id = group_db::add_empty_group(&app_state.db, &user, "new import", None)
+        .await
+        .unwrap()
+        .id;
+
+    drop(import_guard);
+    cleanup.await.unwrap().unwrap();
+
+    assert!(
+        group_exists(&app_state, fresh_group_id).await,
+        "group cleanup ran again after the lock wait"
+    );
+    assert!(group_exists(&app_state, group_ids[1]).await);
+    assert_eq!(trashed_model_ids(&app_state, &user).await, vec![recent.id]);
+    assert!(!expired.model_path.exists());
+    assert!(!expired.image_path.exists());
+    assert!(recent.model_path.exists());
+    assert!(recent.image_path.exists());
+}
+
+#[tokio::test]
+async fn startup_cleanup_still_sweeps_groups_and_blobs_when_expiry_deletion_fails() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let expired = add_model_with_files(&app_state, &user, "expired").await;
+    export_service::delete_models(&app_state, &user, vec![expired.id])
+        .await
+        .unwrap();
+    set_model_deleted(&app_state, expired.id, &timestamp(2000)).await;
+    let orphan = add_model_with_files(&app_state, &user, "orphan").await;
+    sqlx::query("DELETE FROM models WHERE model_id = ?")
+        .bind(orphan.id)
+        .execute(&*app_state.db)
+        .await
+        .unwrap();
+    let empty_group_id = group_db::add_empty_group(&app_state.db, &user, "empty", None)
+        .await
+        .unwrap()
+        .id;
+    sqlx::query(
+        "CREATE TRIGGER reject_expiry BEFORE DELETE ON models \
+         BEGIN SELECT RAISE(ABORT, 'expiry deletion rejected'); END",
+    )
+    .execute(&*app_state.db)
+    .await
+    .unwrap();
+
+    export_service::cleanup_library_on_startup(&app_state)
+        .await
+        .unwrap();
+
+    assert!(model_row_exists(&app_state, expired.id).await);
+    assert!(!group_exists(&app_state, empty_group_id).await);
+    assert!(expired.model_path.exists());
+    assert!(expired.image_path.exists());
+    assert!(!orphan.model_path.exists());
+    assert!(!orphan.image_path.exists());
+    assert!(
+        blob_db::get_blob_via_sha256(&app_state.db, "orphan")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn purge_expired_trash_preserves_empty_groups_and_sweeps_orphans_without_expired_rows() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
     let recent = add_model_with_files(&app_state, &user, "recent").await;
@@ -584,9 +722,9 @@ async fn purge_expired_trash_preserves_empty_groups_and_sweeps_blobs_only_after_
         blob_db::get_blob_via_sha256(&app_state.db, "orphan")
             .await
             .unwrap()
-            .is_some()
+            .is_none()
     );
-    assert!(orphan_path.exists());
+    assert!(!orphan_path.exists());
 
     let expired = add_model_with_files(&app_state, &user, "expired").await;
     export_service::delete_models(&app_state, &user, vec![expired.id])

@@ -7,7 +7,7 @@ use db::{
     db_context::{self, DbContext},
     group_db, label_db,
     model::{ModelFlags, user::User},
-    model_db, random_hex_32, time_now, user_db,
+    model_db, random_hex_32, share_db, time_now, user_db,
 };
 
 const SET_DELETED_SQL: &str = "UPDATE models SET model_deleted = ? WHERE model_id = ?";
@@ -107,6 +107,18 @@ async fn listed_model_ids(db: &DbContext, user: &User, trashed: bool) -> Vec<i64
     ids.sort_unstable();
 
     ids
+}
+
+async fn assert_share_reads(db: &DbContext, user: &User, share_id: &str, expected_ids: &[i64]) {
+    let via_id = share_db::get_share_via_id(db, share_id).await.unwrap();
+    let listed = share_db::get_shares(db, user).await.unwrap();
+    assert_eq!(listed.len(), 1);
+
+    for share in [via_id, listed.into_iter().next().unwrap()] {
+        assert_eq!(share.id, share_id);
+        assert_eq!(share.user_id, user.id);
+        assert_eq!(share.model_ids, expected_ids);
+    }
 }
 
 async fn group_last_modified(db: &DbContext, group_id: i64) -> String {
@@ -229,6 +241,43 @@ async fn trash_models_hides_model_from_model_reads() {
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn share_reads_hide_trashed_models_and_restore_them_without_removing_empty_shares() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let first_id = add_model(&db, &user, "first").await;
+    let second_id = add_model(&db, &user, "second").await;
+    let foreign_id = add_model(&db, &other_user, "foreign").await;
+    let share_id = share_db::create_share(&db, &user, "own").await.unwrap();
+    share_db::set_model_ids_on_share(&db, &user, &share_id, vec![first_id, second_id])
+        .await
+        .unwrap();
+    let foreign_share_id = share_db::create_share(&db, &other_user, "foreign")
+        .await
+        .unwrap();
+    share_db::set_model_ids_on_share(&db, &other_user, &foreign_share_id, vec![foreign_id])
+        .await
+        .unwrap();
+
+    trash(&db, &user, &[first_id]).await;
+
+    assert_share_reads(&db, &user, &share_id, &[second_id]).await;
+    assert_share_reads(&db, &other_user, &foreign_share_id, &[foreign_id]).await;
+
+    trash(&db, &user, &[second_id]).await;
+
+    assert_share_reads(&db, &user, &share_id, &[]).await;
+    assert_share_reads(&db, &other_user, &foreign_share_id, &[foreign_id]).await;
+
+    model_db::restore_models(&db, &user, &[first_id])
+        .await
+        .unwrap();
+
+    assert_share_reads(&db, &user, &share_id, &[first_id]).await;
+    assert_share_reads(&db, &other_user, &foreign_share_id, &[foreign_id]).await;
 }
 
 #[tokio::test]

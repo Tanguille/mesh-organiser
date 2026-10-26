@@ -202,11 +202,17 @@ describe("syncModels upload", () => {
         await syncOneUpload(localGroup, serverGroup);
 
       expect(localModel.id).toBe(SERVER_MODEL_ID);
-      expect(serverModelApi.getModels).toHaveBeenCalledWith(
-        expect.objectContaining({ modelIds: [SERVER_MODEL_ID] }),
-        1,
-        expect.any(Number),
-      );
+      expect(
+        serverModelApi.getModels.mock.calls.filter(
+          ([filter]) => filter.modelIds !== null,
+        ),
+      ).toEqual([
+        [
+          expect.objectContaining({ modelIds: [SERVER_MODEL_ID] }),
+          1,
+          MAX_PAGE_SIZE,
+        ],
+      ]);
       expect(serverGroupApi.removeModelsFromGroup.mock.calls).toEqual(
         detaches ? [[[localModel]]] : [],
       );
@@ -216,7 +222,7 @@ describe("syncModels upload", () => {
     },
   );
 
-  it("looks up all uploaded models in one paginated sequence and preserves group decisions", async () => {
+  it("looks up all uploaded models in one request and preserves group decisions", async () => {
     currentUser.lastSync = new Date("2025-01-01T00:00:00Z");
     const localModels = [model(1, "kept"), model(2, "local"), model(3, null)];
     const serverModels = [
@@ -235,7 +241,6 @@ describe("syncModels upload", () => {
     );
     expect(lookupCalls).toEqual([
       [expect.objectContaining({ modelIds: ids }), 1, MAX_PAGE_SIZE],
-      [expect.objectContaining({ modelIds: ids }), 2, MAX_PAGE_SIZE],
     ]);
     expect(localModels.map((localModel) => localModel.id)).toEqual(ids);
     expect(serverGroupApi.removeModelsFromGroup.mock.calls).toEqual([
@@ -257,7 +262,7 @@ describe("syncModels upload", () => {
     });
   });
 
-  it("bounds id batches for uploads larger than one page and completes every edit", async () => {
+  it("uses one first-page lookup per bounded upload batch and completes every edit", async () => {
     currentUser.lastSync = new Date("2025-01-01T00:00:00Z");
     const localModels = Array.from({ length: MAX_PAGE_SIZE + 1 }, (_, index) =>
       model(index + 1, null),
@@ -266,7 +271,7 @@ describe("syncModels upload", () => {
       model(localModel.id + MAX_PAGE_SIZE, null),
     );
 
-    const { serverModelApi } = await syncMultipleUploads(
+    const { serverModelApi, serverGroupApi } = await syncMultipleUploads(
       localModels,
       serverModels,
     );
@@ -274,17 +279,17 @@ describe("syncModels upload", () => {
     const lookupCalls = serverModelApi.getModels.mock.calls.filter(
       ([filter]) => filter.modelIds !== null,
     );
-    const firstPages = lookupCalls.filter(([, page]) => page === 1);
-    expect(firstPages.map(([filter]) => filter.modelIds?.length)).toEqual([
+    expect(lookupCalls.map(([filter]) => filter.modelIds?.length)).toEqual([
       MAX_PAGE_SIZE,
       1,
     ]);
-    expect(firstPages.flatMap(([filter]) => filter.modelIds ?? [])).toEqual(
+    expect(lookupCalls.flatMap(([filter]) => filter.modelIds ?? [])).toEqual(
       serverModels.map((serverModel) => serverModel.id),
     );
-    expect(lookupCalls.map(([, page]) => page)).toEqual([1, 2, 1, 2]);
-    for (const [filter] of lookupCalls) {
+    expect(lookupCalls.map(([, page]) => page)).toEqual([1, 1]);
+    for (const [filter, , pageSize] of lookupCalls) {
       expect(filter.modelIds!.length).toBeLessThanOrEqual(MAX_PAGE_SIZE);
+      expect(pageSize).toBe(MAX_PAGE_SIZE);
     }
     expect(serverModelApi.editModel).toHaveBeenCalledTimes(localModels.length);
     expect(
@@ -292,6 +297,12 @@ describe("syncModels upload", () => {
         .map(([uploaded]) => uploaded.id)
         .sort((left, right) => left - right),
     ).toEqual(serverModels.map((serverModel) => serverModel.id));
-    expect(globalSyncState.processedItems).toBe(localModels.length);
+    expect(serverGroupApi.removeModelsFromGroup).not.toHaveBeenCalled();
+    expect(globalSyncState).toEqual({
+      stage: SyncStage.Models,
+      step: SyncStep.Upload,
+      processableItems: localModels.length,
+      processedItems: localModels.length,
+    });
   });
 });
