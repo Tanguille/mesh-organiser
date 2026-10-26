@@ -51,7 +51,13 @@ vi.mock("@tauri-apps/plugin-fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tauri-apps/plugin-fs")>()),
   watch: mocks.watch,
 }));
-vi.mock("svelte-sonner", () => ({ toast: { promise: mocks.toastPromise } }));
+vi.mock("svelte-sonner", async (importOriginal) => {
+  const { toast } = await importOriginal<typeof import("svelte-sonner")>();
+  // Preserve Sonner's return-id/error-handling contract instead of returning the operation.
+  mocks.toastPromise.mockImplementation(toast.promise);
+
+  return { toast: { promise: mocks.toastPromise } };
+});
 vi.mock("$app/navigation", () => ({ goto: mocks.goto }));
 vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({
@@ -96,7 +102,6 @@ beforeEach(() => {
 
     return finishedImport;
   });
-  mocks.toastPromise.mockImplementation((promise: Promise<unknown>) => promise);
   mocks.confirm.mockResolvedValue(true);
 });
 
@@ -580,6 +585,66 @@ describe("open-in-slicer link", () => {
     return { getModels, openInSlicer };
   }
 
+  it("Sonner returns a toast id before the operation settles and handles its rejection", async () => {
+    const { toast } =
+      await vi.importActual<typeof import("svelte-sonner")>("svelte-sonner");
+    let rejectOperation!: (reason: Error) => void;
+    const operation = new Promise<number>((_resolve, reject) => {
+      rejectOperation = reject;
+    });
+    const onError = vi.fn().mockReturnValue("Could not open the slicer");
+    const id = toast.promise(operation, {
+      loading: "Opening models in slicer",
+      error: onError,
+    });
+
+    expect(["number", "string"]).toContain(typeof id);
+    await expect(Promise.resolve(id)).resolves.toBe(id);
+    expect(onError).not.toHaveBeenCalled();
+    const reason = new Error("No slicer selected in settings");
+    rejectOperation(reason);
+
+    await vi.waitFor(() =>
+      expect(onError).toHaveBeenCalledExactlyOnceWith(reason),
+    );
+  });
+
+  it.each([
+    [
+      "no configured slicer",
+      null,
+      firstSha256,
+      "No slicer selected in settings",
+    ],
+    [
+      "an unresolved sha256",
+      "OrcaSlicer",
+      unknownSha256,
+      "None of the linked models are in your library",
+    ],
+  ] as const)(
+    "does not reject the cold-start handler for %s",
+    async (_scenario, slicer, sha256, expectedMessage) => {
+      configuration.slicer = slicer;
+      const { getModels, openInSlicer } = provideLibrary();
+      const api = new TauriImportApi();
+
+      await expect(
+        api.handleOpenInSlicerLink([sha256]),
+      ).resolves.toBeUndefined();
+
+      const [[operation]] = mocks.toastPromise.mock.calls;
+      await expect(operation).rejects.toThrow(expectedMessage);
+      expect(mocks.confirm).not.toHaveBeenCalled();
+      expect(openInSlicer).not.toHaveBeenCalled();
+      if (slicer === null) {
+        expect(getModels).not.toHaveBeenCalled();
+      } else {
+        expect(getModels).toHaveBeenCalled();
+      }
+    },
+  );
+
   it("opens only the library models whose blob sha256 is linked", async () => {
     configuration.slicer = "OrcaSlicer";
     const { openInSlicer } = provideLibrary();
@@ -669,9 +734,9 @@ describe("open-in-slicer link", () => {
 
     await emit("open-in-slicer", [firstSha256]);
 
-    expect(openInSlicer).not.toHaveBeenCalled();
     const [[pendingToast, toastMessages]] = mocks.toastPromise.mock.calls;
     await expect(pendingToast).resolves.toBe(0);
+    expect(openInSlicer).not.toHaveBeenCalled();
     expect(toastMessages.success(0)).toBe("Cancelled");
   });
 
@@ -705,9 +770,9 @@ describe("open-in-slicer link", () => {
 
     await emit("open-in-slicer", [firstSha256, secondSha256]);
 
-    expect(openInSlicer.mock.calls).toEqual([[[library[0], library[1]]]]);
     const [[pendingToast, toastMessages]] = mocks.toastPromise.mock.calls;
     await expect(pendingToast).resolves.toBe(2);
+    expect(openInSlicer.mock.calls).toEqual([[[library[0], library[1]]]]);
     expect(toastMessages.loading).toBe("Opening models in slicer");
     expect(toastMessages.success(2)).toBe("Opened 2 model(s) in slicer");
   });
@@ -716,9 +781,9 @@ describe("open-in-slicer link", () => {
     provideLibrary();
     await initApi();
 
-    await expect(emit("open-in-slicer", [firstSha256])).rejects.toThrow(
-      "No slicer selected in settings",
-    );
+    await expect(
+      emit("open-in-slicer", [firstSha256]),
+    ).resolves.toBeUndefined();
 
     const [[pendingToast, toastMessages]] = mocks.toastPromise.mock.calls;
     const reason = await pendingToast.catch((error: unknown) => error);

@@ -517,42 +517,30 @@ impl MeshServer {
                 )
             })?,
         };
-        // SQL can only require flags, so `true` filters there and `false` in the retain below.
         let mut required_flags = ModelFlags::empty();
         required_flags.set(ModelFlags::Printed, params.printed == Some(true));
         required_flags.set(ModelFlags::Favorite, params.favorite == Some(true));
+        let mut excluded_flags = ModelFlags::empty();
+        excluded_flags.set(ModelFlags::Printed, params.printed == Some(false));
+        excluded_flags.set(ModelFlags::Favorite, params.favorite == Some(false));
+        let options = ModelFilterOptions {
+            group_ids: query_bounds::none_if_empty(params.group_ids),
+            label_ids: query_bounds::none_if_empty(params.label_ids),
+            text_search: params.text_search,
+            model_flags: (!required_flags.is_empty()).then_some(required_flags),
+            excluded_model_flags: (!excluded_flags.is_empty()).then_some(excluded_flags),
+            unlabeled_only: params.unlabeled_only,
+            ungrouped_only: params.ungrouped_only,
+            order_by: Some(order_by),
+            page,
+            page_size,
+            ..Default::default()
+        };
+        let total = model_db::get_filtered_model_count(&self.app_state.db, user, &options).await?;
+        let meshes = model_db::get_models(&self.app_state.db, user, options).await?;
+        let page: Vec<Value> = meshes.items.iter().map(mesh_summary).collect();
 
-        // ponytail: loads every match per call, because `get_models` cannot filter on
-        // unlabeled, ungrouped or unset flags; move those into its SQL if libraries outgrow memory.
-        let mut meshes = model_db::get_all_models(
-            &self.app_state.db,
-            user,
-            ModelFilterOptions {
-                group_ids: query_bounds::none_if_empty(params.group_ids),
-                label_ids: query_bounds::none_if_empty(params.label_ids),
-                text_search: params.text_search,
-                model_flags: (!required_flags.is_empty()).then_some(required_flags),
-                order_by: Some(order_by),
-                ..Default::default()
-            },
-        )
-        .await?;
-        meshes.retain(|mesh| {
-            (!params.unlabeled_only || mesh.labels.is_empty())
-                && (!params.ungrouped_only || mesh.group.is_none())
-                && (params.printed != Some(false) || !mesh.flags.contains(ModelFlags::Printed))
-                && (params.favorite != Some(false) || !mesh.flags.contains(ModelFlags::Favorite))
-        });
-
-        // Both are bounded above, so the offset cannot overflow.
-        let page: Vec<Value> = meshes
-            .iter()
-            .skip((page as usize - 1) * page_size as usize)
-            .take(page_size as usize)
-            .map(mesh_summary)
-            .collect();
-
-        Ok(json!({ "total": meshes.len(), "meshes": page }).to_string())
+        Ok(json!({ "total": total, "meshes": page }).to_string())
     }
 
     #[tool(
@@ -734,8 +722,14 @@ impl MeshServer {
 
             return Err(error);
         }
-        if let Some(parent_id) = params.parent_label_id {
-            label_db::set_label_parent(db, user, label.id, Some(parent_id), None).await?;
+        if let Some(parent_id) = params.parent_label_id
+            && let Err(error) =
+                label_db::set_label_parent(db, user, label.id, Some(parent_id), None).await
+        {
+            // Parent changes can fail after insertion too; a failed call must leave no label.
+            label_db::delete_label(db, user, label.id).await?;
+
+            return Err(error.into());
         }
 
         Ok(
@@ -1007,6 +1001,7 @@ impl MeshServer {
     ) -> ToolResult {
         let user = current_user(&parts)?;
         let mesh_ids = unique_ids(params.mesh_ids)?;
+        owned_meshes(&self.app_state.db, user, mesh_ids.clone()).await?;
         export_service::delete_models(&self.app_state, user, mesh_ids.clone()).await?;
 
         Ok(json!({ "trashed_mesh_ids": mesh_ids }).to_string())
@@ -2803,6 +2798,209 @@ mod tests {
             expected_keys.iter().collect::<Vec<_>>()
         );
         assert_eq!(metadata["Key29"], "Value 29");
+    }
+
+    #[tokio::test]
+    async fn list_meshes_combines_printed_and_favorite_filters() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let mut mesh_ids = Vec::new();
+        for (name, flags) in [
+            ("neither", db::model::ModelFlags::empty()),
+            ("printed", db::model::ModelFlags::Printed),
+            ("favorite", db::model::ModelFlags::Favorite),
+            (
+                "both",
+                db::model::ModelFlags::Printed | db::model::ModelFlags::Favorite,
+            ),
+        ] {
+            let mesh_id = add_mesh(&server, &user, name).await;
+            db::model_db::edit_model(
+                &server.app_state.db,
+                &user,
+                mesh_id,
+                name,
+                None,
+                None,
+                flags,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            mesh_ids.push(mesh_id);
+        }
+
+        for (printed, favorite, expected_indices) in [
+            (None, None, vec![0, 1, 2, 3]),
+            (Some(true), None, vec![1, 3]),
+            (Some(false), None, vec![0, 2]),
+            (None, Some(true), vec![2, 3]),
+            (None, Some(false), vec![0, 1]),
+            (Some(true), Some(true), vec![3]),
+            (Some(false), Some(false), vec![0]),
+            (Some(true), Some(false), vec![1]),
+            (Some(false), Some(true), vec![2]),
+        ] {
+            let actual = listed_mesh_ids(
+                &server,
+                &user,
+                serde_json::json!({ "printed": printed, "favorite": favorite }),
+            )
+            .await;
+            let expected: Vec<i64> = expected_indices
+                .into_iter()
+                .map(|index| mesh_ids[index])
+                .collect();
+            assert_eq!(
+                actual, expected,
+                "printed={printed:?}, favorite={favorite:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn list_meshes_pages_preserve_unlabeled_and_ungrouped_filtered_totals() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let mut plain_ids = Vec::new();
+        for name in ["first", "second", "third"] {
+            plain_ids.push(add_mesh(&server, &user, name).await);
+        }
+        let labeled_id = add_mesh(&server, &user, "labeled").await;
+        let grouped_id = add_mesh(&server, &user, "grouped").await;
+        let label_id = add_label(&server, &user, "boats").await;
+        db::label_db::add_labels_on_models(
+            &server.app_state.db,
+            &user,
+            &[label_id],
+            &[labeled_id],
+            None,
+        )
+        .await
+        .unwrap();
+        add_group(&server, &user, "fleet", vec![grouped_id]).await;
+        let stranger = add_user(&server, "stranger@example.com").await;
+        add_mesh(&server, &stranger, "foreign").await;
+        let trashed_id = add_mesh(&server, &user, "trashed").await;
+        db::model_db::trash_models(&server.app_state.db, &user, &[trashed_id])
+            .await
+            .unwrap();
+
+        for (unlabeled_only, ungrouped_only, extra_id) in [
+            (true, false, Some(grouped_id)),
+            (false, true, Some(labeled_id)),
+            (true, true, None),
+        ] {
+            let mut expected = plain_ids.clone();
+            expected.extend(extra_id);
+            expected.sort_unstable();
+            let mut actual = Vec::new();
+            for page in 1..=3 {
+                let listing = parse(
+                    server
+                        .list_meshes(
+                            authenticated(&user),
+                            parameters(serde_json::json!({
+                                "unlabeled_only": unlabeled_only, "ungrouped_only": ungrouped_only,
+                                "page": page, "page_size": 2, "order_by": "NameAsc",
+                            })),
+                        )
+                        .await,
+                );
+                assert_eq!(listing["total"], expected.len());
+                let meshes = listing["meshes"].as_array().unwrap();
+                assert_eq!(
+                    meshes.len(),
+                    expected.len().saturating_sub((page - 1) * 2).min(2)
+                );
+                actual.extend(meshes.iter().map(|mesh| mesh["id"].as_i64().unwrap()));
+            }
+            actual.sort_unstable();
+            assert_eq!(
+                actual, expected,
+                "unlabeled={unlabeled_only}, ungrouped={ungrouped_only}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn create_label_parent_write_failure_removes_the_label_and_keywords() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let parent_id = add_label(&server, &user, "vehicles").await;
+        let before = listed_labels(&server, &user).await;
+        sqlx::query(
+            "CREATE TRIGGER reject_label_parent BEFORE INSERT ON labels_labels \
+             BEGIN SELECT RAISE(ABORT, 'parent write rejected'); END",
+        )
+        .execute(&*server.app_state.db)
+        .await
+        .unwrap();
+
+        let result = server
+            .create_label(
+                authenticated(&user),
+                parameters(serde_json::json!({
+                    "name": "boats", "parent_label_id": parent_id, "keywords": ["boat", "ship"],
+                })),
+            )
+            .await;
+
+        assert!(result.unwrap_err().0.contains("parent write rejected"));
+        assert_eq!(listed_labels(&server, &user).await, before);
+        let keyword_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM label_keywords")
+            .fetch_one(&*server.app_state.db)
+            .await
+            .unwrap();
+        assert_eq!(keyword_count, 0);
+    }
+
+    #[tokio::test]
+    async fn delete_meshes_names_invalid_ids_and_trashes_nothing() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let stranger = add_user(&server, "stranger@example.com").await;
+        let live_id = add_mesh(&server, &user, "boat").await;
+        let foreign_id = add_mesh(&server, &stranger, "secret").await;
+        let trashed_id = add_mesh(&server, &user, "wreck").await;
+        db::model_db::trash_models(&server.app_state.db, &user, &[trashed_id])
+            .await
+            .unwrap();
+        let unknown_id = trashed_id + 1000;
+
+        for mut invalid_ids in [
+            vec![unknown_id],
+            vec![foreign_id],
+            vec![trashed_id],
+            vec![unknown_id, foreign_id, trashed_id],
+        ] {
+            let mut requested_ids = vec![live_id];
+            requested_ids.extend(&invalid_ids);
+            let result = server
+                .delete_meshes(
+                    authenticated(&user),
+                    parameters(serde_json::json!({ "mesh_ids": requested_ids })),
+                )
+                .await;
+
+            invalid_ids.sort_unstable();
+            assert_eq!(
+                result.unwrap_err().0,
+                format!("Unknown mesh ids: {invalid_ids:?}")
+            );
+            assert_eq!(
+                listed_mesh_ids(&server, &user, serde_json::json!({})).await,
+                [live_id]
+            );
+            assert_eq!(
+                listed_mesh_ids(&server, &stranger, serde_json::json!({})).await,
+                [foreign_id]
+            );
+            let trash = parse(server.list_trash(authenticated(&user)).await);
+            assert_eq!(trash.as_array().unwrap().len(), 1);
+            assert_eq!(trash[0]["id"], trashed_id);
+        }
     }
 
     #[tokio::test]

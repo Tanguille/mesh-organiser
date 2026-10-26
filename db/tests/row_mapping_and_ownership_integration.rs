@@ -1293,6 +1293,75 @@ fn keywords(names: &[&str]) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn get_keywords_held_elsewhere_returns_only_other_labels_names_in_sorted_order() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let label_id = add_label_from_2000(&db, &user, "boats").await;
+    let foreign_label_id = add_label_from_2000(&db, &other_user, "rafts").await;
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &user,
+        label_id,
+        keywords(&["hull", "keel"]),
+        None,
+    )
+    .await
+    .unwrap();
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &other_user,
+        foreign_label_id,
+        keywords(&["raft"]),
+        None,
+    )
+    .await
+    .unwrap();
+
+    for (excluded_label_id, query, expected) in [
+        (
+            label_id,
+            keywords(&["hull", "raft", "missing"]),
+            keywords(&["raft"]),
+        ),
+        (
+            foreign_label_id,
+            keywords(&["hull", "raft", "missing"]),
+            keywords(&["hull"]),
+        ),
+        (
+            foreign_label_id,
+            keywords(&["keel", "hull", "missing", "hull", "keel"]),
+            keywords(&["hull", "keel"]),
+        ),
+        (
+            MISSING_ID,
+            keywords(&["raft", "keel", "hull", "raft"]),
+            keywords(&["hull", "keel", "raft"]),
+        ),
+        (label_id, keywords(&["missing"]), vec![]),
+    ] {
+        let held = label_keyword_db::get_keywords_held_elsewhere(&db, &query, excluded_label_id)
+            .await
+            .unwrap();
+
+        assert_eq!(held, expected);
+    }
+}
+
+#[tokio::test]
+async fn get_keywords_held_elsewhere_with_empty_input_does_not_query_the_database() {
+    let (_dir, db) = test_db().await;
+    db.close().await;
+
+    let held = label_keyword_db::get_keywords_held_elsewhere(&db, &[], MISSING_ID)
+        .await
+        .unwrap();
+
+    assert_eq!(held, Vec::<String>::new());
+}
+
+#[tokio::test]
 async fn set_keywords_for_label_keeps_the_old_keywords_when_another_label_holds_one() {
     let (_dir, db) = test_db().await;
     let user = User::default();
