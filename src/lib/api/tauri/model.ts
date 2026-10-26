@@ -66,4 +66,14 @@ export class ModelApi implements IModelApi {
       flags: convertModelFlagsToRaw(flags),
     });
   }
+
+  async getTrashedModels(): Promise<Model[]> {
+    const models = await invoke<RawModel[]>("get_trashed_models");
+
+    return models.map((model) => parseRawModel(model));
+  }
+
+  async restoreModels(models: Model[]): Promise<void> {
+    await invoke("restore_models", { modelIds: models.map((x) => x.id) });
+  }
 }

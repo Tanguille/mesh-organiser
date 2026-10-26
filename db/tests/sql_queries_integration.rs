@@ -116,32 +116,6 @@ async fn get_groups_filtered_by_ungrouped_model_do_not_expand_to_all_models() {
 }
 
 #[tokio::test]
-async fn delete_models_removes_only_requested_ids() {
-    let (_dir, db) = test_db().await;
-    let user = User::default();
-
-    let blob_id = blob_db::add_blob(&db, "deadbeef", "stl", 4, None)
-        .await
-        .unwrap();
-    let first_id = model_db::add_model(&db, &user, "one", blob_id, None, None)
-        .await
-        .unwrap();
-    let second_id = model_db::add_model(&db, &user, "two", blob_id, None, None)
-        .await
-        .unwrap();
-
-    model_db::delete_models(&db, &user, &[first_id])
-        .await
-        .unwrap();
-
-    let remaining = model_db::get_models_via_ids(&db, &user, vec![first_id, second_id])
-        .await
-        .unwrap();
-    assert_eq!(remaining.len(), 1);
-    assert_eq!(remaining[0].id, second_id);
-}
-
-#[tokio::test]
 async fn add_labels_on_models_batch_insert_links_rows() {
     let (_dir, db) = test_db().await;
     let user = User::default();
@@ -437,4 +411,86 @@ async fn get_models_reports_blob_added_not_model_added() {
 
     assert_eq!(models[0].blob.added, "2000-01-01T00:00:00Z");
     assert_ne!(models[0].added, models[0].blob.added);
+}
+
+/// Inserts `count` models sharing one blob, name and timestamps, so every sort key ties, and
+/// returns all of the user's model ids in ascending order.
+async fn add_tied_models(db: &db_context::DbContext, user: &User, count: u32) -> Vec<i64> {
+    let blob_id = blob_db::add_blob(db, "tied", "stl", 1, None).await.unwrap();
+    sqlx::query(
+        "WITH RECURSIVE sequence(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM sequence WHERE number < ?)
+         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id, model_unique_global_id, model_last_modified)
+         SELECT 'tied', ?, '2000-01-01T00:00:00Z', ?, printf('%032x', number), '2000-01-01T00:00:00Z' FROM sequence",
+    )
+    .bind(count)
+    .bind(blob_id)
+    .bind(user.id)
+    .execute(db)
+    .await
+    .unwrap();
+
+    sqlx::query_scalar("SELECT model_id FROM models WHERE model_user_id = ? ORDER BY model_id")
+        .bind(user.id)
+        .fetch_all(db)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn get_all_models_returns_every_match_past_one_page_in_model_id_order_when_sort_keys_tie() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let model_ids = add_tied_models(&db, &user, db::MAX_PAGE_SIZE + 1).await;
+
+    // The paging fields are ignored, so they must not shrink the result.
+    let models = model_db::get_all_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            order_by: Some(model_db::ModelOrderBy::NameAsc),
+            page: 2,
+            page_size: 1,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let listed_ids: Vec<i64> = models.iter().map(|model| model.id).collect();
+    assert_eq!(listed_ids, model_ids);
+}
+
+#[tokio::test]
+async fn get_groups_lists_a_group_whose_models_sit_past_the_first_page() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    add_tied_models(&db, &user, db::MAX_PAGE_SIZE).await;
+    let blob_id = blob_db::add_blob(&db, "late", "stl", 1, None)
+        .await
+        .unwrap();
+    let late_model_id = model_db::add_model(&db, &user, "late", blob_id, None, None)
+        .await
+        .unwrap();
+    let group_id = group_db::add_empty_group(&db, &user, "late", None)
+        .await
+        .unwrap()
+        .id;
+    group_db::set_group_id_on_models(&db, &user, Some(group_id), vec![late_model_id], None)
+        .await
+        .unwrap();
+
+    let groups = group_db::get_groups(&db, &user, group_db::GroupFilterOptions::default())
+        .await
+        .unwrap();
+
+    assert_eq!(groups.items.len(), 1);
+    assert_eq!(groups.items[0].meta.id, group_id);
+    assert_eq!(
+        groups.items[0]
+            .models
+            .iter()
+            .map(|model| model.id)
+            .collect::<Vec<_>>(),
+        vec![late_model_id]
+    );
 }

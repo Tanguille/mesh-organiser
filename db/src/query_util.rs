@@ -1,6 +1,6 @@
 use sqlx::{QueryBuilder, Sqlite};
 
-use crate::{DbError, db_context::DbContext, model::user::User};
+use crate::{DbError, model::user::User};
 
 /// Appends `(?, ?, …)` with one bind per value. Caller must prefix e.g. `column IN `.
 pub fn push_in<'t, T>(builder: &mut QueryBuilder<Sqlite>, values: impl IntoIterator<Item = T>)
@@ -59,8 +59,9 @@ impl OwnedTable {
 
 /// Sets `timestamp_column` to `timestamp` on the rows of `table` in `ids` owned by `user`.
 /// No-op when `ids` is empty. `timestamp_column` is pushed as raw SQL, like the table names.
+/// Takes any executor so a caller can stamp inside its own transaction.
 pub async fn set_timestamp_column(
-    db: &DbContext,
+    db: impl sqlx::SqliteExecutor<'_>,
     table: &OwnedTable,
     timestamp_column: &'static str,
     ids: &[i64],
@@ -86,8 +87,9 @@ pub async fn set_timestamp_column(
 
 /// Fails with `RowNotFound` unless every id in `ids` is a distinct row of `table` owned by
 /// `user`, so missing, foreign and duplicate ids are all rejected. Ok when `ids` is empty.
+/// Takes any executor so a caller can check inside its own transaction.
 pub async fn ensure_owned(
-    db: &DbContext,
+    db: impl sqlx::SqliteExecutor<'_>,
     table: &OwnedTable,
     ids: &[i64],
     user: &User,

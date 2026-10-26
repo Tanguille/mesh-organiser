@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs, io::AsyncWriteExt};
 
 use db::{
-    model::{ModelFlags, blob::FileType, user::User},
+    model::{Model, ModelFlags, blob::FileType, user::User},
     model_db,
     model_db::ModelFilterOptions,
 };
@@ -37,6 +37,8 @@ pub fn router() -> Router<AppState> {
             .route("/models", delete(delete_models))
             .route("/models/count", get(get_model_count))
             .route("/models/disk_usage", get(get_model_disk_space_usage))
+            .route("/models/trash", get(get_trashed_models))
+            .route("/models/restore", post(restore_models))
             .route("/models/{model_id}", put(edit_model))
             .route_layer(login_required!(Backend))
             .route("/shares/{share_id}/models", get(get_share_models)),
@@ -112,6 +114,7 @@ async fn get_models_inner(
             model_flags: if flags.is_empty() { None } else { Some(flags) },
             file_types: query_bounds::none_if_empty(params.file_types),
             text_search: params.text_search,
+            trashed: false,
             page: params.page,
             page_size: params.page_size,
         },
@@ -222,6 +225,25 @@ pub async fn delete_models(
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
     export_service::delete_models(&app_state, &user, params.model_ids).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_trashed_models(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+) -> Result<Json<Vec<Model>>, ApplicationError> {
+    Ok(Json(
+        export_service::get_trashed_models(&app_state, &user).await?,
+    ))
+}
+
+pub async fn restore_models(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+    Json(params): Json<crate::controller::ModelIdsParams>,
+) -> Result<StatusCode, ApplicationError> {
+    export_service::restore_models(&app_state, &user, params.model_ids).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

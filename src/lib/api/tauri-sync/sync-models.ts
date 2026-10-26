@@ -26,7 +26,11 @@ import {
   resolveDirection,
   type ResourceSet,
 } from "./algorithm";
-import { getAllModels } from "../shared/model_api";
+import {
+  defaultModelFilter,
+  getAllModels,
+  MAX_PAGE_SIZE,
+} from "../shared/model_api";
 import { runWithLimit } from "#lib/utils";
 
 interface BlobPath {
@@ -40,12 +44,23 @@ async function finalizeSingleModelUpload(
   serverModelApi: IModelApi,
   serverGroupApi: IGroupApi,
   toUpload: Model[],
+  serverGroups: Map<number, string | undefined>,
 ): Promise<void> {
   const blobId = paths.find((x) => x.blob_path === upload.path)!.blob_id;
   const model = toUpload.find((x) => x.blob.id === blobId)!;
 
   model.id = upload.model_ids![0];
-  await serverGroupApi.removeModelsFromGroup([model]);
+  // The upload's own import may have put the model in a new group, which group sync replaces.
+  // A model the server still had in its trash comes back as that same row with its real group,
+  // though; detaching it would stamp that group newer than the local one and group sync would
+  // then drop the model from it on both sides.
+  const serverGroupId = serverGroups.get(model.id);
+  if (
+    serverGroupId !== undefined &&
+    serverGroupId !== model.group?.uniqueGlobalId
+  ) {
+    await serverGroupApi.removeModelsFromGroup([model]);
+  }
   await serverModelApi.editModel(model, true, true);
   globalSyncState.processedItems += 1;
 }
@@ -69,6 +84,24 @@ async function stepUpload(
   );
   importState.status = ImportStatus.Idle;
 
+  const uploadedIds = uploads.uploaded_models.map(
+    (upload) => upload.model_ids![0],
+  );
+  const serverGroups = new Map<number, string | undefined>();
+  for (let start = 0; start < uploadedIds.length; start += MAX_PAGE_SIZE) {
+    // At most one model can match each id, so the complete batch fits in one page.
+    const models = await serverModelApi.getModels(
+      defaultModelFilter({
+        modelIds: uploadedIds.slice(start, start + MAX_PAGE_SIZE),
+      }),
+      1,
+      MAX_PAGE_SIZE,
+    );
+    for (const model of models) {
+      serverGroups.set(model.id, model.group?.uniqueGlobalId);
+    }
+  }
+
   await runWithLimit(uploads.uploaded_models, (upload) =>
     finalizeSingleModelUpload(
       paths,
@@ -76,6 +109,7 @@ async function stepUpload(
       serverModelApi,
       serverGroupApi,
       toUpload,
+      serverGroups,
     ),
   );
 }

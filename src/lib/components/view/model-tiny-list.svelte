@@ -4,8 +4,14 @@
   import FlagBadges from "#lib/components/view/flag-badges.svelte";
   import type { Model } from "#lib/api/shared/model_api";
   import { configuration } from "#lib/configuration.svelte";
+  import type { Snippet } from "svelte";
 
-  const props: { model: Model; class?: ClassValue } = $props();
+  const props: {
+    model: Model;
+    class?: ClassValue;
+    /** Replaces the "Added" date line. */
+    subtitle?: Snippet;
+  } = $props();
 </script>
 
 <div
@@ -14,7 +20,9 @@
   <ModelImg model={props.model} class="aspect-square h-full" />
   <div class="my-auto h-fit flex-1 overflow-hidden">
     <h2 class="truncate font-bold">{props.model.name}</h2>
-    {#if configuration.show_date_on_list_view}
+    {#if props.subtitle}
+      {@render props.subtitle()}
+    {:else if configuration.show_date_on_list_view}
       <p class="hidden-if-small ml-4 text-xs font-thin">
         Added {props.model.added.toLocaleDateString()}
       </p>

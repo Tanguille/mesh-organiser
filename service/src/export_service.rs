@@ -17,9 +17,9 @@ use tokio::{
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use db::{
-    blob_db,
+    blob_db, group_db,
     model::{Model, blob::Blob, user::User},
-    model_db,
+    model_db::{self, ModelFilterOptions},
 };
 
 use crate::{
@@ -321,10 +321,11 @@ fn get_size_of_blobs(blob_sha256s: &[String], app_state: &AppState) -> Result<u6
     Ok(total_size)
 }
 
-/// Deletes models after verifying every id resolves for the user, then removes dead blobs.
+/// Moves models to the trash after verifying every id resolves to a live model of the user.
 ///
 /// Duplicate ids are deduped rather than rejected. Shared by the Tauri commands and
-/// the web handlers so the verify-delete-GC policy lives in one place.
+/// the web handlers so the verify-then-trash policy lives in one place. Files stay on disk
+/// until [`purge_expired_trash`] removes the model for good.
 pub async fn delete_models(
     app_state: &AppState,
     user: &User,
@@ -342,14 +343,104 @@ pub async fn delete_models(
 
     let model_ids = models.into_iter().map(|m| m.id).collect::<Vec<i64>>();
 
-    model_db::delete_models(&app_state.db, user, &model_ids).await?;
-    delete_dead_blobs(app_state).await?;
+    model_db::trash_models(&app_state.db, user, &model_ids).await?;
 
     Ok(())
 }
 
+/// Takes models out of the trash after verifying every id resolves to a trashed model of the
+/// user; the counterpart of [`delete_models`], with the same dedupe.
+pub async fn restore_models(
+    app_state: &AppState,
+    user: &User,
+    model_ids: Vec<i64>,
+) -> Result<(), ServiceError> {
+    let model_ids = model_ids.into_iter().unique().collect::<Vec<i64>>();
+    let model_ids_len = model_ids.len();
+    let models = model_db::get_all_models(
+        &app_state.db,
+        user,
+        ModelFilterOptions {
+            model_ids: Some(model_ids),
+            trashed: true,
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    if models.len() != model_ids_len {
+        return Err(ServiceError::InternalError(String::from(
+            "Failed to find model to restore",
+        )));
+    }
+
+    let model_ids = models.into_iter().map(|m| m.id).collect::<Vec<i64>>();
+
+    model_db::restore_models(&app_state.db, user, &model_ids).await?;
+
+    Ok(())
+}
+
+/// Returns the user's trashed models, most recently trashed first.
+pub async fn get_trashed_models(
+    app_state: &AppState,
+    user: &User,
+) -> Result<Vec<Model>, ServiceError> {
+    let models = model_db::get_all_models(
+        &app_state.db,
+        user,
+        ModelFilterOptions {
+            trashed: true,
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    Ok(models)
+}
+
+/// Permanently deletes models trashed longer than `trash_retention_days` ago, for every user,
+/// then the files nothing references any more.
+pub async fn purge_expired_trash(app_state: &AppState) -> Result<(), ServiceError> {
+    let retention_days = app_state.get_configuration().trash_retention_days;
+    // Even a zero-row purge must retry blobs left by a deferred or failed sweep.
+    model_db::purge_trashed_models(&app_state.db, retention_days).await?;
+
+    // The blob sweep takes the import lock. Empty groups are swept only at startup:
+    // REST create-then-add, sync and MCP can leave one empty without holding the import lock.
+    delete_dead_blobs(app_state).await
+}
+
+/// Expires model rows before sweeping orphaned groups and files at startup.
+/// Expiry errors are logged so startup and the remaining cleanup can still proceed.
+pub async fn cleanup_library_on_startup(app_state: &AppState) -> Result<(), ServiceError> {
+    let retention_days = app_state.get_configuration().trash_retention_days;
+    if let Err(e) = model_db::purge_trashed_models(&app_state.db, retention_days).await {
+        eprintln!("Purging expired trash failed: {e}");
+    }
+
+    // Sweep groups before waiting for a long-running import or thumbnail regeneration;
+    // otherwise groups created during that wait could be deleted later in the session.
+    let group_cleanup = group_db::delete_dead_groups(&app_state.db).await;
+    let blob_cleanup = delete_dead_blobs(app_state).await;
+    group_cleanup?;
+
+    blob_cleanup
+}
+
 /// Removes on-disk files for blobs that are no longer referenced.
+///
+/// Takes the import lock, which is not re-entrant, so a caller must not hold it already.
 pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError> {
+    let _import_guard = app_state.import_mutex.lock().await;
+
+    delete_dead_blobs_locked(app_state).await
+}
+
+/// [`delete_dead_blobs`] for a caller that holds the import lock.
+pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(), ServiceError> {
+    // An import inserts its blob row before the model that references it; the caller's import
+    // lock keeps this sweep from deleting that blob in between.
     let blobs = blob_db::get_and_delete_dead_blobs(&app_state.db).await?;
 
     for blob in blobs {
@@ -585,6 +676,7 @@ mod tests {
             labels: Vec::new(),
             flags: ModelFlags::empty(),
             unique_global_id: String::default(),
+            deleted: None,
         };
 
         let temp_dir = tempdir().unwrap();

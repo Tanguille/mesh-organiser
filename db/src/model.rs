@@ -55,4 +55,6 @@ pub struct Model {
     pub labels: Vec<label::LabelMeta>,
     pub flags: ModelFlags,
     pub unique_global_id: String,
+    /// When the model was moved to the trash; `None` while it is not trashed.
+    pub deleted: Option<String>,
 }
