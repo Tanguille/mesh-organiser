@@ -157,9 +157,9 @@ pub async fn get_model_count(
 #[tauri::command]
 pub async fn get_model_disk_space_usage(
     state: State<'_, TauriAppState>,
+) -> Result<export_service::ModelDiskSpaceUsage, ApplicationError> {
     require_local_desktop_app()?;
 
-) -> Result<export_service::ModelDiskSpaceUsage, ApplicationError> {
     Ok(
         export_service::get_model_disk_space_usage(&state.app_state, &state.get_current_user())
             .await?,
