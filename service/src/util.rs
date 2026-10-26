@@ -63,6 +63,7 @@ pub fn convert_extension_to_zip(extension: &str) -> String {
         "stl" => "stl.zip",
         "obj" => "obj.zip",
         "step" => "step.zip",
+        // Re-import dedupe leaves legacy stored .stp blobs unchanged; see docs/commands.md.
         "stp" => "stp.zip",
         "gcode" => "gcode.zip",
         _ => &lowercase,

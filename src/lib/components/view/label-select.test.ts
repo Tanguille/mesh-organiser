@@ -32,6 +32,9 @@ describe("LabelSelect", () => {
     render(LabelSelect, { value: [], availableLabels: available });
 
     expect(screen.getByText("Select some labels")).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Select some labels" }),
+    ).toBeTruthy();
   });
 
   it("shows a custom placeholder when nothing is selected", () => {
@@ -42,30 +45,41 @@ describe("LabelSelect", () => {
     });
 
     expect(screen.getByText("Pick labels")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Pick labels" })).toBeTruthy();
   });
 
-  it("renders a badge per selected label instead of the placeholder", () => {
-    render(LabelSelect, {
-      value: [available[0], available[2]],
-      availableLabels: available,
-    });
+  it.each([undefined, "Pick labels"])(
+    "keeps the selection purpose accessible while showing badges with placeholder %j",
+    (placeholder) => {
+      render(LabelSelect, {
+        value: [available[0], available[2]],
+        availableLabels: available,
+        placeholder,
+      });
+      const accessibleName = placeholder ?? "Select some labels";
 
-    expect(screen.queryByText("Select some labels")).toBeNull();
-    expect(screen.getByText("Tools")).toBeTruthy();
-    expect(screen.getByText("Spare parts")).toBeTruthy();
-    expect(screen.queryByText("Toys")).toBeNull();
-  });
+      expect(screen.queryByText(accessibleName)).toBeNull();
+      expect(
+        screen.getByRole("combobox", { name: accessibleName }),
+      ).toBeTruthy();
+      expect(screen.getByText("Tools")).toBeTruthy();
+      expect(screen.getByText("Spare parts")).toBeTruthy();
+      expect(screen.queryByText("Toys")).toBeNull();
+    },
+  );
 
   it("lists every available label when opened and calls onchange on selection", async () => {
     const onchange = vi.fn();
     render(LabelSelect, { value: [], availableLabels: available, onchange });
 
-    // bits-ui 2.20 renders the trigger as a combobox, which takes no accessible
-    // name from its placeholder text.
-    await fireEvent.pointerDown(screen.getByRole("combobox"), {
-      button: 0,
-      pointerType: "mouse",
-    });
+    // The selection purpose must not depend on whichever label badges are displayed.
+    await fireEvent.pointerDown(
+      screen.getByRole("combobox", { name: "Select some labels" }),
+      {
+        button: 0,
+        pointerType: "mouse",
+      },
+    );
 
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent?.trim())).toEqual([

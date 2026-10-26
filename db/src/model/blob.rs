@@ -48,9 +48,15 @@ impl FileType {
             .unwrap_or("")
             .to_lowercase();
         // Compound extensions first: `Path::extension` alone would see "file.stl.zip" as "zip".
-        for compound in ["stl.zip", "obj.zip", "gcode.zip", "step.zip", "stp.zip"] {
-            if name_lower.ends_with(&format!(".{compound}")) {
-                return Self::from_extension(compound);
+        for compound in [
+            ".stl.zip",
+            ".obj.zip",
+            ".gcode.zip",
+            ".step.zip",
+            ".stp.zip",
+        ] {
+            if name_lower.ends_with(compound) {
+                return Self::from_extension(&compound[1..]);
             }
         }
 

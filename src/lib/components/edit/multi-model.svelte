@@ -43,8 +43,8 @@
     onGroupDelete?: () => void;
   } = $props();
 
-  // Handlers copy `models` into a local before awaiting: the selection behind
-  // props.models can change while a request is in flight.
+  // This alias follows props.models; handlers capture the current array before
+  // awaiting because the selection can change while a request is in flight.
   const models = $derived(props.models);
   const printed = $derived(models.every((x) => x.flags.printed));
   const favorited = $derived(models.every((x) => x.flags.favorite));

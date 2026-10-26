@@ -23,6 +23,17 @@ fn set_custom_slicer_path(app_state: &AppState, path: &str) {
     app_state.configuration.lock().unwrap().custom_slicer_path = path.to_string();
 }
 
+fn assert_child_test_passed(output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success()
+            && stdout.contains("test result: ok. 1 passed; 0 failed; 0 ignored;"),
+        "{stdout}\n{stderr}"
+    );
+}
+
 #[tokio::test]
 async fn custom_slicer_checks_configuration_before_empty_paths() {
     if env::var_os("MESH_TEST_CUSTOM_SLICER_CHILD").is_none() {
@@ -37,12 +48,7 @@ async fn custom_slicer_checks_configuration_before_empty_paths() {
             .env("MESH_TEST_CUSTOM_SLICER_CHILD", "1")
             .output()
             .unwrap();
-        assert!(
-            output.status.success(),
-            "{}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        assert_child_test_passed(&output);
 
         return;
     }
@@ -115,7 +121,7 @@ fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str
 
     // PATH is changed only for this child, so parallel tests cannot launch a real slicer.
     let output = Command::new(env::current_exe().unwrap())
-        .args(["--exact", "linux_flatpak_child", "--nocapture"])
+        .args(["--exact", "linux_flatpak_child", "--ignored", "--nocapture"])
         .env("PATH", dir.path())
         .env("MESH_TEST_FLATPAK_CASE", case)
         .env("MESH_TEST_FLATPAK_INSTALLED", installed_package)
@@ -123,12 +129,7 @@ fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str
         .env("MESH_TEST_FLATPAK_READY", dir.path().join("ready"))
         .output()
         .unwrap();
-    assert!(
-        output.status.success(),
-        "{case}: {}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert_child_test_passed(&output);
     let commands = fs::read_to_string(log).unwrap();
 
     assert_eq!(commands.lines().collect::<Vec<_>>(), expected, "{case}");
@@ -136,10 +137,10 @@ fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str
 
 #[cfg(target_os = "linux")]
 #[tokio::test]
+#[ignore = "invoked by the Flatpak parent tests with an isolated PATH"]
 async fn linux_flatpak_child() {
-    let Ok(case) = env::var("MESH_TEST_FLATPAK_CASE") else {
-        return;
-    };
+    let case = env::var("MESH_TEST_FLATPAK_CASE")
+        .expect("Flatpak child requires the parent test's isolated environment");
     let (_dir, app_state) = common::test_app_state().await;
     let paths = if case.ends_with("empty") {
         Vec::new()

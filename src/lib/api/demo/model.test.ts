@@ -1,5 +1,5 @@
 /**
- * Characterization test for DemoModelApi.deleteModels: each deleted model must
+ * Characterization tests for DemoModelApi.deleteModels: each deleted model must
  * be dropped from the model, group-membership and label-membership maps, and
  * every other model must stay.
  */
@@ -41,29 +41,39 @@ afterEach(async () => {
 });
 
 describe("DemoModelApi.deleteModels", () => {
-  it("removes each model from the models, group and label maps and leaves the rest", async () => {
-    const groupedId = [...modelGroupMap.keys()][0];
-    const labelledId = [...modelLabelsMap.keys()][0];
-    const deleted = [mockModels.get(groupedId)!, mockModels.get(labelledId)!];
-    const remainingIds = [...mockModels.keys()].filter(
-      (id) => id !== groupedId && id !== labelledId,
-    );
-    const groupCountBefore = modelGroupMap.size;
-    const labelCountBefore = modelLabelsMap.size;
-    const modelCountBefore = mockModels.size;
+  it.each(["distinct ids", "same id"])(
+    "removes %s from all maps and leaves the rest",
+    async (selection) => {
+      const groupedId = [...modelGroupMap.keys()][0];
+      const labelledId =
+        selection === "same id"
+          ? groupedId
+          : [...mockModels.keys()].find((id) => id !== groupedId)!;
+      const group = modelGroupMap.get(groupedId)!;
+      const labels = [...modelLabelsMap.values()][0];
+      for (const id of [groupedId, labelledId]) {
+        modelGroupMap.set(id, group);
+        modelLabelsMap.set(id, labels);
+      }
+      const deleted = [mockModels.get(groupedId)!, mockModels.get(labelledId)!];
+      const deletedIds = new Set(deleted.map((model) => model.id));
+      const modelsBefore = [...mockModels];
+      const groupsBefore = [...modelGroupMap];
+      const labelsBefore = [...modelLabelsMap];
 
-    await new DemoModelApi().deleteModels(deleted);
+      await new DemoModelApi().deleteModels(deleted);
 
-    for (const id of [groupedId, labelledId]) {
-      expect(mockModels.has(id)).toBe(false);
-      expect(modelGroupMap.has(id)).toBe(false);
-      expect(modelLabelsMap.has(id)).toBe(false);
-    }
-    expect(mockModels.size).toBe(modelCountBefore - 2);
-    expect(modelGroupMap.size).toBe(groupCountBefore - 1);
-    expect(modelLabelsMap.size).toBe(labelCountBefore - 1);
-    expect([...mockModels.keys()]).toEqual(remainingIds);
-  });
+      expect([...mockModels]).toEqual(
+        modelsBefore.filter(([id]) => !deletedIds.has(id)),
+      );
+      expect([...modelGroupMap]).toEqual(
+        groupsBefore.filter(([id]) => !deletedIds.has(id)),
+      );
+      expect([...modelLabelsMap]).toEqual(
+        labelsBefore.filter(([id]) => !deletedIds.has(id)),
+      );
+    },
+  );
 });
 
 describe("DemoModelApi trash", () => {
