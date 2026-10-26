@@ -5,16 +5,14 @@ use crate::service_error::ServiceError;
 use super::Slicer;
 
 impl Slicer {
-    pub(super) fn detect_installed(&self) -> bool {
-        get_slicer_path(self).is_some()
+    pub(super) fn find_installed(&self) -> Option<PathBuf> {
+        get_slicer_path(self)
     }
 
-    /// # Panics
-    ///
-    /// Panics if the slicer path cannot be resolved.
-    pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-        let slicer_path = get_slicer_path(self).unwrap();
-
+    pub(super) fn spawn_with_paths(
+        slicer_path: PathBuf,
+        paths: Vec<PathBuf>,
+    ) -> Result<(), ServiceError> {
         Command::new("open")
             .arg("-a")
             .arg(slicer_path)

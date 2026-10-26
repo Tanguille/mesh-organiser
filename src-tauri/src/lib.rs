@@ -136,10 +136,11 @@ async fn get_initial_state(
 #[tauri::command]
 async fn download_file(
     url: &str,
+    filename: Option<&str>,
 ) -> Result<download_file_service::DownloadResult, ApplicationError> {
     require_local_desktop_app()?;
 
-    let response = download_file_service::download_file(url).await?;
+    let response = download_file_service::download_file(url, filename).await?;
 
     Ok(response)
 }
@@ -168,7 +169,8 @@ async fn open_in_folder(
         temp_dir
     };
 
-    service::open_folder_in_explorer(&temp_dir);
+    tauri_plugin_opener::open_path(&temp_dir, None::<&str>)
+        .map_err(|error| service::ServiceError::InternalError(error.to_string()))?;
 
     Ok(())
 }
@@ -599,7 +601,6 @@ pub fn run() {
             api::get_models,
             api::get_labels,
             api::edit_model,
-            api::delete_model,
             api::add_label,
             api::ungroup,
             api::edit_group,

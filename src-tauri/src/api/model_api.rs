@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use db::{
@@ -88,7 +87,7 @@ pub async fn get_models(
             order_by: order_by
                 .map(|s| ModelOrderBy::from_str(&s))
                 .transpose()
-                .map_err(|_| ApplicationError::InternalError(
+                .map_err(|_| service::ServiceError::InternalError(
                     "Invalid order_by value. Valid values are: AddedAsc, AddedDesc, NameAsc, NameDesc, SizeAsc, SizeDesc, ModifiedAsc, ModifiedDesc".to_string()
                 ))?,
             model_flags,
@@ -134,19 +133,6 @@ pub async fn edit_model(
 }
 
 #[tauri::command]
-pub async fn delete_model(
-    model_id: i64,
-    state: State<'_, TauriAppState>,
-) -> Result<(), ApplicationError> {
-    require_local_desktop_app()?;
-
-    export_service::delete_models(&state.app_state, &state.get_current_user(), vec![model_id])
-        .await?;
-
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn delete_models(
     model_ids: Vec<i64>,
     state: State<'_, TauriAppState>,
@@ -165,29 +151,17 @@ pub async fn get_model_count(
 ) -> Result<usize, ApplicationError> {
     require_local_desktop_app()?;
 
-    let count =
-        model_db::get_model_count(&state.app_state.db, &state.get_current_user(), flags).await?;
-
-    Ok(count)
-}
-
-#[derive(Debug, Serialize)]
-pub struct ModelDiskSpaceUsage {
-    pub size_uncompressed: u64,
-    pub size_compressed: u64,
+    Ok(model_db::get_model_count(&state.app_state.db, &state.get_current_user(), flags).await?)
 }
 
 #[tauri::command]
 pub async fn get_model_disk_space_usage(
     state: State<'_, TauriAppState>,
-) -> Result<ModelDiskSpaceUsage, ApplicationError> {
     require_local_desktop_app()?;
 
-    let data = model_db::get_size_of_models(&state.app_state.db, &state.get_current_user()).await?;
-    let local = export_service::get_size_of_blobs(&data.blob_sha256, &state.app_state)?;
-
-    Ok(ModelDiskSpaceUsage {
-        size_uncompressed: u64::try_from(data.total_size).unwrap_or(0),
-        size_compressed: local,
-    })
+) -> Result<export_service::ModelDiskSpaceUsage, ApplicationError> {
+    Ok(
+        export_service::get_model_disk_space_usage(&state.app_state, &state.get_current_user())
+            .await?,
+    )
 }

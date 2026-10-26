@@ -29,7 +29,6 @@ use crate::{
 /// blocking-pool round trips per file.
 const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
-/// Routes for the blob bytes, thumbnail and download endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -143,7 +142,7 @@ pub async fn get_blob_bytes(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Response {
-    // Verify that the user has access to a model with this blob
+    // Resolve an owned model to authorize access to this blob.
     let Ok(Some(_model_id)) =
         model_db::get_model_id_via_sha256(&app_state.db, &user, &sha256).await
     else {
@@ -161,13 +160,9 @@ pub async fn get_blob_thumb(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Response, ApplicationError> {
-    // Validate that the sha256 parameter is a well-formed SHA-256 hex string.
-    // Ensures a single, safe filename component (no separators).
-    if sha256.len() != 64
-        || !sha256
-            .chars()
-            .all(|character: char| character.is_ascii_hexdigit())
-    {
+    // The stored-hash shape also keeps the value a single path component, so it cannot traverse
+    // out of the image dir.
+    if !db::is_blob_sha256(&sha256) {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
 
@@ -186,8 +181,7 @@ pub async fn get_blob_thumb(
 
 /// Streams a blob's content; shared by `download_model` and `get_blob_bytes`.
 async fn get_blob_bytes_inner(blob: &Blob, app_state: &AppState) -> Response {
-    // The plain-file vs first-zip-entry convention lives in the service
-    // layer; any open/read failure keeps the previous 500 semantics.
+    // The plain-file vs first-zip-entry convention lives in the service layer.
     let Ok(reader) = export_service::open_blob_content_reader(blob, app_state).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
@@ -204,7 +198,6 @@ pub async fn get_blobs_zip_download(
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
 
-    // zip dirs live directly under the process temp dir
     let path = match resolve_path_under_base(&std::env::temp_dir(), &zip_dir).await {
         Ok(path) => path,
         Err(e) => return e.respond(),
@@ -223,13 +216,10 @@ pub async fn get_blobs_zip_download(
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
 
-    let path = zip_file.path();
-
-    if !path.exists() {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-
-    let file = File::open(path).await?;
+    let file = match File::open(zip_file.path()).await {
+        Ok(file) => file,
+        Err(e) => return crate::path_safety::OpenUnderBaseError::from(e).respond(),
+    };
     let mut response =
         Body::from_stream(ReaderStream::with_capacity(file, STREAM_CHUNK_SIZE)).into_response();
 
@@ -272,4 +262,142 @@ pub async fn create_blobs_zip_download(
             .to_string(),
     )
     .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    fn zip_download_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(service::export_service::TEMP_DIR_PREFIX)
+            .tempdir()
+            .unwrap()
+    }
+
+    async fn download_response(dir: &std::path::Path) -> axum::response::Response {
+        let zip_dir = dir.file_name().unwrap().to_str().unwrap().to_string();
+
+        axum::response::IntoResponse::into_response(
+            super::get_blobs_zip_download(axum::extract::Path(zip_dir)).await,
+        )
+    }
+
+    #[tokio::test]
+    async fn zip_download_streams_file_with_attachment_name() {
+        let dir = zip_download_dir();
+        let contents = b"zip contents";
+        std::fs::write(dir.path().join("export.zip"), contents).unwrap();
+
+        let response = download_response(dir.path()).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response.headers()[axum::http::header::CONTENT_DISPOSITION],
+            "attachment; filename=\"export.zip\""
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), contents);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn zip_download_returns_not_found_when_file_disappears() {
+        let dir = zip_download_dir();
+        // read_dir still sees the entry, but opening its missing target returns NotFound.
+        std::os::unix::fs::symlink("missing.zip", dir.path().join("export.zip")).unwrap();
+
+        let response = download_response(dir.path()).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn zip_download_keeps_other_open_errors_as_internal_server_error() {
+        let dir = zip_download_dir();
+        std::os::unix::fs::symlink("export.zip", dir.path().join("export.zip")).unwrap();
+
+        let response = download_response(dir.path()).await;
+
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    /// The thumbnail handler only reads the image dir, so the pool is lazy and never connects.
+    fn app_state(dir: &tempfile::TempDir) -> service::AppState {
+        let data_path = dir.path().to_string_lossy().to_string();
+
+        service::AppState {
+            db: std::sync::Arc::new(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()),
+            configuration: std::sync::Mutex::new(service::Configuration {
+                data_path: data_path.clone(),
+                ..Default::default()
+            }),
+            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path,
+        }
+    }
+
+    /// Called directly rather than through the router: axum's `Path` never carries a `/` in one
+    /// segment, and the handler must still refuse one.
+    async fn thumb(app_state: &service::AppState, sha256: &str) -> axum::response::Response {
+        let result = super::get_blob_thumb(
+            axum::extract::Path(sha256.to_string()),
+            axum::extract::State(app_state.clone()),
+        )
+        .await;
+
+        axum::response::IntoResponse::into_response(result)
+    }
+
+    #[tokio::test]
+    async fn get_blob_thumb_serves_the_png_of_a_stored_32_hex_sha256() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let app_state = app_state(&dir);
+        let sha256 = db::u128_to_hex_32(0xabc);
+        let png = b"\x89PNG\r\n\x1a\nthumbnail".to_vec();
+        std::fs::write(
+            app_state.get_image_dir().join(format!("{sha256}.png")),
+            &png,
+        )
+        .unwrap();
+
+        let response = thumb(&app_state, &sha256).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body, png);
+    }
+
+    #[tokio::test]
+    async fn get_blob_thumb_is_not_found_without_a_png() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let app_state = app_state(&dir);
+
+        let response = thumb(&app_state, &db::u128_to_hex_32(0xabc)).await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_blob_thumb_rejects_a_value_that_is_not_all_hex() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let app_state = app_state(&dir);
+        let non_hex = "z".repeat(32);
+
+        for sha256 in ["../etc", "abc/def", non_hex.as_str(), ""] {
+            let response = thumb(&app_state, sha256).await;
+
+            assert_eq!(
+                response.status(),
+                axum::http::StatusCode::BAD_REQUEST,
+                "{sha256:?}"
+            );
+        }
+    }
 }

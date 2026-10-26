@@ -21,10 +21,7 @@ import { WebResourceApi } from "./resource";
 import { WebSettingsApi } from "./settings";
 import { WebImportApi } from "./web_import";
 import { DefaultSlicerApi, ISlicerApi } from "../shared/slicer_api";
-import {
-  DefaultSidebarStateApi,
-  ISidebarStateApi,
-} from "../shared/sidebar_state_api";
+import { getSidebarState, ISidebarStateApi } from "../shared/sidebar_state_api";
 import { DefaultDownloadApi, IDownloadApi } from "../shared/download_api";
 import {
   configuration,
@@ -66,10 +63,6 @@ export async function initWebApi(
   container.addSingleton(IUserLoginApi, login);
   container.addSingleton(IUserLogoutApi, login);
 
-  if (!(await user.isAuthenticated())) {
-    console.log("User is not authenticated");
-    return;
-  }
   let currentUser;
 
   try {
@@ -90,7 +83,6 @@ export async function initWebApi(
   const settings = new WebSettingsApi();
   const importApi = new WebImportApi(request);
   const slicer = new DefaultSlicerApi(blob);
-  const sidebarApi = new DefaultSidebarStateApi();
   const downloadApi = new DefaultDownloadApi(blob);
   const internalBrowserApi = new WebBrowserApi();
   const threemf = new WebThreemfApi(request);
@@ -110,7 +102,7 @@ export async function initWebApi(
   container.addSingleton(IHostApi, host);
   container.addSingleton(ISettingsApi, settings);
   container.addSingleton(ISlicerApi, slicer);
-  container.addSingleton(ISidebarStateApi, sidebarApi);
+  container.addSingleton(ISidebarStateApi, getSidebarState);
   container.addSingleton(IDownloadApi, downloadApi);
   container.addSingleton(IInternalBrowserApi, internalBrowserApi);
   container.addSingleton(IThreemfApi, threemf);

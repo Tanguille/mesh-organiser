@@ -20,10 +20,7 @@ pub async fn get_resources(
 ) -> Result<Vec<ResourceMeta>, ApplicationError> {
     require_local_desktop_app()?;
 
-    let resources =
-        resource_db::get_resources(&state.app_state.db, &state.get_current_user()).await?;
-
-    Ok(resources)
+    Ok(resource_db::get_resources(&state.app_state.db, &state.get_current_user()).await?)
 }
 
 #[tauri::command]
@@ -33,15 +30,13 @@ pub async fn add_resource(
 ) -> Result<ResourceMeta, ApplicationError> {
     require_local_desktop_app()?;
 
-    let resource_meta = resource_db::add_resource(
+    Ok(resource_db::add_resource(
         &state.app_state.db,
         &state.get_current_user(),
         resource_name,
         None,
     )
-    .await?;
-
-    Ok(resource_meta)
+    .await?)
 }
 
 #[tauri::command]
@@ -93,12 +88,16 @@ pub async fn open_resource_folder(
     let Some(resource) =
         resource_db::get_resource_meta_by_id(&state.app_state.db, &user, resource_id).await?
     else {
-        return Err(ApplicationError::InternalError(String::from(
-            "Resource not found",
-        )));
+        return Err(
+            service::ServiceError::InternalError(String::from("Resource not found")).into(),
+        );
     };
 
-    resource_service::open_resource_folder(&resource, &user, &state.app_state)?;
+    let resource_path =
+        resource_service::ensure_resource_folder(&resource, &user, &state.app_state)?;
+    tauri_plugin_opener::open_path(&resource_path, None::<&str>)
+        .map_err(|error| service::ServiceError::InternalError(error.to_string()))?;
+
     Ok(())
 }
 
@@ -129,12 +128,10 @@ pub async fn get_groups_for_resource(
 ) -> Result<Vec<ModelGroup>, ApplicationError> {
     require_local_desktop_app()?;
 
-    let groups = resource_db::get_groups_for_resource(
+    Ok(resource_db::get_groups_for_resource(
         &state.app_state.db,
         &state.get_current_user(),
         resource_id,
     )
-    .await?;
-
-    Ok(groups)
+    .await?)
 }

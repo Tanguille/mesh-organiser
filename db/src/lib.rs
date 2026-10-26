@@ -1,7 +1,3 @@
-// Pedantic doc lints (missing_errors_doc, missing_panics_doc) are allowed here;
-// db modules are internal and error semantics are consistent (DbError from SQLite).
-#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
-
 pub mod blob_db;
 pub mod db_context;
 pub mod group_db;
@@ -17,10 +13,12 @@ pub mod user_db;
 pub use paginated_response::PaginatedResponse;
 mod util;
 
-pub(crate) use query_util::{TimestampSchema, push_in_i64, set_timestamp_column};
+pub(crate) use query_util::{
+    GROUPS, LABELS, MODELS, RESOURCES, ensure_owned, push_in, set_timestamp_column,
+};
 
-pub(crate) use util::{parse_concat_ids, validate_global_id};
-pub use util::{random_hex_32, time_now, u128_to_hex_32};
+pub use util::{is_blob_sha256, random_hex_32, time_now, u128_to_hex_32};
+pub(crate) use util::{parse_concat_ids, timestamp_or_now, validate_global_id};
 
 pub type DbError = sqlx::Error;
 

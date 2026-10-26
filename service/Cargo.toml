@@ -40,7 +40,6 @@ async_zip = { workspace = true, features = [
 [dev-dependencies]
 fake = { workspace = true }
 proptest = { workspace = true }
-reqwest = { workspace = true, features = ["rustls"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = { workspace = true }
 zip = { workspace = true }

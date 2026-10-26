@@ -9,18 +9,17 @@ use image::DynamicImage;
 
 use crate::{
     error::MeshThumbnailError,
-    parse_model::with_zip_entry,
-    path_ext::{is_zip_of, matches_ext},
+    parse_model::{parse_by_extension, with_zip_entry},
+    path_ext::matches_ext,
 };
 
 pub fn handle_gcode(input_path: &Path) -> Result<Option<DynamicImage>, MeshThumbnailError> {
-    if matches_ext(input_path, "gcode") {
-        Ok(Some(extract_image_from_gcode_file(input_path)?))
-    } else if is_zip_of(input_path, "gcode") {
-        Ok(Some(extract_image_from_gcode_zip(input_path)?))
-    } else {
-        Ok(None)
-    }
+    parse_by_extension(
+        input_path,
+        "gcode",
+        extract_image_from_gcode_file,
+        extract_image_from_gcode_zip,
+    )
 }
 
 struct GcodeImage {

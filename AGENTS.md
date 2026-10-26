@@ -28,13 +28,12 @@ Guidelines for AI coding agents. Keep this file short and to the point—agents 
 - Run type checks after making changes
 - Test the feature works as expected
 - Check for any introduced errors before committing
-- **Run `cargo fmt --all` before every push** (enforced in CI)
 
 ### Pre-Completion Checklist
 
 Before claiming work complete or ready for review, run verification and only then assert success:
 
-- Frontend: `npm run check`; run relevant tests (`npm run test` if applicable)
+- Frontend: `pnpm run check`, `pnpm run lint`, `pnpm run format:check`, `pnpm run test`
 - **Frontend (Svelte):** After editing `.svelte` or `.svelte.ts` files, run **svelte-autofixer** (Svelte MCP) on the changed files, fix any reported issues, and run it again to confirm clean. If the Svelte MCP is unavailable, skip this step.
 - Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, and tests (e.g. `cargo test -p service`)
 - Do not state that tests or checks pass without having run them
@@ -50,7 +49,10 @@ Before claiming work complete or ready for review, run verification and only the
 - When making behavioural or structural changes (refactors, deduplication, new features), **add or update tests** to guard against regressions.
 - **Dangerous edits — test first:** Before doing edits that can change behaviour (control flow, error handling, types, or semantics), **write tests that capture the current intended behaviour**. Run them to establish a baseline, then apply the edit and re-run to confirm behaviour is unchanged. Only then proceed. Examples: replacing `match` with `let`-else, changing `Option`/`Result` handling, refactoring conditionals or casts.
 - **Use a separate subagent** dedicated to writing/adding tests rather than having the implementation agent add tests in the same pass. This keeps scope clear and improves test quality.
-- The test subagent should: (1) **Explain** what is being tested and why (regression after refactor, new behaviour, etc.), (2) **Plan** concrete test cases (happy path, boundaries, errors), (3) **Execute** (write tests, run test commands, report pass/fail). See [Testing](#testing) below for framework and prompt details.
+- Prompt the test subagent in three steps: (1) **Explain** what is under test and why (e.g. “regression after consolidating util”), (2) **Plan** concrete cases (happy path, boundaries, errors) in a table or list, (3) **Execute** — where to put tests, Arrange–Act–Assert, the command to run, and report pass/fail.
+- **Scope one area per agent**: one subagent per test surface (e.g. util, error serialisation, download, frontend raw_model).
+- **Rust**: unit tests in `#[cfg(test)] mod tests`, integration tests in `crate/tests/`. Use Wiremock (or similar) for HTTP-dependent code so tests don’t hit the network.
+- **Frontend**: Vitest (`src/**/*.test.ts`). Test commands: [docs/commands.md](docs/commands.md#testing).
 
 ### Parallelize When It Saves Time
 
@@ -69,14 +71,9 @@ Mesh Organiser is a SvelteKit + Tauri desktop application for organizing 3D prin
 
 ## Quick Reference
 
-### Key rules
-
-- **Verification before completion**: Run the relevant checks and tests (see [docs/commands.md](docs/commands.md)) before claiming work complete; do not assert success without running them.
-- **Search before adding**: Look for existing code and patterns before adding new methods, classes, or modules; reuse instead of duplicating.
-
 ### Commands
 
-See [docs/commands.md](docs/commands.md) for all build, dev, and test commands. After making behavioural or structural changes, run tests (e.g. `cargo test -p service`, `npm run test`) and prefer a [separate subagent for adding tests](#always-test-when-changing-something-separate-subagent).
+See [docs/commands.md](docs/commands.md) for all build, dev, and test commands.
 
 ### Code Style
 
@@ -124,23 +121,6 @@ Cargo.toml             # Root workspace (all Rust projects)
 2. Store in `src/lib/components/ui/`
 3. Follow the `index.ts` + component pattern
 
-## Testing
-
-When changing behaviour or structure (refactors, deduplication, new features), add or update tests and **use a separate subagent** for test writing.
-
-### What we learned (refactor + test subagents)
-
-- **Separate test subagent**: Implementation and test-writing in different subagents improves focus and test quality; the test agent’s only job is to add regression/behavioural coverage.
-- **Prompt structure for test agents**: Use a 3-step prompt: (1) **Explain** — what is under test and why (e.g. “regression after consolidating util”); (2) **Plan** — list concrete cases (happy path, boundaries, errors) in a table or list; (3) **Execute** — where to put tests, framework, Arrange–Act–Assert, and the command to run (`cargo test -p service`, `npm run test`).
-- **Scope one area per agent**: One subagent per test surface (e.g. util, error serialisation, download, frontend raw_model) so each agent has a clear, small scope.
-- **Rust**: Unit tests in `#[cfg(test)] mod tests` next to the code or in `crate/tests/` for integration tests. Use Wiremock (or similar) for HTTP-dependent code so tests don’t hit the network. Run `cargo test -p <crate>`.
-- **Frontend**: Vitest for unit tests (`src/**/*.test.ts`). Add `"test": "vitest run"` and `"test:watch": "vitest"` if not present. Run `npm run test`.
-
-### Commands
-
-- **Rust**: `cargo test --workspace` or `cargo test -p service` (see [docs/commands.md](docs/commands.md)).
-- **Frontend**: `npm run test` (Vitest).
-
 ## Environment Variables
 
 - `VITE_API_PLATFORM`: Set to `"demo"`, `"web"`, or Tauri (default)
@@ -155,7 +135,7 @@ When working on Svelte or SvelteKit code, use the Svelte MCP server if available
 3. **svelte-autofixer** — After writing or editing Svelte code, run this and fix any reported issues before finishing.
 4. **playground-link** — Only when the user asks for a shareable demo; do not use for code written into the project.
 
-For unfamiliar Svelte 5 or SvelteKit behaviour, use **list-sections** then **get-documentation** before implementing. On every Svelte-related task, run **svelte-autofixer** on changed components before claiming completion (see Pre-Completion Checklist). If the Svelte MCP is unavailable, use the links below and follow [docs/frontend-style.md](docs/frontend-style.md).
+If the Svelte MCP is unavailable, use the links below and follow [docs/frontend-style.md](docs/frontend-style.md).
 
 ## Additional Resources
 

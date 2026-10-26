@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
 use async_zip::tokio::read::seek::ZipFileReader;
@@ -27,10 +27,6 @@ use crate::{
 ///
 /// Shared by the Tauri command and the web controller so the (previously
 /// divergent) safe-extraction logic lives in one place.
-///
-/// # Errors
-///
-/// Returns an error if the extraction produced no imported group.
 pub fn group_meta_from_import(import_state: &ImportState) -> Result<ModelGroupMeta, ServiceError> {
     let (id, name) = import_state
         .imported_models
@@ -51,7 +47,10 @@ pub fn group_meta_from_import(import_state: &ImportState) -> Result<ModelGroupMe
     })
 }
 
-static MODEL_SETTINGS_PART_NAME: OnceLock<Regex> = OnceLock::new();
+static MODEL_SETTINGS_PART_NAME: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#)
+        .expect("valid regex literal")
+});
 
 #[derive(Deserialize)]
 pub struct ProjectSettingsConfig {
@@ -81,87 +80,49 @@ fn parse_project_settings_config(data: &str) -> Result<ThreemfMetadata, ServiceE
 
     let filament_type = join(parsed_data.filament_type, ", ");
 
-    let enable_support = match parsed_data.enable_support.as_str() {
-        "1" => Some(true),
-        "0" => Some(false),
-        _ => None,
-    };
-
     Ok(ThreemfMetadata {
         nozzle_diameter,
         layer_height,
         material_type: Some(filament_type),
-        supports_enabled: enable_support,
+        supports_enabled: parse_flag(&parsed_data.enable_support),
     })
 }
 
+fn parse_flag(value: &str) -> Option<bool> {
+    match value {
+        "1" => Some(true),
+        "0" => Some(false),
+        _ => None,
+    }
+}
+
+/// Returns the trimmed value of the first line of a `Slic3r_PE.config` that starts with `prefix`.
+fn slicer_pe_value<'a>(data: &'a str, prefix: &str) -> Option<&'a str> {
+    data.lines()
+        .find(|line| line.starts_with(prefix))
+        .map(|line| line.trim_start_matches(prefix).trim())
+}
+
 fn parse_slicer_pe_config(data: &str) -> ThreemfMetadata {
-    let mut threemf = ThreemfMetadata {
-        nozzle_diameter: None,
-        layer_height: None,
-        material_type: None,
-        supports_enabled: None,
-    };
-
-    if let Some(line) = data
-        .lines()
-        .find(|line| line.starts_with("; nozzle_diameter = "))
-    {
-        let value = line.trim_start_matches("; nozzle_diameter = ").trim();
-        let nozzle_diameters = value.split(',').collect::<Vec<&str>>();
-
-        threemf.nozzle_diameter = nozzle_diameters.first().and_then(|s| s.parse::<f32>().ok());
+    ThreemfMetadata {
+        nozzle_diameter: slicer_pe_value(data, "; nozzle_diameter = ")
+            .and_then(|value| value.split(',').next())
+            .and_then(|value| value.parse::<f32>().ok()),
+        layer_height: slicer_pe_value(data, "; layer_height = ")
+            .and_then(|value| value.parse::<f32>().ok()),
+        material_type: slicer_pe_value(data, "; filament_type = ")
+            .map(|value| value.replace(';', ", ")),
+        // Unlike the other keys, matched without the space after `=`.
+        supports_enabled: slicer_pe_value(data, "; support_material =").and_then(parse_flag),
     }
-
-    if let Some(line) = data
-        .lines()
-        .find(|line| line.starts_with("; layer_height = "))
-    {
-        let value = line.trim_start_matches("; layer_height = ").trim();
-
-        threemf.layer_height = value.parse::<f32>().ok();
-    }
-
-    if let Some(line) = data
-        .lines()
-        .find(|line| line.starts_with("; filament_type = "))
-    {
-        let value = line.trim_start_matches("; filament_type = ").trim();
-        threemf.material_type = Some(value.replace(';', ", "));
-    }
-
-    if let Some(line) = data
-        .lines()
-        .find(|line| line.starts_with("; support_material ="))
-    {
-        let value = line.trim_start_matches("; support_material =").trim();
-        threemf.supports_enabled = match value {
-            "1" => Some(true),
-            "0" => Some(false),
-            _ => None,
-        };
-    }
-
-    threemf
 }
 
 /// Parses 3MF model settings config XML into a map of part id -> name.
-///
-/// # Panics
-///
-/// Panics if the regex for part/metadata parsing is invalid.
 #[must_use]
 pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
     let mut names_map = IndexMap::new();
 
-    let re = MODEL_SETTINGS_PART_NAME.get_or_init(|| {
-        Regex::new(
-            r#"(?s)<part\s+id="(\d+)"[^>]*>.*?<metadata\s+key="name"\s+value="([^"]+)"\s*/>"#,
-        )
-        .unwrap()
-    });
-
-    for captures in re.captures_iter(data) {
+    for captures in MODEL_SETTINGS_PART_NAME.captures_iter(data) {
         let part_id = captures[1].parse::<u32>().unwrap_or(u32::MAX);
         let part_name = captures[2].to_string();
         names_map.insert(part_id, part_name);
@@ -171,10 +132,6 @@ pub fn parse_model_settings_config(data: &str) -> IndexMap<u32, String> {
 }
 
 /// Reads a zip entry whose filename ends with `filename_suffix` and returns its contents as UTF-8.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be opened, no matching entry exists, or reading fails.
 async fn read_zip_entry_by_suffix(
     path: PathBuf,
     filename_suffix: &str,
@@ -202,10 +159,6 @@ async fn read_zip_entry_by_suffix(
 }
 
 /// Reads `model_settings.config` from a 3MF zip.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be opened or the config is missing.
 pub async fn fetch_model_settings_config_from_3mf(
     threemf_path: PathBuf,
 ) -> Result<IndexMap<u32, String>, ServiceError> {
@@ -213,30 +166,32 @@ pub async fn fetch_model_settings_config_from_3mf(
     Ok(parse_model_settings_config(&contents))
 }
 
+fn ensure_3mf(model: &Model) -> Result<(), ServiceError> {
+    if model.blob.to_file_type().is_3mf() {
+        Ok(())
+    } else {
+        Err(ServiceError::InternalError(
+            "Model is not a 3MF file".to_string(),
+        ))
+    }
+}
+
 /// Extracts metadata from a 3MF model (project/slicer config).
-///
-/// # Errors
-///
-/// Returns an error if the model is not 3MF or extraction fails.
 pub async fn extract_metadata(
     model: &Model,
     app_state: &AppState,
 ) -> Result<ThreemfMetadata, ServiceError> {
-    if !model.blob.to_file_type().is_3mf() {
-        return Err(ServiceError::InternalError(
-            "Model is not a 3MF file".to_string(),
-        ));
-    }
+    ensure_3mf(model)?;
 
     let threemf_path = export_service::get_model_path_for_blob(&model.blob, app_state);
 
-    let c1 = read_zip_entry_by_suffix(threemf_path.clone(), "project_settings.config").await;
-    if let Ok(contents) = c1 {
+    if let Ok(contents) =
+        read_zip_entry_by_suffix(threemf_path.clone(), "project_settings.config").await
+    {
         return parse_project_settings_config(&contents);
     }
 
-    let c2 = read_zip_entry_by_suffix(threemf_path, "Slic3r_PE.config").await;
-    if let Ok(contents) = c2 {
+    if let Ok(contents) = read_zip_entry_by_suffix(threemf_path, "Slic3r_PE.config").await {
         return Ok(parse_slicer_pe_config(&contents));
     }
 
@@ -318,24 +273,12 @@ fn extract_models_inner(
 }
 
 /// Extracts 3MF objects as STL files into a temp dir and returns import state.
-///
-/// # Errors
-///
-/// Returns an error if the model is not 3MF or extraction fails.
-///
-/// # Panics
-///
-/// Panics if the system clock cannot provide nanosecond timestamps for the temp dir.
 pub async fn extract_models(
     model: &Model,
     user: &User,
     app_state: &AppState,
 ) -> Result<ImportState, ServiceError> {
-    if !model.blob.to_file_type().is_3mf() {
-        return Err(ServiceError::InternalError(
-            "Model is not a 3MF file".to_string(),
-        ));
-    }
+    ensure_3mf(model)?;
 
     let mut temp_dir = export_service::get_temp_dir("extract");
 
@@ -373,11 +316,6 @@ pub async fn extract_models(
 /// The optional emitter is installed after `extract_models`, so extraction itself
 /// runs with the default `NoneImportStateEmitter` and only thumbnail progress is
 /// emitted (matching the previous per-frontend behavior).
-///
-/// # Errors
-///
-/// Returns an error if extraction, thumbnail generation, or building the group
-/// meta fails.
 pub async fn extract_models_with_thumbnails(
     model: &Model,
     user: &User,
@@ -402,10 +340,6 @@ pub async fn extract_models_with_thumbnails(
 
     group_meta_from_import(&import_state)
 }
-
-// -----------------------------------------------------------------------------
-// Tests for parse_model_settings_config (regex, part id/name, unwrap_or(u32::MAX)).
-// -----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -448,11 +382,6 @@ mod tests {
         assert_eq!(out.get(&u32::MAX), Some(&"X".to_string()));
     }
 
-    // -------------------------------------------------------------------------
-    // Zip-reading behaviour for fetch_model_settings_config_from_3mf
-    // (read_zip_entry_by_suffix + callers).
-    // -------------------------------------------------------------------------
-
     fn write_zip_with_entries(path: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
         let file = std::fs::File::create(path)?;
         let mut zip = ZipWriter::new(file);
@@ -488,5 +417,167 @@ mod tests {
 
         let result = fetch_model_settings_config_from_3mf(path).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_model_settings_config_reads_part_names_from_bambu_layout() {
+        // Object-level names are skipped: only `<part id>` blocks are keyed.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="2">
+    <metadata key="name" value="Cube"/>
+    <metadata key="extruder" value="1"/>
+    <part id="1" subtype="normal_part">
+      <metadata key="name" value="Cube Part"/>
+      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
+      <mesh_stat edges_fixed="0" degenerate_facets="0"/>
+    </part>
+  </object>
+  <object id="4">
+    <metadata key="name" value="Cylinder"/>
+    <part id="3" subtype="normal_part">
+      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
+      <metadata key="name" value="Cylinder Body"/>
+    </part>
+  </object>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+  </plate>
+</config>
+"#;
+        let expected: IndexMap<u32, String> = [
+            (1, "Cube Part".to_string()),
+            (3, "Cylinder Body".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(parse_model_settings_config(xml), expected);
+    }
+
+    /// Destructuring keeps every `ThreemfMetadata` field asserted, so a dropped or
+    /// swapped field fails the slicer config parser tests.
+    fn metadata_fields(
+        metadata: super::ThreemfMetadata,
+    ) -> (Option<f32>, Option<f32>, Option<String>, Option<bool>) {
+        let super::ThreemfMetadata {
+            nozzle_diameter,
+            layer_height,
+            material_type,
+            supports_enabled,
+        } = metadata;
+
+        (
+            nozzle_diameter,
+            layer_height,
+            material_type,
+            supports_enabled,
+        )
+    }
+
+    #[test]
+    fn parse_slicer_pe_config_extracts_prusaslicer_keys() {
+        // Lookalike keys (first_layer_height, support_material_auto, ...) must not match.
+        let config = "\
+; generated by PrusaSlicer 2.7.1+linux-x64-GTK3 on 2024-01-01 at 12:00:00 UTC
+; avoid_crossing_perimeters = 0
+; first_layer_height = 0.3
+; filament_type = PETG;PLA;FLEX
+; layer_height = 0.2
+; nozzle_diameter = 0.4,0.6
+; support_material = 1
+; support_material_auto = 0
+; support_material_buildplate_only = 0
+; wipe_tower_x = 170
+";
+
+        assert_eq!(
+            metadata_fields(super::parse_slicer_pe_config(config)),
+            (
+                Some(0.4),
+                Some(0.2),
+                Some("PETG, PLA, FLEX".to_string()),
+                Some(true)
+            )
+        );
+    }
+
+    #[test]
+    fn parse_slicer_pe_config_missing_keys_are_none() {
+        let empty = (None, None, None, None);
+
+        assert_eq!(metadata_fields(super::parse_slicer_pe_config("")), empty);
+        assert_eq!(
+            metadata_fields(super::parse_slicer_pe_config(
+                "; first_layer_height = 0.3\n; support_material_auto = 1\nlayer_height = 0.2\n"
+            )),
+            empty
+        );
+    }
+
+    #[test]
+    fn parse_slicer_pe_config_trims_values() {
+        let config = concat!(
+            "; nozzle_diameter =   0.25,0.4  \n",
+            "; layer_height = \t0.15\t\n",
+            "; filament_type =   PLA  \n",
+            "; support_material =    0  \n",
+        );
+
+        assert_eq!(
+            metadata_fields(super::parse_slicer_pe_config(config)),
+            (Some(0.25), Some(0.15), Some("PLA".to_string()), Some(false))
+        );
+    }
+
+    #[test]
+    fn parse_slicer_pe_config_unparseable_values_are_none() {
+        let config = "\
+; nozzle_diameter = auto
+; layer_height = fine
+; filament_type = PLA
+; support_material = 2
+";
+
+        assert_eq!(
+            metadata_fields(super::parse_slicer_pe_config(config)),
+            (None, None, Some("PLA".to_string()), None)
+        );
+    }
+
+    #[test]
+    fn parse_project_settings_config_extracts_bambu_keys() {
+        let config = r#"{
+            "enable_support": "0",
+            "filament_type": ["PLA", "PETG"],
+            "layer_height": "0.12",
+            "nozzle_diameter": ["0.4", "0.6"],
+            "print_settings_id": "0.12mm Fine @BBL X1C"
+        }"#;
+
+        assert_eq!(
+            metadata_fields(super::parse_project_settings_config(config).unwrap()),
+            (
+                Some(0.4),
+                Some(0.12),
+                Some("PLA, PETG".to_string()),
+                Some(false)
+            )
+        );
+    }
+
+    #[test]
+    fn parse_project_settings_config_unparseable_values_are_none() {
+        let config = r#"{
+            "enable_support": "yes",
+            "filament_type": ["PLA"],
+            "layer_height": "auto",
+            "nozzle_diameter": []
+        }"#;
+
+        assert_eq!(
+            metadata_fields(super::parse_project_settings_config(config).unwrap()),
+            (None, None, Some("PLA".to_string()), None)
+        );
     }
 }

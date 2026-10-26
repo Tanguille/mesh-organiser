@@ -12,6 +12,7 @@ import { IResourceApi, type ResourceMeta } from "../shared/resource_api";
 import {
   applySyncResult,
   computeDifferences,
+  filterByGlobalIds,
   resolveDirection,
   stepDelete,
   type ResourceSet,
@@ -32,10 +33,9 @@ async function stepUploadToRemote(
   for (const resource of toUpload) {
     const newResource = await remoteApi.addResource(resource.name);
     const localResourceGroups = await localApi.getGroupsForResource(resource);
-    const relatedRemoteGroups = remoteGroups.filter((x) =>
-      localResourceGroups.some(
-        (y) => y.meta.uniqueGlobalId === x.uniqueGlobalId,
-      ),
+    const relatedRemoteGroups = filterByGlobalIds(
+      remoteGroups,
+      localResourceGroups.map((group) => group.meta),
     );
 
     for (const group of relatedRemoteGroups) {
@@ -68,10 +68,9 @@ async function stepSyncToRemote(
       await localApi.getGroupsForResource(localResource);
     const remoteResourceGroups =
       await remoteApi.getGroupsForResource(remoteResource);
-    const relatedRemoteGroups = remoteGroups.filter((x) =>
-      localResourceGroups.some(
-        (y) => y.meta.uniqueGlobalId === x.uniqueGlobalId,
-      ),
+    const relatedRemoteGroups = filterByGlobalIds(
+      remoteGroups,
+      localResourceGroups.map((group) => group.meta),
     );
     const toRemoveGroups = remoteResourceGroups.filter(
       (x) =>

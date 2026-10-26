@@ -190,7 +190,7 @@
   });
 </script>
 
-<Sidebar.Root collapsible="icon" class="z-30">
+<Sidebar.Root class="z-30">
   <Sidebar.Header>
     <Sidebar.Menu>
       <Sidebar.MenuItem>

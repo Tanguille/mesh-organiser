@@ -12,7 +12,7 @@ use db::{
     model::user::{User, UserPermissions},
     user_db,
 };
-use service::{AppState, export_service};
+use service::{AppState, user_service};
 
 use crate::{
     error::ApplicationError,
@@ -22,9 +22,10 @@ use crate::{
 /// Rejects the request unless the caller has the Admin permission.
 fn require_admin(user: &User, action: &str) -> Result<(), ApplicationError> {
     if !user.permissions.contains(UserPermissions::Admin) {
-        return Err(ApplicationError::InternalError(format!(
+        return Err(service::ServiceError::InternalError(format!(
             "Insufficient permissions to {action}."
-        )));
+        ))
+        .into());
     }
 
     Ok(())
@@ -43,7 +44,6 @@ fn require_admin_or_self(
     require_admin(user, action)
 }
 
-/// Routes for the user management endpoints; `login_required!` guards only those registered before it.
 pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
@@ -115,7 +115,7 @@ pub async fn edit_user(
     State(app_state): State<AppState>,
     Json(params): Json<PutUserParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    require_admin_or_self(&user, user_id, "change this user's password")?;
+    require_admin_or_self(&user, user_id, "edit this user")?;
 
     user_db::edit_user_min(
         &app_state.db,
@@ -173,9 +173,7 @@ pub async fn delete_user(
 ) -> Result<StatusCode, ApplicationError> {
     require_admin_or_self(&user, user_id, "delete this user")?;
 
-    user_db::delete_user(&app_state.db, user_id).await?;
-
-    export_service::delete_dead_blobs(&app_state).await?;
+    user_service::delete_user(&app_state, user_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -13,26 +13,6 @@ export interface Share {
   modelIds: number[];
 }
 
-export function createShareInstance(
-  id: string,
-  createdAt: string,
-  shareName: string,
-  userName: string,
-  modelIds: number | number[],
-): Share {
-  if (!Array.isArray(modelIds)) {
-    modelIds = [modelIds];
-  }
-
-  return {
-    id,
-    createdAt: new Date(createdAt),
-    shareName,
-    userName,
-    modelIds: modelIds,
-  };
-}
-
 export interface IShareApi {
   getShares(): Promise<Share[]>;
   getShare(shareId: string): Promise<Share>;

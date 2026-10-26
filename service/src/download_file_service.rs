@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
 use regex::Regex;
@@ -15,8 +15,17 @@ use crate::{
     util::{cleanse_evil_from_name, percent_decode},
 };
 
-static FILENAME_QUOTED: OnceLock<Regex> = OnceLock::new();
-static FILENAME_UNQUOTED: OnceLock<Regex> = OnceLock::new();
+static FILENAME_QUOTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).expect("valid regex literal"));
+static FILENAME_UNQUOTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"filename\s*=\s*([^;\s]+)").expect("valid regex literal"));
+static MAKERWORLD_MODEL_PAGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)https://(?:www\.)?makerworld\.com(?:\.cn)?",
+        r"(?:/(?:[a-z]{2}(?:-[a-z]{2})?))?/models/[\w-]+",
+    ))
+    .expect("valid regex literal")
+});
 
 #[derive(Serialize)]
 pub struct DownloadResult {
@@ -28,16 +37,15 @@ pub struct DownloadResult {
 /// nexprint URL branch, which must stay quoted-only (the unquoted fallback would
 /// capture trailing query params from a URL).
 fn quoted_filename(value: &str) -> Option<String> {
-    let re = FILENAME_QUOTED.get_or_init(|| Regex::new(r#"filename\s*=\s*"([^"]*)""#).unwrap());
-    re.captures(value)
-        .and_then(|cap| cap.get(1))
-        .map(|m| m.as_str().to_string())
+    FILENAME_QUOTED
+        .captures(value)
+        .and_then(|captures| captures.get(1))
+        .map(|name| name.as_str().to_string())
 }
 
 /// Parses a Content-Disposition header value and returns the filename if present.
-/// Supports `filename*=UTF-8''<percent-encoded>` (RFC 5987) and `filename="..."` / `filename=value`.
+/// Prefers `filename*=UTF-8''<percent-encoded>` (RFC 5987), then `filename="..."`, then `filename=value`.
 fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
-    // Prefer filename*=UTF-8''<encoded> (RFC 5987)
     if let Some(rest) = header_value.split("filename*=").nth(1) {
         let token = rest.split(';').next().unwrap_or(rest).trim();
         if let Some(encoded) = token
@@ -48,18 +56,15 @@ fn parse_content_disposition_filename(header_value: &str) -> Option<String> {
             return Some(decoded);
         }
     }
-    // Fallback: filename="..." or filename=value
+
     if let Some(name) = quoted_filename(header_value) {
         return Some(name);
     }
-    let re2 = FILENAME_UNQUOTED.get_or_init(|| Regex::new(r"filename\s*=\s*([^;\s]+)").unwrap());
-    if let Some(cap) = re2.captures(header_value)
-        && let Some(m) = cap.get(1)
-    {
-        return Some(m.as_str().trim().to_string());
-    }
 
-    None
+    FILENAME_UNQUOTED
+        .captures(header_value)
+        .and_then(|captures| captures.get(1))
+        .map(|name| name.as_str().trim().to_string())
 }
 
 pub fn get_content_disposition_filename(response: &Response) -> Option<String> {
@@ -90,28 +95,13 @@ fn filename_from_response_or_url(response: &Response) -> String {
     get_content_disposition_filename(response).unwrap_or_else(|| "model.stl".to_string())
 }
 
-static MAKERWORLD_MODEL_PAGE: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
-
 /// If either URL contains a `MakerWorld` model page path (`/{locale}/models/{slug}` or `/models/{slug}`),
 /// returns that page URL substring from the haystack. Otherwise returns `None` for caller fallback.
-///
-/// If the built-in pattern fails to compile, returns `None` on every call so the download path uses
-/// the generic `MakerWorld` site URL instead of panicking.
 fn makerworld_model_page_url(original_url: &str, response_url: &str) -> Option<String> {
-    let regex = MAKERWORLD_MODEL_PAGE
-        .get_or_init(|| {
-            Regex::new(concat!(
-                r"(?i)https://(?:www\.)?makerworld\.com(?:\.cn)?",
-                r"(?:/(?:[a-z]{2}(?:-[a-z]{2})?))?/models/[\w-]+",
-            ))
-        })
-        .as_ref()
-        .ok()?;
-
-    regex
+    MAKERWORLD_MODEL_PAGE
         .find(original_url)
-        .or_else(|| regex.find(response_url))
-        .map(|m| m.as_str().to_string())
+        .or_else(|| MAKERWORLD_MODEL_PAGE.find(response_url))
+        .map(|page| page.as_str().to_string())
 }
 
 /// Downloads the resource at `url` into `dir` (caller-provided; no temp dir created).
@@ -147,10 +137,6 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
 
 /// Simple download into a caller-provided directory. No site-specific `filename`/`source_uri` logic.
 /// Returns `DownloadResult` with `path` set and `source_uri: None`.
-///
-/// # Errors
-///
-/// Returns an error if the request fails, the response is not successful, or file I/O fails.
 pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, ServiceError> {
     let (path, _) = download_file_to_dir(url, dir).await?;
     let path = path
@@ -163,15 +149,11 @@ pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, S
 }
 
 /// Downloads to a temp dir and derives filename/source from URL; may rename file for site-specific logic.
-///
-/// # Errors
-///
-/// Returns an error if the request fails, the response is not successful, or file I/O fails.
-///
-/// # Panics
-///
-/// Panics if creating the temp dir fails (see [`get_temp_dir`]).
-pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
+/// An explicit `filename` overrides that logic, and `source_uri` is then `None`.
+pub async fn download_file(
+    url: &str,
+    filename: Option<&str>,
+) -> Result<DownloadResult, ServiceError> {
     let temp_dir = get_temp_dir("download");
 
     let (mut file_path, response_url) = download_file_to_dir(url, &temp_dir).await?;
@@ -190,30 +172,35 @@ pub async fn download_file(url: &str) -> Result<DownloadResult, ServiceError> {
         .to_string();
 
     let mut source_uri: Option<String> = None;
-    let desired_filename: String = if url.contains("makerworld") {
-        source_uri = Some(
-            makerworld_model_page_url(url, &response_url)
-                .unwrap_or_else(|| String::from("https://makerworld.com/")),
-        );
-        url.split("name=").last().unwrap_or("model.stl").to_string()
-    } else if url.contains("thingiverse") {
-        source_uri = Some(String::from("https://thingiverse.com/"));
-        redirect_url_filename
-    } else if let Some(stripped) = url.strip_prefix("https://files.printables.com/media/prints/") {
-        let id = String::from(stripped.split('/').next().unwrap());
-        source_uri = Some(format!("https://printables.com/model/{id}"));
-        current_filename
-    } else if url.contains("nexprint") {
-        source_uri = Some(String::from("https://nexprint.com/"));
-        // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
-        // quoted-only on purpose — see quoted_filename.
-        let decoded_url = percent_decode(url).unwrap();
-        quoted_filename(&decoded_url)
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| current_filename.clone())
-    } else {
-        current_filename
+    let site_filename = || -> String {
+        if url.contains("makerworld") {
+            source_uri = Some(
+                makerworld_model_page_url(url, &response_url)
+                    .unwrap_or_else(|| String::from("https://makerworld.com/")),
+            );
+            url.split("name=").last().unwrap_or("model.stl").to_string()
+        } else if url.contains("thingiverse") {
+            source_uri = Some(String::from("https://thingiverse.com/"));
+            redirect_url_filename
+        } else if let Some(stripped) =
+            url.strip_prefix("https://files.printables.com/media/prints/")
+        {
+            let id = String::from(stripped.split('/').next().unwrap());
+            source_uri = Some(format!("https://printables.com/model/{id}"));
+            current_filename
+        } else if url.contains("nexprint") {
+            source_uri = Some(String::from("https://nexprint.com/"));
+            // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
+            // quoted-only on purpose — see quoted_filename.
+            let decoded_url = percent_decode(url).unwrap();
+            quoted_filename(&decoded_url)
+                .filter(|name| !name.is_empty())
+                .unwrap_or(current_filename)
+        } else {
+            current_filename
+        }
     };
+    let desired_filename = filename.map_or_else(site_filename, str::to_string);
 
     let cleansed_desired = cleanse_evil_from_name(&desired_filename);
     let current_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -402,6 +389,109 @@ mod tests {
             parse_content_disposition_filename(r"filename*=UTF-8''bad%zzname.stl"),
             Some("bad%zzname.stl".to_string())
         );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_prefers_rfc5987_over_plain() {
+        assert_eq!(
+            parse_content_disposition_filename(
+                r#"attachment; filename="fallback.stl"; filename*=UTF-8''real%20name.stl"#
+            ),
+            Some("real name.stl".to_string())
+        );
+        // The encoded token ends at the next `;`.
+        assert_eq!(
+            parse_content_disposition_filename(r"attachment; filename*=UTF-8''a.stl; size=3"),
+            Some("a.stl".to_string())
+        );
+        // An unusable `filename*=` falls back to the quoted, then unquoted, plain form.
+        assert_eq!(
+            parse_content_disposition_filename(
+                r#"attachment; filename*=ISO-8859-1''x.stl; filename="fallback.stl""#
+            ),
+            Some("fallback.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename(
+                r"attachment; filename*=ISO-8859-1''x.stl; filename=plain.stl"
+            ),
+            Some("plain.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_content_disposition_filename_plain_forms_stop_at_delimiters() {
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename = "spaced name.stl" ; x=1"#),
+            Some("spaced name.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename("attachment; filename=plain.stl; size=10"),
+            Some("plain.stl".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename("attachment; filename = spaced.stl"),
+            Some("spaced.stl".to_string())
+        );
+    }
+
+    #[test]
+    fn quoted_filename_matches_only_the_quoted_form() {
+        assert_eq!(
+            super::quoted_filename(
+                r#"x?response-content-disposition=attachment;filename="na me.stl"&y=1"#
+            ),
+            Some("na me.stl".to_string())
+        );
+        assert_eq!(
+            super::quoted_filename(r#"filename = "spaced.stl""#),
+            Some("spaced.stl".to_string())
+        );
+        assert_eq!(
+            super::quoted_filename(r#"filename="""#),
+            Some(String::new())
+        );
+        assert_eq!(super::quoted_filename("filename=unquoted.stl&y=1"), None);
+        assert_eq!(super::quoted_filename("no filename here"), None);
+    }
+
+    #[test]
+    fn makerworld_model_page_url_matches_without_locale() {
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://makerworld.com/models/123_abc-def#profileId-1",
+                "https://cdn.example.com/",
+            ),
+            Some("https://makerworld.com/models/123_abc-def".to_string())
+        );
+        assert_eq!(
+            makerworld_model_page_url(
+                "https://cdn.example.com/",
+                "https://www.makerworld.com.cn/models/77-slug?from=search",
+            ),
+            Some("https://www.makerworld.com.cn/models/77-slug".to_string())
+        );
+    }
+
+    #[test]
+    fn makerworld_model_page_url_rejects_non_model_pages() {
+        let rejected = [
+            "http://makerworld.com/en/models/1-plain-http",
+            "https://makerworld.com/en/collections/1-not-a-model",
+            "https://makerworld.com/eng/models/1-three-letter-locale",
+            "https://makerworld.com/en-gb-x/models/1-long-locale",
+            "https://makerworld.com/en/models/",
+            "https://makerworld.org/en/models/1-other-tld",
+            "https://maker-world.com/en/models/1-other-host",
+        ];
+
+        for url in rejected {
+            assert_eq!(
+                makerworld_model_page_url(url, "https://cdn.example.com/"),
+                None,
+                "{url} should not match"
+            );
+        }
     }
 
     #[test]

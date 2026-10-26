@@ -1,45 +1,18 @@
-//! Integration tests for `resource_service` (`open_resource_folder`, `delete_resource_folder`).
+//! Integration tests for `resource_service` (`ensure_resource_folder`, `delete_resource_folder`).
 //!
 //! Locks in sync behaviour after refactor: folders are created/removed as before.
 
-use std::{
-    fs,
-    sync::{Arc, Mutex},
-};
-
-use tempfile::tempdir;
+mod common;
 
 use db::{
-    db_context,
     model::resource::{ResourceFlags, ResourceMeta},
     model::user::User,
 };
-use service::{
-    AppState, Configuration,
-    resource_service::{delete_resource_folder, open_resource_folder},
-};
+use service::resource_service::{delete_resource_folder, ensure_resource_folder};
 
 #[tokio::test]
-async fn open_resource_folder_creates_folder_when_missing() {
-    let dir = tempdir().unwrap();
-    let data_path = dir.path().join("data");
-    fs::create_dir_all(&data_path).unwrap();
-    let db_path = data_path.join("db.sqlite");
-    let backup_dir = data_path.join("backup");
-    fs::create_dir_all(&backup_dir).unwrap();
-
-    let db = db_context::setup_db(&db_path, &backup_dir).await;
-    let config = Configuration {
-        data_path: data_path.to_string_lossy().to_string(),
-        ..Default::default()
-    };
-
-    let app_state = AppState {
-        db: Arc::new(db),
-        configuration: Mutex::new(config),
-        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
-        app_data_path: data_path.to_string_lossy().to_string(),
-    };
+async fn ensure_resource_folder_creates_folder_when_missing() {
+    let (_dir, app_state) = common::test_app_state().await;
 
     let resource = ResourceMeta {
         id: 42,
@@ -51,42 +24,25 @@ async fn open_resource_folder_creates_folder_when_missing() {
     };
     let user = User::default(); // id: 1
 
-    open_resource_folder(&resource, &user, &app_state)
-        .expect("open_resource_folder should succeed");
+    let returned_path = ensure_resource_folder(&resource, &user, &app_state)
+        .expect("ensure_resource_folder should succeed");
 
     let resources_dir = app_state.get_resources_dir();
     let resource_folder = resources_dir.join("42_1");
+    assert_eq!(returned_path, resource_folder);
     assert!(
         resource_folder.exists(),
-        "resource folder 42_1 should exist after open_resource_folder"
+        "resource folder 42_1 should exist after ensure_resource_folder"
     );
 }
 
 #[tokio::test]
 async fn delete_resource_folder_removes_folder() {
-    let dir = tempdir().unwrap();
-    let data_path = dir.path().join("data");
-    fs::create_dir_all(&data_path).unwrap();
-    let db_path = data_path.join("db.sqlite");
-    let backup_dir = data_path.join("backup");
-    fs::create_dir_all(&backup_dir).unwrap();
-
-    let db = db_context::setup_db(&db_path, &backup_dir).await;
-    let config = Configuration {
-        data_path: data_path.to_string_lossy().to_string(),
-        ..Default::default()
-    };
-
-    let app_state = AppState {
-        db: Arc::new(db),
-        configuration: Mutex::new(config),
-        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
-        app_data_path: data_path.to_string_lossy().to_string(),
-    };
+    let (_dir, app_state) = common::test_app_state().await;
 
     let resources_dir = app_state.get_resources_dir();
     let resource_folder = resources_dir.join("7_1");
-    fs::create_dir_all(&resource_folder).unwrap();
+    std::fs::create_dir_all(&resource_folder).unwrap();
     assert!(resource_folder.exists());
 
     let resource = ResourceMeta {

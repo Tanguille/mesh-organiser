@@ -89,7 +89,7 @@
       <!-- A wrong or unreachable server URL lands the app here, so keep a way back to it. -->
       {#if isMobileApp()}
         <a
-          class={buttonVariants({ variant: "link" })}
+          class={buttonVariants({ variant: "ghost" })}
           href={resolve("/mobile-server")}>Change server</a
         >
       {/if}

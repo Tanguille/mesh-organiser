@@ -2,7 +2,11 @@ use std::{fs::File, io, path::Path};
 
 use zip::ZipArchive;
 
-use crate::error::MeshThumbnailError;
+use crate::{
+    error::MeshThumbnailError,
+    mesh::Mesh,
+    path_ext::{is_zip_of, matches_ext},
+};
 
 mod gcode;
 mod obj;
@@ -16,10 +20,6 @@ mod threemf;
 /// whatever `read_entry` produces.
 ///
 /// Returns `InternalError(not_found)` when no entry matches.
-///
-/// # Errors
-/// Returns an error when the file cannot be opened as a zip, when an entry
-/// cannot be read, or when no entry matches the predicate.
 pub(crate) fn with_zip_entry<R>(
     path: &Path,
     matches: impl Fn(&str) -> bool,
@@ -39,11 +39,8 @@ pub(crate) fn with_zip_entry<R>(
     Err(MeshThumbnailError::InternalError(String::from(not_found)))
 }
 
-/// Buffered variant for the small mesh formats that are parsed from memory,
-/// pre-sized to the entry's reported size.
-///
-/// # Errors
-/// Same as [`with_zip_entry`].
+/// Buffered variant of [`with_zip_entry`] for the small mesh formats that are parsed
+/// from memory, pre-sized to the entry's reported size.
 pub(crate) fn find_zip_entry_bytes(
     path: &Path,
     matches: impl Fn(&str) -> bool,
@@ -57,30 +54,41 @@ pub(crate) fn find_zip_entry_bytes(
     })
 }
 
-/// Parses a mesh from the given path (STL, OBJ, 3MF, G-code, etc.).
-///
-/// # Errors
-/// Returns an error when the format is supported but reading or parsing fails.
-pub fn handle_parse(path: &Path) -> Result<Option<crate::mesh::Mesh>, MeshThumbnailError> {
-    if let Some(mesh) = stl::handle_stl(path)? {
-        return Ok(Some(mesh));
+/// Routes `path` to `parse_zip` when it is a `.<extension>.zip`, to `parse` when it is
+/// a `.<extension>`, and returns `Ok(None)` for anything else.
+pub(crate) fn parse_by_extension<T>(
+    path: &Path,
+    extension: &str,
+    parse: fn(&Path) -> Result<T, MeshThumbnailError>,
+    parse_zip: fn(&Path) -> Result<T, MeshThumbnailError>,
+) -> Result<Option<T>, MeshThumbnailError> {
+    if is_zip_of(path, extension) {
+        parse_zip(path).map(Some)
+    } else if matches_ext(path, extension) {
+        parse(path).map(Some)
+    } else {
+        Ok(None)
     }
+}
 
-    if let Some(mesh) = obj::handle(path)? {
-        return Ok(Some(mesh));
-    }
+type MeshHandler = fn(&Path) -> Result<Option<Mesh>, MeshThumbnailError>;
 
-    if let Some(mesh) = threemf::handle_threemf(path)? {
-        return Ok(Some(mesh));
-    }
+/// Parses a mesh from the given path (STL, OBJ, 3MF, G-code, etc.). The first handler
+/// that claims the path decides the result, including its error.
+pub fn handle_parse(path: &Path) -> Result<Option<Mesh>, MeshThumbnailError> {
+    let handlers: &[MeshHandler] = &[
+        stl::handle_stl,
+        obj::handle,
+        threemf::handle_threemf,
+        gcode::handle_gcode,
+        #[cfg(feature = "step")]
+        step::handle_step,
+    ];
 
-    if let Some(mesh) = gcode::handle_gcode(path)? {
-        return Ok(Some(mesh));
-    }
-
-    #[cfg(feature = "step")]
-    if let Some(mesh) = step::handle_step(path)? {
-        return Ok(Some(mesh));
+    for handler in handlers {
+        if let Some(mesh) = handler(path)? {
+            return Ok(Some(mesh));
+        }
     }
 
     Ok(None)

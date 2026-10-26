@@ -11,17 +11,15 @@ use crate::{service_error::ServiceError, slicer_service::open_with_args_and_path
 use super::Slicer;
 
 impl Slicer {
-    pub(super) fn detect_installed(&self) -> bool {
-        get_slicer_path(self).is_some()
+    pub(super) fn find_installed(&self) -> Option<PathBuf> {
+        get_slicer_path(self)
     }
 
-    /// # Panics
-    ///
-    /// Panics if the slicer path cannot be resolved or converted to UTF-8.
-    pub(super) fn spawn_with_paths(&self, paths: Vec<PathBuf>) -> Result<(), ServiceError> {
-        let slicer_pathbuf = get_slicer_path(self).unwrap();
-
-        open_with_args_and_paths(slicer_pathbuf.to_str().unwrap(), &[], paths)
+    pub(super) fn spawn_with_paths(
+        slicer_path: PathBuf,
+        paths: Vec<PathBuf>,
+    ) -> Result<(), ServiceError> {
+        open_with_args_and_paths(slicer_path.to_str().unwrap(), &[], paths)
     }
 }
 

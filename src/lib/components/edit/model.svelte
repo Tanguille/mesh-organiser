@@ -18,7 +18,6 @@
   import { Badge } from "#lib/components/ui/badge/index.js";
   import { AsyncButton } from "#lib/components/ui/button/index.js";
   import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
-  import * as HoverCard from "#lib/components/ui/hover-card/index.js";
   import { Toggle } from "#lib/components/ui/toggle/index.js";
   import LabelBadge from "#lib/components/view/label-badge.svelte";
   import LabelSelect from "#lib/components/view/label-select.svelte";
@@ -136,7 +135,7 @@
   }
 
   async function onDelete() {
-    await modelApi.deleteModel(model);
+    await modelApi.deleteModels([model]);
     await updateSidebarState();
     deleted = true;
     props.onDelete?.();
@@ -213,7 +212,6 @@
         <div class="grow"></div>
 
         <Toggle
-          size="sm"
           class={isModelPreviewable(model) && load3dPreview ? "" : "hidden"}
           bind:pressed={doNotAutoRotateModel}
         >
@@ -223,7 +221,7 @@
         {#if !configurationMeta.applicationReadOnly}
           {#if shareApi}
             <Button
-              class="widthhack h-full"
+              class="h-full w-9"
               onclick={() => createShare([model], shareApi)}
               variant="ghost"
             >
@@ -234,7 +232,7 @@
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               {#snippet child({ props })}
-                <Button {...props} class="widthhack h-full" variant="ghost">
+                <Button {...props} class="h-full w-9" variant="ghost">
                   <ListCheck />
                 </Button>
               {/snippet}
@@ -271,44 +269,25 @@
         {/if}
 
         <Toggle
-          size="sm"
           class={isModelPreviewable(model) ? "" : "hidden"}
           bind:pressed={load3dPreview}
         >
           <Box />
         </Toggle>
 
-        {#if !!model.link}
-          <HoverCard.Root>
-            <HoverCard.Trigger>
-              <LinkButton
-                link={model.link}
-                class="widthhack h-full"
-                variant="ghost"
-                withText={false}
-                withFallback={true}
-              />
-            </HoverCard.Trigger>
-            <HoverCard.Content class="w-fit text-sm whitespace-nowrap">
-              {model.link}
-            </HoverCard.Content>
-          </HoverCard.Root>
-        {:else}
-          <LinkButton
-            link={model.link}
-            class="widthhack h-full"
-            variant="ghost"
-            withText={false}
-            withFallback={true}
-          />
-        {/if}
+        <LinkButton
+          link={model.link}
+          title={model.link}
+          class="h-full w-9"
+          variant="ghost"
+          withText={false}
+          withFallback={true}
+        />
 
         {#if editMode}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
-              <div
-                class="{buttonVariants({ variant: 'ghost' })} widthhack h-full"
-              >
+              <div class="{buttonVariants({ variant: 'ghost' })} h-full w-9">
                 <Ellipsis />
               </div>
             </DropdownMenu.Trigger>
@@ -340,7 +319,7 @@
           <Button
             size="sm"
             variant="ghost"
-            class="widthhack aspect-square h-full"
+            class="aspect-square h-full w-9"
             onclick={() => (editMode = true)}><Edit /></Button
           >
         {/if}

@@ -28,7 +28,6 @@ export class DemoSettingsApi implements ISettingsApi {
   }
 
   async saveConfiguration(config: Configuration): Promise<void> {
-    // In demo mode, we can store changes in memory but not persist
     this.config = { ...config };
   }
 

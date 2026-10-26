@@ -10,6 +10,7 @@ pub mod slice_service;
 pub mod slicer_service;
 pub mod threemf_service;
 pub mod thumbnail_service;
+pub mod user_service;
 mod util;
 
 pub use app_state::AppState;

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Input } from "#lib/components/ui/input/index.js";
   import * as Popover from "#lib/components/ui/popover/index.js";
-  import type { ClassValue } from "svelte/elements";
   import { Separator } from "#lib/components/ui/separator/index.js";
   import Trash from "@lucide/svelte/icons/trash";
   import Button from "../ui/button/button.svelte";
@@ -10,14 +9,12 @@
 
   let {
     children,
-    clazz,
     onEdit = async () => {},
     value = $bindable(),
     title,
     description,
   }: {
     children: Snippet;
-    clazz?: ClassValue;
     onEdit?: (entries: string[]) => Promise<void>;
     value: string[];
     title: string;
@@ -52,7 +49,7 @@
   <Popover.Trigger>
     {@render children?.()}
   </Popover.Trigger>
-  <Popover.Content class="flex w-80 flex-col gap-2 {clazz}">
+  <Popover.Content class="flex w-80 flex-col gap-2">
     <h1>{title}</h1>
     <p class="mb-2 text-sm">{description}</p>
     <section class="flex max-h-[300px] flex-col gap-2 overflow-y-auto">

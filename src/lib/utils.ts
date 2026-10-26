@@ -127,6 +127,23 @@ export function nameCollectionOfModels(models: Model[]): string {
   return str;
 }
 
+/** The backend's serialized ServiceError, which a failed Tauri command rejects with. */
+export interface CommandError {
+  error_message: string;
+  error_inner_message: string;
+}
+
+// Tauri command rejections are plain objects, not Errors, so callers check the
+// shape before reading the messages.
+export function isCommandError(reason: unknown): reason is CommandError {
+  return (
+    typeof reason === "object" &&
+    reason !== null &&
+    typeof (reason as CommandError).error_message === "string" &&
+    typeof (reason as CommandError).error_inner_message === "string"
+  );
+}
+
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -193,7 +210,6 @@ export function triggerDownload(url: string, filename?: string): void {
   link.remove();
 }
 
-// Wrap blob data in an object URL and trigger a download with the given filename.
 export function triggerBlobDownload(
   data: BlobPart,
   mime: string,
@@ -242,7 +258,6 @@ export function handleGridItemKeyDown<T>(
       });
       onClick(item, syntheticEvent);
     } else {
-      // Pass the keyboard event directly
       onClick(item, event);
     }
   }

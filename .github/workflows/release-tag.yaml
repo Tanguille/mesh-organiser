@@ -1,16 +1,7 @@
 name: release-tag
 
-# Auto-create the version tag + GitHub Release (with auto-generated release
-# notes) when a release PR merges to main. Merging `release/v4.0.0` (which bumps `package.json` to 4.0.0) pushes
-# tag `v4.0.0` and then dispatches the `publish` workflow, which builds the
-# Tauri binaries and attaches them to the release.
-#
-# The dispatch is explicit because GitHub never fires `on: push` workflows for
-# tags pushed with GITHUB_TOKEN (recursion guard) — v4.0.0 shipped with no
-# assets for exactly that reason. `workflow_dispatch` via the API is allowed.
-#
-# Manual fallback (unchanged): `git tag vX.Y.Z && git push origin vX.Y.Z`
-# or Actions -> publish -> Run workflow.
+# Tags `v<package.json version>`, creates the GitHub Release and dispatches `publish`
+# when a release PR merges (see .github/RELEASE.md).
 
 on:
   push:
@@ -73,15 +64,14 @@ jobs:
           if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
             echo "Release ${{ steps.version.outputs.tag }} already exists."
           else
-            # --generate-notes builds the body automatically from PRs/commits
-            # since the previous tag (no static --notes/--notes-file allowed
-            # alongside it). The later `publish` run attaches Tauri binaries
-            # to this same release without overwriting the notes.
+            # `publish` later attaches the binaries without overwriting these notes.
             gh release create "${{ steps.version.outputs.tag }}" \
               --title "Mesh Organiser ${{ steps.version.outputs.tag }}" \
               --generate-notes
           fi
 
+      # Tags pushed with GITHUB_TOKEN never fire `on: push` workflows (v4.0.0
+      # shipped without assets that way), but an API `workflow_dispatch` does.
       - name: Dispatch publish workflow to build and attach assets
         if: steps.check.outputs.exists == 'false'
         env:
@@ -89,11 +79,10 @@ jobs:
         run: gh workflow run release.yaml --ref "${{ steps.version.outputs.tag }}" -f releaseType=publish
 
       # release-please runs with `skip-github-release`, so it never relabels its
-      # merged PR itself. A merged PR left on `autorelease: pending` makes every
-      # later run abort ("untagged, merged release PRs outstanding"). Runs even
-      # if an earlier step failed or the tag already existed (manual tag,
-      # re-run), but only once the tag is on the remote, and only touches the
-      # pending PR for this version, so ordinary pushes are a no-op.
+      # merged PR; one left on `autorelease: pending` aborts every later run
+      # ("untagged, merged release PRs outstanding"). Also runs after a failed
+      # step or an existing tag (manual tag, re-run) as long as the tag is on
+      # the remote.
       - name: Mark merged release-please PR as tagged
         if: ${{ !cancelled() }}
         env:
