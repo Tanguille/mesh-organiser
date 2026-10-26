@@ -49,6 +49,13 @@ OpenCASCADE install is needed:
   libstdc++ collides with the system one loaded by GTK/WebKit and segfaults the app at
   startup (see `libmeshthumbnail/Cargo.toml`).
 
+New stored `.stp` imports use `.stp.zip`. Legacy stored `.stp` blobs can contain ZIP
+bytes despite their old file type, and their metadata is not migrated automatically.
+Re-importing alone reuses the existing hash and leaves that storage unchanged. Keep
+the original source file before permanently removing affected models; re-import
+only after every reference to the old blob is gone and blob cleanup has removed it.
+In-place `.stp` imports retain their original plain format and are unaffected.
+
 The regular workspace commands cover the STEP path — no special flags or scripts:
 
 ```bash

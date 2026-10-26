@@ -73,7 +73,7 @@ export class DemoGroupApi implements IGroupApi {
       if (modelsInGroup.length === 0 && !include_ungrouped_models) continue;
 
       // Union of the members' labels and Printed/Favorite flags, deduped.
-      const labelIds = modelsInGroup.flatMap(
+      const memberLabelIds = modelsInGroup.flatMap(
         (model) => modelLabelsMap.get(model.id) || [],
       );
       const flags = modelsInGroup.flatMap(
@@ -84,7 +84,7 @@ export class DemoGroupApi implements IGroupApi {
         createGroupInstance(
           groupMeta,
           modelsInGroup,
-          resolveLabels([...new Set(labelIds)]),
+          resolveLabels([...new Set(memberLabelIds)]),
           null, // No resource in demo
           [...new Set(flags)],
         ),

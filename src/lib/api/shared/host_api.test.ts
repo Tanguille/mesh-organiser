@@ -1,8 +1,9 @@
 /**
  * Characterization tests for the host API implementations (demo, web, tauri)
  * and isCurrentPlatformDesktop. Demo and web share WebHostApi and differ only
- * in the platform they report; both read VITE_APP_VERSION at call time, while
- * tauri asks the app.
+ * in the platform they report. Vitest exposes a mutable import.meta.env for
+ * the version cases below; production Vite builds inline the configured value.
+ * Tauri asks the app.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,12 +34,14 @@ describe.each([
 
   it("returns the trimmed VITE_APP_VERSION", async () => {
     vi.stubEnv("VITE_APP_VERSION", "  v9.8.7 ");
+    expect(import.meta.env.VITE_APP_VERSION).toBe("  v9.8.7 ");
 
     await expect(host.getVersion()).resolves.toBe("v9.8.7");
   });
 
   it("falls back to 'dev' when VITE_APP_VERSION is blank", async () => {
     vi.stubEnv("VITE_APP_VERSION", "   ");
+    expect(import.meta.env.VITE_APP_VERSION).toBe("   ");
 
     await expect(host.getVersion()).resolves.toBe("dev");
   });
