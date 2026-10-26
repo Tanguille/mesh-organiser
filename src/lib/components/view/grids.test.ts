@@ -23,13 +23,15 @@ import ModelGrid from "./model-grid.svelte";
 import GroupGrid from "./group-grid.svelte";
 
 // jsdom has no matchMedia; svelte/reactivity touches it at import time and
-// IsMobile / group-grid's split-view MediaQuery read it. Default to desktop.
+// IsMobile / group-grid's split-view MediaQuery read it. Default to a wide desktop.
 const media = vi.hoisted(() => {
-  const state = { mobile: false };
+  const state = { width: 1920 };
   window.matchMedia = (query: string) =>
     ({
       get matches() {
-        return state.mobile;
+        const maxWidth = /max-width:\s*(\d+)px/.exec(query);
+
+        return maxWidth !== null && state.width <= Number(maxWidth[1]);
       },
       media: query,
       addEventListener: () => {},
@@ -44,7 +46,7 @@ vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({ page: { url: new URL("http://localhost/") } }));
 
 afterEach(() => {
-  media.mobile = false;
+  media.width = 1920;
   resetContainer();
   Object.assign(configuration, configurationDefault());
 });
@@ -124,8 +126,7 @@ describe.each(grids)("$name", ({ emptyText, mount }) => {
   });
 });
 
-it("closes the selected group preview on mobile and clears the selection", async () => {
-  media.mobile = true;
+function groupStreamWithModels() {
   const container = getContainer();
   container.addSingleton(IBlobApi, {
     getBlobThumbnailUrl: vi.fn().mockResolvedValue("data:image/png;base64,"),
@@ -165,6 +166,13 @@ it("closes the selected group preview on mobile and clears the selection", async
   const group = createGroupInstance(meta, models, [], null, []);
   const stream = emptyStream();
   stream.fetch.mockResolvedValueOnce([group]);
+
+  return stream;
+}
+
+it("closes the selected group preview on mobile and clears the selection", async () => {
+  media.width = 800;
+  const stream = groupStreamWithModels();
   render(GroupGrid, { groupStream: stream as IGroupStreamManager });
 
   const option = await screen.findByRole("option", {
@@ -195,4 +203,32 @@ it("closes the selected group preview on mobile and clears the selection", async
   expect(
     screen.queryByRole("button", { name: "Close model preview" }),
   ).toBeNull();
+});
+
+it("uses the normal group view at medium widths even when split mode is configured", async () => {
+  media.width = 1400;
+  configuration.group_split_view = "split-left-right";
+  const stream = groupStreamWithModels();
+  render(GroupGrid, { groupStream: stream as IGroupStreamManager });
+
+  const option = await screen.findByRole("option", {
+    name: /Calibration parts/,
+  });
+  option.scrollIntoView = vi.fn();
+
+  await fireEvent.click(option);
+
+  expect(
+    screen
+      .getByRole("option", { name: /Calibration parts/ })
+      .getAttribute("aria-selected"),
+  ).toBe("true");
+  expect(
+    screen.queryByRole("button", { name: "Close model preview" }),
+  ).toBeNull();
+  expect(
+    (await screen.findByRole("link", { name: "View models" })).getAttribute(
+      "href",
+    ),
+  ).toBe("/group/7");
 });

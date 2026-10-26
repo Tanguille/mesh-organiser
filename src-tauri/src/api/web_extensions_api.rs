@@ -345,8 +345,18 @@ mod tests {
 
     impl Drop for UploadDirectory {
         fn drop(&mut self) {
-            std::fs::remove_dir_all(&self.0).unwrap();
+            if let Err(e) = std::fs::remove_dir_all(&self.0) {
+                eprintln!("Failed to remove upload test directory {:?}: {e}", self.0);
+            }
         }
+    }
+
+    #[test]
+    fn upload_directory_cleanup_tolerates_an_already_removed_directory() {
+        let directory = UploadDirectory(super::get_temp_dir("upload-cleanup-test"));
+        std::fs::remove_dir_all(&directory.0).unwrap();
+
+        drop(directory);
     }
 
     fn upload_server(upload_count: usize) -> (String, std::thread::JoinHandle<()>) {

@@ -142,6 +142,7 @@ pub async fn get_blob_bytes(
     Path(sha256): Path<String>,
     State(app_state): State<AppState>,
 ) -> Response {
+    // Resolve an owned model to authorize access to this blob.
     let Ok(Some(_model_id)) =
         model_db::get_model_id_via_sha256(&app_state.db, &user, &sha256).await
     else {

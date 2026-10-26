@@ -47,7 +47,7 @@
         .map((l) => l!))
   }
 >
-  <Select.Trigger class="h-fit">
+  <Select.Trigger class="h-fit" aria-label={placeholder}>
     {#if value.length <= 0}
       {placeholder}
     {:else}
