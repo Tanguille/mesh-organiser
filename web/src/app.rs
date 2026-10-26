@@ -12,8 +12,10 @@ use std::{
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
+    http::StatusCode,
     middleware::{self, Next},
     response::Response,
+    routing::any,
 };
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
@@ -263,7 +265,10 @@ impl App {
         let backend = Backend::new(self.state.db.clone());
         let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
-        let serve_dir = ServeDir::new("www").not_found_service(ServeFile::new("www/index.html"));
+        // Unknown paths are client-side routes, so they get the SPA shell with a 200. Build assets
+        // under `/_app` are served apart below, so a missing one stays a 404 that a CDN will not
+        // cache as JS.
+        let serve_dir = ServeDir::new("www").fallback(ServeFile::new("www/index.html"));
         let db = self.state.db.clone();
 
         let cors_layer = CorsLayer::new()
@@ -288,12 +293,14 @@ impl App {
                 })?,
         );
 
-        let auth_router = auth_controller::router().layer(GovernorLayer::new(governor_config));
+        let login_router =
+            auth_controller::login_router().layer(GovernorLayer::new(governor_config));
 
         // In each controller's router, `login_required!` is a route layer, so it guards only
         // the routes registered before it; public routes are registered after it.
         let app = Router::new()
-            .merge(auth_router)
+            .merge(login_router)
+            .merge(auth_controller::router())
             .merge(blob_controller::router())
             .merge(model_controller::router())
             .merge(group_controller::router())
@@ -303,6 +310,15 @@ impl App {
             .merge(threemf_controller::router())
             .merge(page_controller::router())
             .merge(share_controller::router())
+            // Unknown API paths stay a 404 instead of falling through to the SPA shell below.
+            .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))
+            // So do discovery paths: an MCP client probing `/.well-known/oauth-*` must see that
+            // no OAuth server is here, not a 200 HTML page it tries to parse as metadata.
+            .route(
+                "/.well-known/{*path}",
+                any(|| async { StatusCode::NOT_FOUND }),
+            )
+            .nest_service("/_app", ServeDir::new("www/_app"))
             .with_state(self.state)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))

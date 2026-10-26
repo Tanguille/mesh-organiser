@@ -36,3 +36,5 @@ tower-sessions-core = { workspace = true, features = ["deletion-task"] }
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
+# `util` adds `ServiceExt::oneshot`, to call the MCP router without binding a port.
+tower = { workspace = true, features = ["util"] }
