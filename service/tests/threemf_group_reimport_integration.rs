@@ -1,11 +1,146 @@
-//! Re-extracting an imported 3MF directory must reuse its models and existing group.
+//! Imported parts retain existing groups while newly extracted parts get their own group.
 
-use std::fs;
+use std::{fs, io::Write, path::Path};
 
-use db::{group_db, model::user::User, model_db};
+use zip::{ZipWriter, write::SimpleFileOptions};
+
+use db::{
+    MAX_PAGE_SIZE, group_db,
+    model::user::User,
+    model_db::{self, ModelFilterOptions},
+};
 use service::import_state::ImportState;
 
 mod common;
+
+fn write_zip(path: &Path, names: &[String]) {
+    let mut archive = ZipWriter::new(fs::File::create(path).unwrap());
+    for name in names {
+        archive
+            .start_file(name, SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(name.as_bytes()).unwrap();
+    }
+    archive.finish().unwrap();
+}
+
+#[tokio::test]
+async fn large_import_groups_every_new_model_without_moving_existing_models() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let source = tempfile::tempdir().unwrap();
+    let old_archive = source.path().join("Previous_Extraction.zip");
+    write_zip(&old_archive, &[String::from("existing.stl")]);
+    let previous = service::import_service::import_path(
+        old_archive.to_str().unwrap(),
+        &app_state,
+        ImportState::new(None, false, false, false, user.clone()),
+    )
+    .await
+    .unwrap();
+    let existing_model_id = previous.all_model_ids()[0];
+    let existing_group_id = previous.imported_models[0].group_id.unwrap();
+    let new_model_count = usize::try_from(MAX_PAGE_SIZE).unwrap() + 1;
+    let mut names = vec![String::from("existing.stl")];
+    names.extend((0..new_model_count).map(|index| format!("new_part_{index}.stl")));
+    let archive = source.path().join("Large_Extraction.zip");
+    write_zip(&archive, &names);
+
+    let imported = service::import_service::import_path(
+        archive.to_str().unwrap(),
+        &app_state,
+        ImportState::new(None, false, false, false, user.clone()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(imported.imported_models.len(), 1);
+    assert_eq!(imported.all_model_ids().len(), new_model_count + 1);
+    let new_group_id = imported.imported_models[0].group_id.unwrap();
+    assert_ne!(new_group_id, existing_group_id);
+    let models = model_db::get_all_models(
+        &app_state.db,
+        &user,
+        ModelFilterOptions {
+            model_ids: Some(imported.all_model_ids()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(models.len(), new_model_count + 1);
+    for model in models {
+        let expected_group_id = if model.id == existing_model_id {
+            existing_group_id
+        } else {
+            new_group_id
+        };
+        assert_eq!(
+            model.group.map(|group| group.id),
+            Some(expected_group_id),
+            "imported model {} must retain or receive its group",
+            model.id
+        );
+    }
+}
+
+#[tokio::test]
+async fn mixed_extraction_returns_the_group_containing_its_new_part() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let source = tempfile::tempdir().unwrap();
+    let old_archive = source.path().join("Previous_Extraction.zip");
+    write_zip(&old_archive, &[String::from("existing.stl")]);
+    let previous = service::import_service::import_path(
+        old_archive.to_str().unwrap(),
+        &app_state,
+        ImportState::new(None, false, false, false, user.clone()),
+    )
+    .await
+    .unwrap();
+    let existing_model_id = previous.all_model_ids()[0];
+    let existing_group_id = previous.imported_models[0].group_id.unwrap();
+    let archive = source.path().join("Mixed_Extraction.zip");
+    // ZIP entries import sequentially, so the deduplicated part is deterministically first.
+    write_zip(
+        &archive,
+        &[String::from("existing.stl"), String::from("new.stl")],
+    );
+
+    let imported = service::import_service::import_path(
+        archive.to_str().unwrap(),
+        &app_state,
+        ImportState::new(None, false, false, false, user.clone()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(imported.imported_models.len(), 1);
+    let model_ids = imported.all_model_ids();
+    assert_eq!(model_ids.len(), 2);
+    assert_eq!(model_ids[0], existing_model_id);
+    let new_group_id = imported.imported_models[0].group_id.unwrap();
+    assert_ne!(new_group_id, existing_group_id);
+    let models = model_db::get_models_via_ids(&app_state.db, &user, model_ids)
+        .await
+        .unwrap();
+    assert_eq!(models.len(), 2);
+    for model in models {
+        let expected_group_id = if model.id == existing_model_id {
+            existing_group_id
+        } else {
+            new_group_id
+        };
+        assert_eq!(model.group.unwrap().id, expected_group_id);
+    }
+
+    let group = service::group_meta_from_import(&imported, &app_state)
+        .await
+        .unwrap();
+
+    assert_eq!(group.id, new_group_id);
+    assert_eq!(group.name, "Mixed Extraction");
+}
 
 #[tokio::test]
 async fn repeated_extracted_directory_import_returns_the_existing_group_without_regrouping() {

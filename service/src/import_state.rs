@@ -3,7 +3,11 @@ use std::fmt::{self, Debug};
 use serde::Serialize;
 use strum::Display;
 
-use db::{group_db, model::user::User, model_db};
+use db::{
+    group_db,
+    model::user::User,
+    model_db::{self, ModelFilterOptions},
+};
 
 use crate::{app_state::AppState, service_error::ServiceError};
 
@@ -199,13 +203,19 @@ impl ImportState {
                 continue;
             }
 
-            let ungrouped_model_ids: Vec<i64> =
-                model_db::get_models_via_ids(&state.db, user, set.model_ids.clone())
-                    .await?
-                    .into_iter()
-                    .filter(|model| model.group.is_none())
-                    .map(|model| model.id)
-                    .collect();
+            let ungrouped_model_ids: Vec<i64> = model_db::get_all_models(
+                &state.db,
+                user,
+                ModelFilterOptions {
+                    model_ids: Some(set.model_ids.clone()),
+                    ..Default::default()
+                },
+            )
+            .await?
+            .into_iter()
+            .filter(|model| model.group.is_none())
+            .map(|model| model.id)
+            .collect();
             if ungrouped_model_ids.is_empty() {
                 continue;
             }

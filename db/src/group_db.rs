@@ -230,7 +230,15 @@ pub async fn set_group_id_on_models(
     model_ids: Vec<i64>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let models = model_db::get_models_via_ids(db, user, model_ids).await?;
+    let models = model_db::get_all_models(
+        db,
+        user,
+        ModelFilterOptions {
+            model_ids: Some(model_ids),
+            ..Default::default()
+        },
+    )
+    .await?;
     let mut touched_group_ids: Vec<i64> = models
         .iter()
         .filter_map(|model| model.group.as_ref().map(|group| group.id))

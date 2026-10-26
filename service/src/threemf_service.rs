@@ -13,6 +13,7 @@ use stl_io::Vector;
 use tokio::{fs::File, io::BufReader};
 
 use db::{
+    group_db::{self, GroupFilterOptions},
     model::{Model, model_group::ModelGroupMeta, user::User},
     model_db,
 };
@@ -23,7 +24,7 @@ use crate::{
     thumbnail_service,
 };
 
-/// Returns the group of the first model imported by a 3MF extraction.
+/// Returns the group created by a 3MF extraction, or its first reused model's group.
 ///
 /// Shared by the Tauri command and the web controller so the (previously
 /// divergent) safe-extraction logic lives in one place.
@@ -31,21 +32,36 @@ pub async fn group_meta_from_import(
     import_state: &ImportState,
     app_state: &AppState,
 ) -> Result<ModelGroupMeta, ServiceError> {
-    let model_id = import_state
+    let missing_group =
+        || ServiceError::InternalError("3MF extract produced no imported group".to_string());
+    let imported_set = import_state
         .imported_models
         .first()
-        .and_then(|set| set.model_ids.first())
-        .ok_or_else(|| {
-            ServiceError::InternalError("3MF extract produced no imported group".to_string())
-        })?;
+        .ok_or_else(missing_group)?;
+    if let Some(group_id) = imported_set.group_id {
+        return group_db::get_groups(
+            &app_state.db,
+            &import_state.user,
+            GroupFilterOptions {
+                group_ids: Some(vec![group_id]),
+                ..Default::default()
+            },
+        )
+        .await?
+        .items
+        .into_iter()
+        .next()
+        .map(|group| group.meta)
+        .ok_or_else(missing_group);
+    }
+
+    let model_id = imported_set.model_ids.first().ok_or_else(missing_group)?;
 
     // A repeated extraction can deduplicate to models in existing groups without creating one.
     model_db::get_model_via_id(&app_state.db, &import_state.user, *model_id)
         .await?
         .and_then(|model| model.group)
-        .ok_or_else(|| {
-            ServiceError::InternalError("3MF extract produced no imported group".to_string())
-        })
+        .ok_or_else(missing_group)
 }
 
 static MODEL_SETTINGS_PART_NAME: LazyLock<Regex> = LazyLock::new(|| {
