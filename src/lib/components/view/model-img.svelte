@@ -47,6 +47,7 @@
   {:else}
     <img
       src={img_src}
+      loading="lazy"
       onerror={() => (load_failed = true)}
       alt="Image of {props.model.name}"
     />

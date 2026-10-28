@@ -316,6 +316,7 @@ const sampleRawModel: RawModel = {
   labels: [],
   flags: ["Printed"],
   unique_global_id: "model-gid",
+  deleted: null,
 };
 
 describe("parseRawModel", () => {
@@ -334,6 +335,21 @@ describe("parseRawModel", () => {
     expect(model.labels).toEqual([]);
     expect(model.flags).toEqual({ printed: true, favorite: false });
     expect(model.uniqueGlobalId).toBe("model-gid");
+  });
+
+  it("maps a null deleted to null for a model outside the trash", () => {
+    const model = parseRawModel(sampleRawModel);
+
+    expect(model.deleted).toBeNull();
+  });
+
+  it("parses the backend's RFC3339 deleted timestamp into the same instant", () => {
+    const model = parseRawModel({
+      ...sampleRawModel,
+      deleted: "2026-10-20T08:30:15Z",
+    });
+
+    expect(model.deleted).toEqual(new Date(Date.UTC(2026, 9, 20, 8, 30, 15)));
   });
 });
 

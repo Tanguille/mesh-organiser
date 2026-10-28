@@ -93,6 +93,7 @@ pub async fn get_models(
             model_flags,
             text_search,
             file_types,
+            trashed: false,
             page,
             page_size,
         },
@@ -141,6 +142,22 @@ pub async fn delete_models(
 
     export_service::delete_models(&state.app_state, &state.get_current_user(), model_ids).await?;
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_trashed_models(
+    state: State<'_, TauriAppState>,
+) -> Result<Vec<db::model::Model>, ApplicationError> {
+    Ok(export_service::get_trashed_models(&state.app_state, &state.get_current_user()).await?)
+}
+
+#[tauri::command]
+pub async fn restore_models(
+    model_ids: Vec<i64>,
+    state: State<'_, TauriAppState>,
+) -> Result<(), ApplicationError> {
+    export_service::restore_models(&state.app_state, &state.get_current_user(), model_ids).await?;
     Ok(())
 }
 

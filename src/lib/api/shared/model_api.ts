@@ -44,6 +44,8 @@ export interface Model {
   labels: LabelMeta[];
   flags: ModelFlags;
   uniqueGlobalId: string;
+  /** When the model was moved to the trash; null while it is not trashed. */
+  deleted: Date | null;
 }
 
 export function createModelInstance(
@@ -58,6 +60,7 @@ export function createModelInstance(
   labels: LabelMeta[],
   flags: string[],
   uniqueGlobalId: string,
+  deleted: string | null = null,
 ): Model {
   return {
     id,
@@ -71,6 +74,7 @@ export function createModelInstance(
     labels,
     flags: stringArrayToModelFlags(flags),
     uniqueGlobalId: uniqueGlobalId,
+    deleted: deleted ? new Date(deleted) : null,
   };
 }
 
@@ -160,8 +164,13 @@ export interface IModelApi {
     editTimestamp?: boolean,
     editGlobalId?: boolean,
   ): Promise<void>;
+  /** Moves the models to the trash; they stay restorable until the retention expires. */
   deleteModels(models: Model[]): Promise<void>;
   getModelCount(flags: ModelFlags | null): Promise<number>;
+  /** Returns every trashed model, most recently deleted first. */
+  getTrashedModels(): Promise<Model[]>;
+  /** Restores nothing unless every requested model is still in the user's trash. */
+  restoreModels(models: Model[]): Promise<void>;
 }
 
 // Largest page size the backends accept (mirrors db::MAX_PAGE_SIZE; the web

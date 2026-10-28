@@ -16,7 +16,6 @@ use tauri::{
 };
 
 use db::{
-    group_db,
     model::{model_group::ModelGroupMeta, user::User},
     model_db, user_db,
 };
@@ -569,8 +568,7 @@ pub fn run() {
                     let app_state = state.app_state.clone();
                     let user = state.get_current_user();
                     tauri::async_runtime::spawn(async move {
-                        let _ = group_db::delete_dead_groups(&app_state.db).await;
-                        let _ = export_service::delete_dead_blobs(&app_state).await;
+                        let _ = export_service::cleanup_library_on_startup(&app_state).await;
 
                         // Thumbnails are cached per machine in the app data directory while
                         // models and the database can sit on a shared data path, so a library
@@ -615,6 +613,8 @@ pub fn run() {
             api::add_models_to_group,
             api::remove_models_from_group,
             api::delete_models,
+            api::get_trashed_models,
+            api::restore_models,
             api::edit_label,
             api::delete_label,
             api::set_sync_state,

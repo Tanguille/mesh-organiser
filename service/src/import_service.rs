@@ -431,8 +431,15 @@ where
         bytes[..16].try_into().expect("slice is 16 bytes"),
     ));
 
+    // Re-importing a trashed model restores it; this is also how sync propagates a restore.
     if let Some(id) = model_db::get_model_id_via_sha256(&app_state.db, user, &hash).await? {
-        return Ok(id);
+        match model_db::untrash_models(&app_state.db, user, &[id]).await {
+            Ok(()) => return Ok(id),
+            // The trash purge deleted the expired model since the lookup, so import it afresh.
+            // Its blob row is still there: the blob sweep waits for the import lock we hold.
+            Err(db::DbError::RowNotFound) => {}
+            Err(e) => return Err(e.into()),
+        }
     }
 
     let blob_id = if let Some(blob) = blob_db::get_blob_via_sha256(&app_state.db, &hash).await? {

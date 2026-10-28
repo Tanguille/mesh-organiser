@@ -30,11 +30,14 @@ impl ShareDbQuery {
     }
 }
 
+// Both share reads leave trashed models out of `model_ids`: they join models as NULLs, which
+// GROUP_CONCAT skips. Restoring a model puts it back in its shares.
 pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbError> {
     let rows = sqlx::query_as!(ShareDbQuery, "
-        SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(shares_models.model_id) AS \"share_model_ids: String\"
+        SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(models.model_id) AS \"share_model_ids: String\"
         FROM shares
         LEFT JOIN shares_models ON shares.share_id = shares_models.share_id
+        LEFT JOIN models ON shares_models.model_id = models.model_id AND models.model_deleted IS NULL
         WHERE share_user_id = ?
         GROUP BY shares.share_id
         ORDER BY share_created_at DESC
@@ -47,9 +50,10 @@ pub async fn get_shares(db: &DbContext, user: &User) -> Result<Vec<Share>, DbErr
 
 pub async fn get_share_via_id(db: &DbContext, share_id: &str) -> Result<Share, DbError> {
     let row = sqlx::query_as!(ShareDbQuery, "
-        SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(shares_models.model_id) AS \"share_model_ids: String\"
+        SELECT shares.share_id, share_user_id, share_created_at, share_name, GROUP_CONCAT(models.model_id) AS \"share_model_ids: String\"
         FROM shares
         LEFT JOIN shares_models ON shares.share_id = shares_models.share_id
+        LEFT JOIN models ON shares_models.model_id = models.model_id AND models.model_deleted IS NULL
         WHERE shares.share_id = ?
         GROUP BY shares.share_id
         ", share_id)

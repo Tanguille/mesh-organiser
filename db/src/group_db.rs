@@ -142,8 +142,8 @@ pub async fn get_groups(
 
     let group_resource_map = crate::resource_db::get_group_id_to_resource_map(db, user).await?;
 
-    // Pagination happens in-memory below, so fetch the full default window.
-    let models = model_db::get_models(
+    // Pagination happens in-memory below, so fetch every match.
+    let models = model_db::get_all_models(
         db,
         user,
         ModelFilterOptions {
@@ -158,7 +158,7 @@ pub async fn get_groups(
     .await?;
 
     let mut groups = convert_model_list_to_groups(
-        models.items,
+        models,
         options.include_ungrouped_models,
         &group_resource_map,
     );
@@ -178,7 +178,7 @@ pub async fn get_groups(
             .collect();
         let fake_models: Vec<ModelGroup> = groups.into_iter().filter(|f| f.meta.id < 0).collect();
 
-        let models = model_db::get_models(
+        let models = model_db::get_all_models(
             db,
             user,
             ModelFilterOptions {
@@ -188,7 +188,7 @@ pub async fn get_groups(
         )
         .await?;
 
-        groups = convert_model_list_to_groups(models.items, false, &group_resource_map);
+        groups = convert_model_list_to_groups(models, false, &group_resource_map);
         groups.extend(fake_models);
     }
 
@@ -230,7 +230,15 @@ pub async fn set_group_id_on_models(
     model_ids: Vec<i64>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
-    let models = model_db::get_models_via_ids(db, user, model_ids).await?;
+    let models = model_db::get_all_models(
+        db,
+        user,
+        ModelFilterOptions {
+            model_ids: Some(model_ids),
+            ..Default::default()
+        },
+    )
+    .await?;
     let mut touched_group_ids: Vec<i64> = models
         .iter()
         .filter_map(|model| model.group.as_ref().map(|group| group.id))
@@ -327,7 +335,8 @@ pub async fn delete_group(db: &DbContext, user: &User, group_id: i64) -> Result<
 }
 
 pub async fn delete_dead_groups(db: &DbContext) -> Result<(), DbError> {
-    // No user filter needed: a group without models is dead regardless of owner.
+    // No user filter needed: a group without models is dead regardless of owner. Trashed models
+    // still count, so restoring one brings its group back.
     sqlx::query!(
         "DELETE FROM models_group
          WHERE group_id NOT IN (SELECT DISTINCT model_group_id FROM models WHERE model_group_id IS NOT NULL)"
@@ -344,7 +353,7 @@ pub async fn get_group_count(
     include_ungrouped_models: bool,
 ) -> Result<usize, DbError> {
     let base: usize = sqlx::query!(
-        "SELECT COUNT(DISTINCT model_group_id) as count FROM models WHERE model_user_id = ?",
+        "SELECT COUNT(DISTINCT model_group_id) as count FROM models WHERE model_user_id = ? AND model_deleted IS NULL",
         user.id
     )
     .fetch_one(db)
@@ -355,7 +364,7 @@ pub async fn get_group_count(
 
     let ungrouped: usize = if include_ungrouped_models {
         sqlx::query!(
-            "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND model_group_id IS NULL",
+            "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND model_group_id IS NULL AND model_deleted IS NULL",
             user.id
         )
         .fetch_one(db)

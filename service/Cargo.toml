@@ -40,6 +40,8 @@ async_zip = { workspace = true, features = [
 [dev-dependencies]
 fake = { workspace = true }
 proptest = { workspace = true }
+# Lets the trash tests backdate `model_deleted` straight in the test database.
+sqlx = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = { workspace = true }
 zip = { workspace = true }
