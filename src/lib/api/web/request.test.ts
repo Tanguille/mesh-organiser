@@ -80,8 +80,6 @@ describe("ServerRequestApi", () => {
       "Failed to fetch",
     );
   });
-
-
 });
 
 describe("ServerRequestApi failed responses", () => {
