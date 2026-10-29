@@ -20,10 +20,11 @@
     const gen = ++loadGeneration;
     untrack(async () => {
       try {
-        img_src = await blobApi.getBlobThumbnailUrl(blob);
+        const url = await blobApi.getBlobThumbnailUrl(blob);
         if (gen !== loadGeneration) {
           return;
         }
+        img_src = url;
         load_failed = false;
       } catch (e) {
         if (gen !== loadGeneration) {
