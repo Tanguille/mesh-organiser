@@ -1,5 +1,6 @@
 use std::{ffi::OsStr, future::Future, panic, path::Path, sync::LazyLock};
 
+use db::model::blob::FileType;
 use regex::Regex;
 use tokio::task::JoinSet;
 
@@ -60,33 +61,29 @@ pub fn cleanse_evil_from_name(name: &str) -> String {
     cleansed
 }
 
+/// The stored type of an imported extension.
+///
+/// Import zips exactly what `FileType::is_zippable` names, so those get a `.zip` suffix that
+/// readers recognise as zipped. Re-import dedupe leaves legacy stored .stp blobs unchanged; see docs/commands.md.
 #[must_use]
 pub fn convert_extension_to_zip(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
-    String::from(match lowercase.as_str() {
-        "stl" => "stl.zip",
-        "obj" => "obj.zip",
-        "step" => "step.zip",
-        // Re-import dedupe leaves legacy stored .stp blobs unchanged; see docs/commands.md.
-        "stp" => "stp.zip",
-        "gcode" => "gcode.zip",
-        _ => &lowercase,
-    })
+    if FileType::from_extension(&lowercase).is_zippable() {
+        format!("{lowercase}.zip")
+    } else {
+        lowercase
+    }
 }
 
 #[must_use]
 pub fn convert_zip_to_extension(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
-    String::from(match lowercase.as_str() {
-        "stl.zip" => "stl",
-        "obj.zip" => "obj",
-        "step.zip" => "step",
-        "stp.zip" => "stp",
-        "gcode.zip" => "gcode",
-        _ => &lowercase,
-    })
+    match lowercase.strip_suffix(".zip") {
+        Some(plain) if FileType::from_extension(&lowercase).is_zipped() => plain.to_string(),
+        _ => lowercase,
+    }
 }
 
 /// Runs one future per item with bounded parallelism, returning every task output in completion order.
@@ -302,6 +299,9 @@ mod tests {
         // No separators to strip, but ".." still escapes `Path::join` into the parent dir.
         assert_eq!(cleanse_evil_from_name(".."), "unnamed");
         assert_eq!(cleanse_evil_from_name("."), "unnamed");
+        assert_eq!(cleanse_evil_from_name("..."), "unnamed");
+    }
+
     /// Model names are user-editable and end up in `Content-Disposition` headers, where the web
     /// server's `HeaderValue` parse panics on control characters, so they go like the others.
     #[test]
@@ -320,9 +320,6 @@ mod tests {
                 "{name:?} became {cleansed:?}, which is not a valid header value"
             );
         }
-    }
-
-        assert_eq!(cleanse_evil_from_name("..."), "unnamed");
     }
 
     #[test]
@@ -402,17 +399,29 @@ mod tests {
 
     /// Import zips exactly the types `FileType::is_zippable` names and stores them under
     /// `convert_extension_to_zip`; readers unzip whatever `is_zipped` names. Both maps must agree,
-    /// or a blob is stored zipped but served raw.
+    /// or a blob is stored zipped but served raw. `FileType` matches by suffix, so `xstl` is
+    /// zippable too; types it does not zip must pass through both conversions lowercased.
     #[test]
     fn every_zippable_extension_is_stored_as_a_zipped_type() {
-        for extension in ["stl", "obj", "step", "stp", "gcode", "STP"] {
-            assert!(db::model::blob::FileType::from_extension(extension).is_zippable());
+        for extension in [
+            "stl", "STL", "obj", "step", "stp", "STP", "gcode", "xstl", "3mf", "png",
+        ] {
+            let lowercase = extension.to_lowercase();
             let stored = convert_extension_to_zip(extension);
-            assert!(
-                db::model::blob::FileType::from_extension(&stored).is_zipped(),
-                "{extension} is stored as {stored}, which readers do not unzip"
-            );
-            assert_eq!(convert_zip_to_extension(&stored), extension.to_lowercase());
+            if db::model::blob::FileType::from_extension(extension).is_zippable() {
+                assert!(
+                    db::model::blob::FileType::from_extension(&stored).is_zipped(),
+                    "{extension} is zipped on import but stored as {stored}, which readers do not unzip"
+                );
+                assert_eq!(convert_zip_to_extension(&stored), lowercase, "{extension}");
+            } else {
+                assert_eq!(stored, lowercase, "{extension}");
+                assert_eq!(
+                    convert_zip_to_extension(extension),
+                    lowercase,
+                    "{extension}"
+                );
+            }
         }
     }
 
