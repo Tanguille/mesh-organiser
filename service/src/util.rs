@@ -41,7 +41,12 @@ pub fn percent_decode(text: &str) -> Result<String, std::str::Utf8Error> {
 #[must_use]
 pub fn cleanse_evil_from_name(name: &str) -> String {
     let cleansed = name
-        .replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], " ")
+        .replace(
+            |c: char| {
+                c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            },
+            " ",
+        )
         .trim()
         .to_string();
 
@@ -297,6 +302,26 @@ mod tests {
         // No separators to strip, but ".." still escapes `Path::join` into the parent dir.
         assert_eq!(cleanse_evil_from_name(".."), "unnamed");
         assert_eq!(cleanse_evil_from_name("."), "unnamed");
+    /// Model names are user-editable and end up in `Content-Disposition` headers, where the web
+    /// server's `HeaderValue` parse panics on control characters, so they go like the others.
+    #[test]
+    fn test_cleanse_evil_replaces_control_characters() {
+        for name in ["a\nb", "a\tb", "a\u{7f}b", "a\u{0}b", "a\u{85}b"] {
+            let cleansed = cleanse_evil_from_name(name);
+            assert!(
+                !cleansed.chars().any(char::is_control),
+                "{name:?} became {cleansed:?}"
+            );
+            assert_eq!(cleansed, "a b", "{name:?}");
+            assert!(
+                format!("attachment; filename=\"{cleansed}\"")
+                    .parse::<reqwest::header::HeaderValue>()
+                    .is_ok(),
+                "{name:?} became {cleansed:?}, which is not a valid header value"
+            );
+        }
+    }
+
         assert_eq!(cleanse_evil_from_name("..."), "unnamed");
     }
 
