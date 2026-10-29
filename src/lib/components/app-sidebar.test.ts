@@ -158,3 +158,15 @@ describe("AppSidebar LabelTree", () => {
     );
   });
 });
+
+describe("AppSidebar label actions", () => {
+  afterEach(() => {
+    Object.assign(sidebarState, defaultSidebarState());
+  });
+
+  it("does not nest the new-label action button inside the popover trigger button", () => {
+    const { container } = renderAt("/model");
+
+    expect(container.querySelector("button button")).toBeNull();
+  });
+});

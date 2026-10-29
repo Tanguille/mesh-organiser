@@ -40,6 +40,8 @@
   const props: {
     children: Snippet;
     class?: ClassValue;
+    /** Extra attributes for the trigger button, e.g. from a parent's `child` snippet. */
+    triggerProps?: Record<string, unknown>;
     onsubmit: (label_name: string, label_color: string) => Promise<void>;
     closeAfterCreation?: boolean;
   } = $props();
@@ -53,7 +55,7 @@
     }
   }}
 >
-  <Popover.Trigger class={props.class}>
+  <Popover.Trigger class={props.class} {...props.triggerProps}>
     {@render props.children?.()}
   </Popover.Trigger>
   <Popover.Content class="w-80">
