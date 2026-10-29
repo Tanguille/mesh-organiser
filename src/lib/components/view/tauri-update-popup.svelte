@@ -16,13 +16,13 @@
 
   import { type Update } from "@tauri-apps/plugin-updater";
   import { toast } from "svelte-sonner";
-  import { relaunch } from "@tauri-apps/plugin-process";
   import { configuration } from "#lib/configuration.svelte";
 
   let props: { update: Update; onDismiss: () => void } = $props();
   let currentPlatform = platform();
   let automaticUpdatePlatforms = ["windows"];
 
+  // Only offered on Windows, where installing exits the app and the installer restarts it.
   async function executeUpdate() {
     const update = props.update;
 
@@ -33,8 +33,6 @@
           break;
       }
     });
-
-    await relaunch();
   }
 
   function ignore(version: string) {
