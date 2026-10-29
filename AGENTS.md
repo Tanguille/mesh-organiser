@@ -37,7 +37,7 @@ Before claiming work complete or ready for review, run verification and only the
 - **Frontend (Svelte):** After editing `.svelte` or `.svelte.ts` files, run **svelte-autofixer** (Svelte MCP) on the changed files, fix any reported issues, and run it again to confirm clean. If the Svelte MCP is unavailable, skip this step.
 - Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets`, and tests (e.g. `cargo test -p service`)
 - Do not state that tests or checks pass without having run them
-- Grep for every name, value or behaviour you changed and update the comments, docs (`docs/`, README) and test names that still describe the old one
+- Grep for every name, value or behaviour you changed and update the comments, Markdown docs and test names that still describe the old one
 - **STEP/OCCT**: Handled by cadrum (prebuilt OCCT per target; Linux builds from source once, cached) — see [docs/commands.md](docs/commands.md).
 
 ### Guardrails
@@ -50,7 +50,7 @@ Before claiming work complete or ready for review, run verification and only the
 
 - When making behavioural or structural changes (refactors, deduplication, new features), **add or update tests** to guard against regressions.
 - **Dangerous edits — test first:** Before doing edits that can change behaviour (control flow, error handling, types, or semantics), **write tests that capture the current intended behaviour**. Run them to establish a baseline, then apply the edit and re-run to confirm behaviour is unchanged. Only then proceed. Examples: replacing `match` with `let`-else, changing `Option`/`Result` handling, refactoring conditionals or casts.
-- **A test must be able to fail:** break the guarded line once and watch it fail; never take the expected value from the code under test.
+- **A test must be able to fail:** break the guarded line once and watch the assertion fail (a compile error does not count), then restore it; never take the expected value from the code under test.
 - **Use a separate subagent** dedicated to writing/adding tests rather than having the implementation agent add tests in the same pass. This keeps scope clear and improves test quality.
 - Prompt the test subagent in three steps: (1) **Explain** what is under test and why (e.g. “regression after consolidating util”), (2) **Plan** concrete cases (happy path, boundaries, errors) in a table or list, (3) **Execute** — where to put tests, Arrange–Act–Assert, the command to run, and report pass/fail.
 - **Scope one area per agent**: one subagent per test surface (e.g. util, error serialisation, download, frontend raw_model).
