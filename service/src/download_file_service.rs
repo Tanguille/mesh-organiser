@@ -192,8 +192,9 @@ pub async fn download_file(
             source_uri = Some(String::from("https://nexprint.com/"));
             // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
             // quoted-only on purpose — see quoted_filename.
-            let decoded_url = percent_decode(url).unwrap();
-            quoted_filename(&decoded_url)
+            percent_decode(url)
+                .ok()
+                .and_then(|decoded_url| quoted_filename(&decoded_url))
                 .filter(|name| !name.is_empty())
                 .unwrap_or(current_filename)
         } else {
