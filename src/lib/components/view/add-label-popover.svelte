@@ -7,7 +7,12 @@
   import type { ClassValue } from "svelte/elements";
 
   function generateRandomColor() {
-    return "#" + Math.floor(Math.random() * 0xffffff).toString(16);
+    return (
+      "#" +
+      Math.floor(Math.random() * 0x1000000)
+        .toString(16)
+        .padStart(6, "0")
+    );
   }
 
   let newLabelName = $state("New label");
