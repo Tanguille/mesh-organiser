@@ -117,5 +117,7 @@
       class={clazz}
       bind:checked={() => isSelected, (val) => selection.toggle(model, val)}
     />
+  {:else}
+    <div></div>
   {/if}
 {/snippet}
