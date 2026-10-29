@@ -69,8 +69,7 @@ fn render(
 /// Used by `process` to gate which file types get a thumbnail.
 fn thumbnail_extension_for_path(path: &Path) -> Result<FileType, ServiceError> {
     let file_type = FileType::from_pathbuf(path);
-    // Step is rejected too: thumbnail rendering does not support it.
-    if file_type.is_unsupported() || file_type.is_step() {
+    if file_type.is_unsupported() {
         return Err(ServiceError::InternalError(format!(
             "Unsupported file extension for thumbnail generation: {}",
             path.display()
@@ -160,6 +159,8 @@ pub async fn generate_thumbnails(
     let prefer_3mf_thumbnail = config.prefer_3mf_thumbnail;
     let prefer_gcode_thumbnail = config.prefer_gcode_thumbnail;
     let max_concurrent = config.core_parallelism;
+    // OCCT tessellation time grows with the file, so large STEP files get no thumbnail.
+    let max_step_size = i64::from(config.max_size_model_step_preview) * 1024 * 1024;
     let rotation_setting = config.thumbnail_rotation;
     let rotation = Vec3::new(
         f32::from(rotation_setting[0]),
@@ -179,6 +180,7 @@ pub async fn generate_thumbnails(
 
     let paths: Vec<(PathBuf, PathBuf)> = models
         .iter()
+        .filter(|blob| !blob.to_file_type().is_step() || blob.size <= max_step_size)
         .map(|blob| {
             let model_path = get_model_path_for_blob(blob, app_state);
             let image_path = get_image_path_for_blob(blob, app_state);

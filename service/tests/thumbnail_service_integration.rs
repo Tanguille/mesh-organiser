@@ -78,6 +78,63 @@ async fn generate_all_thumbnails_survives_blobs_without_model_files() {
     assert!(!app_state.get_image_dir().join("missing.png").exists());
 }
 
+/// Imports the cube STEP fixture (stored zipped, as import stores it), generates
+/// thumbnails with the given STEP preview cap in MB, and reports whether one was written.
+#[cfg(feature = "step")]
+async fn step_fixture_gets_thumbnail(max_size_model_step_preview: u32) -> bool {
+    let (_dir, app_state) = common::test_app_state().await;
+    app_state
+        .configuration
+        .lock()
+        .unwrap()
+        .max_size_model_step_preview = max_size_model_step_preview;
+    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../libmeshthumbnail/tests/fixtures/cube.step");
+    let imported = service::import_service::import_path(
+        fixture.to_str().unwrap(),
+        &app_state,
+        ImportState::new(None, false, false, false, User::default()),
+    )
+    .await
+    .unwrap();
+
+    let mut import_state = ImportState::new(None, false, false, false, User::default());
+    let models = service::thumbnail_service::generate_thumbnails_for_model_ids(
+        &app_state,
+        &User::default(),
+        imported.imported_models[0].model_ids.clone(),
+        &mut import_state,
+    )
+    .await
+    .expect("thumbnail generation should succeed");
+    assert_eq!(models[0].blob.filetype, "step.zip");
+    // The stored blob parses, so a missing thumbnail is the gate or the cap, not the fixture.
+    let model_path = service::export_service::get_model_path_for_blob(&models[0].blob, &app_state);
+    assert!(
+        libmeshthumbnail::parse_model::handle_parse(&model_path)
+            .unwrap()
+            .is_some()
+    );
+
+    app_state
+        .get_image_dir()
+        .join(format!("{}.png", models[0].blob.sha256))
+        .exists()
+}
+
+#[cfg(feature = "step")]
+#[tokio::test]
+async fn step_model_under_size_cap_gets_thumbnail() {
+    assert!(step_fixture_gets_thumbnail(10).await);
+}
+
+#[cfg(feature = "step")]
+#[tokio::test]
+async fn step_model_over_size_cap_gets_no_thumbnail() {
+    // A 0 MB cap puts every non-empty STEP blob over it.
+    assert!(!step_fixture_gets_thumbnail(0).await);
+}
+
 /// Both thumbnail paths, the rendered mesh and the resized embedded 3MF image,
 /// produce images of the service's fixed 400x400 thumbnail size.
 #[tokio::test]
