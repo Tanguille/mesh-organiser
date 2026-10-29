@@ -2,6 +2,8 @@
 
 The `web` binary serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`. It lets an LLM agent such as Claude Code label, rename, group, trash and restore the library of one user.
 
+The endpoint is off by default. Set `ENABLE_MCP=true` on the `web` server to mount it; without it, `/mcp` is not routed.
+
 - Transport: streamable HTTP. It is stateless (no `Mcp-Session-Id`) and answers with JSON, so it works behind a proxy.
 - Auth: `Authorization: Bearer <sync token>`. Every tool acts as the user who owns the token. A missing or unknown token gets `401` with `WWW-Authenticate: Bearer`. There is no OAuth: `/.well-known/*` answers `404`.
 - Vocabulary: a **mesh** is what the code calls a model, which keeps it apart from LLM models. Mesh ids are the db model ids.
