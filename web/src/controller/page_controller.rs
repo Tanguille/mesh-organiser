@@ -40,7 +40,7 @@ async fn serve_share_page(
                 "content=\"Shared by user {}. Contains {} model{}.\"",
                 escape_html_attribute(&owner.username),
                 share.model_ids.len(),
-                if share.model_ids.len() >= 2 { "s" } else { "" }
+                if share.model_ids.len() == 1 { "" } else { "s" }
             ),
         );
 
