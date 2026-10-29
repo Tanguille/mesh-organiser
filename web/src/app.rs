@@ -19,7 +19,7 @@ use axum::{
 };
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
-use tokio::{fs, signal, task::AbortHandle};
+use tokio::{fs, signal};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
@@ -28,11 +28,7 @@ use tower_http::{
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
 
-use db::{
-    db_context::{self, DbContext},
-    model::user::User,
-    user_db,
-};
+use db::{db_context, model::user::User, user_db};
 use service::{
     AppState, Configuration, export_service, import_state::ImportState, thumbnail_service,
 };
@@ -267,7 +263,8 @@ impl App {
     pub async fn serve(self, port: u16) -> Result<(), Box<dyn Error>> {
         let session_store = self.session_store;
 
-        let deletion_task = tokio::task::spawn(
+        // Runs until the runtime shuts down; nothing needs to join it.
+        tokio::task::spawn(
             session_store
                 .clone()
                 .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
@@ -373,17 +370,17 @@ impl App {
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
-        // The shutdown signal also aborts the session deletion task.
-        .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
+        .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-        deletion_task.await??;
+        // Only after in-flight requests have drained, which may still need the pool.
+        db.close().await;
 
         Ok(())
     }
 }
 
-async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbContext>) {
+async fn shutdown_signal() {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -402,11 +399,9 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        () = ctrl_c => { deletion_task_abort_handle.abort() },
-        () = terminate => { deletion_task_abort_handle.abort() },
+        () = ctrl_c => {},
+        () = terminate => {},
     }
-
-    db.close().await;
 }
 
 #[cfg(test)]
