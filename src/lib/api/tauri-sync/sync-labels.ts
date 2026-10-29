@@ -47,7 +47,7 @@ async function stepUploadToRemote(
     );
 
     const keywords = await localApi.getKeywordsForLabel(label.meta);
-    remoteApi.setKeywordsOnLabel(newLabel, keywords);
+    await remoteApi.setKeywordsOnLabel(newLabel, keywords);
 
     const localModelsForLabel = await getAllModels(localModelApi, [
       label.meta.id,
