@@ -117,6 +117,7 @@ async fn get_models_inner(
             trashed: false,
             page: params.page,
             page_size: params.page_size,
+            ..Default::default()
         },
     )
     .await?;

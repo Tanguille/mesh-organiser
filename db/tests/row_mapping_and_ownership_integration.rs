@@ -1123,10 +1123,7 @@ async fn edit_group_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
     )
     .await;
 
-    assert!(matches!(
-        foreign_result,
-        Ok(()) | Err(sqlx::Error::RowNotFound)
-    ));
+    assert_row_not_found(&foreign_result, "foreign group id");
     assert_eq!(
         group_name_and_global_id(group_id).await,
         ("own".to_string(), NEW_GLOBAL_ID.to_string())
@@ -1135,6 +1132,300 @@ async fn edit_group_global_id_persists_valid_rejects_invalid_and_skips_foreign_r
         group_name_and_global_id(foreign.id).await,
         ("foreign".to_string(), foreign.unique_global_id.clone())
     );
+}
+
+#[tokio::test]
+async fn edit_group_fails_on_an_unknown_id_and_succeeds_with_unchanged_values() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let group_id = group_db::add_empty_group(&db, &user, "same", Some(&timestamp(2000)))
+        .await
+        .unwrap()
+        .id;
+
+    let unknown_result = group_db::edit_group(&db, &user, MISSING_ID, "renamed", None, None).await;
+    // SQLite counts a matched row as changed even when every value stays the same.
+    let unchanged_result =
+        group_db::edit_group(&db, &user, group_id, "same", Some(&timestamp(2000)), None).await;
+
+    assert_row_not_found(&unknown_result, "unknown group id");
+    assert!(unchanged_result.is_ok(), "{unchanged_result:?}");
+    assert_eq!(group_last_modified(&db, group_id).await, timestamp(2000));
+}
+
+/// Reads `labels_labels` directly, so assertions don't depend on `label_db::get_labels`.
+async fn parent_ids_of(db: &DbContext, label_id: i64) -> Vec<i64> {
+    sqlx::query_scalar(
+        "SELECT parent_label_id FROM labels_labels WHERE child_label_id = ? ORDER BY parent_label_id",
+    )
+    .bind(label_id)
+    .fetch_all(db)
+    .await
+    .unwrap()
+}
+
+/// Inserts the edge raw, so the parent keeps its `last_modified`.
+async fn link_labels(db: &DbContext, parent_label_id: i64, child_label_id: i64) {
+    sqlx::query("INSERT INTO labels_labels (parent_label_id, child_label_id) VALUES (?, ?)")
+        .bind(parent_label_id)
+        .bind(child_label_id)
+        .execute(db)
+        .await
+        .unwrap();
+}
+
+async fn add_label_from_2000(db: &DbContext, user: &User, name: &str) -> i64 {
+    label_db::add_label(db, user, name, 0, Some(&timestamp(2000)))
+        .await
+        .unwrap()
+        .id
+}
+
+#[tokio::test]
+async fn set_label_parent_moves_the_label_and_stamps_it_and_both_parents() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let old_parent_id = add_label_from_2000(&db, &user, "old-parent").await;
+    let new_parent_id = add_label_from_2000(&db, &user, "new-parent").await;
+    let label_id = add_label_from_2000(&db, &user, "label").await;
+    let sibling_id = add_label_from_2000(&db, &user, "sibling").await;
+    let bystander_id = add_label_from_2000(&db, &user, "bystander").await;
+    link_labels(&db, old_parent_id, label_id).await;
+    link_labels(&db, old_parent_id, sibling_id).await;
+
+    label_db::set_label_parent(
+        &db,
+        &user,
+        label_id,
+        Some(new_parent_id),
+        Some(&timestamp(2001)),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(parent_ids_of(&db, label_id).await, vec![new_parent_id]);
+    assert_eq!(parent_ids_of(&db, sibling_id).await, vec![old_parent_id]);
+    for stamped_id in [label_id, old_parent_id, new_parent_id] {
+        assert_eq!(
+            label_last_modified(&db, stamped_id).await,
+            timestamp(2001),
+            "label {stamped_id}"
+        );
+    }
+    for untouched_id in [sibling_id, bystander_id] {
+        assert_eq!(
+            label_last_modified(&db, untouched_id).await,
+            timestamp(2000),
+            "label {untouched_id}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn set_label_parent_with_none_makes_the_label_top_level_and_stamps_the_current_time() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let parent_id = add_label_from_2000(&db, &user, "parent").await;
+    let label_id = add_label_from_2000(&db, &user, "label").await;
+    link_labels(&db, parent_id, label_id).await;
+
+    let before = time_now();
+    label_db::set_label_parent(&db, &user, label_id, None, None)
+        .await
+        .unwrap();
+    let after = time_now();
+
+    assert_eq!(parent_ids_of(&db, label_id).await, Vec::<i64>::new());
+    assert_fresh_timestamp(&label_last_modified(&db, label_id).await, &before, &after);
+    assert_fresh_timestamp(&label_last_modified(&db, parent_id).await, &before, &after);
+}
+
+#[tokio::test]
+async fn set_label_parent_refuses_a_foreign_or_unknown_label_or_parent_and_changes_nothing() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let parent_id = add_label_from_2000(&db, &user, "parent").await;
+    let label_id = add_label_from_2000(&db, &user, "label").await;
+    let foreign_id = add_label_from_2000(&db, &other_user, "foreign").await;
+    link_labels(&db, parent_id, label_id).await;
+
+    for (child_id, new_parent_id) in [
+        (foreign_id, Some(parent_id)),
+        (label_id, Some(foreign_id)),
+        (label_id, Some(MISSING_ID)),
+        (MISSING_ID, None),
+    ] {
+        let result =
+            label_db::set_label_parent(&db, &user, child_id, new_parent_id, Some(&timestamp(2001)))
+                .await;
+        assert_row_not_found(
+            &result,
+            &format!("label {child_id} under {new_parent_id:?}"),
+        );
+    }
+
+    assert_eq!(parent_ids_of(&db, label_id).await, vec![parent_id]);
+    assert_eq!(parent_ids_of(&db, foreign_id).await, Vec::<i64>::new());
+    for checked_id in [parent_id, label_id, foreign_id] {
+        assert_eq!(
+            label_last_modified(&db, checked_id).await,
+            timestamp(2000),
+            "label {checked_id}"
+        );
+    }
+}
+
+async fn keyword_names(db: &DbContext, user: &User, label_id: i64) -> Vec<String> {
+    let mut names: Vec<String> = label_keyword_db::get_keywords_for_label(db, user, label_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|keyword| keyword.name)
+        .collect();
+    names.sort_unstable();
+
+    names
+}
+
+fn keywords(names: &[&str]) -> Vec<String> {
+    names.iter().map(|name| (*name).to_string()).collect()
+}
+
+#[tokio::test]
+async fn get_keywords_held_elsewhere_returns_only_other_labels_names_in_sorted_order() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let label_id = add_label_from_2000(&db, &user, "boats").await;
+    let foreign_label_id = add_label_from_2000(&db, &other_user, "rafts").await;
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &user,
+        label_id,
+        keywords(&["hull", "keel"]),
+        None,
+    )
+    .await
+    .unwrap();
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &other_user,
+        foreign_label_id,
+        keywords(&["raft"]),
+        None,
+    )
+    .await
+    .unwrap();
+
+    for (excluded_label_id, query, expected) in [
+        (
+            label_id,
+            keywords(&["hull", "raft", "missing"]),
+            keywords(&["raft"]),
+        ),
+        (
+            foreign_label_id,
+            keywords(&["hull", "raft", "missing"]),
+            keywords(&["hull"]),
+        ),
+        (
+            foreign_label_id,
+            keywords(&["keel", "hull", "missing", "hull", "keel"]),
+            keywords(&["hull", "keel"]),
+        ),
+        (
+            MISSING_ID,
+            keywords(&["raft", "keel", "hull", "raft"]),
+            keywords(&["hull", "keel", "raft"]),
+        ),
+        (label_id, keywords(&["missing"]), vec![]),
+    ] {
+        let held = label_keyword_db::get_keywords_held_elsewhere(&db, &query, excluded_label_id)
+            .await
+            .unwrap();
+
+        assert_eq!(held, expected);
+    }
+}
+
+#[tokio::test]
+async fn get_keywords_held_elsewhere_with_empty_input_does_not_query_the_database() {
+    let (_dir, db) = test_db().await;
+    db.close().await;
+
+    let held = label_keyword_db::get_keywords_held_elsewhere(&db, &[], MISSING_ID)
+        .await
+        .unwrap();
+
+    assert_eq!(held, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn set_keywords_for_label_keeps_the_old_keywords_when_another_label_holds_one() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let other_user = add_other_user(&db).await;
+    let label_id = add_label_from_2000(&db, &user, "boats").await;
+    let foreign_label_id = add_label_from_2000(&db, &other_user, "rafts").await;
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &user,
+        label_id,
+        keywords(&["boat", "ship"]),
+        Some(&timestamp(2001)),
+    )
+    .await
+    .unwrap();
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &other_user,
+        foreign_label_id,
+        keywords(&["raft"]),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // Keyword names are unique across every user's labels.
+    let result = label_keyword_db::set_keywords_for_label(
+        &db,
+        &user,
+        label_id,
+        keywords(&["hull", "raft"]),
+        Some(&timestamp(2002)),
+    )
+    .await;
+
+    assert!(
+        matches!(&result, Err(sqlx::Error::Database(error)) if error.is_unique_violation()),
+        "{result:?}"
+    );
+    assert_eq!(keyword_names(&db, &user, label_id).await, ["boat", "ship"]);
+    assert_eq!(label_last_modified(&db, label_id).await, timestamp(2001));
+    assert_eq!(
+        keyword_names(&db, &other_user, foreign_label_id).await,
+        ["raft"]
+    );
+}
+
+#[tokio::test]
+async fn set_keywords_for_label_drops_duplicate_keywords() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let label_id = add_label_from_2000(&db, &user, "boats").await;
+
+    label_keyword_db::set_keywords_for_label(
+        &db,
+        &user,
+        label_id,
+        keywords(&["hull", "keel", "hull"]),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(keyword_names(&db, &user, label_id).await, ["hull", "keel"]);
 }
 
 #[tokio::test]

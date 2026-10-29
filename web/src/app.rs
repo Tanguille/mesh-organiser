@@ -43,6 +43,7 @@ use crate::{
         page_controller, resource_controller, share_controller, threemf_controller,
         user_controller,
     },
+    mcp,
     session_store::SqliteStore,
     user::{AuthSession, Backend},
     web_import_state::WebImportStateEmitter,
@@ -54,6 +55,7 @@ const ENV_SERVER_PORT: &str = "SERVER_PORT";
 const ENV_LOCAL_ACCOUNT_PASSWORD: &str = "LOCAL_ACCOUNT_PASSWORD";
 const ENV_REGENERATE_THUMBNAILS: &str = "REGENERATE_THUMBNAILS";
 const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
+const ENV_ENABLE_MCP: &str = "ENABLE_MCP";
 
 pub struct App {
     state: AppState,
@@ -319,6 +321,14 @@ impl App {
 
         let login_router =
             auth_controller::login_router().layer(GovernorLayer::new(governor_config));
+        // Opt-in: the endpoint lets an agent edit the library, so it is mounted only when
+        // `ENABLE_MCP=true`. Merging an empty router leaves `/mcp` unrouted.
+        let mcp_router =
+            if env::var(ENV_ENABLE_MCP).is_ok_and(|value| value.eq_ignore_ascii_case("true")) {
+                mcp::router(self.state.clone())
+            } else {
+                Router::new()
+            };
 
         // In each controller's router, `login_required!` is a route layer, so it guards only
         // the routes registered before it; public routes are registered after it.
@@ -344,6 +354,8 @@ impl App {
             )
             .nest_service("/_app", ServeDir::new("www/_app"))
             .with_state(self.state)
+            // Authenticated by its own bearer-token layer, not the session login.
+            .merge(mcp_router)
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(auth_layer)

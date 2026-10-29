@@ -18,10 +18,20 @@ import { toast } from "svelte-sonner";
 import { invoke } from "@tauri-apps/api/core";
 import { updateSidebarState } from "#lib/sidebar_data.svelte";
 import { configuration } from "#lib/configuration.svelte";
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { accountLinkData } from "#lib/account_link_data.svelte";
 import { BaseDirectory, watch, type WatchEvent } from "@tauri-apps/plugin-fs";
 import { IMPORT_EXTENSIONS, MODEL_EXTENSIONS } from "../shared/blob_api";
+import { getContainer } from "../dependency_injection";
+import {
+  defaultModelFilter,
+  IModelApi,
+  MAX_PAGE_SIZE,
+  modelStream,
+  type Model,
+} from "../shared/model_api";
+import { isCommandError } from "#lib/utils";
+import { ISlicerApi } from "../shared/slicer_api";
 
 interface DeepLinkEmit {
   download_url: string;
@@ -135,12 +145,10 @@ export class TauriImportApi implements ITauriImportApi {
         }
       } catch (reason: unknown) {
         importState.status = localImportState.status = ImportStatus.Failure;
-        const r = reason as {
-          error_message?: string;
-          error_inner_message?: string;
-        };
-        importState.failure_reason =
-          localImportState.failure_reason = `${r.error_message ?? "unknown"} - ${r.error_inner_message ?? "unknown"}`;
+        importState.failure_reason = localImportState.failure_reason =
+          isCommandError(reason)
+            ? `${reason.error_message} - ${reason.error_inner_message}`
+            : "unknown - unknown";
         console.error("Failed to import model:", reason);
         return localImportState;
       }
@@ -227,6 +235,10 @@ export class TauriImportApi implements ITauriImportApi {
       [
         "account-link",
         (accountLink: AccountLinkEmit) => this.setAccountLink(accountLink),
+      ],
+      [
+        "open-in-slicer",
+        (sha256s: string[]) => this.handleOpenInSlicerLink(sha256s),
       ],
     ];
 
@@ -334,6 +346,69 @@ export class TauriImportApi implements ITauriImportApi {
       loading: `Downloading model ${getFileFromUrl(display_url)}`,
       success: `Downloaded model ${getFileFromUrl(display_url)}`,
       error: `Failed to download model ${getFileFromUrl(display_url)}`,
+    });
+  }
+
+  // Resolves through the account's registered model and slicer apis, so local
+  // and online-only accounts each open the models their own way.
+  async openLinkedModelsInSlicer(sha256s: string[]): Promise<number> {
+    if (!configuration.slicer) {
+      throw new Error("No slicer selected in settings");
+    }
+
+    const container = getContainer();
+    const wanted = new Set(sha256s);
+    const models: Model[] = [];
+    // ponytail: pages through the library until every linked sha256 is found,
+    // so an unknown one scans it all; add a sha256 filter to ModelFilter if
+    // large libraries make this slow.
+    for await (const page of modelStream(
+      container.require<IModelApi>(IModelApi),
+      defaultModelFilter(),
+      MAX_PAGE_SIZE,
+    )) {
+      models.push(...page.filter((model) => wanted.delete(model.blob.sha256)));
+      if (wanted.size === 0) {
+        break;
+      }
+    }
+
+    if (models.length === 0) {
+      throw new Error("None of the linked models are in your library");
+    }
+
+    // Any web page can fire this link, and the remote-import link can plant a
+    // file first, so the user confirms what reaches the slicer.
+    const names = models.map((model) => model.name);
+    const listed =
+      names.length > 5
+        ? `${names.slice(0, 5).join(", ")} and ${names.length - 5} more`
+        : names.join(", ");
+    if (
+      !(await confirm(`Open ${listed} in the slicer?`, {
+        title: "Open in slicer",
+      }))
+    ) {
+      return 0;
+    }
+
+    await container.require<ISlicerApi>(ISlicerApi).openInSlicer(models);
+
+    return models.length;
+  }
+
+  async handleOpenInSlicerLink(sha256s: string[]): Promise<void> {
+    await toast.promise(this.openLinkedModelsInSlicer(sha256s), {
+      loading: "Opening models in slicer",
+      // 0 means the user declined the confirmation.
+      success: (count) =>
+        count === 0 ? "Cancelled" : `Opened ${count} model(s) in slicer`,
+      error: (e) =>
+        e instanceof Error
+          ? e.message
+          : isCommandError(e)
+            ? e.error_inner_message
+            : "Failed to open models in slicer",
     });
   }
 

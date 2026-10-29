@@ -1,6 +1,6 @@
 use itertools::Itertools;
-use sqlx::{QueryBuilder, Row};
-use strum::EnumString;
+use sqlx::{QueryBuilder, Row, Sqlite};
+use strum::{EnumString, VariantNames};
 
 use crate::{
     DbError, GROUPS, LABELS, MAX_PAGE_SIZE, MODELS, PaginatedResponse,
@@ -11,7 +11,7 @@ use crate::{
     util::{parse_concat_ids, random_hex_32, time_now, timestamp_or_now, validate_global_id},
 };
 
-#[derive(Debug, PartialEq, Eq, EnumString)]
+#[derive(Debug, PartialEq, Eq, EnumString, VariantNames)]
 pub enum ModelOrderBy {
     AddedAsc,
     AddedDesc,
@@ -46,6 +46,10 @@ pub struct ModelFilterOptions {
     pub order_by: Option<ModelOrderBy>,
     pub text_search: Option<String>,
     pub model_flags: Option<ModelFlags>,
+    /// Exclude models carrying any of these flags.
+    pub excluded_model_flags: Option<ModelFlags>,
+    pub unlabeled_only: bool,
+    pub ungrouped_only: bool,
     /// Restrict to blobs of these types (zipped or not). `None` = any; `Some(&[])` = nothing.
     pub file_types: Option<Vec<FileType>>,
     /// `false` lists only live models, `true` only the ones in the trash.
@@ -66,6 +70,9 @@ impl Default for ModelFilterOptions {
             order_by: None,
             text_search: None,
             model_flags: None,
+            excluded_model_flags: None,
+            unlabeled_only: false,
+            ungrouped_only: false,
             file_types: None,
             trashed: false,
             page: 1,
@@ -108,6 +115,107 @@ pub async fn get_all_models(
     query_models(db, user, options, None).await
 }
 
+/// Counts every matching model using the page query's filters, ignoring pagination and order.
+pub async fn get_filtered_model_count(
+    db: &DbContext,
+    user: &User,
+    options: &ModelFilterOptions,
+) -> Result<i64, DbError> {
+    if has_empty_model_filter(options) {
+        return Ok(0);
+    }
+
+    let mut query_builder = QueryBuilder::new(
+        "SELECT COUNT(*) FROM models
+         LEFT JOIN models_group ON models.model_group_id = models_group.group_id
+         INNER JOIN blobs ON models.model_blob_id = blobs.blob_id
+         WHERE models.model_user_id = ",
+    );
+    push_model_filters(&mut query_builder, user, options);
+
+    query_builder.build_query_scalar().fetch_one(db).await
+}
+
+fn has_empty_model_filter(options: &ModelFilterOptions) -> bool {
+    options.model_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.group_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.label_ids.as_ref().is_some_and(Vec::is_empty)
+        || options.file_types.as_ref().is_some_and(Vec::is_empty)
+}
+
+fn push_model_filters(
+    query_builder: &mut QueryBuilder<Sqlite>,
+    user: &User,
+    options: &ModelFilterOptions,
+) {
+    query_builder.push_bind(user.id);
+    query_builder.push(if options.trashed {
+        " AND models.model_deleted IS NOT NULL"
+    } else {
+        " AND models.model_deleted IS NULL"
+    });
+
+    if let Some(model_ids) = &options.model_ids {
+        query_builder.push(" AND models.model_id IN ");
+        push_in(query_builder, model_ids);
+    }
+
+    if let Some(group_ids) = &options.group_ids {
+        query_builder.push(" AND group_id IN ");
+        push_in(query_builder, group_ids);
+    }
+
+    // A subquery rather than a filter on the joined labels, so each match keeps its full
+    // label list.
+    if let Some(label_ids) = &options.label_ids {
+        query_builder
+            .push(" AND models.model_id IN (SELECT model_id FROM models_labels WHERE label_id IN ");
+        push_in(query_builder, label_ids);
+        query_builder.push(")");
+    }
+
+    if let Some(model_flags) = &options.model_flags {
+        query_builder.push(" AND (models.model_flags & ");
+        query_builder.push_bind(i64::from(model_flags.bits()));
+        query_builder.push(") = ");
+        query_builder.push_bind(i64::from(model_flags.bits()));
+    }
+
+    if let Some(model_flags) = &options.excluded_model_flags {
+        query_builder.push(" AND (models.model_flags & ");
+        query_builder.push_bind(i64::from(model_flags.bits()));
+        query_builder.push(") = 0");
+    }
+
+    if options.unlabeled_only {
+        query_builder.push(
+            " AND NOT EXISTS (SELECT 1 FROM models_labels WHERE models_labels.model_id = models.model_id)",
+        );
+    }
+    if options.ungrouped_only {
+        query_builder.push(" AND models.model_group_id IS NULL");
+    }
+
+    if let Some(file_types) = &options.file_types {
+        query_builder.push(" AND LOWER(blob_filetype) IN ");
+        push_in(
+            query_builder,
+            file_types.iter().flat_map(FileType::storage_extensions),
+        );
+    }
+
+    if let Some(text_search) = &options.text_search {
+        let pattern = format!("%{text_search}%");
+        query_builder.push(" AND (model_name LIKE ");
+        query_builder.push_bind(pattern.clone());
+        query_builder.push(" OR model_desc LIKE ");
+        query_builder.push_bind(pattern.clone());
+        query_builder.push(" OR group_name LIKE ");
+        query_builder.push_bind(pattern);
+        query_builder.push(")");
+    }
+}
+
 /// The query behind [`get_models`] and [`get_all_models`]: one page of `page_size` rows at
 /// `options.page`, or every match when `page_size` is `None`.
 #[allow(clippy::too_many_lines)]
@@ -117,11 +225,7 @@ async fn query_models(
     options: ModelFilterOptions,
     page_size: Option<u32>,
 ) -> Result<Vec<Model>, DbError> {
-    if options.model_ids.as_ref().is_some_and(Vec::is_empty)
-        || options.group_ids.as_ref().is_some_and(Vec::is_empty)
-        || options.label_ids.as_ref().is_some_and(Vec::is_empty)
-        || options.file_types.as_ref().is_some_and(Vec::is_empty)
-    {
+    if has_empty_model_filter(&options) {
         return Ok(Vec::new());
     }
 
@@ -137,53 +241,7 @@ async fn query_models(
 		 INNER JOIN blobs ON models.model_blob_id = blobs.blob_id
          WHERE models.model_user_id = ",
     );
-    query_builder.push_bind(user.id);
-    query_builder.push(if options.trashed {
-        " AND models.model_deleted IS NOT NULL"
-    } else {
-        " AND models.model_deleted IS NULL"
-    });
-
-    if let Some(model_ids) = &options.model_ids {
-        query_builder.push(" AND models.model_id IN ");
-        push_in(&mut query_builder, model_ids);
-    }
-
-    if let Some(group_ids) = &options.group_ids {
-        query_builder.push(" AND group_id IN ");
-        push_in(&mut query_builder, group_ids);
-    }
-
-    if let Some(label_ids) = &options.label_ids {
-        query_builder.push(" AND labels.label_id IN ");
-        push_in(&mut query_builder, label_ids);
-    }
-
-    if let Some(model_flags) = options.model_flags {
-        query_builder.push(" AND (models.model_flags & ");
-        query_builder.push_bind(i64::from(model_flags.bits()));
-        query_builder.push(") = ");
-        query_builder.push_bind(i64::from(model_flags.bits()));
-    }
-
-    if let Some(file_types) = &options.file_types {
-        query_builder.push(" AND LOWER(blob_filetype) IN ");
-        push_in(
-            &mut query_builder,
-            file_types.iter().flat_map(FileType::storage_extensions),
-        );
-    }
-
-    if let Some(text_search) = options.text_search {
-        let pattern = format!("%{text_search}%");
-        query_builder.push(" AND (model_name LIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR model_desc LIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR group_name LIKE ");
-        query_builder.push_bind(pattern);
-        query_builder.push(")");
-    }
+    push_model_filters(&mut query_builder, user, &options);
 
     // The trailing `model_id` makes the order total, so consecutive pages neither skip nor
     // repeat models that tie.
