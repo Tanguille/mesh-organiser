@@ -178,7 +178,7 @@
 
         <Input id="password" type="password" bind:value={password} />
 
-        <Label for="password">Verify new password</Label>
+        <Label for="password2">Verify new password</Label>
 
         <Input id="password2" type="password" bind:value={password2} />
 
