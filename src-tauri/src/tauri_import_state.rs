@@ -9,7 +9,7 @@ const IMPORT_MODEL_GROUP_EVENT: &str = "import-model-group";
 const IMPORT_MODEL_TOTAL_EVENT: &str = "import-model-total";
 const IMPORT_MODEL_COUNT_EVENT: &str = "import-model-count";
 const IMPORT_THUMBNAIL_COUNT_EVENT: &str = "import-thumbnail-count";
-const IMPORT_FAILURE_REASON_EVENT: &str = "import-failure-reason";
+const IMPORT_FAILURE_REASON_EVENT: &str = "import-failure";
 
 pub struct TauriImportStateEmitter {
     handle: AppHandle,
@@ -72,4 +72,13 @@ pub fn import_state_new_tauri(
             handle: app_handle.clone(),
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn failure_reason_event_name_matches_the_frontend_listener() {
+        // Must match the `listen` call in `src/lib/api/tauri/tauri_import.ts`.
+        assert_eq!(super::IMPORT_FAILURE_REASON_EVENT, "import-failure");
+    }
 }
