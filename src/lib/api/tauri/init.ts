@@ -112,7 +112,6 @@ export async function initTauriLocalApis(): Promise<void> {
 
   Object.assign(configuration, config);
 
-  console.log("initial state:", state);
   if (state.deep_link_url) {
     await tauriImport.handleDeepLink({
       download_url: state.deep_link_url,

@@ -26,7 +26,6 @@ export class UserApi
 
   async getAvailableUsers(): Promise<User[]> {
     const users = await invoke<RawUser[]>("get_users", {});
-    console.log("get users", users);
 
     return users.map((user) => parseRawUser(user));
   }
