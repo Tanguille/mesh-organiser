@@ -371,7 +371,7 @@
           {...props}
         >
           {#if chevron && (sidebar.open || sidebar.isMobile)}
-            <ChevronRight class="chevron" className="transition-transform" />
+            <ChevronRight class="chevron transition-transform" />
           {/if}
           <Icon class={iconClass} style={`color: ${meta.color};`} />
           <span class="mr-3">{meta.name}</span>
