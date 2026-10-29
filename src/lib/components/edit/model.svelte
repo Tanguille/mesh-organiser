@@ -66,9 +66,7 @@
   let deleted = $state(false);
 
   let model: Model = $derived(props.model);
-  let load3dPreview = $derived(
-    loadModelAutomatically($state.snapshot(configuration), model),
-  );
+  let load3dPreview = $derived(loadModelAutomatically(configuration, model));
   const initialEditMode = $derived(props.initialEditMode ?? false);
   let editMode = $derived(initialEditMode);
   let group = $derived(model.group);
