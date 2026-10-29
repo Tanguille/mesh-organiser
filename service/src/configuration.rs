@@ -5,20 +5,14 @@ use strum::IntoEnumIterator;
 
 use crate::slicer_service::Slicer;
 
-/// Returns `None` for the `slicer` field when it is absent from a settings file.
-///
-/// The container-level `#[serde(default)]` would otherwise fall back to
-/// `Configuration::default().slicer`, which runs the side-effecting
-/// `is_installed()` / flatpak auto-detect. A settings file missing the slicer
-/// key must stay `None` (the historical behaviour), so we override the default.
-const fn default_slicer() -> Option<Slicer> {
-    Option::<Slicer>::None
-}
-
 /// Application configuration. Many boolean flags for UI/slicer behaviour.
+///
+/// Missing fields come from `without_slicer_detection`, not `Default`: serde builds the
+/// container default on every deserialize, and `Default` probes for installed slicers (a
+/// `flatpak info` per slicer on Linux). A settings file without a slicer key stays `None`.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default = "Configuration::without_slicer_detection")]
 pub struct Configuration {
     pub data_path: String,
     pub prusa_deep_link: bool,
@@ -27,7 +21,6 @@ pub struct Configuration {
     pub orca_deep_link: bool,
     pub open_slicer_on_remote_model_import: bool,
     pub show_ungrouped_models_in_groups: bool,
-    #[serde(default = "default_slicer")]
     pub slicer: Option<Slicer>,
     pub focus_after_link_import: bool,
     pub thumbnail_color: String,
