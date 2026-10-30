@@ -310,18 +310,29 @@ async fn query_models(
     Ok(models)
 }
 
+/// Every live model of `user` among `ids`, each once and in `model_id` order.
+///
+/// Queries at most `MAX_PAGE_SIZE` ids at a time, so each query stays bounded without dropping
+/// the ids past the first page.
 pub async fn get_models_via_ids(
     db: &DbContext,
     user: &User,
-    ids: Vec<i64>,
+    mut ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
-    let options = ModelFilterOptions {
-        model_ids: Some(ids),
-        ..Default::default()
-    };
+    // Sorted and deduplicated, so the chunks concatenate into the order one query would return.
+    ids.sort_unstable();
+    ids.dedup();
+    let mut models = Vec::with_capacity(ids.len());
 
-    let paginated_response = get_models(db, user, options).await?;
-    Ok(paginated_response.items)
+    for chunk in ids.chunks(MAX_PAGE_SIZE as usize) {
+        let options = ModelFilterOptions {
+            model_ids: Some(chunk.to_vec()),
+            ..Default::default()
+        };
+        models.extend(get_all_models(db, user, options).await?);
+    }
+
+    Ok(models)
 }
 
 /// Fetches a single model by id, returning `None` when it does not exist for the user.

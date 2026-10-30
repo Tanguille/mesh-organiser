@@ -79,6 +79,23 @@ async fn get_models_via_ids_returns_only_requested_rows_and_valid_sql() {
 }
 
 #[tokio::test]
+async fn get_models_via_ids_returns_every_requested_model_past_one_page_in_model_id_order() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let model_ids = add_tied_models(&db, &user, db::MAX_PAGE_SIZE + 1).await;
+    // Reversed and repeated, yet each model comes back once in model_id order, as one query
+    // over every id would return it.
+    let requested: Vec<i64> = model_ids.iter().rev().chain(&model_ids).copied().collect();
+
+    let models = model_db::get_models_via_ids(&db, &user, requested)
+        .await
+        .unwrap();
+
+    let listed_ids: Vec<i64> = models.iter().map(|model| model.id).collect();
+    assert_eq!(listed_ids, model_ids);
+}
+
+#[tokio::test]
 async fn get_groups_filtered_by_ungrouped_model_do_not_expand_to_all_models() {
     let (_dir, db) = test_db().await;
     let user = User::default();

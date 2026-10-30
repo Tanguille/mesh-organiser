@@ -311,6 +311,39 @@ async fn get_trashed_models_returns_more_rows_than_a_page_holds() {
 }
 
 #[tokio::test]
+async fn delete_models_trashes_more_models_than_a_page_holds() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let blob_id = blob_db::add_blob(&app_state.db, "shared", "stl", 1, None)
+        .await
+        .unwrap();
+    let count = db::MAX_PAGE_SIZE + 1;
+    sqlx::query(
+        "WITH RECURSIVE counter(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM counter WHERE number < ?)
+         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id)
+         SELECT 'live-' || number, ?, '2024-01-01T00:00:00Z', ? FROM counter",
+    )
+    .bind(count)
+    .bind(blob_id)
+    .bind(user.id)
+    .execute(&*app_state.db)
+    .await
+    .unwrap();
+    let model_ids: Vec<i64> = sqlx::query_scalar("SELECT model_id FROM models ORDER BY model_id")
+        .fetch_all(&*app_state.db)
+        .await
+        .unwrap();
+
+    export_service::delete_models(&app_state, &user, model_ids.clone())
+        .await
+        .unwrap();
+
+    let mut trashed = trashed_model_ids(&app_state, &user).await;
+    trashed.sort_unstable();
+    assert_eq!(trashed, model_ids);
+}
+
+#[tokio::test]
 async fn purge_expired_trash_removes_expired_models_with_their_files() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();

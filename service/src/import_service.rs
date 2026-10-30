@@ -22,7 +22,7 @@ use tokio_util::compat::FuturesAsyncReadCompatExt;
 use db::{
     blob_db, label_db, label_keyword_db,
     model::{blob::FileType, user::User},
-    model_db::{self, ModelFilterOptions},
+    model_db,
 };
 
 use crate::{
@@ -158,17 +158,7 @@ pub async fn add_labels_by_keywords(
         .unique()
         .collect::<Vec<i64>>();
 
-    // Unpaged: `get_models_via_ids` stops at `MAX_PAGE_SIZE` models.
-    let Ok(models) = model_db::get_all_models(
-        db,
-        &import_state.user,
-        ModelFilterOptions {
-            model_ids: Some(model_ids),
-            ..Default::default()
-        },
-    )
-    .await
-    else {
+    let Ok(models) = model_db::get_models_via_ids(db, &import_state.user, model_ids).await else {
         return;
     };
 
