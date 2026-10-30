@@ -67,6 +67,15 @@
 
     try {
       await currentUserEditApi.editSelf(editedUser);
+      // The sidebar reads the global user, so mirror the edit when it is that same account.
+      // An online account is a separate server user, even if its id matches the local one.
+      if (
+        editedUser.id === currentUser.id &&
+        !currentUser.permissions.onlineAccount
+      ) {
+        currentUser.username = editedUser.username;
+        currentUser.email = editedUser.email;
+      }
 
       toast.success("User updated successfully");
     } catch (e) {

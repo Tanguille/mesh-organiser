@@ -60,8 +60,9 @@ describe("CurrentUserEditCard", () => {
     expect(screen.getByLabelText("Verify new password").id).toBe("password2");
   });
 
-  it("edits the account getCurrentUser returns in web mode", async () => {
-    Object.assign(currentUser, user(1, "local", false));
+  it("edits the account getCurrentUser returns in web mode and shows the new name in the sidebar", async () => {
+    // On the web, the global user and /users/me are the same account.
+    Object.assign(currentUser, user(42, "online", false));
 
     const editSelf = await renameAccount(
       Platform.WebApp,
@@ -71,7 +72,7 @@ describe("CurrentUserEditCard", () => {
     expect(editSelf).toHaveBeenCalledWith(
       expect.objectContaining({ id: 42, username: "renamed" }),
     );
-    expect(currentUser.username).toBe("local");
+    expect(currentUser.username).toBe("renamed");
   });
 
   it("edits the account getCurrentUser returns in desktop online-account mode", async () => {
