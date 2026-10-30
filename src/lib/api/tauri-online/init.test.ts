@@ -9,14 +9,19 @@ import { currentUser } from "#lib/configuration.svelte";
 import { getContainer, resetContainer } from "../dependency_injection";
 import { IBlobApi, type Blob } from "../shared/blob_api";
 import { HttpMethod, IServerRequestApi } from "../shared/server_request_api";
+import { IModelApi } from "../shared/model_api";
+import { IShareApi } from "../shared/share_api";
+import { ISlicerApi } from "../shared/slicer_api";
 import { IUserManageSelfApi, type User } from "../shared/user_api";
 import { initTauriOnlineAccountApi } from "./init";
 
-// Releasing the held deep links invokes a Tauri command.
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/event", () => ({
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
   listen: vi.fn(async () => vi.fn()),
 }));
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({
@@ -54,6 +59,31 @@ async function init() {
 describe("initTauriOnlineAccountApi", () => {
   afterEach(() => {
     resetContainer();
+    mocks.invoke.mockReset();
+    mocks.listen.mockClear();
+  });
+
+  it("releases held links once the import listeners and every api are registered", async () => {
+    let atRelease: { listened: number; registered: boolean[] } | undefined;
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "release_pending_links") {
+        atRelease = {
+          listened: mocks.listen.mock.calls.length,
+          registered: [IModelApi, ISlicerApi, IShareApi].map(
+            (token) => getContainer().optional(token) !== null,
+          ),
+        };
+      }
+    });
+
+    await init();
+
+    expect(mocks.listen).toHaveBeenCalled();
+    expect(atRelease).toEqual({
+      listened: mocks.listen.mock.calls.length,
+      registered: [true, true, true],
+    });
+    expect(mocks.invoke.mock.calls).toEqual([["release_pending_links"]]);
   });
 
   it("builds blob download urls for the online user", async () => {

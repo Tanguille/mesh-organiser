@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getContainer } from "../dependency_injection";
 import { IBlobApi } from "../shared/blob_api";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";
@@ -70,4 +71,7 @@ export async function initTauriOnlineAccountApi(
   container.addSingleton(ISlicerApi, slicerApi);
   container.addSingleton(ITauriImportApi, tauriImportApi);
   container.addSingleton(IShareApi, shareApi);
+
+  // Last, like in initTauriLocalApis: a held link's handler may need any api above.
+  await invoke("release_pending_links");
 }
