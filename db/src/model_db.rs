@@ -589,6 +589,8 @@ pub async fn get_model_ids_via_sha256s(
     push_in(&mut query_builder, sha256s);
     query_builder.push(" AND model_user_id = ");
     query_builder.push_bind(user.id);
+    // A user has at most one model per sha256: import, the only path that adds models, reuses
+    // (or untrashes) the one it finds for that sha256, and imports run one at a time.
     let sha256_to_id: std::collections::HashMap<String, i64> = query_builder
         .build_query_as::<(String, i64)>()
         .fetch_all(db)
