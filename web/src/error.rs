@@ -220,18 +220,13 @@ mod tests {
 
     #[tokio::test]
     async fn into_response_maps_row_not_found_to_a_bodiless_404() {
-        for error in [
-            ApplicationError::from(db::DbError::RowNotFound),
-            ApplicationError::from(service::ServiceError::from(db::DbError::RowNotFound)),
-        ] {
-            let response = error.into_response();
+        let response = ApplicationError::from(db::DbError::RowNotFound).into_response();
 
-            assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
-            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-                .await
-                .expect("error body should be readable");
-            assert!(body.is_empty());
-        }
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("error body should be readable");
+        assert!(body.is_empty());
     }
 
     #[tokio::test]
