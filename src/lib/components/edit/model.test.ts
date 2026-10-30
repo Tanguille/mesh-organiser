@@ -11,6 +11,7 @@ import { configurationDefault } from "#lib/api/shared/settings_api";
 import { ISlicerApi } from "#lib/api/shared/slicer_api";
 import { IThreemfApi, type ThreemfMetadata } from "#lib/api/shared/threemf_api";
 import { configuration } from "#lib/configuration.svelte";
+import { wait } from "#lib/utils";
 import ModelCard from "./model.svelte";
 
 vi.hoisted(() => {
@@ -47,11 +48,16 @@ function provideApis() {
   });
 }
 
-function threemfModel(id: number, name = `Plate ${id}`) {
+function model(
+  id: number,
+  name = `Plate ${id}`,
+  filetype = "3mf",
+  size = 1024,
+) {
   return createModelInstance(
     id,
     name,
-    createBlobInstance(id, `hash-${id}`, "3mf", 1024, timestamp),
+    createBlobInstance(id, `hash-${id}`, filetype, size, timestamp),
     null,
     null,
     timestamp,
@@ -81,20 +87,9 @@ describe("Model", () => {
   it("keeps a manually enabled 3D preview when an unrelated setting changes", async () => {
     provideApis();
     // 100 MB is over the default STL preview limit, so the preview starts off.
-    const model = createModelInstance(
-      1,
-      "Benchy",
-      createBlobInstance(1, "hash-1", "stl", 100 * 1024 * 1024, timestamp),
-      null,
-      null,
-      timestamp,
-      timestamp,
-      null,
-      [],
-      [],
-      "model-1",
-    );
-    const { container } = render(ModelCard, { model });
+    const { container } = render(ModelCard, {
+      model: model(1, "Benchy", "stl", 100 * 1024 * 1024),
+    });
     const previewToggle = container
       .querySelector(".lucide-box")!
       .closest("button")!;
@@ -121,15 +116,15 @@ describe("Model", () => {
       ),
     });
     const { rerender, findByText, queryByText } = render(ModelCard, {
-      model: threemfModel(1),
+      model: model(1),
     });
-    await rerender({ model: threemfModel(2) });
+    await rerender({ model: model(2) });
 
     pending.get(2)!(metadata(0.4));
     expect(await findByText("0.4 mm")).toBeTruthy();
     pending.get(1)!(metadata(0.6));
     // Lets the late response's continuation run and render.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     expect(queryByText("0.6 mm")).toBeNull();
     expect(queryByText("0.4 mm")).toBeTruthy();
@@ -140,12 +135,12 @@ describe("Model", () => {
     const getThreemfMetadata = vi.fn().mockResolvedValue(metadata(0.4));
     getContainer().addSingleton(IThreemfApi, { getThreemfMetadata });
     const { rerender, findByText } = render(ModelCard, {
-      model: threemfModel(1),
+      model: model(1),
     });
     expect(await findByText("0.4 mm")).toBeTruthy();
 
-    await rerender({ model: threemfModel(1, "Renamed plate") });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await rerender({ model: model(1, "Renamed plate") });
+    await wait(0);
 
     expect(getThreemfMetadata).toHaveBeenCalledTimes(1);
     expect(await findByText("0.4 mm")).toBeTruthy();
@@ -164,12 +159,12 @@ describe("Model", () => {
         .mockRejectedValueOnce(failure),
     });
     const { rerender, findByText, queryByText } = render(ModelCard, {
-      model: threemfModel(1),
+      model: model(1),
     });
     expect(await findByText("0.4 mm")).toBeTruthy();
 
-    await rerender({ model: threemfModel(2) });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await rerender({ model: model(2) });
+    await wait(0);
 
     expect(queryByText("0.4 mm")).toBeNull();
     expect(consoleError).toHaveBeenCalledWith(

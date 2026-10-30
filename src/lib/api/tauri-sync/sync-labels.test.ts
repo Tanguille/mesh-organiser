@@ -13,6 +13,7 @@ import { getContainer, resetContainer } from "../dependency_injection";
 import {
   createLabelMetaInstance,
   ILabelApi,
+  stringColorToNumber,
   type Label,
   type LabelMeta,
 } from "../shared/label_api";
@@ -51,11 +52,11 @@ function serverLabelApi(overrides: Record<string, unknown> = {}) {
 
   return {
     getLabels: vi.fn().mockResolvedValue([]),
-    addLabel: vi.fn(async (name: string, color: number) =>
+    addLabel: vi.fn(async (name: string, color: string) =>
       createLabelMetaInstance(
         nextServerId++,
         name,
-        color,
+        stringColorToNumber(color),
         "2025-06-01T00:00:00Z",
         `server-${name}-gid`,
       ),

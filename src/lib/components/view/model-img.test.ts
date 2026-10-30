@@ -5,13 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getContainer, resetContainer } from "#lib/api/dependency_injection";
 import { IBlobApi, createBlobInstance } from "#lib/api/shared/blob_api";
 import { createModelInstance } from "#lib/api/shared/model_api";
+import { wait } from "#lib/utils";
 import ModelImg from "./model-img.svelte";
 
 const timestamp = "2026-10-29T12:00:00Z";
 
 // Dev builds wrap `await` in reactivity-loss tracking, which adds microtasks, so wait a macrotask.
 async function settle() {
-  await new Promise((resolve) => setTimeout(resolve));
+  await wait(0);
   await tick();
 }
 

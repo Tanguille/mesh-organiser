@@ -23,6 +23,10 @@ vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({ page }));
 
+afterEach(() => {
+  Object.assign(sidebarState, defaultSidebarState());
+});
+
 const ACTIVE_CLASS = "border-secondary";
 
 function meta(id: number, name: string): LabelMeta {
@@ -94,10 +98,6 @@ function anchorFor(name: string, href: string): HTMLAnchorElement {
 }
 
 describe("AppSidebar LabelTree", () => {
-  afterEach(() => {
-    Object.assign(sidebarState, defaultSidebarState());
-  });
-
   it("renders top-level leaf and parent labels linking to /label/<id>, parent collapsed", () => {
     renderAt("/model");
 
@@ -160,10 +160,6 @@ describe("AppSidebar LabelTree", () => {
 });
 
 describe("AppSidebar label actions", () => {
-  afterEach(() => {
-    Object.assign(sidebarState, defaultSidebarState());
-  });
-
   it("does not nest the new-label action button inside the popover trigger button", () => {
     const { container } = renderAt("/model");
 
