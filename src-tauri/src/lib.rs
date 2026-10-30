@@ -14,6 +14,7 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 
 use db::{
     model::{model_group::ModelGroupMeta, user::User},
@@ -404,6 +405,29 @@ fn extract_open_in_slicer_via_deep_link(data: &str) -> Option<Vec<String>> {
     (!sha256s.is_empty()).then_some(sha256s)
 }
 
+/// Hands a link that reached the running app to the frontend, logging one it cannot use.
+fn emit_link(app: &AppHandle, link: &str) {
+    if let Some(deep_link) = extract_deep_link(link) {
+        println!("Emitting deep link {deep_link:?}");
+        app.emit(
+            "deep-link",
+            DeepLinkEmit {
+                download_url: deep_link,
+                source_url: None,
+            },
+        )
+        .unwrap();
+    } else if let Some(account_link) = extract_account_link_via_deep_link(link) {
+        println!("Emitting account link");
+        app.emit("account-link", account_link).unwrap();
+    } else if let Some(sha256s) = extract_open_in_slicer_via_deep_link(link) {
+        println!("Emitting open in slicer link {sha256s:?}");
+        app.emit("open-in-slicer", sha256s).unwrap();
+    } else {
+        println!("Failed to extract deep link {link:?}");
+    }
+}
+
 /// Reads the configuration from the settings file.
 ///
 /// # Panics
@@ -448,29 +472,7 @@ pub fn run() {
 
             if argv.len() == 2
             {
-                let deep_link = extract_deep_link(&argv[1]);
-                let account_link = extract_account_link_via_deep_link(&argv[1]);
-                let open_in_slicer = extract_open_in_slicer_via_deep_link(&argv[1]);
-
-                if let Some(deep_link) = deep_link
-                {
-                    println!("Emitting deep link {deep_link:?}");
-                    app.emit("deep-link", DeepLinkEmit { download_url: deep_link, source_url: None } ).unwrap();
-                }
-                else if let Some(account_link) = account_link
-                {
-                    println!("Emitting account link");
-                    app.emit("account-link", account_link ).unwrap();
-                }
-                else if let Some(sha256s) = open_in_slicer
-                {
-                    println!("Emitting open in slicer link {sha256s:?}");
-                    app.emit("open-in-slicer", sha256s).unwrap();
-                }
-                else
-                {
-                    println!("Failed to extract deep link {:?}", argv[1]);
-                }
+                emit_link(app, &argv[1]);
             }
             else
             {
@@ -547,13 +549,36 @@ pub fn run() {
 
                 let mut argv = std::env::args();
 
-                if argv.len() == 2
+                // macOS hands a launch URL to the deep-link plugin through an Apple event, not
+                // argv. On Windows and Linux the plugin never records one, because its schemes are
+                // only configured in tauri.macos.conf.json, so no link is handled twice.
+                let launch_link = if argv.len() == 2 {
+                    argv.nth(1)
+                } else {
+                    app.deep_link()
+                        .get_current()
+                        .ok()
+                        .flatten()
+                        .and_then(|urls| urls.into_iter().next())
+                        .map(String::from)
+                };
+
+                if let Some(link) = launch_link
                 {
-                    let arg = argv.nth(1).unwrap();
-                    initial_state.deep_link_url = extract_deep_link(&arg);
-                    initial_state.account_link = extract_account_link_via_deep_link(&arg);
-                    initial_state.open_in_slicer_sha256s = extract_open_in_slicer_via_deep_link(&arg);
+                    initial_state.deep_link_url = extract_deep_link(&link);
+                    initial_state.account_link = extract_account_link_via_deep_link(&link);
+                    initial_state.open_in_slicer_sha256s = extract_open_in_slicer_via_deep_link(&link);
                 }
+
+                // URLs opened while the app runs reach macOS the same way. On Windows and Linux they
+                // arrive as a second instance's argv, which the single-instance callback handles,
+                // and the plugin stays silent for the same missing-schemes reason.
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        emit_link(&handle, url.as_str());
+                    }
+                });
 
                 let user = user_db::get_user_by_id(&db, config.last_user_id)
                         .await
