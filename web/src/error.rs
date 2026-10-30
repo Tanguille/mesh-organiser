@@ -15,6 +15,9 @@ pub enum ApplicationError {
     TaskJoinError(#[from] task::JoinError),
     #[error("Upload error")]
     MultipartError(#[from] MultipartError),
+    /// A bodiless 404, like the handlers that answer `StatusCode::NOT_FOUND` themselves.
+    #[error("Not found")]
+    NotFound,
 }
 
 impl From<std::io::Error> for ApplicationError {
@@ -38,6 +41,7 @@ impl Serialize for ApplicationError {
             Self::Service(inner) => return inner.serialize(serializer),
             Self::TaskJoinError(inner) => ("TaskJoinError", inner.to_string()),
             Self::MultipartError(inner) => ("MultipartError", inner.to_string()),
+            Self::NotFound => ("NotFound", String::new()),
         };
 
         service_error::serialize_error_struct(
@@ -51,6 +55,10 @@ impl Serialize for ApplicationError {
 
 impl IntoResponse for ApplicationError {
     fn into_response(self) -> axum::response::Response {
+        if matches!(self, Self::NotFound) {
+            return axum::http::StatusCode::NOT_FOUND.into_response();
+        }
+
         let json = serde_json::to_string(&self)
             .unwrap_or_else(|_| "Failed to serialize error".to_string());
         println!("[Error] {json}");
@@ -113,7 +121,8 @@ mod tests {
         })
     }
 
-    /// Every `ApplicationError` reaches the client as a 500 with a JSON body, whatever its source.
+    /// Every `ApplicationError` but `NotFound` reaches the client as a 500 with a JSON body,
+    /// whatever its source.
     async fn internal_server_error_body(error: ApplicationError) -> serde_json::Value {
         let response = error.into_response();
         assert_eq!(

@@ -31,9 +31,15 @@ pub struct ShareScope {
 }
 
 impl ShareScope {
-    /// Resolves a share and its owning user, erroring if the owner no longer exists.
+    /// Resolves a share and its owning user. Every public share endpoint routes through here, so
+    /// an unknown share is `NotFound` (a 404) for all of them; a missing owner is an error.
     pub async fn resolve(app_state: &AppState, share_id: &str) -> Result<Self, ApplicationError> {
-        let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
+        let share = share_db::get_share_via_id(&app_state.db, share_id)
+            .await
+            .map_err(|error| match error {
+                db::DbError::RowNotFound => ApplicationError::NotFound,
+                error => error.into(),
+            })?;
 
         let Some(owner) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
             return Err(
@@ -212,5 +218,81 @@ mod tests {
     #[test]
     fn restrict_keeps_share_order_and_ignores_requested_duplicates() {
         assert_eq!(scope(vec![1, 2, 3]).restrict(&[3, 1, 3, 1]), vec![1, 3]);
+    }
+
+    /// An app state over a fresh database and data dir; the `TempDir` must outlive the test.
+    /// The migrations seed the local account as user 1, which `User::default()` names.
+    async fn app_state() -> (tempfile::TempDir, service::AppState) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let data_path = dir.path().to_string_lossy().to_string();
+        let backup_dir = dir.path().join("backups");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
+        let app_state = service::AppState {
+            db: std::sync::Arc::new(db),
+            configuration: std::sync::Mutex::new(service::Configuration {
+                data_path: data_path.clone(),
+                ..Default::default()
+            }),
+            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            app_data_path: data_path,
+        };
+
+        (dir, app_state)
+    }
+
+    /// The public share routes, routed as the server mounts them.
+    async fn get(app_state: &service::AppState, uri: &str) -> axum::http::StatusCode {
+        let router = axum::Router::new()
+            .merge(super::router())
+            .merge(crate::controller::model_controller::router())
+            .merge(crate::controller::group_controller::router())
+            .with_state(app_state.clone());
+        let request = axum::http::Request::get(uri)
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        tower::ServiceExt::oneshot(router, request)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn share_handlers_return_not_found_for_an_unknown_share() {
+        let (_dir, app_state) = app_state().await;
+
+        for uri in [
+            "/api/v1/shares/missing",
+            "/api/v1/shares/missing/models?page=1&page_size=10",
+            "/api/v1/shares/missing/groups?page=1&page_size=10",
+        ] {
+            assert_eq!(
+                get(&app_state, uri).await,
+                axum::http::StatusCode::NOT_FOUND,
+                "{uri}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn share_handlers_serve_a_known_share() {
+        let (_dir, app_state) = app_state().await;
+        let share_id =
+            db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
+                .await
+                .unwrap();
+
+        for uri in [
+            format!("/api/v1/shares/{share_id}"),
+            format!("/api/v1/shares/{share_id}/models?page=1&page_size=10"),
+            format!("/api/v1/shares/{share_id}/groups?page=1&page_size=10"),
+        ] {
+            assert_eq!(
+                get(&app_state, &uri).await,
+                axum::http::StatusCode::OK,
+                "{uri}"
+            );
+        }
     }
 }
