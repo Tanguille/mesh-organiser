@@ -209,8 +209,9 @@ pub async fn get_groups(
 
     // `page` is 1-based, so 0 must be treated as 1; a
     // `page_size` of 0 would make `.take(0)` silently return an empty list.
+    // `page` can be any u32 from the Tauri command, so saturate: a page past the end is empty.
     let page_size = options.page_size.clamp(1, MAX_PAGE_SIZE);
-    let offset = ((options.page.max(1) - 1) * page_size) as usize;
+    let offset = (options.page.max(1) - 1).saturating_mul(page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups

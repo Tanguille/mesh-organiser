@@ -171,6 +171,38 @@ async fn get_groups_default_filter_options_does_not_panic() {
 }
 
 #[tokio::test]
+async fn get_groups_past_the_last_page_returns_no_groups_instead_of_overflowing() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let blob_id = blob_db::add_blob(&db, "one", "stl", 1, None).await.unwrap();
+    let model_id = model_db::add_model(&db, &user, "one", blob_id, None, None)
+        .await
+        .unwrap();
+    let group_id = group_db::add_empty_group(&db, &user, "group", None)
+        .await
+        .unwrap()
+        .id;
+    group_db::set_group_id_on_models(&db, &user, Some(group_id), vec![model_id], None)
+        .await
+        .unwrap();
+
+    // The Tauri command passes `page` through unchecked, so `page * page_size` must not overflow.
+    let groups = group_db::get_groups(
+        &db,
+        &user,
+        group_db::GroupFilterOptions {
+            page: u32::MAX,
+            ..group_db::GroupFilterOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(groups.items.is_empty());
+    assert_eq!(groups.page, u32::MAX);
+}
+
+#[tokio::test]
 async fn get_models_file_type_filter_matches_every_stored_spelling() {
     let (_dir, db) = test_db().await;
     let user = User::default();
