@@ -341,9 +341,7 @@ mod tests {
     #[tokio::test]
     async fn add_model_reads_a_multipart_body_over_the_default_limit() {
         let (_dir, app_state) = crate::test_support::app_state().await;
-        db::user_db::add_user(&app_state.db, "alice", "alice@example.com", "secret")
-            .await
-            .unwrap();
+        crate::test_support::add_login_user(&app_state).await;
         let app = crate::test_support::with_session(
             crate::controller::auth_controller::login_router().merge(super::router()),
             app_state,

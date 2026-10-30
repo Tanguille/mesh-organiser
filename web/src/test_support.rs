@@ -24,6 +24,22 @@ pub async fn app_state() -> (tempfile::TempDir, service::AppState) {
     (dir, app_state)
 }
 
+/// An app state over `data_path` whose pool is lazy and never connects, for requests that never
+/// reach the database.
+pub fn lazy_app_state(data_path: &std::path::Path) -> service::AppState {
+    let data_path = data_path.to_string_lossy().to_string();
+
+    service::AppState {
+        db: std::sync::Arc::new(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()),
+        configuration: std::sync::Mutex::new(service::Configuration {
+            data_path: data_path.clone(),
+            ..Default::default()
+        }),
+        import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        app_data_path: data_path,
+    }
+}
+
 /// Adds a blob whose model file and thumbnail exist on disk, as an import leaves them.
 pub async fn add_blob_with_files(
     app_state: &service::AppState,
@@ -44,20 +60,10 @@ pub async fn add_blob_with_files(
     (blob_id, model_path, image_path)
 }
 
-/// A local-account (user 1) model whose file exists on disk, as an import leaves it.
+/// A local-account (user 1) model whose model file and thumbnail exist on disk, as an import
+/// leaves them.
 pub async fn add_model_with_file(app_state: &service::AppState, name: &str, sha256: &str) -> i64 {
-    let blob_id = db::blob_db::add_blob(&app_state.db, sha256, "stl", 1, None)
-        .await
-        .unwrap();
-    let blob = db::blob_db::get_blob_via_sha256(&app_state.db, sha256)
-        .await
-        .unwrap()
-        .unwrap();
-    std::fs::write(
-        service::export_service::get_model_path_for_blob(&blob, app_state),
-        name,
-    )
-    .unwrap();
+    let (blob_id, _, _) = add_blob_with_files(app_state, sha256).await;
 
     db::model_db::add_model(
         &app_state.db,
@@ -85,6 +91,13 @@ pub async fn with_session(
     .build();
 
     router.with_state(app_state).layer(auth_layer)
+}
+
+/// Adds alice@example.com with the password `secret`, the account `login_request` logs in as.
+pub async fn add_login_user(app_state: &service::AppState) {
+    db::user_db::add_user(&app_state.db, "alice", "alice@example.com", "secret")
+        .await
+        .unwrap();
 }
 
 /// A password login for alice@example.com.

@@ -373,21 +373,6 @@ mod tests {
         );
     }
 
-    /// The thumbnail handler only reads the image dir, so the pool is lazy and never connects.
-    fn lazy_app_state(dir: &tempfile::TempDir) -> service::AppState {
-        let data_path = dir.path().to_string_lossy().to_string();
-
-        service::AppState {
-            db: std::sync::Arc::new(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()),
-            configuration: std::sync::Mutex::new(service::Configuration {
-                data_path: data_path.clone(),
-                ..Default::default()
-            }),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: data_path,
-        }
-    }
-
     /// Called directly rather than through the router: axum's `Path` never carries a `/` in one
     /// segment, and the handler must still refuse one.
     async fn thumb(app_state: &service::AppState, sha256: &str) -> axum::response::Response {
@@ -403,7 +388,7 @@ mod tests {
     #[tokio::test]
     async fn get_blob_thumb_serves_the_png_of_a_stored_32_hex_sha256() {
         let dir = tempfile::TempDir::new().unwrap();
-        let app_state = lazy_app_state(&dir);
+        let app_state = crate::test_support::lazy_app_state(dir.path());
         let sha256 = db::u128_to_hex_32(0xabc);
         let png = b"\x89PNG\r\n\x1a\nthumbnail".to_vec();
         std::fs::write(
@@ -424,7 +409,7 @@ mod tests {
     #[tokio::test]
     async fn get_blob_thumb_is_not_found_without_a_png() {
         let dir = tempfile::TempDir::new().unwrap();
-        let app_state = lazy_app_state(&dir);
+        let app_state = crate::test_support::lazy_app_state(dir.path());
 
         let response = thumb(&app_state, &db::u128_to_hex_32(0xabc)).await;
 
@@ -603,7 +588,7 @@ mod tests {
     #[tokio::test]
     async fn get_blob_thumb_rejects_a_value_that_is_not_all_hex() {
         let dir = tempfile::TempDir::new().unwrap();
-        let app_state = lazy_app_state(&dir);
+        let app_state = crate::test_support::lazy_app_state(dir.path());
         let non_hex = "z".repeat(32);
 
         for sha256 in ["../etc", "abc/def", non_hex.as_str(), ""] {
