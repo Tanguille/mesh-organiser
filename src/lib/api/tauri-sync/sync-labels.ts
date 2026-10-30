@@ -77,16 +77,17 @@ async function stepUploadToRemote(
       label.meta.color,
     );
 
-    const keywords = await localApi.getKeywordsForLabel(label.meta);
-    await remoteApi.setKeywordsOnLabel(newLabel, keywords);
-
-    const localModelsForLabel = await getAllModels(localModelApi, [
-      label.meta.id,
+    const [keywords, localModelsForLabel] = await Promise.all([
+      localApi.getKeywordsForLabel(label.meta),
+      getAllModels(localModelApi, [label.meta.id]),
     ]);
-    await remoteApi.addLabelToModels(
-      newLabel,
-      remoteCounterparts(localModelsForLabel, remoteModelsById),
-    );
+    await Promise.all([
+      remoteApi.setKeywordsOnLabel(newLabel, keywords),
+      remoteApi.addLabelToModels(
+        newLabel,
+        remoteCounterparts(localModelsForLabel, remoteModelsById),
+      ),
+    ]);
     await remoteApi.setChildrenOnLabel(
       newLabel,
       filterByGlobalIds(remoteLabelMetas, label.children),
@@ -122,21 +123,25 @@ async function stepSyncToRemote(
       isServerToLocal,
     );
 
-    const keywords = await localApi.getKeywordsForLabel(localLabel.meta);
-    await remoteApi.setKeywordsOnLabel(remoteLabel.meta, keywords);
-
-    const [localModelsForLabel, remoteModelsForLabel] = await Promise.all([
-      getAllModels(localModelApi, [localLabel.meta.id]),
-      getAllModels(remoteModelApi, [remoteLabel.meta.id]),
+    const [keywords, localModelsForLabel, remoteModelsForLabel] =
+      await Promise.all([
+        localApi.getKeywordsForLabel(localLabel.meta),
+        getAllModels(localModelApi, [localLabel.meta.id]),
+        getAllModels(remoteModelApi, [remoteLabel.meta.id]),
+      ]);
+    // The keywords are independent of the model links, but the old links must
+    // be gone before the new ones go in, or a model in both sets loses its label.
+    await Promise.all([
+      remoteApi.setKeywordsOnLabel(remoteLabel.meta, keywords),
+      remoteApi
+        .removeLabelFromModels(remoteLabel.meta, remoteModelsForLabel)
+        .then(() =>
+          remoteApi.addLabelToModels(
+            remoteLabel.meta,
+            remoteCounterparts(localModelsForLabel, remoteModelsById),
+          ),
+        ),
     ]);
-    await remoteApi.removeLabelFromModels(
-      remoteLabel.meta,
-      remoteModelsForLabel,
-    );
-    await remoteApi.addLabelToModels(
-      remoteLabel.meta,
-      remoteCounterparts(localModelsForLabel, remoteModelsById),
-    );
     await remoteApi.setChildrenOnLabel(
       remoteLabel.meta,
       filterByGlobalIds(remoteLabelMetas, localLabel.children),
