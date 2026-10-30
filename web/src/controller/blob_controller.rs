@@ -19,7 +19,7 @@ use db::{
 use service::{AppState, cleanse_evil_from_name, convert_zip_to_extension, export_service};
 
 use crate::{
-    controller::{self, share_controller::ShareScope},
+    controller::share_controller::ShareScope,
     error::ApplicationError,
     path_safety::resolve_path_under_base,
     user::{Backend, CurrentUser},
@@ -43,7 +43,7 @@ pub fn router() -> Router<AppState> {
         )
         // Anyone holding a share link can make the server write a zip, so this one public route
         // is rate-limited like the login routes.
-        .merge(controller::rate_limited(Router::new().route(
+        .merge(super::rate_limited(Router::new().route(
             "/api/v1/shares/{share_id}/blobs/download",
             post(create_share_blobs_zip_download),
         )))

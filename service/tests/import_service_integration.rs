@@ -14,10 +14,7 @@ use std::{
 };
 
 #[cfg(target_os = "linux")]
-use std::{
-    ffi::OsStr,
-    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
-};
+use std::os::unix::{ffi::OsStrExt, fs::PermissionsExt};
 
 use tempfile::TempDir;
 use zip::{ZipWriter, write::SimpleFileOptions};
@@ -420,7 +417,7 @@ fn non_utf8_folder_tree(root: &Path) -> PathBuf {
     let folder = root.join("My_Folder");
     write_file(
         &folder
-            .join(OsStr::from_bytes(b"Caf\xe9_Parts"))
+            .join(std::ffi::OsStr::from_bytes(b"Caf\xe9_Parts"))
             .join("part.stl"),
     );
 

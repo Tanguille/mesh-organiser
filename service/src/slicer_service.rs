@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command};
 
 use crate::service_error::ServiceError;
 
@@ -67,7 +67,7 @@ impl Slicer {
 }
 
 fn open_with_args_and_paths(
-    program: impl AsRef<OsStr>,
+    program: impl AsRef<std::ffi::OsStr>,
     args: &[String],
     paths: Vec<PathBuf>,
 ) -> Result<(), ServiceError> {

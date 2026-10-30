@@ -34,9 +34,9 @@ use service::{
 
 use crate::{
     controller::{
-        self, auth_controller, blob_controller, group_controller, label_controller,
-        model_controller, page_controller, resource_controller, share_controller,
-        threemf_controller, user_controller,
+        auth_controller, blob_controller, group_controller, label_controller, model_controller,
+        page_controller, resource_controller, share_controller, threemf_controller,
+        user_controller,
     },
     mcp,
     session_store::SqliteStore,
@@ -310,7 +310,7 @@ impl App {
             .allow_headers(AllowHeaders::mirror_request())
             .allow_credentials(true);
 
-        let login_router = controller::rate_limited(auth_controller::login_router());
+        let login_router = crate::controller::rate_limited(auth_controller::login_router());
         // Opt-in: the endpoint lets an agent edit the library, so it is mounted only when
         // `ENABLE_MCP=true`. Merging an empty router leaves `/mcp` unrouted.
         let mcp_router =
