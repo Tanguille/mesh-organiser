@@ -20,6 +20,37 @@ import {
   type ResourceSet,
 } from "./algorithm";
 
+/**
+ * Orders labels so every child comes before its parent: uploading a parent links
+ * only the children already on the remote. A comparator sort can't do this, as
+ * unrelated labels compare equal and hide a parent-child pair from each other.
+ * A cycle is broken where the walk re-enters it, losing that one link.
+ */
+function childrenFirst<T extends Label>(labels: T[]): T[] {
+  const labelsById = new Map(labels.map((label) => [label.meta.id, label]));
+  const visited = new Set<number>();
+  const ordered: T[] = [];
+
+  function visit(label: T): void {
+    if (visited.has(label.meta.id)) {
+      return;
+    }
+
+    visited.add(label.meta.id);
+    for (const child of label.children) {
+      const childLabel = labelsById.get(child.id);
+      if (childLabel) {
+        visit(childLabel);
+      }
+    }
+    ordered.push(label);
+  }
+
+  labels.forEach(visit);
+
+  return ordered;
+}
+
 async function stepUploadToRemote(
   toUpload: Label[],
   localApi: ILabelApi,
@@ -144,22 +175,8 @@ export async function syncLabels(
     lastSynced,
   );
 
-  function sortFunction(a: Label, b: Label): number {
-    if (a.children.some((aChild) => b.meta.id === aChild.id)) {
-      // A needs to come after B
-      return 1;
-    }
-
-    if (b.children.some((bChild) => a.meta.id === bChild.id)) {
-      // B needs to come after A
-      return -1;
-    }
-
-    return 0;
-  }
-
-  syncState.toUpload.sort(sortFunction);
-  syncState.toDownload.sort(sortFunction);
+  syncState.toUpload = childrenFirst(syncState.toUpload);
+  syncState.toDownload = childrenFirst(syncState.toDownload);
 
   await applySyncResult(syncState, {
     upload: (toUpload) =>
