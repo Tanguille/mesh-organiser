@@ -263,12 +263,17 @@ impl App {
     pub async fn serve(self, port: u16) -> Result<(), Box<dyn Error>> {
         let session_store = self.session_store;
 
-        // Runs until the runtime shuts down; nothing needs to join it.
-        tokio::task::spawn(
-            session_store
-                .clone()
-                .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
-        );
+        // Runs until the runtime shuts down; nothing joins it. The loop returns on its first
+        // error, so log that instead of losing expiry cleanup silently.
+        let cleanup_store = session_store.clone();
+        tokio::task::spawn(async move {
+            if let Err(error) = cleanup_store
+                .continuously_delete_expired(tokio::time::Duration::from_mins(1))
+                .await
+            {
+                eprintln!("Session expiry cleanup stopped: {error}");
+            }
+        });
 
         let signing_key_path = PathBuf::from(&self.state.app_data_path).join("signing.key");
         let key = if signing_key_path.exists() {
