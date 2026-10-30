@@ -47,14 +47,8 @@
   let password = $state<string>("");
   let password2 = $state<string>("");
   let isDesktop = $state<boolean>(false);
-  // On desktop, currentUser is the local user, but an online account's edits
-  // go to the server account; null until that account loads.
-  let onlineAccountUser = $state<User | null>(null);
-  const editedUser = $derived(
-    isDesktop && currentUser.permissions.onlineAccount
-      ? onlineAccountUser
-      : currentUser,
-  );
+  // The account the edits go to; null until it loads.
+  let editedUser = $state<User | null>(null);
 
   const saveUserDebounced = debounce(async (editedUser: User) => {
     if (!currentUserEditApi) {
@@ -112,7 +106,11 @@
       password = "";
 
       if (loginApi) {
-        await loginApi.loginUser(currentUser.email, newPassword);
+        // An email edited in this card is in editedUser, not currentUser.
+        await loginApi.loginUser(
+          (editedUser ?? currentUser).email,
+          newPassword,
+        );
       }
     } catch (e) {
       toast.error("Failed to change password");
@@ -149,17 +147,17 @@
   }
 
   onMount(async () => {
-    if (diskUsageInfoApi) {
-      diskUsage = await diskUsageInfoApi.getDiskUsageInfo();
-    }
+    // Not awaited, so the account below loads without waiting for it.
+    diskUsageInfoApi?.getDiskUsageInfo().then((info) => (diskUsage = info));
 
     if (hostApi) {
       isDesktop = await isCurrentPlatformDesktop(hostApi);
     }
 
-    // IUserApi is the server's user api in online-account mode.
-    if (isDesktop && currentUser.permissions.onlineAccount && userApi) {
-      onlineAccountUser = await userApi.getCurrentUser();
+    // /users/me on web; on desktop the local user, or the server user for an
+    // online account, whose IUserApi is the server's.
+    if (userApi) {
+      editedUser = await userApi.getCurrentUser();
     }
   });
 </script>
@@ -181,16 +179,18 @@
       </div>
     {/if}
     {#if !isDesktop}
-      <div class="flex flex-col gap-3">
-        <Label for="email">Email</Label>
+      {#if editedUser}
+        <div class="flex flex-col gap-3">
+          <Label for="email">Email</Label>
 
-        <Input
-          id="email"
-          type="email"
-          oninput={onUpdateUser}
-          bind:value={currentUser.email}
-        />
-      </div>
+          <Input
+            id="email"
+            type="email"
+            oninput={onUpdateUser}
+            bind:value={editedUser.email}
+          />
+        </div>
+      {/if}
 
       <Separator class="my-2" />
 

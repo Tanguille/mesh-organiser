@@ -24,6 +24,24 @@ function user(id: number, username: string, onlineAccount: boolean): User {
   };
 }
 
+// Renders the card for `account` on `platform`, renames it, and returns the
+// editSelf mock once the save debounce has passed.
+async function renameAccount(platform: Platform, account: User) {
+  const editSelf = vi.fn().mockResolvedValue(undefined);
+  const container = getContainer();
+  container.addSingleton(IHostApi, { getPlatform: async () => platform });
+  container.addSingleton(IUserApi, { getCurrentUser: async () => account });
+  container.addSingleton(IUserManageSelfApi, { editSelf });
+
+  render(CurrentUserEditCard);
+  const username = await screen.findByDisplayValue(account.username);
+  vi.useFakeTimers();
+  await fireEvent.input(username, { target: { value: "renamed" } });
+  await vi.advanceTimersByTimeAsync(1000);
+
+  return editSelf;
+}
+
 const initialUser = {
   ...currentUser,
   permissions: { ...currentUser.permissions },
@@ -42,55 +60,36 @@ describe("CurrentUserEditCard", () => {
     expect(screen.getByLabelText("Verify new password").id).toBe("password2");
   });
 
-  it("edits the server account, not the local user, in desktop online-account mode", async () => {
-    Object.assign(currentUser, user(1, "local", true));
-    const editSelf = vi.fn().mockResolvedValue(undefined);
-    const container = getContainer();
-    container.addSingleton(IHostApi, {
-      getPlatform: async () => Platform.TauriOfflineDesktop,
-    });
-    container.addSingleton(IUserApi, {
-      getCurrentUser: async () => user(42, "online", true),
-    });
-    container.addSingleton(IUserManageSelfApi, { editSelf });
+  it("edits the account getCurrentUser returns in web mode", async () => {
+    Object.assign(currentUser, user(1, "local", false));
 
-    render(CurrentUserEditCard);
-    const username = await screen.findByDisplayValue("online");
-    vi.useFakeTimers();
-    await fireEvent.input(username, { target: { value: "renamed" } });
-    // Past the save debounce.
-    await vi.advanceTimersByTimeAsync(1000);
+    const editSelf = await renameAccount(
+      Platform.WebApp,
+      user(42, "online", false),
+    );
+
+    expect(editSelf).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 42, username: "renamed" }),
+    );
+    expect(currentUser.username).toBe("local");
+  });
+
+  it("edits the account getCurrentUser returns in desktop online-account mode", async () => {
+    // On desktop, currentUser is the local user even for an online account.
+    Object.assign(currentUser, user(1, "local", true));
+
+    const editSelf = await renameAccount(
+      Platform.TauriOfflineDesktop,
+      user(42, "online", true),
+    );
 
     expect(editSelf).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: 42,
         username: "renamed",
         email: "online@example.com",
       }),
     );
     expect(currentUser.username).toBe("local");
-  });
-
-  it("edits the global current user in web mode", async () => {
-    Object.assign(currentUser, user(42, "online", true));
-    const editSelf = vi.fn().mockResolvedValue(undefined);
-    const getCurrentUser = vi.fn();
-    const container = getContainer();
-    container.addSingleton(IHostApi, {
-      getPlatform: async () => Platform.WebApp,
-    });
-    container.addSingleton(IUserApi, { getCurrentUser });
-    container.addSingleton(IUserManageSelfApi, { editSelf });
-
-    render(CurrentUserEditCard);
-    const username = await screen.findByDisplayValue("online");
-    vi.useFakeTimers();
-    await fireEvent.input(username, { target: { value: "renamed" } });
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(currentUser.username).toBe("renamed");
-    expect(editSelf).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 42, username: "renamed" }),
-    );
-    expect(getCurrentUser).not.toHaveBeenCalled();
   });
 });

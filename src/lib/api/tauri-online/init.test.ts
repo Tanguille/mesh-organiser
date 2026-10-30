@@ -12,6 +12,8 @@ import { HttpMethod, IServerRequestApi } from "../shared/server_request_api";
 import { IUserManageSelfApi, type User } from "../shared/user_api";
 import { initTauriOnlineAccountApi } from "./init";
 
+// Releasing the held deep links invokes a Tauri command.
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => vi.fn()),
 }));
@@ -65,21 +67,14 @@ describe("initTauriOnlineAccountApi", () => {
     );
   });
 
-  it("edits the online user's details and password, not the local user's", async () => {
+  it("changes the online user's password, not the local user's", async () => {
     const { request } = await init();
     const manageSelfApi =
       getContainer().require<IUserManageSelfApi>(IUserManageSelfApi);
 
-    // The settings card passes the global current user, here the local user.
-    await manageSelfApi.editSelf({ ...currentUser, username: "renamed" });
     await manageSelfApi.editSelfPassword("hunter22");
 
     expect(request.mock.calls).toEqual([
-      [
-        "/users/42",
-        HttpMethod.PUT,
-        { user_name: "renamed", user_email: "local@example.com" },
-      ],
       ["/users/42/password", HttpMethod.PUT, { new_password: "hunter22" }],
     ]);
   });
