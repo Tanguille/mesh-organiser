@@ -86,10 +86,11 @@
     },
   ];
 
-  async function handleTauriOpenFile() {
+  // Disables the import buttons while the native picker is open.
+  async function withDialog(open: () => Promise<void> | undefined) {
     dialog_open = true;
     try {
-      await tauriImportApi?.openFilesForImporting();
+      await open();
     } finally {
       dialog_open = false;
     }
@@ -97,15 +98,6 @@
 
   async function handleWebImport() {
     await webImportApi?.openFilesForImporting();
-  }
-
-  async function handleTauriOpenFolder() {
-    dialog_open = true;
-    try {
-      await tauriImportApi?.openFolderForImporting();
-    } finally {
-      dialog_open = false;
-    }
   }
 
   function setDefaultImportSettings() {
@@ -220,12 +212,14 @@
             <div class="grid grid-cols-2 gap-4">
               <Button
                 class="grow"
-                onclick={handleTauriOpenFile}
+                onclick={() =>
+                  withDialog(() => tauriImportApi?.openFilesForImporting())}
                 disabled={dialog_open}><File /> Import File</Button
               >
               <Button
                 class="grow"
-                onclick={handleTauriOpenFolder}
+                onclick={() =>
+                  withDialog(() => tauriImportApi?.openFolderForImporting())}
                 disabled={dialog_open}
                 ><Folder /> Import Folder
               </Button>
