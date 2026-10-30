@@ -491,36 +491,30 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+            println!("a new app instance was opened with {argv:?}");
 
-            if argv.len() == 2
-            {
+            if argv.len() == 2 {
                 emit_link(app, &argv[1]);
-            }
-            else
-            {
+            } else {
                 let window = app.get_webview_window("main");
 
                 if let Some(window) = window {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
-                }
-                else
-                {
+                } else {
                     println!("Failed to get window to focus");
                 }
             }
-          }))
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed)
-                && window.label() == "main" {
-                    for window in window.app_handle().webview_windows() {
-                        let _ = window.1.close();
-                    }
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                for window in window.app_handle().webview_windows() {
+                    let _ = window.1.close();
                 }
+            }
         })
         .setup(|app| {
             tauri::async_runtime::block_on(async move {
@@ -533,8 +527,7 @@ pub fn run() {
                 );
 
                 if !fs::exists(&app_data_path).unwrap_or(false) {
-                    fs::create_dir_all(&app_data_path)
-                        .expect("failed to create app data dir");
+                    fs::create_dir_all(&app_data_path).expect("failed to create app data dir");
                 }
 
                 let app_data_path_clone = String::from(&app_data_path);
@@ -542,21 +535,18 @@ pub fn run() {
                 std::panic::set_hook(Box::new(move |info| {
                     let loc = PathBuf::from(&app_data_path_clone).join("crash.log");
 
-                    let error_message = info
-                        .payload()
-                        .downcast_ref::<&'static str>()
-                        .map_or_else(
-                            || {
-                                info.payload()
-                                    .downcast_ref::<String>()
-                                    .map_or("Box<Any>", |s| &s[..])
-                            },
-                            |s| *s,
-                        );
+                    let error_message = info.payload().downcast_ref::<&'static str>().map_or_else(
+                        || {
+                            info.payload()
+                                .downcast_ref::<String>()
+                                .map_or("Box<Any>", |s| &s[..])
+                        },
+                        |s| *s,
+                    );
 
-                    if let Ok(mut file) = File::create(loc)
-                    {
-                        let _ = writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
+                    if let Ok(mut file) = File::create(loc) {
+                        let _ =
+                            writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
                     }
 
                     println!("Panic occurred: {error_message}\n{info:?}");
@@ -586,11 +576,11 @@ pub fn run() {
                         .map(String::from)
                 };
 
-                if let Some(link) = launch_link
-                {
+                if let Some(link) = launch_link {
                     initial_state.deep_link_url = extract_deep_link(&link);
                     initial_state.account_link = extract_account_link_via_deep_link(&link);
-                    initial_state.open_in_slicer_sha256s = extract_open_in_slicer_via_deep_link(&link);
+                    initial_state.open_in_slicer_sha256s =
+                        extract_open_in_slicer_via_deep_link(&link);
                 }
 
                 // URLs opened while the app runs reach macOS the same way. On Windows and Linux they
@@ -604,10 +594,10 @@ pub fn run() {
                 });
 
                 let user = user_db::get_user_by_id(&db, config.last_user_id)
-                        .await
-                        .ok()
-                        .flatten()
-                        .unwrap_or_else(User::default);
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(User::default);
 
                 let state = TauriAppState {
                     app_state: AppState {
