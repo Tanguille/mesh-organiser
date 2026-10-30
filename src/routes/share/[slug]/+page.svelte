@@ -2,7 +2,7 @@
   import { page } from "$app/state";
   import { getContainer } from "#lib/api/dependency_injection";
   import {
-    defaultGroupFilter,
+    getGroupsOfModels,
     GroupOrderBy,
     IGroupApi,
     PredefinedGroupStreamManager,
@@ -26,18 +26,11 @@
   onMount(async () => {
     try {
       share = await shareApi.getShare(shareId);
-      // The server rejects a page size of 0, so an empty share skips the fetch.
-      if (share.modelIds.length > 0) {
-        groups = await groupApi.getGroups(
-          defaultGroupFilter({
-            modelIds: share.modelIds,
-            orderBy: GroupOrderBy.CreatedAsc,
-            includeUngroupedModels: true,
-          }),
-          1,
-          share.modelIds.length,
-        );
-      }
+      groups = await getGroupsOfModels(
+        groupApi,
+        share.modelIds,
+        GroupOrderBy.CreatedAsc,
+      );
     } catch (e) {
       loadFailed = true;
       console.error("Failed to load share", e);

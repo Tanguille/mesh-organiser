@@ -59,7 +59,7 @@ describe("import +page", () => {
     render(Page);
 
     expect(await screen.findByText("No models were imported.")).toBeTruthy();
-    // The server rejects a page size of 0.
+    // An empty import needs no request.
     expect(groupApi.getGroups).not.toHaveBeenCalled();
   });
 

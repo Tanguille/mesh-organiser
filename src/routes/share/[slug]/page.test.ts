@@ -61,7 +61,7 @@ describe("share [slug] +page", () => {
 
     expect(await screen.findByText("This share has no models.")).toBeTruthy();
     expect(screen.queryByRole("status")).toBeNull();
-    // The server rejects a page size of 0, so an empty share skips the fetch.
+    // An empty share needs no request.
     expect(groupApi.getGroups).not.toHaveBeenCalled();
   });
 
