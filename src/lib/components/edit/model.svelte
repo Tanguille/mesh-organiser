@@ -86,9 +86,12 @@
   let material_type = $state<string | null>(null);
   let supports_enabled = $state<boolean | null>(null);
   let metadataLoadGeneration = 0;
+  // Keyed like three-d-canvas: a string only changes with the model or its
+  // file, so name or label edits don't refetch the metadata.
+  const metadataKey = $derived(`${model.id}:${model.blob.sha256}`);
 
   $effect(() => {
-    let current_model = $state.snapshot(model);
+    const key = metadataKey;
     const gen = ++metadataLoadGeneration;
 
     untrack(async () => {
@@ -105,7 +108,14 @@
         return;
       }
 
-      let metadata = await threemfApi.getThreemfMetadata(current_model);
+      let metadata;
+      try {
+        metadata = await threemfApi.getThreemfMetadata($state.snapshot(model));
+      } catch (e) {
+        // The metadata stays cleared from the start of this run.
+        console.error(`Failed to load 3MF metadata for model ${key}`, e);
+        return;
+      }
 
       // The model changed while this fetch ran, so the response is stale.
       if (gen !== metadataLoadGeneration || !metadata) {

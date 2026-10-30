@@ -47,6 +47,31 @@ function provideApis() {
   });
 }
 
+function threemfModel(id: number, name = `Plate ${id}`) {
+  return createModelInstance(
+    id,
+    name,
+    createBlobInstance(id, `hash-${id}`, "3mf", 1024, timestamp),
+    null,
+    null,
+    timestamp,
+    timestamp,
+    null,
+    [],
+    [],
+    `model-${id}`,
+  );
+}
+
+function metadata(nozzleDiameter: number): ThreemfMetadata {
+  return {
+    nozzle_diameter: nozzleDiameter,
+    layer_height: null,
+    material_type: null,
+    supports_enabled: null,
+  };
+}
+
 describe("Model", () => {
   afterEach(() => {
     resetContainer();
@@ -95,26 +120,6 @@ describe("Model", () => {
           ),
       ),
     });
-    const threemfModel = (id: number) =>
-      createModelInstance(
-        id,
-        `Plate ${id}`,
-        createBlobInstance(id, `hash-${id}`, "3mf", 1024, timestamp),
-        null,
-        null,
-        timestamp,
-        timestamp,
-        null,
-        [],
-        [],
-        `model-${id}`,
-      );
-    const metadata = (nozzleDiameter: number): ThreemfMetadata => ({
-      nozzle_diameter: nozzleDiameter,
-      layer_height: null,
-      material_type: null,
-      supports_enabled: null,
-    });
     const { rerender, findByText, queryByText } = render(ModelCard, {
       model: threemfModel(1),
     });
@@ -128,5 +133,49 @@ describe("Model", () => {
 
     expect(queryByText("0.6 mm")).toBeNull();
     expect(queryByText("0.4 mm")).toBeTruthy();
+  });
+
+  it("does not refetch the 3MF metadata when only the model's name changes", async () => {
+    provideApis();
+    const getThreemfMetadata = vi.fn().mockResolvedValue(metadata(0.4));
+    getContainer().addSingleton(IThreemfApi, { getThreemfMetadata });
+    const { rerender, findByText } = render(ModelCard, {
+      model: threemfModel(1),
+    });
+    expect(await findByText("0.4 mm")).toBeTruthy();
+
+    await rerender({ model: threemfModel(1, "Renamed plate") });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(getThreemfMetadata).toHaveBeenCalledTimes(1);
+    expect(await findByText("0.4 mm")).toBeTruthy();
+  });
+
+  it("logs a failed 3MF metadata fetch and leaves the metadata cleared", async () => {
+    provideApis();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const failure = new Error("unreadable 3mf");
+    getContainer().addSingleton(IThreemfApi, {
+      getThreemfMetadata: vi
+        .fn()
+        .mockResolvedValueOnce(metadata(0.4))
+        .mockRejectedValueOnce(failure),
+    });
+    const { rerender, findByText, queryByText } = render(ModelCard, {
+      model: threemfModel(1),
+    });
+    expect(await findByText("0.4 mm")).toBeTruthy();
+
+    await rerender({ model: threemfModel(2) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(queryByText("0.4 mm")).toBeNull();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("3MF metadata"),
+      failure,
+    );
+    consoleError.mockRestore();
   });
 });
