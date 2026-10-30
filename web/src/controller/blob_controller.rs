@@ -419,8 +419,9 @@ mod tests {
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
     }
 
-    /// A share of the local account's models `boat` and `raft`, next to its unshared `dinghy`.
-    async fn shared_library() -> (tempfile::TempDir, service::AppState, String) {
+    /// A share of the local account's models `boat` and `raft`, next to its unshared `dinghy`, with
+    /// the ids of `boat` and `raft`.
+    async fn shared_library() -> (tempfile::TempDir, service::AppState, String, [i64; 2]) {
         let (dir, app_state) = crate::test_support::app_state().await;
         let owner = db::model::user::User::default();
         let boat_id =
@@ -443,7 +444,7 @@ mod tests {
         .await
         .unwrap();
 
-        (dir, app_state, share_id)
+        (dir, app_state, share_id, [boat_id, raft_id])
     }
 
     /// The router as `app.rs` serves it, minus the session, plus the peer address that a rate
@@ -466,26 +467,33 @@ mod tests {
             .unwrap()
     }
 
+    fn share_zip_request(
+        share_id: &str,
+        body: impl Into<axum::body::Body>,
+    ) -> axum::http::Request<axum::body::Body> {
+        axum::http::Request::post(format!("/api/v1/shares/{share_id}/blobs/download"))
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(body.into())
+            .unwrap()
+    }
+
     async fn post_share_zip(
         app_state: &service::AppState,
         share_id: &str,
         sha256s: &[u128],
     ) -> axum::response::Response {
         let sha256s: Vec<String> = sha256s.iter().copied().map(db::u128_to_hex_32).collect();
-        let request =
-            axum::http::Request::post(format!("/api/v1/shares/{share_id}/blobs/download"))
-                .header(axum::http::header::CONTENT_TYPE, "application/json")
-                .body(axum::body::Body::from(
-                    serde_json::to_vec(&sha256s).unwrap(),
-                ))
-                .unwrap();
 
-        send(app_state, request).await
+        send(
+            app_state,
+            share_zip_request(share_id, serde_json::to_vec(&sha256s).unwrap()),
+        )
+        .await
     }
 
     #[tokio::test]
     async fn share_zip_download_serves_the_shared_models_without_a_session() {
-        let (_dir, app_state, share_id) = shared_library().await;
+        let (_dir, app_state, share_id, _) = shared_library().await;
 
         let response = post_share_zip(&app_state, &share_id, &[1, 2]).await;
 
@@ -518,7 +526,7 @@ mod tests {
 
     #[tokio::test]
     async fn share_zip_download_refuses_a_model_outside_the_share() {
-        let (_dir, app_state, share_id) = shared_library().await;
+        let (_dir, app_state, share_id, _) = shared_library().await;
 
         let response = post_share_zip(&app_state, &share_id, &[1, 3]).await;
 
@@ -527,7 +535,7 @@ mod tests {
 
     #[tokio::test]
     async fn share_zip_download_is_not_found_for_an_unknown_share() {
-        let (_dir, app_state, _share_id) = shared_library().await;
+        let (_dir, app_state, _, _) = shared_library().await;
 
         let response = post_share_zip(&app_state, "missing", &[1, 2]).await;
 
@@ -536,15 +544,7 @@ mod tests {
 
     #[tokio::test]
     async fn share_zip_download_refuses_a_trashed_shared_model() {
-        let (_dir, app_state, share_id) = shared_library().await;
-        let boat_id = db::model_db::get_model_id_via_sha256(
-            &app_state.db,
-            &db::model::user::User::default(),
-            &db::u128_to_hex_32(1),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let (_dir, app_state, share_id, [boat_id, _]) = shared_library().await;
         db::model_db::trash_models(&app_state.db, &db::model::user::User::default(), &[boat_id])
             .await
             .unwrap();
@@ -560,12 +560,8 @@ mod tests {
         let app = app(&app_state);
         let mut statuses = Vec::new();
         for _ in 0..11 {
-            let request = axum::http::Request::post("/api/v1/shares/missing/blobs/download")
-                .header(axum::http::header::CONTENT_TYPE, "application/json")
-                .body(axum::body::Body::from("[]"))
-                .unwrap();
             statuses.push(
-                tower::ServiceExt::oneshot(app.clone(), request)
+                tower::ServiceExt::oneshot(app.clone(), share_zip_request("missing", "[]"))
                     .await
                     .unwrap()
                     .status(),
@@ -585,14 +581,9 @@ mod tests {
     #[tokio::test]
     async fn share_zip_download_refuses_a_body_over_the_default_limit() {
         let (_dir, app_state) = crate::test_support::app_state().await;
-        let request = axum::http::Request::post("/api/v1/shares/missing/blobs/download")
-            .header(axum::http::header::CONTENT_TYPE, "application/json")
-            .body(axum::body::Body::from(
-                " ".repeat(crate::test_support::DEFAULT_BODY_LIMIT + 1),
-            ))
-            .unwrap();
+        let body = " ".repeat(crate::test_support::DEFAULT_BODY_LIMIT + 1);
 
-        let response = send(&app_state, request).await;
+        let response = send(&app_state, share_zip_request("missing", body)).await;
 
         assert_eq!(response.status(), axum::http::StatusCode::PAYLOAD_TOO_LARGE);
     }
