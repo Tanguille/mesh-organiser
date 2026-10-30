@@ -176,8 +176,8 @@ fn non_empty(name: &str) -> Result<&str, String> {
     Ok(name)
 }
 
-/// Sorted and deduplicated, because `ensure_owned` rejects duplicates; bounded, because
-/// `get_models` returns at most `MAX_PAGE_SIZE` rows.
+/// Sorted and deduplicated, because `ensure_owned` rejects duplicates; bounded to
+/// `MAX_PAGE_SIZE` so one tool call stays a single page of db work.
 fn unique_ids(mut ids: Vec<i64>) -> Result<Vec<i64>, String> {
     ids.sort_unstable();
     ids.dedup();
