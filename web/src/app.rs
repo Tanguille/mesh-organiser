@@ -20,7 +20,6 @@ use axum::{
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
 use tokio::{fs, signal};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowHeaders, AllowMethods, CorsLayer},
@@ -35,9 +34,9 @@ use service::{
 
 use crate::{
     controller::{
-        auth_controller, blob_controller, group_controller, label_controller, model_controller,
-        page_controller, resource_controller, share_controller, threemf_controller,
-        user_controller,
+        self, auth_controller, blob_controller, group_controller, label_controller,
+        model_controller, page_controller, resource_controller, share_controller,
+        threemf_controller, user_controller,
     },
     mcp,
     session_store::SqliteStore,
@@ -311,18 +310,7 @@ impl App {
             .allow_headers(AllowHeaders::mirror_request())
             .allow_credentials(true);
 
-        let governor_config = Arc::new(
-            GovernorConfigBuilder::default()
-                .per_second(5)
-                .burst_size(10)
-                .finish()
-                .ok_or_else(|| {
-                    io::Error::new(ErrorKind::InvalidData, "Failed to create governor config")
-                })?,
-        );
-
-        let login_router =
-            auth_controller::login_router().layer(GovernorLayer::new(governor_config));
+        let login_router = controller::rate_limited(auth_controller::login_router());
         // Opt-in: the endpoint lets an agent edit the library, so it is mounted only when
         // `ENABLE_MCP=true`. Merging an empty router leaves `/mcp` unrouted.
         let mcp_router =
@@ -369,8 +357,8 @@ impl App {
 
         println!("Server running on port {port}");
 
-        // Connect info is required by the auth rate limiter: tower_governor's
-        // default PeerIpKeyExtractor 500s every request without a peer address.
+        // Connect info is required by the rate limiters (`controller::rate_limited`):
+        // tower_governor's default PeerIpKeyExtractor 500s every request without a peer address.
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),

@@ -19,7 +19,7 @@ use db::{
 use service::{AppState, cleanse_evil_from_name, convert_zip_to_extension, export_service};
 
 use crate::{
-    controller::share_controller::ShareScope,
+    controller::{self, share_controller::ShareScope},
     error::ApplicationError,
     path_safety::resolve_path_under_base,
     user::{Backend, CurrentUser},
@@ -35,21 +35,26 @@ const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 const SHARE_ZIP_BODY_LIMIT: usize = db::MAX_PAGE_SIZE as usize * 64;
 
 pub fn router() -> Router<AppState> {
-    Router::new().nest(
-        "/api/v1",
-        Router::new()
-            .route("/blobs/{sha256}/bytes", get(get_blob_bytes))
-            .route("/blobs/download", post(create_blobs_zip_download))
-            .route_layer(login_required!(Backend))
-            .route("/blobs/{sha256}/thumb", get(get_blob_thumb))
-            .route("/blobs/{sha256}/download", get(download_model))
-            .route("/blobs/download/{zip_dir}", get(get_blobs_zip_download))
-            .route(
-                "/shares/{share_id}/blobs/download",
+    Router::new()
+        .nest(
+            "/api/v1",
+            Router::new()
+                .route("/blobs/{sha256}/bytes", get(get_blob_bytes))
+                .route("/blobs/download", post(create_blobs_zip_download))
+                .route_layer(login_required!(Backend))
+                .route("/blobs/{sha256}/thumb", get(get_blob_thumb))
+                .route("/blobs/{sha256}/download", get(download_model))
+                .route("/blobs/download/{zip_dir}", get(get_blobs_zip_download)),
+        )
+        // Anyone holding a share link can make the server write a zip, so this one public route
+        // is rate-limited like the login routes.
+        .merge(controller::rate_limited(
+            Router::new().route(
+                "/api/v1/shares/{share_id}/blobs/download",
                 post(create_share_blobs_zip_download)
                     .layer(DefaultBodyLimit::max(SHARE_ZIP_BODY_LIMIT)),
             ),
-    )
+        ))
 }
 
 #[derive(Deserialize)]
@@ -471,17 +476,25 @@ mod tests {
         (dir, app_state, share_id)
     }
 
-    /// Sent without a session, as a slicer opening a share link does, through the body limit
-    /// that `app.rs` lifts for every route.
+    /// The router as `app.rs` serves it, minus the session: the body limit lifted for every
+    /// route, and the peer address that a rate limiter keys on.
+    fn app(app_state: &service::AppState) -> axum::Router {
+        super::router()
+            .with_state(app_state.clone())
+            .layer(axum::extract::DefaultBodyLimit::disable())
+            .layer(axum::Extension(axum::extract::ConnectInfo(
+                std::net::SocketAddr::from(([203, 0, 113, 7], 4000)),
+            )))
+    }
+
+    /// Sent without a session, as a slicer opening a share link does.
     async fn send(
         app_state: &service::AppState,
         request: axum::http::Request<axum::body::Body>,
     ) -> axum::response::Response {
-        let router = super::router()
-            .with_state(app_state.clone())
-            .layer(axum::extract::DefaultBodyLimit::disable());
-
-        tower::ServiceExt::oneshot(router, request).await.unwrap()
+        tower::ServiceExt::oneshot(app(app_state), request)
+            .await
+            .unwrap()
     }
 
     async fn post_share_zip(
@@ -570,6 +583,34 @@ mod tests {
         let response = post_share_zip(&app_state, &share_id, &[1, 2]).await;
 
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn share_zip_download_rate_limits_a_peer_after_a_burst_of_ten() {
+        let (_dir, app_state) = crate::controller::share_controller::tests::app_state().await;
+        let app = app(&app_state);
+        let mut statuses = Vec::new();
+        for _ in 0..11 {
+            let request = axum::http::Request::post("/api/v1/shares/missing/blobs/download")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from("[]"))
+                .unwrap();
+            statuses.push(
+                tower::ServiceExt::oneshot(app.clone(), request)
+                    .await
+                    .unwrap()
+                    .status(),
+            );
+        }
+        // The limit covers only the share zip route, not the other public blob routes.
+        let thumb = axum::http::Request::get("/api/v1/blobs/not-hex/thumb")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let thumb = tower::ServiceExt::oneshot(app, thumb).await.unwrap();
+
+        assert_eq!(statuses[..10], [axum::http::StatusCode::NOT_FOUND; 10]);
+        assert_eq!(statuses[10], axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(thumb.status(), axum::http::StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
