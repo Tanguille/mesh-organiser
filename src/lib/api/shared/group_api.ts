@@ -202,15 +202,22 @@ export async function getGroupsOfModels(
   );
 }
 
+// Every backend caps page_size at MAX_PAGE_SIZE and pages after filtering, so
+// a shorter page is the last. groupStream would also ask for the empty page
+// after it, since the stream managers it serves cannot assume their page size
+// is the cap.
 async function drainGroups(
   api: IGroupApi,
   filter: GroupFilter,
 ): Promise<Group[]> {
   const all: Group[] = [];
-  for await (const page of groupStream(api, filter, MAX_PAGE_SIZE)) {
-    all.push(...page);
+  for (let page = 1; ; page++) {
+    const groups = await api.getGroups(filter, page, MAX_PAGE_SIZE);
+    all.push(...groups);
+    if (groups.length < MAX_PAGE_SIZE) {
+      return all;
+    }
   }
-  return all;
 }
 
 /** Yields successive nonempty pages of groups matching `filter`. */

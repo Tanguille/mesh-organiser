@@ -1,7 +1,8 @@
 /**
  * Tests for getGroupsOfModels: an empty id list makes no request, and a longer
  * one drains every page at the largest page size the server accepts, since a
- * page size above it is answered with a 400.
+ * page size above it is answered with a 400. A page shorter than that is the
+ * last, so draining stops there without asking for an empty page.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -33,29 +34,51 @@ describe("getGroupsOfModels", () => {
     expect(getGroups).not.toHaveBeenCalled();
   });
 
-  it("returns the groups of every page, each fetched at the max page size", async () => {
-    const pages = [[fakeGroup(1), fakeGroup(2)], [fakeGroup(3)], []];
+  const filterOf = (modelIds: number[]) =>
+    defaultGroupFilter({
+      modelIds,
+      orderBy: GroupOrderBy.CreatedAsc,
+      includeUngroupedModels: true,
+    });
+
+  async function drain(pages: Group[][], modelIds: number[]) {
     const getGroups = vi.fn(
       async (_filter: GroupFilter, page: number) => pages[page - 1] ?? [],
     );
-    const modelIds = Array.from({ length: MAX_PAGE_SIZE + 1 }, (_, i) => i);
-
     const groups = await getGroupsOfModels(
       { getGroups } as unknown as IGroupApi,
       modelIds,
       GroupOrderBy.CreatedAsc,
     );
 
-    expect(groups.map((group) => group.meta.id)).toEqual([1, 2, 3]);
-    const filter = defaultGroupFilter({
+    return { groups, calls: getGroups.mock.calls };
+  }
+
+  it("returns the groups of every full page and the short one after it, each fetched at the max page size", async () => {
+    const fullPage = Array.from({ length: MAX_PAGE_SIZE }, (_, i) =>
+      fakeGroup(i),
+    );
+    const modelIds = Array.from({ length: MAX_PAGE_SIZE + 1 }, (_, i) => i);
+
+    const { groups, calls } = await drain(
+      [fullPage, [fakeGroup(MAX_PAGE_SIZE)]],
       modelIds,
-      orderBy: GroupOrderBy.CreatedAsc,
-      includeUngroupedModels: true,
-    });
-    expect(getGroups.mock.calls).toEqual([
-      [filter, 1, MAX_PAGE_SIZE],
-      [filter, 2, MAX_PAGE_SIZE],
-      [filter, 3, MAX_PAGE_SIZE],
+    );
+
+    expect(groups.map((group) => group.meta.id)).toEqual(modelIds);
+    expect(calls).toEqual([
+      [filterOf(modelIds), 1, MAX_PAGE_SIZE],
+      [filterOf(modelIds), 2, MAX_PAGE_SIZE],
     ]);
+  });
+
+  it("makes one request when the first page is short", async () => {
+    const { groups, calls } = await drain(
+      [[fakeGroup(1), fakeGroup(2)]],
+      [1, 2],
+    );
+
+    expect(groups.map((group) => group.meta.id)).toEqual([1, 2]);
+    expect(calls).toEqual([[filterOf([1, 2]), 1, MAX_PAGE_SIZE]]);
   });
 });
