@@ -79,10 +79,11 @@ async fn get_models_via_ids_returns_only_requested_rows_and_valid_sql() {
 }
 
 #[tokio::test]
-async fn get_models_via_ids_returns_every_requested_model_past_one_page_in_model_id_order() {
+async fn get_models_via_ids_returns_every_requested_model_past_the_bind_limit_in_model_id_order() {
     let (_dir, db) = test_db().await;
     let user = User::default();
-    let model_ids = add_tied_models(&db, &user, db::MAX_PAGE_SIZE + 1).await;
+    // Past a page (1000) and past SQLite's 32766 bound variables, so the ids need two queries.
+    let model_ids = add_tied_models(&db, &user, 33_000).await;
     // Reversed and repeated, yet each model comes back once in model_id order, as one query
     // over every id would return it.
     let requested: Vec<i64> = model_ids.iter().rev().chain(&model_ids).copied().collect();

@@ -310,21 +310,30 @@ async fn query_models(
     Ok(models)
 }
 
+/// The bundled SQLite binds at most 32766 variables per statement.
+const MAX_BOUND_IDS: usize = 32_000;
+
 /// Every live model of `user` among `ids`, each once and in `model_id` order.
 ///
-/// One unpaged query: the SQL `IN` drops repeated ids, and the bundled SQLite takes up to
-/// 32766 bound ids.
+/// One unpaged query per `MAX_BOUND_IDS` ids, so any library size stays under SQLite's bind
+/// limit. The ids are sorted and deduplicated first so the chunks join in one query's order.
 pub async fn get_models_via_ids(
     db: &DbContext,
     user: &User,
-    ids: Vec<i64>,
+    mut ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
-    let options = ModelFilterOptions {
-        model_ids: Some(ids),
-        ..Default::default()
-    };
+    ids.sort_unstable();
+    ids.dedup();
+    let mut models = Vec::with_capacity(ids.len());
+    for chunk in ids.chunks(MAX_BOUND_IDS) {
+        let options = ModelFilterOptions {
+            model_ids: Some(chunk.to_vec()),
+            ..Default::default()
+        };
+        models.extend(get_all_models(db, user, options).await?);
+    }
 
-    get_all_models(db, user, options).await
+    Ok(models)
 }
 
 /// Fetches a single model by id, returning `None` when it does not exist for the user.
