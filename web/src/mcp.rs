@@ -3,7 +3,12 @@
 //! "Mesh" is what the rest of the codebase calls a model, so an agent does not confuse it with
 //! an LLM model. Mesh ids are the db model ids.
 
-use std::{borrow::Cow, collections::HashMap, iter, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    iter,
+    sync::Arc,
+};
 
 use axum::{
     Router,
@@ -184,6 +189,11 @@ fn unique_ids(mut ids: Vec<i64>) -> Result<Vec<i64>, String> {
     }
 
     Ok(ids)
+}
+
+/// What a per-call mesh limit counts: `owned_meshes` dedupes, so a repeated id costs nothing.
+fn distinct_count(ids: &[i64]) -> usize {
+    ids.iter().collect::<HashSet<_>>().len()
 }
 
 /// The user's meshes with these ids; fails naming every id that is unknown, trashed or foreign.
@@ -553,7 +563,7 @@ impl MeshServer {
         Parameters(params): Parameters<MeshIdsParams>,
     ) -> ToolResult {
         let user = current_user(&parts)?;
-        if params.mesh_ids.len() > MAX_MESH_DETAILS {
+        if distinct_count(&params.mesh_ids) > MAX_MESH_DETAILS {
             return Err(format!("At most {MAX_MESH_DETAILS} meshes per call").into());
         }
         let meshes = owned_meshes(&self.app_state.db, user, params.mesh_ids).await?;
@@ -607,7 +617,7 @@ impl MeshServer {
         Parameters(params): Parameters<MeshIdsParams>,
     ) -> Result<CallToolResult, ToolError> {
         let user = current_user(&parts)?;
-        if params.mesh_ids.len() > MAX_THUMBNAILS {
+        if distinct_count(&params.mesh_ids) > MAX_THUMBNAILS {
             return Err(format!("At most {MAX_THUMBNAILS} meshes per call").into());
         }
         let meshes = owned_meshes(&self.app_state.db, user, params.mesh_ids).await?;
@@ -2755,6 +2765,41 @@ mod tests {
 
         assert_eq!(fifty_one.unwrap_err().0, "At most 50 meshes per call");
         assert_eq!(fifty.as_array().unwrap().len(), 50);
+    }
+
+    #[tokio::test]
+    async fn get_meshes_counts_a_repeated_id_once_against_the_limit() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let mesh_id = add_mesh(&server, &user, "boat").await;
+
+        let details = parse(
+            server
+                .get_meshes(
+                    authenticated(&user),
+                    parameters(serde_json::json!({ "mesh_ids": vec![mesh_id; 51] })),
+                )
+                .await,
+        );
+
+        assert_eq!(details.as_array().unwrap().len(), 1);
+        assert_eq!(details[0]["id"], mesh_id);
+    }
+
+    #[tokio::test]
+    async fn get_mesh_thumbnails_counts_a_repeated_id_once_against_the_limit() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let mesh_id = add_mesh(&server, &user, "boat").await;
+
+        let result = server
+            .get_mesh_thumbnails(
+                authenticated(&user),
+                parameters(serde_json::json!({ "mesh_ids": vec![mesh_id; 9] })),
+            )
+            .await;
+
+        assert_eq!(result.unwrap().content.len(), 2);
     }
 
     #[tokio::test]
