@@ -35,18 +35,18 @@
       importState.status == ImportStatus.Failure
     ) {
       return 100;
-    } else if (
+    }
+
+    const done =
       importState.status == ImportStatus.ProcessingModels ||
       importState.status == ImportStatus.FinishedModels
-    ) {
-      return Math.round(
-        (importState.imported_models_count / importState.model_count) * 100,
-      );
-    } else {
-      return Math.round(
-        (importState.finished_thumbnails_count / importState.model_count) * 100,
-      );
-    }
+        ? importState.imported_models_count
+        : importState.finished_thumbnails_count;
+
+    // model_count stays 0 until the backend reports the total.
+    return importState.model_count > 0
+      ? Math.round((done / importState.model_count) * 100)
+      : 0;
   });
 </script>
 
