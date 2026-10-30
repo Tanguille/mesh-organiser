@@ -42,6 +42,23 @@ pub fn path_to_utf8(path: &Path) -> Result<&str, ServiceError> {
         .ok_or_else(|| ServiceError::InternalError("Path is not valid UTF-8".into()))
 }
 
+/// Writes the zip's central directory and flushes the writer under it.
+///
+/// `ZipFileWriter::close` does not flush, so a tokio `File` can still have the footer write
+/// pending, and a read right after would see a truncated zip.
+///
+/// # Errors
+///
+/// Returns an error if writing the central directory or flushing fails.
+pub async fn finish_zip<W: tokio::io::AsyncWrite + Unpin>(
+    writer: async_zip::tokio::write::ZipFileWriter<W>,
+) -> Result<(), ServiceError> {
+    let mut inner = writer.close().await?.into_inner();
+    tokio::io::AsyncWriteExt::flush(&mut inner).await?;
+
+    Ok(())
+}
+
 /// Percent-decodes `text` into an owned string; fails if the decoded bytes are not valid UTF-8.
 /// A literal `+` is kept as-is and a malformed `%zz` sequence is left untouched.
 pub fn percent_decode(text: &str) -> Result<String, std::str::Utf8Error> {

@@ -201,6 +201,48 @@ async fn import_path_single_file_imports_one_ungrouped_model() {
     assert!(path.exists(), "source is kept without delete_after_import");
 }
 
+/// Thumbnails and downloads read a stored blob as soon as import returns, so both the zipped and
+/// the raw write must be on disk by then.
+#[tokio::test]
+async fn import_path_stores_a_blob_that_reads_back_intact_right_away() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let root = TempDir::new().unwrap();
+
+    for (name, filetype, zipped) in [("Zipped.stl", "stl.zip", true), ("Raw.3mf", "3mf", false)] {
+        let path = root.path().join(name);
+        write_file(&path);
+        let result = import_path(
+            path.to_str().unwrap(),
+            &app_state,
+            import_state(false, false, false),
+        )
+        .await
+        .unwrap();
+        let models = model_db::get_models_via_ids(
+            &app_state.db,
+            &User::default(),
+            result.imported_models[0].model_ids.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(models[0].blob.filetype, filetype);
+        let stored = export_service::get_model_path_for_blob(&models[0].blob, &app_state);
+
+        // Read without yielding, so a write still pending in tokio's blocking pool shows up.
+        let bytes = if zipped {
+            let mut archive = zip::ZipArchive::new(fs::File::open(&stored).unwrap()).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut archive.by_index(0).unwrap(), &mut bytes).unwrap();
+
+            bytes
+        } else {
+            fs::read(&stored).unwrap()
+        };
+
+        assert_eq!(bytes, name.as_bytes(), "{name}");
+    }
+}
+
 #[tokio::test]
 async fn import_path_single_file_as_path_references_source() {
     let (_dir, app_state) = common::test_app_state().await;

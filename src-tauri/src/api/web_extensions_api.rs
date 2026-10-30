@@ -83,9 +83,7 @@ pub async fn download_files_and_open_in_folder(
             let _ = std::fs::remove_file(&model_path);
         }
 
-        writer.close().await?;
-        // Finalizing the ZIP footer can leave a Tokio file write pending.
-        tokio::io::AsyncWriteExt::flush(&mut file).await?;
+        service::finish_zip(writer).await?;
     }
 
     tauri_plugin_opener::open_path(&temp_dir, None::<&str>)

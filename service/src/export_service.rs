@@ -207,9 +207,7 @@ pub async fn export_zip_to_temp_folder(
         stream_writer.close().await?;
     }
 
-    writer.close().await?;
-    // Finalizing the ZIP footer can leave a Tokio file write pending.
-    tokio::io::AsyncWriteExt::flush(&mut file).await?;
+    util::finish_zip(writer).await?;
 
     Ok(ExportZipResult {
         temp_dir,
@@ -629,7 +627,7 @@ mod tests {
             .write_entry_whole(builder, entry_content)
             .await
             .unwrap();
-        writer.close().await.unwrap();
+        crate::util::finish_zip(writer).await.unwrap();
 
         let blob = Blob {
             id: 0,

@@ -468,9 +468,11 @@ where
             );
 
             writer.write_entry_whole(builder, &file_contents).await?;
-            writer.close().await?;
+            util::finish_zip(writer).await?;
         } else {
             file_handle.write_all(&file_contents).await?;
+            // A tokio `File` can still have the write pending when `write_all` returns.
+            file_handle.flush().await?;
         }
 
         blob_db::add_blob(
