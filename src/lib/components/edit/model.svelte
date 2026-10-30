@@ -92,7 +92,7 @@
 
   $effect(() => {
     const key = metadataKey;
-    const gen = ++metadataLoadGeneration;
+    const generation = ++metadataLoadGeneration;
 
     untrack(async () => {
       nozzle_diameter = null;
@@ -118,7 +118,7 @@
       }
 
       // The model changed while this fetch ran, so the response is stale.
-      if (gen !== metadataLoadGeneration || !metadata) {
+      if (generation !== metadataLoadGeneration || !metadata) {
         return;
       }
 
