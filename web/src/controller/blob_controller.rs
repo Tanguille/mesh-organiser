@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -136,9 +136,7 @@ pub async fn download_model(
 
     response.headers_mut().insert(
         axum::http::header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{filename}\"")
-            .parse()
-            .unwrap(),
+        attachment_header(&filename),
     );
 
     response
@@ -184,6 +182,13 @@ pub async fn get_blob_thumb(
     };
 
     Ok(Body::from_stream(ReaderStream::with_capacity(file, STREAM_CHUNK_SIZE)).into_response())
+}
+
+/// A `Content-Disposition` that names `name`, or a bare `attachment` when `name` cannot go in a
+/// header value, so no file name can make a download panic.
+fn attachment_header(name: &str) -> HeaderValue {
+    HeaderValue::from_str(&format!("attachment; filename=\"{name}\""))
+        .unwrap_or_else(|_| HeaderValue::from_static("attachment"))
 }
 
 /// Streams a blob's content; shared by `download_model` and `get_blob_bytes`.
@@ -232,9 +237,7 @@ pub async fn get_blobs_zip_download(
 
     response.headers_mut().insert(
         axum::http::header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{name_lossy}\"")
-            .parse()
-            .unwrap(),
+        attachment_header(&name_lossy),
     );
 
     Ok(response)
@@ -333,6 +336,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(body.as_ref(), contents);
+    }
+
+    #[test]
+    fn attachment_header_falls_back_to_a_bare_attachment_for_a_name_with_a_newline() {
+        assert_eq!(
+            super::attachment_header("boat.stl"),
+            "attachment; filename=\"boat.stl\""
+        );
+        assert_eq!(super::attachment_header("boat\n.stl"), "attachment");
     }
 
     #[cfg(unix)]
