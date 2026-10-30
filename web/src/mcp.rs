@@ -3,12 +3,7 @@
 //! "Mesh" is what the rest of the codebase calls a model, so an agent does not confuse it with
 //! an LLM model. Mesh ids are the db model ids.
 
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    iter,
-    sync::Arc,
-};
+use std::{borrow::Cow, collections::HashMap, iter, sync::Arc};
 
 use axum::{
     Router,
@@ -189,11 +184,6 @@ fn unique_ids(mut ids: Vec<i64>) -> Result<Vec<i64>, String> {
     }
 
     Ok(ids)
-}
-
-/// What a per-call mesh limit counts: `owned_meshes` dedupes, so a repeated id costs nothing.
-fn distinct_count(ids: &[i64]) -> usize {
-    ids.iter().collect::<HashSet<_>>().len()
 }
 
 /// The user's meshes with these ids; fails naming every id that is unknown, trashed or foreign.
@@ -563,10 +553,11 @@ impl MeshServer {
         Parameters(params): Parameters<MeshIdsParams>,
     ) -> ToolResult {
         let user = current_user(&parts)?;
-        if distinct_count(&params.mesh_ids) > MAX_MESH_DETAILS {
+        let mesh_ids = unique_ids(params.mesh_ids)?;
+        if mesh_ids.len() > MAX_MESH_DETAILS {
             return Err(format!("At most {MAX_MESH_DETAILS} meshes per call").into());
         }
-        let meshes = owned_meshes(&self.app_state.db, user, params.mesh_ids).await?;
+        let meshes = owned_meshes(&self.app_state.db, user, mesh_ids).await?;
         let max = self.app_state.get_configuration().core_parallelism;
 
         let mut details = service::run_bounded(
@@ -617,10 +608,11 @@ impl MeshServer {
         Parameters(params): Parameters<MeshIdsParams>,
     ) -> Result<CallToolResult, ToolError> {
         let user = current_user(&parts)?;
-        if distinct_count(&params.mesh_ids) > MAX_THUMBNAILS {
+        let mesh_ids = unique_ids(params.mesh_ids)?;
+        if mesh_ids.len() > MAX_THUMBNAILS {
             return Err(format!("At most {MAX_THUMBNAILS} meshes per call").into());
         }
-        let meshes = owned_meshes(&self.app_state.db, user, params.mesh_ids).await?;
+        let meshes = owned_meshes(&self.app_state.db, user, mesh_ids).await?;
 
         let mut content = Vec::with_capacity(meshes.len() * 2);
         for mesh in &meshes {
