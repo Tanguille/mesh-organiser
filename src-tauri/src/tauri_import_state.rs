@@ -4,6 +4,7 @@ use service::import_state::{ImportState, ImportStateEmitter};
 
 use crate::tauri_app_state::TauriAppState;
 
+// `src/lib/api/tauri/tauri_import.test.ts` checks the frontend listens to each of these.
 const IMPORT_STATUS_EVENT: &str = "import-status";
 const IMPORT_MODEL_GROUP_EVENT: &str = "import-model-group";
 const IMPORT_MODEL_TOTAL_EVENT: &str = "import-model-total";
@@ -72,14 +73,4 @@ pub fn import_state_new_tauri(
             handle: app_handle.clone(),
         }),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn failure_reason_event_name_is_import_failure() {
-        // The frontend listens for this name; the paired assertion is the `listenedEvents`
-        // list in `src/lib/api/tauri/tauri_import.test.ts`.
-        assert_eq!(super::IMPORT_FAILURE_REASON_EVENT, "import-failure");
-    }
 }

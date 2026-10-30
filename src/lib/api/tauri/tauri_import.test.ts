@@ -6,6 +6,8 @@
  * add_model command.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WatchEvent } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
@@ -166,6 +168,28 @@ describe("initImportListeners registration", () => {
       listenedEvents,
     );
     expect(mocks.watch).not.toHaveBeenCalled();
+  });
+
+  it("listens to every import event the Rust emitter sends", async () => {
+    const emitterSource = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../../src-tauri/src/tauri_import_state.rs",
+          import.meta.url,
+        ),
+      ),
+      "utf-8",
+    );
+    const emittedEvents = [
+      ...emitterSource.matchAll(/const \w+_EVENT: &str = "([^"]+)";/g),
+    ].map(([, name]) => name);
+
+    await initApi();
+
+    expect(emittedEvents).toHaveLength(6);
+    expect(mocks.listen.mock.calls.map(([name]) => name)).toEqual(
+      expect.arrayContaining(emittedEvents),
+    );
   });
 
   it("watches the Downloads folder only when watch_downloads_folder is enabled", async () => {
