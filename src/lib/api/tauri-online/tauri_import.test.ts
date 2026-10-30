@@ -1,10 +1,11 @@
 /**
  * Pins that a failed upload in desktop online-account mode records the Failure
  * status and reason like the local import does, instead of rejecting and
- * leaving the import page on its progress spinner.
+ * leaving the import page on its progress spinner. The reason's formats are
+ * tested with the local import.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importState, resetImportState } from "#lib/import.svelte";
 import type { IGroupApi } from "../shared/group_api";
 import type { IServerRequestApi } from "../shared/server_request_api";
@@ -21,49 +22,30 @@ vi.mock("$app/state", () => ({
 }));
 
 describe("TauriWebImportApi.startImportProcess", () => {
-  afterEach(() => {
+  beforeEach(() => {
     vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
     resetImportState();
     vi.restoreAllMocks();
     invoke.mockReset();
   });
 
-  it.each([
-    [
-      "a command error",
-      {
-        error_message: "Upload failed",
-        error_inner_message: "server unreachable",
-        error_type: "InternalError",
-      },
-      "Upload failed - server unreachable",
-    ],
-    [
-      "a plain Error",
-      new Error("path is not readable"),
-      "path is not readable",
-    ],
-  ])(
-    "records %s from the upload as the failure reason",
-    async (_shape, reason, expected) => {
-      vi.spyOn(console, "log").mockImplementation(() => {});
-      vi.spyOn(console, "error").mockImplementation(() => {});
-      invoke.mockRejectedValueOnce(reason);
-      const api = new TauriWebImportApi(
-        {} as IServerRequestApi,
-        {} as IGroupApi,
-      );
+  it("records a failed upload's reason as an import failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    invoke.mockRejectedValueOnce(new Error("server unreachable"));
+    const api = new TauriWebImportApi({} as IServerRequestApi, {} as IGroupApi);
 
-      const result = await api.startImportProcess(["/a.stl"], {});
+    const result = await api.startImportProcess(["/a.stl"], {});
 
-      expect(invoke).toHaveBeenCalledWith(
-        "upload_models_to_remote_server",
-        expect.anything(),
-      );
-      expect(result.status).toBe(ImportStatus.Failure);
-      expect(result.failure_reason).toBe(expected);
-      expect(importState.status).toBe(ImportStatus.Failure);
-      expect(importState.failure_reason).toBe(expected);
-    },
-  );
+    expect(invoke).toHaveBeenCalledWith(
+      "upload_models_to_remote_server",
+      expect.anything(),
+    );
+    expect(result.status).toBe(ImportStatus.Failure);
+    expect(result.failure_reason).toBe("server unreachable");
+    expect(importState.status).toBe(ImportStatus.Failure);
+    expect(importState.failure_reason).toBe("server unreachable");
+  });
 });

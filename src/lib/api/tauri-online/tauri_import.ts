@@ -11,7 +11,7 @@ import {
 } from "../shared/tauri_import_api";
 import type { IServerRequestApi } from "../shared/server_request_api";
 import { updateSidebarState } from "#lib/sidebar_data.svelte";
-import { importFailureReason, TauriImportApi } from "../tauri/tauri_import";
+import { TauriImportApi } from "../tauri/tauri_import";
 import { invoke } from "@tauri-apps/api/core";
 import type { IGroupApi } from "../shared/group_api";
 
@@ -110,11 +110,11 @@ export class TauriWebImportApi extends TauriImportApi {
         });
       }
     } catch (reason: unknown) {
-      importState.status = importStateClone.status = ImportStatus.Failure;
-      importState.failure_reason = importStateClone.failure_reason =
-        importFailureReason(reason);
-      console.error("Failed to upload models:", reason);
-      return importStateClone;
+      return this.recordFailure(
+        importStateClone,
+        reason,
+        "Failed to upload models:",
+      );
     }
 
     importStateClone.imported_models = importedModelsSet;
