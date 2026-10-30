@@ -1,7 +1,4 @@
-use std::{
-    panic,
-    path::{Path, PathBuf},
-};
+use std::{panic, path::Path};
 
 use image::{DynamicImage, imageops::FilterType::Triangle};
 use libmeshthumbnail::{extract_image, parse_model, render};
@@ -178,33 +175,44 @@ pub async fn generate_thumbnails(
         (color & 0xFF) as u8,
     );
 
-    let paths: Vec<(PathBuf, PathBuf)> = models
+    let (step_paths, other_paths): (Vec<_>, Vec<_>) = models
         .iter()
         .filter(|blob| !blob.to_file_type().is_step() || blob.size <= max_step_size)
         .map(|blob| {
             let model_path = get_model_path_for_blob(blob, app_state);
             let image_path = get_image_path_for_blob(blob, app_state);
 
-            (model_path, image_path)
+            (blob.to_file_type().is_step(), model_path, image_path)
         })
-        .filter(|(_, image_path)| overwrite || !image_path.exists())
-        .collect();
+        .filter(|(_, _, image_path)| overwrite || !image_path.exists())
+        .partition(|(is_step, _, _)| *is_step);
 
-    import_state.update_total_model_count(paths.len());
+    import_state.update_total_model_count(step_paths.len() + other_paths.len());
+
+    // STEP parses wait on one global OCCT lock, so they share a single sequential task: one slot
+    // in the bound instead of a run of tasks that starve every other format while they wait.
+    let step_batch = (!step_paths.is_empty()).then_some(step_paths);
+    let batches = step_batch
+        .into_iter()
+        .chain(other_paths.into_iter().map(|path| vec![path]));
 
     let mut futures = JoinSet::new();
 
-    for (model_path, image_path) in paths {
+    for batch in batches {
         futures.spawn_blocking(move || {
-            let _ = process(
-                &model_path,
-                &image_path,
-                color,
-                rotation,
-                fallback_3mf_thumbnail,
-                prefer_3mf_thumbnail,
-                prefer_gcode_thumbnail,
-            );
+            for (_, model_path, image_path) in &batch {
+                let _ = process(
+                    model_path,
+                    image_path,
+                    color,
+                    rotation,
+                    fallback_3mf_thumbnail,
+                    prefer_3mf_thumbnail,
+                    prefer_gcode_thumbnail,
+                );
+            }
+
+            batch.len()
         });
 
         if futures.len() >= max_concurrent
@@ -213,7 +221,7 @@ pub async fn generate_thumbnails(
             match res {
                 Err(err) if err.is_panic() => panic::resume_unwind(err.into_panic()),
                 Err(err) => panic!("{err}"),
-                Ok(()) => import_state.update_finished_thumbnails_count(1),
+                Ok(finished) => import_state.update_finished_thumbnails_count(finished),
             }
         }
     }
