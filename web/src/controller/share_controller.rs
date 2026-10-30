@@ -174,7 +174,7 @@ pub async fn delete_share(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     fn scope(model_ids: Vec<i64>) -> super::ShareScope {
         super::ShareScope {
             share: db::model::share::Share {
@@ -222,7 +222,7 @@ mod tests {
 
     /// An app state over a fresh database and data dir; the `TempDir` must outlive the test.
     /// The migrations seed the local account as user 1, which `User::default()` names.
-    async fn app_state() -> (tempfile::TempDir, service::AppState) {
+    pub async fn app_state() -> (tempfile::TempDir, service::AppState) {
         let dir = tempfile::TempDir::new().unwrap();
         let data_path = dir.path().to_string_lossy().to_string();
         let backup_dir = dir.path().join("backups");
