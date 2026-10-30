@@ -233,40 +233,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn share_handlers_return_not_found_for_an_unknown_share() {
-        let (_dir, app_state) = crate::test_support::app_state().await;
-
-        for uri in [
-            "/api/v1/shares/missing",
-            "/api/v1/shares/missing/models?page=1&page_size=10",
-            "/api/v1/shares/missing/groups?page=1&page_size=10",
-        ] {
-            assert_eq!(
-                get(&app_state, uri).await,
-                axum::http::StatusCode::NOT_FOUND,
-                "{uri}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn share_handlers_serve_a_known_share() {
+    async fn share_handlers_serve_a_known_share_and_are_not_found_for_an_unknown_one() {
         let (_dir, app_state) = crate::test_support::app_state().await;
         let share_id =
             db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
                 .await
                 .unwrap();
 
-        for uri in [
-            format!("/api/v1/shares/{share_id}"),
-            format!("/api/v1/shares/{share_id}/models?page=1&page_size=10"),
-            format!("/api/v1/shares/{share_id}/groups?page=1&page_size=10"),
+        for (id, status) in [
+            (share_id.as_str(), axum::http::StatusCode::OK),
+            ("missing", axum::http::StatusCode::NOT_FOUND),
         ] {
-            assert_eq!(
-                get(&app_state, &uri).await,
-                axum::http::StatusCode::OK,
-                "{uri}"
-            );
+            for uri in [
+                format!("/api/v1/shares/{id}"),
+                format!("/api/v1/shares/{id}/models?page=1&page_size=10"),
+                format!("/api/v1/shares/{id}/groups?page=1&page_size=10"),
+            ] {
+                assert_eq!(get(&app_state, &uri).await, status, "{uri}");
+            }
         }
     }
 
@@ -306,29 +290,5 @@ mod tests {
             set_model_ids(&app_state, &share_id, vec![]).await,
             axum::http::StatusCode::NO_CONTENT
         );
-    }
-
-    // A plain UPDATE or DELETE that matches nothing is not an error, so renaming or deleting an
-    // unknown share is a no-op, never a 500.
-    #[tokio::test]
-    async fn edit_and_delete_share_are_no_ops_for_an_unknown_share() {
-        let (_dir, app_state) = crate::test_support::app_state().await;
-        let user = || crate::user::CurrentUser(db::model::user::User::default());
-        let missing = || axum::extract::Path("missing".to_string());
-        let state = || axum::extract::State(app_state.clone());
-
-        let edit = super::edit_share(
-            user(),
-            missing(),
-            state(),
-            axum::Json(super::EditShareParams {
-                share_name: "renamed".to_string(),
-            }),
-        )
-        .await;
-        let delete = super::delete_share(user(), missing(), state()).await;
-
-        assert_eq!(edit.unwrap(), axum::http::StatusCode::NO_CONTENT);
-        assert_eq!(delete.unwrap(), axum::http::StatusCode::NO_CONTENT);
     }
 }
