@@ -427,27 +427,6 @@ async fn import_path_as_path_skips_a_file_whose_path_is_not_utf8() {
     assert_eq!((result.model_count, result.imported_model_count), (1, 0));
 }
 
-/// Makes a folder unreadable until dropped, so the temp dir can still be removed after a
-/// failed assertion.
-#[cfg(target_os = "linux")]
-struct UnreadableFolder(PathBuf);
-
-#[cfg(target_os = "linux")]
-impl UnreadableFolder {
-    fn new(path: PathBuf) -> Self {
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
-
-        Self(path)
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for UnreadableFolder {
-    fn drop(&mut self) {
-        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
-    }
-}
-
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn import_path_recursive_directory_skips_an_unreadable_subfolder_but_not_an_unreadable_root()
@@ -455,18 +434,21 @@ async fn import_path_recursive_directory_skips_an_unreadable_subfolder_but_not_a
     let (_dir, app_state) = common::test_app_state().await;
     let root = TempDir::new().unwrap();
     let folder = root.path().join("My_Folder");
+    let locked = folder.join("Locked");
     write_file(&folder.join("top.stl"));
-    write_file(&folder.join("Locked/inner.stl"));
-    let locked = UnreadableFolder::new(folder.join("Locked"));
+    write_file(&locked.join("inner.stl"));
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let folder = folder.to_str().unwrap();
 
-    assert_eq!(get_model_count(folder, true, false).await.unwrap(), 1);
-    let result = import_path(folder, &app_state, import_state(true, false, false))
-        .await
-        .unwrap();
+    let count = get_model_count(folder, true, false).await;
+    let result = import_path(folder, &app_state, import_state(true, false, false)).await;
+    let locked_count = get_model_count(locked.to_str().unwrap(), true, false).await;
+    // Readable again before any assertion, so the temp dir can still be removed if one fails.
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
 
+    assert_eq!(count.unwrap(), 1);
     assert_eq!(
-        summarize(&app_state, &result).await,
+        summarize(&app_state, &result.unwrap()).await,
         vec![(
             true,
             Some(String::from("My Folder")),
@@ -474,7 +456,7 @@ async fn import_path_recursive_directory_skips_an_unreadable_subfolder_but_not_a
         )]
     );
     assert!(matches!(
-        get_model_count(locked.0.to_str().unwrap(), true, false).await,
+        locked_count,
         Err(ServiceError::FileSystemFault(_))
     ));
 }
