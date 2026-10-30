@@ -7,7 +7,7 @@
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getContainer, resetContainer } from "#lib/api/dependency_injection";
 import { IGroupApi } from "#lib/api/shared/group_api";
 import {
@@ -41,8 +41,11 @@ function importButton(name: string) {
 }
 
 describe("import +page", () => {
-  afterEach(() => {
+  beforeEach(() => {
     vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
     resetImportState();
     resetContainer();
     vi.restoreAllMocks();
@@ -89,7 +92,6 @@ describe("import +page", () => {
   ] as const)(
     "re-enables the import buttons when %s rejects",
     async (buttonName, method) => {
-      vi.spyOn(console, "log").mockImplementation(() => {});
       const failure = new Error("dialog failed");
       const tauriImportApi = {
         openFilesForImporting: vi.fn().mockResolvedValue(undefined),

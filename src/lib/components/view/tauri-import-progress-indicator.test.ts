@@ -5,7 +5,7 @@
  */
 
 import { render, screen } from "@testing-library/svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importState, resetImportState } from "#lib/import.svelte";
 import { ImportStatus } from "#lib/api/shared/tauri_import_api";
 import ImportProgressIndicator from "./tauri-import-progress-indicator.svelte";
@@ -18,8 +18,11 @@ function progressValue() {
 }
 
 describe("ImportProgressIndicator", () => {
-  afterEach(() => {
+  beforeEach(() => {
     vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
     resetImportState();
     vi.restoreAllMocks();
   });
