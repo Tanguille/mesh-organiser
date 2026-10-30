@@ -3,6 +3,7 @@
   import {
     IAdminUserApi,
     ISwitchUserApi,
+    IUserApi,
     IUserLoginApi,
     IUserManageSelfApi,
     IUserTokenApi,
@@ -40,11 +41,20 @@
   const userSyncApi = getContainer().optional<IUserSyncApi>(IUserSyncApi);
   const userAdminApi = getContainer().optional<IAdminUserApi>(IAdminUserApi);
   const userSwitchApi = getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
+  const userApi = getContainer().optional<IUserApi>(IUserApi);
 
   let diskUsage = $state<DiskUsageInfo | null>(null);
   let password = $state<string>("");
   let password2 = $state<string>("");
   let isDesktop = $state<boolean>(false);
+  // On desktop, currentUser is the local user, but an online account's edits
+  // go to the server account; null until that account loads.
+  let onlineAccountUser = $state<User | null>(null);
+  const editedUser = $derived(
+    isDesktop && currentUser.permissions.onlineAccount
+      ? onlineAccountUser
+      : currentUser,
+  );
 
   const saveUserDebounced = debounce(async (editedUser: User) => {
     if (!currentUserEditApi) {
@@ -72,7 +82,11 @@
   }, 1000);
 
   async function onUpdateUser() {
-    let snapshot = $state.snapshot(currentUser);
+    if (!editedUser) {
+      return;
+    }
+
+    let snapshot = $state.snapshot(editedUser);
     await saveUserDebounced(snapshot);
   }
 
@@ -142,6 +156,11 @@
     if (hostApi) {
       isDesktop = await isCurrentPlatformDesktop(hostApi);
     }
+
+    // IUserApi is the server's user api in online-account mode.
+    if (isDesktop && currentUser.permissions.onlineAccount && userApi) {
+      onlineAccountUser = await userApi.getCurrentUser();
+    }
   });
 </script>
 
@@ -150,15 +169,17 @@
     <CardTitle>Edit current user</CardTitle>
   </CardHeader>
   <CardContent class="flex flex-col gap-5 text-sm">
-    <div class="flex flex-col gap-3">
-      <Label for="username">Username</Label>
+    {#if editedUser}
+      <div class="flex flex-col gap-3">
+        <Label for="username">Username</Label>
 
-      <Input
-        id="username"
-        oninput={onUpdateUser}
-        bind:value={currentUser.username}
-      />
-    </div>
+        <Input
+          id="username"
+          oninput={onUpdateUser}
+          bind:value={editedUser.username}
+        />
+      </div>
+    {/if}
     {#if !isDesktop}
       <div class="flex flex-col gap-3">
         <Label for="email">Email</Label>
