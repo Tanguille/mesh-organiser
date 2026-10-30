@@ -36,10 +36,7 @@ impl ShareScope {
     pub async fn resolve(app_state: &AppState, share_id: &str) -> Result<Self, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.db, share_id)
             .await
-            .map_err(|error| match error {
-                db::DbError::RowNotFound => ApplicationError::NotFound,
-                error => error.into(),
-            })?;
+            .map_err(row_not_found_as_404)?;
 
         let Some(owner) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
             return Err(
@@ -72,6 +69,15 @@ impl ShareScope {
             .copied()
             .filter(|model_id| requested.contains(model_id))
             .collect()
+    }
+}
+
+/// For the share queries whose `RowNotFound` means an unknown share (or, for
+/// `set_model_ids_on_share`, a model the user does not have), not a server fault.
+fn row_not_found_as_404(error: db::DbError) -> ApplicationError {
+    match error {
+        db::DbError::RowNotFound => ApplicationError::NotFound,
+        error => error.into(),
     }
 }
 
@@ -158,7 +164,9 @@ pub async fn set_model_ids_on_share(
     State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    share_db::set_model_ids_on_share(&app_state.db, &user, &share_id, params.model_ids).await?;
+    share_db::set_model_ids_on_share(&app_state.db, &user, &share_id, params.model_ids)
+        .await
+        .map_err(row_not_found_as_404)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -294,5 +302,67 @@ pub mod tests {
                 "{uri}"
             );
         }
+    }
+
+    async fn set_model_ids(
+        app_state: &service::AppState,
+        share_id: &str,
+        model_ids: Vec<i64>,
+    ) -> axum::http::StatusCode {
+        let result = super::set_model_ids_on_share(
+            crate::user::CurrentUser(db::model::user::User::default()),
+            axum::extract::Path(share_id.to_string()),
+            axum::extract::State(app_state.clone()),
+            axum::Json(crate::controller::ModelIdsParams { model_ids }),
+        )
+        .await;
+
+        axum::response::IntoResponse::into_response(result).status()
+    }
+
+    #[tokio::test]
+    async fn set_model_ids_on_share_is_not_found_for_an_unknown_share_or_model() {
+        let (_dir, app_state) = app_state().await;
+        let share_id =
+            db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
+                .await
+                .unwrap();
+
+        assert_eq!(
+            set_model_ids(&app_state, "missing", vec![]).await,
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            set_model_ids(&app_state, &share_id, vec![999]).await,
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            set_model_ids(&app_state, &share_id, vec![]).await,
+            axum::http::StatusCode::NO_CONTENT
+        );
+    }
+
+    // A plain UPDATE or DELETE that matches nothing is not an error, so renaming or deleting an
+    // unknown share is a no-op, never a 500.
+    #[tokio::test]
+    async fn edit_and_delete_share_are_no_ops_for_an_unknown_share() {
+        let (_dir, app_state) = app_state().await;
+        let user = || crate::user::CurrentUser(db::model::user::User::default());
+        let missing = || axum::extract::Path("missing".to_string());
+        let state = || axum::extract::State(app_state.clone());
+
+        let edit = super::edit_share(
+            user(),
+            missing(),
+            state(),
+            axum::Json(super::EditShareParams {
+                share_name: "renamed".to_string(),
+            }),
+        )
+        .await;
+        let delete = super::delete_share(user(), missing(), state()).await;
+
+        assert_eq!(edit.unwrap(), axum::http::StatusCode::NO_CONTENT);
+        assert_eq!(delete.unwrap(), axum::http::StatusCode::NO_CONTENT);
     }
 }
