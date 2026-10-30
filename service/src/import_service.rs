@@ -157,7 +157,6 @@ pub async fn add_labels_by_keywords(
         .iter()
         .flat_map(|r| r.model_ids.iter())
         .copied()
-        .unique()
         .collect::<Vec<i64>>();
 
     let Ok(models) = model_db::get_models_via_ids(db, &import_state.user, model_ids).await else {
