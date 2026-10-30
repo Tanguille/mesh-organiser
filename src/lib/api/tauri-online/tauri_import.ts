@@ -77,11 +77,7 @@ export class TauriWebImportApi extends TauriImportApi {
         if (m.group_set === null || m.group_name === null) {
           noGroup.push(m);
         } else {
-          if (!groupMap[m.group_set]) {
-            groupMap[m.group_set] = [];
-          }
-
-          groupMap[m.group_set].push(m);
+          (groupMap[m.group_set] ??= []).push(m);
         }
       }
 
