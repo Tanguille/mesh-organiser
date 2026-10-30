@@ -363,7 +363,8 @@ fn extract_deep_link(data: &str) -> Option<String> {
             return Some(encoded.to_string());
         }
 
-        return Some(service::percent_decode(encoded).unwrap());
+        // An escape that does not decode to UTF-8 makes the link unusable, like a missing `?file=`.
+        return service::percent_decode(encoded).ok();
     }
 
     None
@@ -707,6 +708,17 @@ mod tests {
             super::extract_deep_link("bambustudio://open/?file=bad%zz.stl"),
             Some("bad%zz.stl".to_string())
         );
+    }
+
+    #[test]
+    fn extract_deep_link_invalid_utf8_escape_returns_none() {
+        // `%FF` is a well-formed escape whose byte is not valid UTF-8.
+        for link in [
+            "cura://open?file=%FF",
+            "prusaslicer://open/?file=https%3A%2F%2Fex.com%2F%FF.stl",
+        ] {
+            assert_eq!(super::extract_deep_link(link), None, "{link}");
+        }
     }
 
     #[test]
