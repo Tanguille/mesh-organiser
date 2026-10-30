@@ -62,7 +62,9 @@ pub async fn import_path(
             let mut import_state = import_state_clone.lock().await;
             import_state.update_status(ImportStatus::FinishedModels);
             import_state.create_groups_from_all_sets(app_state).await?;
-            // After grouping, so a new model also matches keywords in its new group's name.
+            // After grouping, so a model also matches keywords in the name of a group this import
+            // created. An online-account folder import uploads its files one by one and groups
+            // them on the client afterwards, so those folder names are not matched.
             add_labels_by_keywords(&import_state.imported_models, app_state, &import_state).await;
 
             let import_state = {
