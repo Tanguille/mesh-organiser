@@ -53,7 +53,7 @@ The app knows 4 layers of organisation:
 
 - Compresses imported models to save disk space
 - Hold Shift/Control to select multiple models or groups at once
-- Import .step files (the desktop app renders thumbnails for STEP files up to `max_size_model_step_preview` MB, 10 by default)
+- Import .step files (the desktop app renders thumbnails for STEP files up to 10 MB; set `max_size_model_step_preview` in the settings file for larger models)
 - Import .gcode files
 - Open slicer after importing from website (see settings, disabled by default)
 - Supported slicers: PrusaSlicer, OrcaSlicer, Cura, Bambu Studio
