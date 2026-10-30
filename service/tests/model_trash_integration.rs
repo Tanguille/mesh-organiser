@@ -47,6 +47,37 @@ async fn add_model_with_files(app_state: &AppState, user: &User, sha256: &str) -
     }
 }
 
+/// Adds `count` models of `user` sharing one blob, trashed at `deleted` when given, and returns
+/// their ids in order. One statement: a thousand single inserts would dominate the run time.
+async fn add_bulk_models(
+    app_state: &AppState,
+    user: &User,
+    count: u32,
+    deleted: Option<&str>,
+) -> Vec<i64> {
+    let blob_id = blob_db::add_blob(&app_state.db, "bulk", "stl", 1, None)
+        .await
+        .unwrap();
+    sqlx::query(
+        "WITH RECURSIVE counter(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM counter WHERE number < ?)
+         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id, model_deleted)
+         SELECT 'bulk-' || number, ?, '2024-01-01T00:00:00Z', ?, ? FROM counter",
+    )
+    .bind(count)
+    .bind(blob_id)
+    .bind(user.id)
+    .bind(deleted)
+    .execute(&*app_state.db)
+    .await
+    .unwrap();
+
+    sqlx::query_scalar("SELECT model_id FROM models WHERE model_blob_id = ? ORDER BY model_id")
+        .bind(blob_id)
+        .fetch_all(&*app_state.db)
+        .await
+        .unwrap()
+}
+
 async fn add_other_user(app_state: &AppState) -> User {
     let user_id = user_db::add_user(
         &app_state.db,
@@ -286,22 +317,8 @@ async fn get_trashed_models_lists_newest_deleted_first() {
 async fn get_trashed_models_returns_more_rows_than_a_page_holds() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
-    let blob_id = blob_db::add_blob(&app_state.db, "shared", "stl", 1, None)
-        .await
-        .unwrap();
     let count = db::MAX_PAGE_SIZE + 1;
-    // One statement: a thousand single inserts would dominate the run time.
-    sqlx::query(
-        "WITH RECURSIVE counter(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM counter WHERE number < ?)
-         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id, model_deleted)
-         SELECT 'trashed-' || number, ?, '2024-01-01T00:00:00Z', ?, '2024-01-01T00:00:00Z' FROM counter",
-    )
-    .bind(count)
-    .bind(blob_id)
-    .bind(user.id)
-    .execute(&*app_state.db)
-    .await
-    .unwrap();
+    add_bulk_models(&app_state, &user, count, Some("2024-01-01T00:00:00Z")).await;
 
     let trashed = export_service::get_trashed_models(&app_state, &user)
         .await
@@ -314,25 +331,7 @@ async fn get_trashed_models_returns_more_rows_than_a_page_holds() {
 async fn delete_models_trashes_more_models_than_a_page_holds() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
-    let blob_id = blob_db::add_blob(&app_state.db, "shared", "stl", 1, None)
-        .await
-        .unwrap();
-    let count = db::MAX_PAGE_SIZE + 1;
-    sqlx::query(
-        "WITH RECURSIVE counter(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM counter WHERE number < ?)
-         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id)
-         SELECT 'live-' || number, ?, '2024-01-01T00:00:00Z', ? FROM counter",
-    )
-    .bind(count)
-    .bind(blob_id)
-    .bind(user.id)
-    .execute(&*app_state.db)
-    .await
-    .unwrap();
-    let model_ids: Vec<i64> = sqlx::query_scalar("SELECT model_id FROM models ORDER BY model_id")
-        .fetch_all(&*app_state.db)
-        .await
-        .unwrap();
+    let model_ids = add_bulk_models(&app_state, &user, db::MAX_PAGE_SIZE + 1, None).await;
 
     export_service::delete_models(&app_state, &user, model_ids.clone())
         .await
