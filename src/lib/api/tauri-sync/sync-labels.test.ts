@@ -43,6 +43,32 @@ function label(
   };
 }
 
+// A server label api that uploads every label, with `overrides` replacing
+// single methods.
+function serverLabelApi(overrides: Record<string, unknown> = {}) {
+  return {
+    getLabels: vi.fn().mockResolvedValue([]),
+    addLabel: vi.fn(),
+    setKeywordsOnLabel: vi.fn().mockResolvedValue(undefined),
+    addLabelToModels: vi.fn().mockResolvedValue(undefined),
+    setChildrenOnLabel: vi.fn().mockResolvedValue(undefined),
+    editLabel: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+// Registers the local label and model apis the sync reads from.
+function provideLocalApis(labels: Label[], keywords: string[]) {
+  const container = getContainer();
+  container.addSingleton(ILabelApi, {
+    getLabels: vi.fn().mockResolvedValue(labels),
+    getKeywordsForLabel: vi.fn().mockResolvedValue(keywords),
+  });
+  container.addSingleton(IModelApi, {
+    getModels: vi.fn().mockResolvedValue([]),
+  });
+}
+
 describe("syncLabels upload", () => {
   afterEach(() => {
     resetContainer();
@@ -53,8 +79,7 @@ describe("syncLabels upload", () => {
   it("fails the sync when setting the uploaded label's keywords rejects", async () => {
     currentUser.lastSync = new Date("2025-01-01T00:00:00Z");
     const keywordsError = new Error("keywords rejected");
-    const serverLabelApi = {
-      getLabels: vi.fn().mockResolvedValue([]),
+    const serverApi = serverLabelApi({
       addLabel: vi
         .fn()
         .mockResolvedValue(
@@ -74,33 +99,23 @@ describe("syncLabels upload", () => {
 
         return rejected;
       }),
-      addLabelToModels: vi.fn().mockResolvedValue(undefined),
-      setChildrenOnLabel: vi.fn().mockResolvedValue(undefined),
-      editLabel: vi.fn().mockResolvedValue(undefined),
-    };
-    const container = getContainer();
-    container.addSingleton(ILabelApi, {
-      getLabels: vi.fn().mockResolvedValue([label()]),
-      getKeywordsForLabel: vi.fn().mockResolvedValue(["filament"]),
     });
-    container.addSingleton(IModelApi, {
-      getModels: vi.fn().mockResolvedValue([]),
-    });
+    provideLocalApis([label()], ["filament"]);
 
     const sync = syncLabels(
       {} as IModelApi,
-      serverLabelApi as unknown as ILabelApi,
+      serverApi as unknown as ILabelApi,
       new Map(),
       new Map(),
     );
 
     await expect(sync).rejects.toBe(keywordsError);
-    expect(serverLabelApi.setKeywordsOnLabel).toHaveBeenCalledWith(
+    expect(serverApi.setKeywordsOnLabel).toHaveBeenCalledWith(
       expect.objectContaining({ id: 9 }),
       ["filament"],
     );
-    expect(serverLabelApi.addLabelToModels).not.toHaveBeenCalled();
-    expect(serverLabelApi.editLabel).not.toHaveBeenCalled();
+    expect(serverApi.addLabelToModels).not.toHaveBeenCalled();
+    expect(serverApi.editLabel).not.toHaveBeenCalled();
   });
 
   it("links an uploaded child to its parent when an unrelated label sits between them", async () => {
@@ -111,8 +126,7 @@ describe("syncLabels upload", () => {
     const parent = label(1, "parent", "parent-gid", [{ ...child.meta }]);
     const unrelated = label(2, "unrelated", "unrelated-gid");
     let nextServerId = 100;
-    const serverLabelApi = {
-      getLabels: vi.fn().mockResolvedValue([]),
+    const serverApi = serverLabelApi({
       addLabel: vi.fn((name: string) =>
         Promise.resolve(
           createLabelMetaInstance(
@@ -124,28 +138,17 @@ describe("syncLabels upload", () => {
           ),
         ),
       ),
-      setKeywordsOnLabel: vi.fn().mockResolvedValue(undefined),
-      addLabelToModels: vi.fn().mockResolvedValue(undefined),
-      setChildrenOnLabel: vi.fn().mockResolvedValue(undefined),
-      editLabel: vi.fn().mockResolvedValue(undefined),
-    };
-    const container = getContainer();
-    container.addSingleton(ILabelApi, {
-      getLabels: vi.fn().mockResolvedValue([parent, unrelated, child]),
-      getKeywordsForLabel: vi.fn().mockResolvedValue([]),
     });
-    container.addSingleton(IModelApi, {
-      getModels: vi.fn().mockResolvedValue([]),
-    });
+    provideLocalApis([parent, unrelated, child], []);
 
     await syncLabels(
       {} as IModelApi,
-      serverLabelApi as unknown as ILabelApi,
+      serverApi as unknown as ILabelApi,
       new Map(),
       new Map(),
     );
 
-    expect(serverLabelApi.setChildrenOnLabel).toHaveBeenCalledWith(
+    expect(serverApi.setChildrenOnLabel).toHaveBeenCalledWith(
       expect.objectContaining({ name: "parent" }),
       [expect.objectContaining({ uniqueGlobalId: "child-gid" })],
     );
