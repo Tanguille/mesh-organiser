@@ -18,10 +18,14 @@ export function createLabelMetaInstance(
   return {
     id,
     name,
-    color: `#${color.toString(16).padStart(6, "0")}`,
+    color: numberToColorString(color),
     lastModified: new Date(lastModified),
     uniqueGlobalId,
   };
+}
+
+export function numberToColorString(color: number): string {
+  return `#${color.toString(16).padStart(6, "0")}`;
 }
 
 export function stringColorToNumber(color: string): number {

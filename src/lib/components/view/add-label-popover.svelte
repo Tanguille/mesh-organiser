@@ -5,14 +5,10 @@
   import { Label } from "#lib/components/ui/label/index.js";
   import Button from "#lib/components/ui/button/button.svelte";
   import type { ClassValue } from "svelte/elements";
+  import { numberToColorString } from "#lib/api/shared/label_api";
 
   function generateRandomColor() {
-    return (
-      "#" +
-      Math.floor(Math.random() * 0x1000000)
-        .toString(16)
-        .padStart(6, "0")
-    );
+    return numberToColorString(Math.floor(Math.random() * 0x1000000));
   }
 
   let newLabelName = $state("New label");
