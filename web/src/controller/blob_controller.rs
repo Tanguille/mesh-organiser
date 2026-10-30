@@ -522,33 +522,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn share_zip_download_refuses_a_model_outside_the_share() {
-        let (_dir, app_state, share_id, _) = shared_library().await;
-
-        let response = post_share_zip(&app_state, &share_id, &[1, 3]).await;
-
-        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn share_zip_download_is_not_found_for_an_unknown_share() {
-        let (_dir, app_state, _, _) = shared_library().await;
-
-        let response = post_share_zip(&app_state, "missing", &[1, 2]).await;
-
-        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn share_zip_download_refuses_a_trashed_shared_model() {
+    async fn share_zip_download_is_not_found_outside_a_live_share() {
         let (_dir, app_state, share_id, [boat_id, _]) = shared_library().await;
+
+        let outside_the_share = post_share_zip(&app_state, &share_id, &[1, 3]).await;
+        let unknown_share = post_share_zip(&app_state, "missing", &[1, 2]).await;
+        // Trashing goes last: it changes the library the other requests read.
         db::model_db::trash_models(&app_state.db, &db::model::user::User::default(), &[boat_id])
             .await
             .unwrap();
+        let trashed_model = post_share_zip(&app_state, &share_id, &[1, 2]).await;
 
-        let response = post_share_zip(&app_state, &share_id, &[1, 2]).await;
-
-        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+        assert_eq!(
+            [
+                outside_the_share.status(),
+                unknown_share.status(),
+                trashed_model.status()
+            ],
+            [axum::http::StatusCode::NOT_FOUND; 3]
+        );
     }
 
     #[tokio::test]
