@@ -158,10 +158,10 @@ mod tests {
     #[tokio::test]
     async fn login_router_logs_in_with_normal_credentials() {
         let (_dir, app_state) = crate::test_support::app_state().await;
-        crate::test_support::add_login_user(&app_state).await;
+        let password = crate::test_support::add_login_user(&app_state).await;
 
         assert_eq!(
-            password_login(app_state, "secret").await,
+            password_login(app_state, &password).await,
             axum::http::StatusCode::NO_CONTENT
         );
     }

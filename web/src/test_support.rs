@@ -93,11 +93,15 @@ pub async fn with_session(
     router.with_state(app_state).layer(auth_layer)
 }
 
-/// Adds alice@example.com with the password `secret`, the account `login_request` logs in as.
-pub async fn add_login_user(app_state: &service::AppState) {
-    db::user_db::add_user(&app_state.db, "alice", "alice@example.com", "secret")
+/// Adds alice@example.com with a random password and returns it, for `login_request` to log in
+/// with. Random rather than a literal, so no test credential is hard-coded.
+pub async fn add_login_user(app_state: &service::AppState) -> String {
+    let password = db::random_hex_32();
+    db::user_db::add_user(&app_state.db, "alice", "alice@example.com", &password)
         .await
         .unwrap();
+
+    password
 }
 
 /// A password login for alice@example.com.
