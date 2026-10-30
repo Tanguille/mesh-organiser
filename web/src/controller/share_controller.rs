@@ -32,11 +32,9 @@ pub struct ShareScope {
 
 impl ShareScope {
     /// Resolves a share and its owning user. Every public share endpoint routes through here, so
-    /// an unknown share is `NotFound` (a 404) for all of them; a missing owner is an error.
+    /// an unknown share is a `RowNotFound` (a 404) for all of them; a missing owner is an error.
     pub async fn resolve(app_state: &AppState, share_id: &str) -> Result<Self, ApplicationError> {
-        let share = share_db::get_share_via_id(&app_state.db, share_id)
-            .await
-            .map_err(row_not_found_as_404)?;
+        let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
 
         let Some(owner) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
             return Err(
@@ -69,15 +67,6 @@ impl ShareScope {
             .copied()
             .filter(|model_id| requested.contains(model_id))
             .collect()
-    }
-}
-
-/// For the share queries whose `RowNotFound` means an unknown share (or, for
-/// `set_model_ids_on_share`, a model the user does not have), not a server fault.
-fn row_not_found_as_404(error: db::DbError) -> ApplicationError {
-    match error {
-        db::DbError::RowNotFound => ApplicationError::NotFound,
-        error => error.into(),
     }
 }
 
@@ -164,9 +153,7 @@ pub async fn set_model_ids_on_share(
     State(app_state): State<AppState>,
     Json(params): Json<crate::controller::ModelIdsParams>,
 ) -> Result<StatusCode, ApplicationError> {
-    share_db::set_model_ids_on_share(&app_state.db, &user, &share_id, params.model_ids)
-        .await
-        .map_err(row_not_found_as_404)?;
+    share_db::set_model_ids_on_share(&app_state.db, &user, &share_id, params.model_ids).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -15,9 +15,6 @@ pub enum ApplicationError {
     TaskJoinError(#[from] task::JoinError),
     #[error("Upload error")]
     MultipartError(#[from] MultipartError),
-    /// A bodiless 404, like the handlers that answer `StatusCode::NOT_FOUND` themselves.
-    #[error("Not found")]
-    NotFound,
 }
 
 impl From<std::io::Error> for ApplicationError {
@@ -41,7 +38,6 @@ impl Serialize for ApplicationError {
             Self::Service(inner) => return inner.serialize(serializer),
             Self::TaskJoinError(inner) => ("TaskJoinError", inner.to_string()),
             Self::MultipartError(inner) => ("MultipartError", inner.to_string()),
-            Self::NotFound => ("NotFound", String::new()),
         };
 
         service_error::serialize_error_struct(
@@ -55,7 +51,13 @@ impl Serialize for ApplicationError {
 
 impl IntoResponse for ApplicationError {
     fn into_response(self) -> axum::response::Response {
-        if matches!(self, Self::NotFound) {
+        // An unknown or foreign id surfaces from the db layer as `RowNotFound`: the client asked
+        // for something it does not have, not a server fault. A bodiless 404, like the handlers
+        // that answer `StatusCode::NOT_FOUND` themselves.
+        if matches!(
+            self,
+            Self::Service(ServiceError::DatabaseError(db::DbError::RowNotFound))
+        ) {
             return axum::http::StatusCode::NOT_FOUND.into_response();
         }
 
@@ -121,8 +123,8 @@ mod tests {
         })
     }
 
-    /// Every `ApplicationError` but `NotFound` reaches the client as a 500 with a JSON body,
-    /// whatever its source.
+    /// Every `ApplicationError` but a db `RowNotFound` reaches the client as a 500 with a JSON
+    /// body, whatever its source.
     async fn internal_server_error_body(error: ApplicationError) -> serde_json::Value {
         let response = error.into_response();
         assert_eq!(
@@ -194,14 +196,6 @@ mod tests {
                 error_shape("InternalError", "Internal error", "detail"),
             ),
             (
-                ApplicationError::from(db::DbError::RowNotFound),
-                error_shape(
-                    "DatabaseError",
-                    "Database error",
-                    &db::DbError::RowNotFound.to_string(),
-                ),
-            ),
-            (
                 ApplicationError::from(db::DbError::PoolTimedOut),
                 error_shape(
                     "DatabaseError",
@@ -225,6 +219,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn into_response_maps_row_not_found_to_a_bodiless_404() {
+        for error in [
+            ApplicationError::from(db::DbError::RowNotFound),
+            ApplicationError::from(service::ServiceError::from(db::DbError::RowNotFound)),
+        ] {
+            let response = error.into_response();
+
+            assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("error body should be readable");
+            assert!(body.is_empty());
+        }
+    }
+
+    #[tokio::test]
     async fn into_response_passes_service_error_shape_through_unchanged() {
         let join_error = aborted_join_error().await;
         let join_message = join_error.to_string();
@@ -244,14 +254,6 @@ mod tests {
                     "FileSystemFault",
                     "Failed to open or read file",
                     "locked.3mf",
-                ),
-            ),
-            (
-                service::ServiceError::from(db::DbError::RowNotFound),
-                error_shape(
-                    "DatabaseError",
-                    "Database error",
-                    &db::DbError::RowNotFound.to_string(),
                 ),
             ),
             (
