@@ -9,6 +9,8 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import AsyncButton from "#lib/components/ui/button/async-button.svelte";
+  import { buttonVariants } from "#lib/components/ui/button/index.js";
+  import { isMobileApp } from "#lib/api/mobile/server_url";
 
   let email = $state<string>("");
   let password = $state<string>("");
@@ -84,6 +86,13 @@
       </div>
     </Card.Content>
     <Card.Footer>
+      <!-- A wrong or unreachable server URL lands the app here, so keep a way back to it. -->
+      {#if isMobileApp()}
+        <a
+          class={buttonVariants({ variant: "ghost" })}
+          href={resolve("/mobile-server")}>Change server</a
+        >
+      {/if}
       <AsyncButton class="ml-auto" onclick={login}>Login</AsyncButton>
     </Card.Footer>
   </Card.Root>

@@ -12,6 +12,7 @@ use std::{
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
+    http::HeaderValue,
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
@@ -23,7 +24,7 @@ use tokio::{fs, signal, task::AbortHandle};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
-    cors::{AllowHeaders, AllowMethods, CorsLayer},
+    cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
@@ -40,8 +41,8 @@ use service::{
 use crate::{
     controller::{
         auth_controller, blob_controller, group_controller, label_controller, model_controller,
-        page_controller, resource_controller, share_controller, threemf_controller,
-        user_controller,
+        page_controller, resource_controller, share_controller, slicer_controller,
+        threemf_controller, user_controller,
     },
     mcp,
     session_store::SqliteStore,
@@ -60,6 +61,79 @@ const ENV_ENABLE_MCP: &str = "ENABLE_MCP";
 pub struct App {
     state: AppState,
     session_store: SqliteStore,
+}
+
+/// Origins always allowed for local dev; [`merge_cors_origins_from_env`] may add more.
+const DEFAULT_CORS_ORIGINS: &[&str] = &["http://localhost:3000", "http://localhost:5173"];
+
+/// Builds the allowed CORS origin list: defaults plus optional `MESH_ORGANISER_CORS_ORIGINS`
+/// (comma-separated, trimmed). If the variable is set and every non-empty token is invalid,
+/// returns an error so startup fails clearly.
+fn merge_cors_origins_from_env(
+    env_value: Option<&str>,
+) -> Result<Vec<HeaderValue>, Box<dyn Error>> {
+    let mut origins: Vec<HeaderValue> = DEFAULT_CORS_ORIGINS
+        .iter()
+        .map(|s| {
+            s.parse::<HeaderValue>().map_err(|e| {
+                io::Error::other(format!("internal: invalid default CORS origin {s:?}: {e}"))
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    let Some(raw) = env_value else {
+        return Ok(origins);
+    };
+
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(origins);
+    }
+
+    let mut saw_nonempty_token = false;
+    let mut saw_valid_token = false;
+    for part in trimmed.split(',') {
+        let t = part.trim();
+        if t.is_empty() {
+            continue;
+        }
+        saw_nonempty_token = true;
+        match t.parse::<HeaderValue>() {
+            Ok(h) => {
+                saw_valid_token = true;
+                if !origins.contains(&h) {
+                    origins.push(h);
+                }
+            }
+            Err(e) => {
+                eprintln!("MESH_ORGANISER_CORS_ORIGINS: skipping invalid origin {t:?}: {e}");
+            }
+        }
+    }
+
+    if saw_nonempty_token && !saw_valid_token {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "MESH_ORGANISER_CORS_ORIGINS: all entries were invalid after trimming; \
+             fix the value or unset the variable to use defaults only",
+        )
+        .into());
+    }
+
+    Ok(origins)
+}
+
+fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn Error>> {
+    let extra = env::var("MESH_ORGANISER_CORS_ORIGINS").ok();
+    let origins = merge_cors_origins_from_env(extra.as_deref())?;
+    Ok(CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        // Wildcards are illegal (and panic in tower-http) together with
+        // allow_credentials; mirroring the request is the permissive-but-legal
+        // equivalent for credentialed CORS.
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_headers(AllowHeaders::mirror_request())
+        .allow_credentials(true))
 }
 
 pub fn parse_port() -> Result<u16, Box<dyn Error>> {
@@ -297,17 +371,7 @@ impl App {
         let serve_dir = ServeDir::new("www").fallback(ServeFile::new("www/index.html"));
         let db = self.state.db.clone();
 
-        let cors_layer = CorsLayer::new()
-            .allow_origin([
-                "http://localhost:3000".parse().unwrap(),
-                "http://localhost:5173".parse().unwrap(),
-            ])
-            // Wildcards are illegal (and panic in tower-http) together with
-            // allow_credentials; mirroring the request is the permissive-but-legal
-            // equivalent for credentialed CORS.
-            .allow_methods(AllowMethods::mirror_request())
-            .allow_headers(AllowHeaders::mirror_request())
-            .allow_credentials(true);
+        let cors_layer = cors_layer_from_env()?;
 
         let governor_config = Arc::new(
             GovernorConfigBuilder::default()
@@ -344,6 +408,7 @@ impl App {
             .merge(threemf_controller::router())
             .merge(page_controller::router())
             .merge(share_controller::router())
+            .merge(slicer_controller::router())
             // Unknown API paths stay a 404 instead of falling through to the SPA shell below.
             .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))
             // So do discovery paths: an MCP client probing `/.well-known/oauth-*` must see that
@@ -411,6 +476,48 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
 
 #[cfg(test)]
 mod tests {
+    use super::merge_cors_origins_from_env;
+
+    #[test]
+    fn cors_merge_none_is_defaults_only() {
+        let o = merge_cors_origins_from_env(None).unwrap();
+        assert_eq!(o.len(), 2);
+    }
+
+    #[test]
+    fn cors_merge_whitespace_env_is_defaults_only() {
+        let o = merge_cors_origins_from_env(Some("  \t  ")).unwrap();
+        assert_eq!(o.len(), 2);
+    }
+
+    #[test]
+    fn cors_merge_extends_with_extra_origin() {
+        let o = merge_cors_origins_from_env(Some("http://192.168.1.10:5173")).unwrap();
+        assert_eq!(o.len(), 3);
+        assert!(
+            o.iter()
+                .any(|h| h.as_bytes() == b"http://192.168.1.10:5173")
+        );
+    }
+
+    #[test]
+    fn cors_merge_duplicate_extra_does_not_duplicate_list() {
+        let o = merge_cors_origins_from_env(Some("http://localhost:3000")).unwrap();
+        assert_eq!(o.len(), 2);
+    }
+
+    #[test]
+    fn cors_merge_all_invalid_tokens_errors() {
+        let err = merge_cors_origins_from_env(Some("\u{0}, \n")).unwrap_err();
+        assert!(err.to_string().contains("MESH_ORGANISER_CORS_ORIGINS"));
+    }
+
+    #[test]
+    fn cors_merge_one_valid_among_invalid_succeeds() {
+        let o = merge_cors_origins_from_env(Some("http://10.0.0.1:8080,\u{0}")).unwrap();
+        assert_eq!(o.len(), 3);
+    }
+
     /// Adds a blob whose model file and thumbnail exist on disk, as an import leaves them.
     async fn add_blob_with_files(
         app_state: &service::AppState,

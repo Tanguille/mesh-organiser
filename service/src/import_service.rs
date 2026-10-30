@@ -406,7 +406,7 @@ async fn import_models_from_zip(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn import_single_model<W>(
+pub(crate) async fn import_single_model<W>(
     reader: &mut W,
     file_type: &str,
     file_size: usize,
