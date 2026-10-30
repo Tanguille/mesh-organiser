@@ -265,6 +265,10 @@ export class TauriImportApi implements ITauriImportApi {
       configuration.default_enabled_recursive_import;
     globalImportSettings.import_as_path =
       configuration.default_enabled_import_as_path;
+
+    // Links that reached the app while it was starting were held back, since their events
+    // would have found no listener; they are emitted now that the handlers above exist.
+    await invoke("release_pending_links");
   }
 
   async handleFolderWatchEvent(event: WatchEvent): Promise<void> {

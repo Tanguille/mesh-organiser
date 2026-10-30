@@ -192,6 +192,24 @@ describe("initImportListeners registration", () => {
     expect(mocks.listen).toHaveBeenCalledTimes(listenedEvents.length * 2);
   });
 
+  it("asks the backend for links it held back only once every listener is registered", async () => {
+    let listenedAtRelease: string[] | undefined;
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "release_pending_links") {
+        listenedAtRelease = [...handlers.keys()];
+      }
+    });
+
+    await initApi();
+
+    expect(listenedAtRelease).toEqual(listenedEvents);
+    expect(
+      mocks.invoke.mock.calls.filter(
+        ([command]) => command === "release_pending_links",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("resets the import state and copies the default import toggles from the configuration", async () => {
     importState.status = ImportStatus.Failure;
     configuration.default_enabled_delete_after_import = true;
@@ -299,6 +317,8 @@ describe("remote imports", () => {
       ],
     ]);
     expect(mocks.invoke.mock.calls).toEqual([
+      // Made by initImportListeners, before the link arrives.
+      ["release_pending_links"],
       [
         "download_file",
         { url: "https://host/files/benchy.stl?token=1", filename: null },

@@ -27,7 +27,7 @@ use service::{
 
 use crate::{
     error::ApplicationError,
-    tauri_app_state::{AccountLinkEmit, InitialState, TauriAppState},
+    tauri_app_state::{AccountLinkEmit, InitialState, PendingLinks, TauriAppState},
     tauri_import_state::import_state_new_tauri,
 };
 
@@ -118,6 +118,20 @@ async fn get_initial_state(
     let initial_state = state.initial_state.lock().unwrap().take();
 
     Ok(initial_state.unwrap_or_else(|| InitialState::new(&state.get_configuration())))
+}
+
+/// Emits the links that arrived before the frontend listened. The frontend calls this once its
+/// listeners are registered; links after that are emitted straight away.
+#[tauri::command]
+async fn release_pending_links(
+    pending_links: State<'_, PendingLinks>,
+    app_handle: AppHandle,
+) -> Result<(), ApplicationError> {
+    for link in pending_links.release() {
+        emit_link(&app_handle, &link);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -407,6 +421,12 @@ fn extract_open_in_slicer_via_deep_link(data: &str) -> Option<Vec<String>> {
 
 /// Hands a link that reached the running app to the frontend, logging one it cannot use.
 fn emit_link(app: &AppHandle, link: &str) {
+    // An event emitted before the frontend listens is dropped, so hold the link until it asks.
+    if app.state::<PendingLinks>().hold(link) {
+        println!("Holding link until the frontend listens {link:?}");
+        return;
+    }
+
     if let Some(deep_link) = extract_deep_link(link) {
         println!("Emitting deep link {deep_link:?}");
         app.emit(
@@ -463,6 +483,9 @@ pub fn run() {
     });
 
     let app = tauri::Builder::default()
+        // Managed on the builder rather than in setup: the single-instance callback can run
+        // before setup finishes and already needs it.
+        .manage(PendingLinks::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
@@ -638,6 +661,7 @@ pub fn run() {
             api::set_labels_on_model,
             open_in_slicer,
             get_initial_state,
+            release_pending_links,
             download_file,
             open_in_folder,
             api::set_label_on_models,
