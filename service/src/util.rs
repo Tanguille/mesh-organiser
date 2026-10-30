@@ -4,6 +4,8 @@ use db::model::blob::FileType;
 use regex::Regex;
 use tokio::task::JoinSet;
 
+use crate::service_error::ServiceError;
+
 static COLLAPSE_WHITESPACE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r" {2,}").expect("valid regex literal"));
 
@@ -28,6 +30,16 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     file_name = String::from(file_name.trim());
 
     file_name
+}
+
+/// `path` as text, for the callers that store or return it as a string.
+///
+/// # Errors
+///
+/// Returns `ServiceError::InternalError` if the path is not valid UTF-8.
+pub fn path_to_utf8(path: &Path) -> Result<&str, ServiceError> {
+    path.to_str()
+        .ok_or_else(|| ServiceError::InternalError("Path is not valid UTF-8".into()))
 }
 
 /// Percent-decodes `text` into an owned string; fails if the decoded bytes are not valid UTF-8.
@@ -209,6 +221,23 @@ mod tests {
         cleanse_evil_from_name, convert_extension_to_zip, convert_zip_to_extension,
         prettify_file_name,
     };
+
+    #[cfg(unix)]
+    #[test]
+    fn path_to_utf8_refuses_a_non_utf8_path() {
+        let path = std::path::Path::new(
+            <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(b"Caf\xe9.stl"),
+        );
+
+        assert!(matches!(
+            super::path_to_utf8(path),
+            Err(crate::ServiceError::InternalError(message)) if message == "Path is not valid UTF-8"
+        ));
+        assert_eq!(
+            super::path_to_utf8(std::path::Path::new("model.stl")).unwrap(),
+            "model.stl"
+        );
+    }
 
     #[test]
     fn percent_decode_decodes_multibyte_and_space() {

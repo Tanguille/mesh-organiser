@@ -439,9 +439,7 @@ where
         blob.id
     } else if let Some(permanent_disk_path) = permanent_disk_path {
         // The blob stores the path as text, so a non-UTF-8 one can't be referenced.
-        let disk_path = permanent_disk_path
-            .to_str()
-            .ok_or_else(|| ServiceError::InternalError(String::from("Path is not valid UTF-8")))?;
+        let disk_path = util::path_to_utf8(&permanent_disk_path)?;
 
         blob_db::add_blob(
             &app_state.db,
