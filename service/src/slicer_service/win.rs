@@ -47,7 +47,13 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
             );
 
             if let Some(key) = key {
-                let path = PathBuf::from(key);
+                let mut path = PathBuf::from(key);
+
+                // The installer writes the install directory here, like Bambu's `InstallPath`;
+                // still accept a value that already points at the exe.
+                if path.is_dir() {
+                    path.push("prusa-slicer.exe");
+                }
 
                 if path.exists() {
                     return Some(path);
