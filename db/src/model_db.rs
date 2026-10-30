@@ -324,7 +324,7 @@ pub async fn get_models_via_ids(
 ) -> Result<Vec<Model>, DbError> {
     ids.sort_unstable();
     ids.dedup();
-    let mut models = Vec::with_capacity(ids.len());
+    let mut models = Vec::new();
     for chunk in ids.chunks(MAX_BOUND_IDS) {
         let options = ModelFilterOptions {
             model_ids: Some(chunk.to_vec()),
