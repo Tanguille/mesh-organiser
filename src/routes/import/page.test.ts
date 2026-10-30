@@ -65,9 +65,10 @@ describe("import +page", () => {
 
   it("shows an error when the imported groups fail to load", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    getContainer().addSingleton(IGroupApi, {
+    const groupApi = {
       getGroups: vi.fn().mockRejectedValue(new Error("offline")),
-    });
+    };
+    getContainer().addSingleton(IGroupApi, groupApi);
     Object.assign(importState, {
       status: ImportStatus.Finished,
       imported_models: [{ group_id: null, group_name: null, model_ids: [1] }],
@@ -78,6 +79,8 @@ describe("import +page", () => {
     expect(
       await screen.findByText("Could not load the imported models."),
     ).toBeTruthy();
+    // Writing the load status must not re-run the effect into another load.
+    expect(groupApi.getGroups).toHaveBeenCalledTimes(1);
   });
 
   it.each([

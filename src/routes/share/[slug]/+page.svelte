@@ -20,8 +20,7 @@
   let shareId = $derived(page.params.slug!);
   let share = $state<Share | null>(null);
   let groups = $state<Group[]>([]);
-  let loading = $state(true);
-  let loadFailed = $state(false);
+  let loadStatus = $state<"loading" | "failed" | "done">("loading");
 
   onMount(async () => {
     try {
@@ -31,11 +30,10 @@
         share.modelIds,
         GroupOrderBy.CreatedAsc,
       );
+      loadStatus = "done";
     } catch (e) {
-      loadFailed = true;
+      loadStatus = "failed";
       console.error("Failed to load share", e);
-    } finally {
-      loading = false;
     }
   });
 </script>
@@ -54,7 +52,7 @@
       />
     </div>
   </div>
-{:else if loading}
+{:else if loadStatus === "loading"}
   <div
     role="status"
     aria-label="Loading the share"
@@ -69,7 +67,7 @@
     <div class="mb-2 rounded-md bg-primary p-2">
       <Share2 />
     </div>
-    {#if loadFailed}
+    {#if loadStatus === "failed"}
       Could not load this share.
     {:else}
       This share has no models.
