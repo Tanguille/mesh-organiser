@@ -148,7 +148,9 @@ export class TauriImportApi implements ITauriImportApi {
         importState.failure_reason = localImportState.failure_reason =
           isCommandError(reason)
             ? `${reason.error_message} - ${reason.error_inner_message}`
-            : "unknown - unknown";
+            : reason instanceof Error
+              ? reason.message
+              : String(reason);
         console.error("Failed to import model:", reason);
         return localImportState;
       }

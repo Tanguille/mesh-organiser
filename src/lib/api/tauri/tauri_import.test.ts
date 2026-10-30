@@ -807,3 +807,33 @@ describe("open-in-slicer link", () => {
     }
   });
 });
+
+describe("startImportProcess failure reason", () => {
+  it.each([
+    [
+      "a command error",
+      {
+        error_message: "Import failed",
+        error_inner_message: "disk full",
+        error_type: "InternalError",
+      },
+      "Import failed - disk full",
+    ],
+    [
+      "a plain Error",
+      new Error("path is not readable"),
+      "path is not readable",
+    ],
+    ["a string", "command add_model not found", "command add_model not found"],
+  ])("records %s as the failure reason", async (_shape, reason, expected) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.invoke.mockRejectedValueOnce(reason);
+    const api = new TauriImportApi();
+
+    const result = await api.startImportProcess(["/a.stl"], {});
+
+    expect(result.status).toBe(ImportStatus.Failure);
+    expect(result.failure_reason).toBe(expected);
+    expect(importState.failure_reason).toBe(expected);
+  });
+});
