@@ -1,4 +1,3 @@
-import { currentUser } from "#lib/configuration.svelte";
 import { getContainer } from "../dependency_injection";
 import { IBlobApi } from "../shared/blob_api";
 import { IDiskUsageInfoApi } from "../shared/disk_usage_info_api";
@@ -36,14 +35,14 @@ export async function initTauriOnlineAccountApi(
   const container = getContainer();
   const requestApi = container.require<IServerRequestApi>(IServerRequestApi);
   const userApi = new WebUserApi(requestApi);
-  const blob = new WebBlobApi(requestApi, currentUser, hostUrl);
+  const blob = new WebBlobApi(requestApi, user, hostUrl);
   const diskUsageInfo = new WebDiskUsageInfoApi(requestApi);
   const group = new WebGroupApi(requestApi);
   const label = new WebLabelApi(requestApi);
   const model = new WebModelApi(requestApi);
   const resource = new WebResourceApi(requestApi);
   const threemf = new WebThreemfApi(requestApi);
-  const userAdmin = new WebUserAdminApi(requestApi, currentUser);
+  const userAdmin = new WebUserAdminApi(requestApi, user);
   const localApi = new OnlineLocalApi(
     appDataDir,
     128,

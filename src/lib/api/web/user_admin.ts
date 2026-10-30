@@ -54,7 +54,7 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   }
 
   async editUser(user: User): Promise<void> {
-    await this.editSelf(user);
+    await this.editNameAndEmail(user.id, user);
 
     const dataPermissionsEdit = {
       permissions: permissionsToStringArray(user.permissions),
@@ -80,13 +80,20 @@ export class WebUserAdminApi implements IAdminUserApi, IUserManageSelfApi {
   }
 
   async editSelf(user: User): Promise<void> {
+    // Targets the user this API was built for, not `user.id`: the settings card
+    // passes the global current user, which in desktop online-account mode is
+    // the local user with a local id.
+    await this.editNameAndEmail(this.currentUser.id, user);
+  }
+
+  private async editNameAndEmail(userId: number, user: User): Promise<void> {
     const dataUserEdit = {
       user_name: user.username,
       user_email: user.email,
     };
 
     await this.requestApi.request<void>(
-      `/users/${user.id}`,
+      `/users/${userId}`,
       HttpMethod.PUT,
       dataUserEdit,
     );

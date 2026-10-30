@@ -1,7 +1,8 @@
 /**
- * Characterization tests for WebUserAdminApi's edit requests. editSelfPassword
- * targets the user the API was constructed with; editSelf and the admin methods
- * target the user passed in. Method, url and body are the web server contract.
+ * Characterization tests for WebUserAdminApi's edit requests. editSelf and
+ * editSelfPassword target the user the API was constructed with; the admin
+ * methods target the user passed in. Method, url and body are the web server
+ * contract.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -58,14 +59,14 @@ describe("WebUserAdminApi password edits", () => {
 });
 
 describe("WebUserAdminApi user edits", () => {
-  it("editSelf PUTs name and email for the given user", async () => {
+  it("editSelf PUTs the given name and email for the current user", async () => {
     const { request, api } = createApi();
 
     await api.editSelf(otherUser);
 
     expect(request.mock.calls).toEqual([
       [
-        "/users/7",
+        "/users/1",
         HttpMethod.PUT,
         { user_name: "bob", user_email: "bob@example.com" },
       ],
