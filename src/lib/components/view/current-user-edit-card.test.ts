@@ -93,4 +93,21 @@ describe("CurrentUserEditCard", () => {
     );
     expect(currentUser.username).toBe("local");
   });
+
+  it("keeps the fields editable with the known account when getCurrentUser fails", async () => {
+    Object.assign(currentUser, user(42, "online", false));
+    const container = getContainer();
+    container.addSingleton(IHostApi, {
+      getPlatform: async () => Platform.WebApp,
+    });
+    container.addSingleton(IUserApi, {
+      getCurrentUser: () => Promise.reject(new Error("session expired")),
+    });
+    container.addSingleton(IUserManageSelfApi, { editSelf: vi.fn() });
+
+    render(CurrentUserEditCard);
+
+    expect(await screen.findByDisplayValue("online")).toBeTruthy();
+    expect(screen.getByDisplayValue("online@example.com")).toBeTruthy();
+  });
 });

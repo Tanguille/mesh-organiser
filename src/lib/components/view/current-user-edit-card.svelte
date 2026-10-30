@@ -165,8 +165,13 @@
 
     // /users/me on web; on desktop the local user, or the server user for an
     // online account, whose IUserApi is the server's.
+    // Falls back to the known account, so an expired session or an unreachable sync server
+    // still leaves editable fields. A snapshot, so unsaved edits don't leak into currentUser.
     if (userApi) {
-      editedUser = await userApi.getCurrentUser();
+      editedUser = await userApi.getCurrentUser().catch((e) => {
+        console.error("Failed to load the current user", e);
+        return $state.snapshot(currentUser);
+      });
     }
   });
 </script>
