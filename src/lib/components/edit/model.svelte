@@ -108,14 +108,13 @@
         return;
       }
 
-      let metadata;
-      try {
-        metadata = await threemfApi.getThreemfMetadata($state.snapshot(model));
-      } catch (e) {
-        // The metadata stays cleared from the start of this run.
-        console.error(`Failed to load 3MF metadata for model ${key}`, e);
-        return;
-      }
+      const metadata = await threemfApi
+        .getThreemfMetadata($state.snapshot(model))
+        .catch((e) => {
+          // The metadata stays cleared from the start of this run.
+          console.error(`Failed to load 3MF metadata for model ${key}`, e);
+          return null;
+        });
 
       // The model changed while this fetch ran, so the response is stale.
       if (generation !== metadataLoadGeneration || !metadata) {
