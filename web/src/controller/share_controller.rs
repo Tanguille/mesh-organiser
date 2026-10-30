@@ -182,7 +182,7 @@ pub async fn delete_share(
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     fn scope(model_ids: Vec<i64>) -> super::ShareScope {
         super::ShareScope {
             share: db::model::share::Share {
@@ -228,27 +228,6 @@ pub mod tests {
         assert_eq!(scope(vec![1, 2, 3]).restrict(&[3, 1, 3, 1]), vec![1, 3]);
     }
 
-    /// An app state over a fresh database and data dir; the `TempDir` must outlive the test.
-    /// The migrations seed the local account as user 1, which `User::default()` names.
-    pub async fn app_state() -> (tempfile::TempDir, service::AppState) {
-        let dir = tempfile::TempDir::new().unwrap();
-        let data_path = dir.path().to_string_lossy().to_string();
-        let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
-        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
-        let app_state = service::AppState {
-            db: std::sync::Arc::new(db),
-            configuration: std::sync::Mutex::new(service::Configuration {
-                data_path: data_path.clone(),
-                ..Default::default()
-            }),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: data_path,
-        };
-
-        (dir, app_state)
-    }
-
     /// The public share routes, routed as the server mounts them.
     async fn get(app_state: &service::AppState, uri: &str) -> axum::http::StatusCode {
         let router = axum::Router::new()
@@ -268,7 +247,7 @@ pub mod tests {
 
     #[tokio::test]
     async fn share_handlers_return_not_found_for_an_unknown_share() {
-        let (_dir, app_state) = app_state().await;
+        let (_dir, app_state) = crate::test_support::app_state().await;
 
         for uri in [
             "/api/v1/shares/missing",
@@ -285,7 +264,7 @@ pub mod tests {
 
     #[tokio::test]
     async fn share_handlers_serve_a_known_share() {
-        let (_dir, app_state) = app_state().await;
+        let (_dir, app_state) = crate::test_support::app_state().await;
         let share_id =
             db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
                 .await
@@ -322,7 +301,7 @@ pub mod tests {
 
     #[tokio::test]
     async fn set_model_ids_on_share_is_not_found_for_an_unknown_share_or_model() {
-        let (_dir, app_state) = app_state().await;
+        let (_dir, app_state) = crate::test_support::app_state().await;
         let share_id =
             db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
                 .await
@@ -346,7 +325,7 @@ pub mod tests {
     // unknown share is a no-op, never a 500.
     #[tokio::test]
     async fn edit_and_delete_share_are_no_ops_for_an_unknown_share() {
-        let (_dir, app_state) = app_state().await;
+        let (_dir, app_state) = crate::test_support::app_state().await;
         let user = || crate::user::CurrentUser(db::model::user::User::default());
         let missing = || axum::extract::Path("missing".to_string());
         let state = || axum::extract::State(app_state.clone());

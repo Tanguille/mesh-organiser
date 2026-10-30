@@ -1081,20 +1081,7 @@ mod tests {
 
     /// A server over a fresh database and data dir; the `TempDir` must outlive the test.
     async fn test_server() -> (tempfile::TempDir, super::MeshServer) {
-        let dir = tempfile::TempDir::new().unwrap();
-        let data_path = dir.path().to_string_lossy().to_string();
-        let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
-        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
-        let app_state = service::AppState {
-            db: std::sync::Arc::new(db),
-            configuration: std::sync::Mutex::new(service::Configuration {
-                data_path: data_path.clone(),
-                ..Default::default()
-            }),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: data_path,
-        };
+        let (dir, app_state) = crate::test_support::app_state().await;
 
         (dir, super::MeshServer { app_state })
     }

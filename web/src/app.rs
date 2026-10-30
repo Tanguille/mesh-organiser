@@ -399,47 +399,15 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
-    /// Adds a blob whose model file and thumbnail exist on disk, as an import leaves them.
-    async fn add_blob_with_files(
-        app_state: &service::AppState,
-        sha256: &str,
-    ) -> (i64, std::path::PathBuf, std::path::PathBuf) {
-        let blob_id = db::blob_db::add_blob(&app_state.db, sha256, "stl", 1, None)
-            .await
-            .unwrap();
-        let blob = db::blob_db::get_blob_via_sha256(&app_state.db, sha256)
-            .await
-            .unwrap()
-            .unwrap();
-        let model_path = service::export_service::get_model_path_for_blob(&blob, app_state);
-        let image_path = service::export_service::get_image_path_for_blob(&blob, app_state);
-        std::fs::write(&model_path, sha256).unwrap();
-        std::fs::write(&image_path, sha256).unwrap();
-
-        (blob_id, model_path, image_path)
-    }
-
     #[tokio::test]
     async fn apply_local_account_sweeps_dead_blobs_and_keeps_referenced_ones() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let data_path = dir.path().to_string_lossy().to_string();
-        let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
         // The migrations seed the local account as user 1, which `apply_local_account` edits.
-        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
-        let app_state = service::AppState {
-            db: std::sync::Arc::new(db),
-            configuration: std::sync::Mutex::new(service::Configuration {
-                data_path: data_path.clone(),
-                ..Default::default()
-            }),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: data_path,
-        };
+        let (_dir, app_state) = crate::test_support::app_state().await;
         // No model references this blob, as a skipped or interrupted sweep leaves it.
-        let (_, dead_model_path, dead_image_path) = add_blob_with_files(&app_state, "dead").await;
+        let (_, dead_model_path, dead_image_path) =
+            crate::test_support::add_blob_with_files(&app_state, "dead").await;
         let (kept_blob_id, kept_model_path, kept_image_path) =
-            add_blob_with_files(&app_state, "kept").await;
+            crate::test_support::add_blob_with_files(&app_state, "kept").await;
         let local_user = db::model::user::User::default();
         db::model_db::add_model(&app_state.db, &local_user, "kept", kept_blob_id, None, None)
             .await

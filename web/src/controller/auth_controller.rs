@@ -155,7 +155,7 @@ mod tests {
     /// POSTs `password` for alice to `login_router` behind the session layers, and through the
     /// body limit that `app.rs` lifts for every route.
     async fn password_login(password: &str) -> axum::http::StatusCode {
-        let (_dir, app_state) = crate::controller::share_controller::tests::app_state().await;
+        let (_dir, app_state) = crate::test_support::app_state().await;
         db::user_db::add_user(&app_state.db, "alice", "alice@example.com", "secret")
             .await
             .unwrap();

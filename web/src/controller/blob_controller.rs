@@ -370,7 +370,7 @@ mod tests {
     }
 
     /// The thumbnail handler only reads the image dir, so the pool is lazy and never connects.
-    fn app_state(dir: &tempfile::TempDir) -> service::AppState {
+    fn lazy_app_state(dir: &tempfile::TempDir) -> service::AppState {
         let data_path = dir.path().to_string_lossy().to_string();
 
         service::AppState {
@@ -399,7 +399,7 @@ mod tests {
     #[tokio::test]
     async fn get_blob_thumb_serves_the_png_of_a_stored_32_hex_sha256() {
         let dir = tempfile::TempDir::new().unwrap();
-        let app_state = app_state(&dir);
+        let app_state = lazy_app_state(&dir);
         let sha256 = db::u128_to_hex_32(0xabc);
         let png = b"\x89PNG\r\n\x1a\nthumbnail".to_vec();
         std::fs::write(
@@ -420,47 +420,25 @@ mod tests {
     #[tokio::test]
     async fn get_blob_thumb_is_not_found_without_a_png() {
         let dir = tempfile::TempDir::new().unwrap();
-        let app_state = app_state(&dir);
+        let app_state = lazy_app_state(&dir);
 
         let response = thumb(&app_state, &db::u128_to_hex_32(0xabc)).await;
 
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
     }
 
-    /// A local-account (user 1) model whose file exists on disk, as an import leaves it.
-    async fn add_model_with_file(app_state: &service::AppState, name: &str, sha256: &str) -> i64 {
-        let blob_id = db::blob_db::add_blob(&app_state.db, sha256, "stl", 1, None)
-            .await
-            .unwrap();
-        let blob = db::blob_db::get_blob_via_sha256(&app_state.db, sha256)
-            .await
-            .unwrap()
-            .unwrap();
-        std::fs::write(
-            service::export_service::get_model_path_for_blob(&blob, app_state),
-            name,
-        )
-        .unwrap();
-
-        db::model_db::add_model(
-            &app_state.db,
-            &db::model::user::User::default(),
-            name,
-            blob_id,
-            None,
-            None,
-        )
-        .await
-        .unwrap()
-    }
-
     /// A share of the local account's models `boat` and `raft`, next to its unshared `dinghy`.
     async fn shared_library() -> (tempfile::TempDir, service::AppState, String) {
-        let (dir, app_state) = crate::controller::share_controller::tests::app_state().await;
+        let (dir, app_state) = crate::test_support::app_state().await;
         let owner = db::model::user::User::default();
-        let boat_id = add_model_with_file(&app_state, "boat", &db::u128_to_hex_32(1)).await;
-        let raft_id = add_model_with_file(&app_state, "raft", &db::u128_to_hex_32(2)).await;
-        add_model_with_file(&app_state, "dinghy", &db::u128_to_hex_32(3)).await;
+        let boat_id =
+            crate::test_support::add_model_with_file(&app_state, "boat", &db::u128_to_hex_32(1))
+                .await;
+        let raft_id =
+            crate::test_support::add_model_with_file(&app_state, "raft", &db::u128_to_hex_32(2))
+                .await;
+        crate::test_support::add_model_with_file(&app_state, "dinghy", &db::u128_to_hex_32(3))
+            .await;
         let share_id = db::share_db::create_share(&app_state.db, &owner, "fleet")
             .await
             .unwrap();
@@ -587,7 +565,7 @@ mod tests {
 
     #[tokio::test]
     async fn share_zip_download_rate_limits_a_peer_after_a_burst_of_ten() {
-        let (_dir, app_state) = crate::controller::share_controller::tests::app_state().await;
+        let (_dir, app_state) = crate::test_support::app_state().await;
         let app = app(&app_state);
         let mut statuses = Vec::new();
         for _ in 0..11 {
@@ -634,7 +612,7 @@ mod tests {
     #[tokio::test]
     async fn get_blob_thumb_rejects_a_value_that_is_not_all_hex() {
         let dir = tempfile::TempDir::new().unwrap();
-        let app_state = app_state(&dir);
+        let app_state = lazy_app_state(&dir);
         let non_hex = "z".repeat(32);
 
         for sha256 in ["../etc", "abc/def", non_hex.as_str(), ""] {
