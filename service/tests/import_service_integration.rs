@@ -14,7 +14,10 @@ use std::{
 };
 
 #[cfg(target_os = "linux")]
-use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+use std::{
+    ffi::OsStr,
+    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
+};
 
 use tempfile::TempDir;
 use zip::{ZipWriter, write::SimpleFileOptions};
@@ -25,7 +28,7 @@ use db::{
     model_db::{self, ModelFilterOptions},
 };
 use service::{
-    AppState, export_service,
+    AppState, ServiceError, export_service,
     import_service::{get_model_count, import_path},
     import_state::ImportState,
 };
@@ -426,6 +429,58 @@ async fn import_path_as_path_skips_a_file_whose_path_is_not_utf8() {
     .unwrap();
 
     assert_eq!((result.model_count, result.imported_model_count), (1, 0));
+}
+
+/// Makes a folder unreadable until dropped, so the temp dir can still be removed after a
+/// failed assertion.
+#[cfg(target_os = "linux")]
+struct UnreadableFolder(PathBuf);
+
+#[cfg(target_os = "linux")]
+impl UnreadableFolder {
+    fn new(path: PathBuf) -> Self {
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        Self(path)
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for UnreadableFolder {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn import_path_recursive_directory_skips_an_unreadable_subfolder_but_not_an_unreadable_root()
+{
+    let (_dir, app_state) = common::test_app_state().await;
+    let root = TempDir::new().unwrap();
+    let folder = root.path().join("My_Folder");
+    write_file(&folder.join("top.stl"));
+    write_file(&folder.join("Locked/inner.stl"));
+    let locked = UnreadableFolder::new(folder.join("Locked"));
+    let folder = folder.to_str().unwrap();
+
+    assert_eq!(get_model_count(folder, true, false).await.unwrap(), 1);
+    let result = import_path(folder, &app_state, import_state(true, false, false))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        summarize(&app_state, &result).await,
+        vec![(
+            true,
+            Some(String::from("My Folder")),
+            named(&[("top", "stl.zip")]),
+        )]
+    );
+    assert!(matches!(
+        get_model_count(locked.0.to_str().unwrap(), true, false).await,
+        Err(ServiceError::FileSystemFault(_))
+    ));
 }
 
 /// Adds a label named after `keyword` that keyword matching applies on import.

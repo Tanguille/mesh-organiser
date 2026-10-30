@@ -511,7 +511,8 @@ fn get_model_count_from_dir_recursive(path: &Path) -> Result<usize, ServiceError
     let mut count = 0;
 
     for folder in entries.iter().filter(|f| f.path().is_dir()) {
-        count += get_model_count_from_dir_recursive(&folder.path())?;
+        // An unreadable subfolder counts as empty, since the recursive import skips it.
+        count += get_model_count_from_dir_recursive(&folder.path()).unwrap_or(0);
     }
 
     count += get_model_count_from_dir(path)?;
