@@ -22,11 +22,7 @@ use std::{
 use tempfile::TempDir;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
-use db::{
-    MAX_PAGE_SIZE, label_db, label_keyword_db,
-    model::user::User,
-    model_db::{self, ModelFilterOptions},
-};
+use db::{MAX_PAGE_SIZE, label_db, label_keyword_db, model::user::User, model_db};
 use service::{
     AppState, ServiceError, export_service,
     import_service::{get_model_count, import_path},
@@ -505,13 +501,10 @@ async fn add_keyword_label(app_state: &AppState, keyword: &str) -> i64 {
 
 /// The label ids of each model the import added.
 async fn imported_label_ids(app_state: &AppState, import_state: &ImportState) -> Vec<Vec<i64>> {
-    model_db::get_all_models(
+    model_db::get_models_via_ids(
         &app_state.db,
         &User::default(),
-        ModelFilterOptions {
-            model_ids: Some(import_state.all_model_ids()),
-            ..Default::default()
-        },
+        import_state.all_model_ids(),
     )
     .await
     .unwrap()
