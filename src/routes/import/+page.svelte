@@ -88,8 +88,11 @@
 
   async function handleTauriOpenFile() {
     dialog_open = true;
-    await tauriImportApi?.openFilesForImporting();
-    dialog_open = false;
+    try {
+      await tauriImportApi?.openFilesForImporting();
+    } finally {
+      dialog_open = false;
+    }
   }
 
   async function handleWebImport() {
@@ -98,8 +101,11 @@
 
   async function handleTauriOpenFolder() {
     dialog_open = true;
-    await tauriImportApi?.openFolderForImporting();
-    dialog_open = false;
+    try {
+      await tauriImportApi?.openFolderForImporting();
+    } finally {
+      dialog_open = false;
+    }
   }
 
   function setDefaultImportSettings() {
