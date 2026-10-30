@@ -1,4 +1,9 @@
-import { blobThumbnailUrl, type Blob, type IBlobApi } from "../shared/blob_api";
+import {
+  blobsZipDownloadUrl,
+  blobThumbnailUrl,
+  type Blob,
+  type IBlobApi,
+} from "../shared/blob_api";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -38,6 +43,6 @@ export class WebShareBlobApi implements IBlobApi {
       HttpMethod.POST,
       blobs.map((blob) => blob.sha256),
     );
-    return document.location.origin + `/api/v1/blobs/download/${zipDir}`;
+    return blobsZipDownloadUrl(document.location.origin, zipDir);
   }
 }

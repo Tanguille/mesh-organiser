@@ -1,4 +1,9 @@
-import { blobThumbnailUrl, type Blob, type IBlobApi } from "../shared/blob_api";
+import {
+  blobsZipDownloadUrl,
+  blobThumbnailUrl,
+  type Blob,
+  type IBlobApi,
+} from "../shared/blob_api";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -34,7 +39,7 @@ export class WebBlobApi implements IBlobApi {
       HttpMethod.POST,
       data,
     );
-    return this.hostUrl + `/api/v1/blobs/download/${zipDir}`;
+    return blobsZipDownloadUrl(this.hostUrl, zipDir);
   }
 
   async getBlobBytes(blob: Blob): Promise<Uint8Array> {
