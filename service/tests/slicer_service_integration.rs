@@ -235,9 +235,9 @@ fn linux_missing_flatpak_package_is_reported_before_empty_paths() {
     );
 }
 
-/// Every settings save deserializes a `Configuration`; with a container-level
-/// `#[serde(default)]` that builds `Configuration::default()`, which probes Flatpak
-/// for each slicer. Deserializing must not spawn anything, and a missing slicer key
+/// Every settings save deserializes a `Configuration`, and its container-level
+/// `#[serde(default)]` builds `Configuration::default()` each time, so `Default` must not
+/// probe Flatpak for each slicer. Deserializing spawns nothing, and a missing slicer key
 /// stays `None` even when a slicer is installed.
 #[cfg(target_os = "linux")]
 #[test]

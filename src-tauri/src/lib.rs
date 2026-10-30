@@ -458,9 +458,11 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
     let path = PathBuf::from(app_data_path);
     let path = path.join("settings.json");
 
+    // Only a first run probes for an installed slicer; `Default` and serde never do.
     if !path.exists() {
         return Configuration {
             data_path: String::from(app_data_path),
+            slicer: Slicer::iter().find(Slicer::is_installed),
             ..Default::default()
         };
     }

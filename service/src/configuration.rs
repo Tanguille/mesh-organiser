@@ -1,18 +1,17 @@
 use std::{num::NonZeroUsize, thread};
 
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
 
 use crate::slicer_service::Slicer;
 
 /// Application configuration. Many boolean flags for UI/slicer behaviour.
 ///
-/// Missing fields come from `without_slicer_detection`, not `Default`: serde builds the
-/// container default on every deserialize, and `Default` probes for installed slicers (a
-/// `flatpak info` per slicer on Linux). A settings file without a slicer key stays `None`.
+/// `Default` never probes for installed slicers (a `flatpak info` per slicer on Linux): serde
+/// builds it on every deserialize, so a settings file without a slicer key stays `None`. Only the
+/// desktop's first run, which has no settings file yet, detects one.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default = "Configuration::without_slicer_detection")]
+#[serde(default)]
 pub struct Configuration {
     pub data_path: String,
     pub prusa_deep_link: bool,
@@ -63,10 +62,8 @@ pub struct Configuration {
     pub trash_retention_days: u32,
 }
 
-impl Configuration {
-    /// Builds the default settings without probing for installed slicers.
-    #[must_use]
-    pub fn without_slicer_detection() -> Self {
+impl Default for Configuration {
+    fn default() -> Self {
         let parallelism = (thread::available_parallelism().map_or(3, NonZeroUsize::get) / 2).max(1);
 
         Self {
@@ -120,32 +117,14 @@ impl Configuration {
     }
 }
 
-impl Default for Configuration {
-    fn default() -> Self {
-        Self {
-            slicer: Slicer::iter().find(Slicer::is_installed),
-            ..Self::without_slicer_detection()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn configuration_without_slicer_detection_preserves_other_defaults() {
-        let config = Configuration::without_slicer_detection();
-        assert!(config.slicer.is_none());
-
-        let mut expected = serde_json::to_value(Configuration::default()).unwrap();
-        expected["slicer"] = serde_json::Value::Null;
-        assert_eq!(serde_json::to_value(config).unwrap(), expected);
-    }
-
-    #[test]
     fn configuration_default_has_expected_values() {
         let config = Configuration::default();
+        assert!(config.slicer.is_none());
         assert_eq!(config.data_path, "");
         assert_eq!(config.thumbnail_rotation, [35, 30, 0]);
         assert!(
@@ -160,7 +139,7 @@ mod tests {
     }
 
     // (a) A settings file with no slicer key must stay None, not run the
-    // side-effecting is_installed() auto-detect from Configuration::default().
+    // side-effecting is_installed() auto-detect of the desktop's first run.
     #[test]
     fn deserialize_missing_slicer_key_is_none() {
         let json = r#"{ "data_path": "/custom/data" }"#;
