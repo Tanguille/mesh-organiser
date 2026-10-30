@@ -11,10 +11,41 @@ use std::{
 use tempfile::TempDir;
 
 use db::{
-    db_context,
-    model::{Model, ModelFlags, blob::Blob},
+    blob_db, db_context,
+    model::{Model, ModelFlags, blob::Blob, user::User},
 };
 use service::{AppState, Configuration, ServiceError};
+
+/// Adds `count` models of `user` sharing one blob, trashed at `deleted` when given, and returns
+/// their ids in order. One statement: a thousand single inserts would dominate the run time.
+pub async fn add_bulk_models(
+    app_state: &AppState,
+    user: &User,
+    count: u32,
+    deleted: Option<&str>,
+) -> Vec<i64> {
+    let blob_id = blob_db::add_blob(&app_state.db, "bulk", "stl", 1, None)
+        .await
+        .unwrap();
+    sqlx::query(
+        "WITH RECURSIVE counter(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM counter WHERE number < ?)
+         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id, model_deleted)
+         SELECT 'bulk-' || number, ?, '2024-01-01T00:00:00Z', ?, ? FROM counter",
+    )
+    .bind(count)
+    .bind(blob_id)
+    .bind(user.id)
+    .bind(deleted)
+    .execute(&*app_state.db)
+    .await
+    .unwrap();
+
+    sqlx::query_scalar("SELECT model_id FROM models WHERE model_blob_id = ? ORDER BY model_id")
+        .bind(blob_id)
+        .fetch_all(&*app_state.db)
+        .await
+        .unwrap()
+}
 
 /// Builds an `AppState` whose data and app-data paths both point at a fresh
 /// temporary directory, so models, thumbnails and the database are isolated per test.

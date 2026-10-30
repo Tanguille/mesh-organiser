@@ -216,9 +216,13 @@ pub async fn add_labels_by_keywords(
     }
 
     for (label_id, model_ids) in &label_to_models {
-        let _ =
-            label_db::add_labels_on_models(db, &import_state.user, &[*label_id], model_ids, None)
-                .await;
+        // One bind per id in `ensure_owned` and two per pair in the insert, so 10,000 ids per
+        // statement stays under SQLite's 32,766-variable limit.
+        for chunk in model_ids.chunks(10_000) {
+            let _ =
+                label_db::add_labels_on_models(db, &import_state.user, &[*label_id], chunk, None)
+                    .await;
+        }
     }
 }
 

@@ -22,8 +22,8 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 use db::{label_db, label_keyword_db, model::user::User, model_db};
 use service::{
     AppState, ServiceError, export_service,
-    import_service::{get_model_count, import_path},
-    import_state::ImportState,
+    import_service::{add_labels_by_keywords, get_model_count, import_path},
+    import_state::{ImportState, ImportedModelsSet},
 };
 
 fn write_file(path: &Path) {
@@ -477,6 +477,10 @@ async fn import_path_recursive_directory_skips_an_unreadable_subfolder_but_not_a
     write_file(&folder.join("top.stl"));
     write_file(&locked.join("inner.stl"));
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    // A root process ignores the mode bits, so the denial this test needs does not happen.
+    if fs::read_dir(&locked).is_ok() {
+        return;
+    }
     let folder = folder.to_str().unwrap();
 
     let count = get_model_count(folder, true, false).await;
@@ -553,6 +557,33 @@ async fn import_path_zip_labels_new_models_by_the_group_it_creates() {
     assert_eq!(
         imported_label_ids(&app_state, &result).await,
         vec![vec![label_id]; 2]
+    );
+}
+
+#[tokio::test]
+async fn add_labels_by_keywords_labels_every_model_past_the_pair_bind_limit() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let label_id = add_keyword_label(&app_state, "bulk").await;
+    // The insert binds two variables per (label, model) pair, so 17,000 models overflow SQLite's
+    // 32,766-variable limit in one statement.
+    let model_ids = common::add_bulk_models(&app_state, &user, 17_000, None).await;
+    let new_models = [ImportedModelsSet {
+        group_id: None,
+        group_name: None,
+        model_ids: model_ids.clone(),
+    }];
+
+    add_labels_by_keywords(&new_models, &app_state, &import_state(false, false, false)).await;
+
+    let models = model_db::get_models_via_ids(&app_state.db, &user, model_ids)
+        .await
+        .unwrap();
+    assert_eq!(models.len(), 17_000);
+    assert!(
+        models
+            .iter()
+            .all(|model| model.labels.iter().any(|label| label.id == label_id))
     );
 }
 
