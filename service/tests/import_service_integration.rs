@@ -13,6 +13,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(target_os = "linux")]
+use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
 use tempfile::TempDir;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
@@ -368,6 +371,61 @@ async fn import_path_zip_reimport_keeps_live_and_trashed_models_in_their_group_a
         .await
         .unwrap();
     assert_eq!(group_count, 1);
+}
+
+/// A `My_Folder/<non-UTF-8 name>/part.stl` tree, which Linux allows and macOS refuses.
+#[cfg(target_os = "linux")]
+fn non_utf8_folder_tree(root: &Path) -> PathBuf {
+    let folder = root.join("My_Folder");
+    write_file(
+        &folder
+            .join(OsStr::from_bytes(b"Caf\xe9_Parts"))
+            .join("part.stl"),
+    );
+
+    folder
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn import_path_recursive_directory_imports_a_folder_with_a_non_utf8_name() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let root = TempDir::new().unwrap();
+    let folder = non_utf8_folder_tree(root.path());
+    let folder = folder.to_str().unwrap();
+
+    assert_eq!(get_model_count(folder, true, false).await.unwrap(), 1);
+    let result = import_path(folder, &app_state, import_state(true, false, false))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        summarize(&app_state, &result).await,
+        vec![(
+            true,
+            Some(String::from("Caf\u{FFFD} Parts")),
+            named(&[("part", "stl.zip")]),
+        )]
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn import_path_as_path_skips_a_file_whose_path_is_not_utf8() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let root = TempDir::new().unwrap();
+    let folder = non_utf8_folder_tree(root.path());
+
+    // The blob row stores the referenced path as text, so this file can't be referenced.
+    let result = import_path(
+        folder.to_str().unwrap(),
+        &app_state,
+        import_state(true, false, true),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!((result.model_count, result.imported_model_count), (1, 0));
 }
 
 /// Adds a label named after `keyword` that keyword matching applies on import.

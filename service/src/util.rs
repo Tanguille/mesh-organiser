@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, future::Future, panic, path::Path, sync::LazyLock};
+use std::{future::Future, panic, path::Path, sync::LazyLock};
 
 use db::model::blob::FileType;
 use regex::Regex;
@@ -10,17 +10,16 @@ static COLLAPSE_WHITESPACE: LazyLock<Regex> =
 /// Returns a human-friendly file name (no path); strips extension if not a directory.
 #[must_use]
 pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
-    let extension = file.extension();
-    let mut file_name: String = String::from(
+    let name = if is_dir {
         file.file_name()
-            .unwrap_or_else(|| OsStr::new("unknown_filename"))
-            .to_str()
-            .unwrap(),
+    } else {
+        file.file_stem()
+    };
+    // Lossy: a Linux folder name need not be UTF-8, and this is only a display name.
+    let mut file_name = name.map_or_else(
+        || String::from("unknown_filename"),
+        |name| name.to_string_lossy().into_owned(),
     );
-
-    if !is_dir && let Some(ext) = extension {
-        file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
-    }
 
     file_name = file_name.replace(['_', '-', '+'], " ");
 
