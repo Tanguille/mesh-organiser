@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -29,11 +29,6 @@ use crate::{
 /// blocking-pool round trips per file.
 const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
-/// A share link needs no login, so its zip request body is read before anything is authorised.
-/// The body is capped at what the most models one zip can hold (`get_models` returns at most
-/// `MAX_PAGE_SIZE`) take as JSON sha256s, with room to spare.
-const SHARE_ZIP_BODY_LIMIT: usize = db::MAX_PAGE_SIZE as usize * 64;
-
 pub fn router() -> Router<AppState> {
     Router::new()
         .nest(
@@ -48,13 +43,10 @@ pub fn router() -> Router<AppState> {
         )
         // Anyone holding a share link can make the server write a zip, so this one public route
         // is rate-limited like the login routes.
-        .merge(controller::rate_limited(
-            Router::new().route(
-                "/api/v1/shares/{share_id}/blobs/download",
-                post(create_share_blobs_zip_download)
-                    .layer(DefaultBodyLimit::max(SHARE_ZIP_BODY_LIMIT)),
-            ),
-        ))
+        .merge(controller::rate_limited(Router::new().route(
+            "/api/v1/shares/{share_id}/blobs/download",
+            post(create_share_blobs_zip_download),
+        )))
 }
 
 #[derive(Deserialize)]
@@ -454,12 +446,11 @@ mod tests {
         (dir, app_state, share_id)
     }
 
-    /// The router as `app.rs` serves it, minus the session: the body limit lifted for every
-    /// route, and the peer address that a rate limiter keys on.
+    /// The router as `app.rs` serves it, minus the session, plus the peer address that a rate
+    /// limiter keys on.
     fn app(app_state: &service::AppState) -> axum::Router {
         super::router()
             .with_state(app_state.clone())
-            .layer(axum::extract::DefaultBodyLimit::disable())
             .layer(axum::Extension(axum::extract::ConnectInfo(
                 std::net::SocketAddr::from(([203, 0, 113, 7], 4000)),
             )))
@@ -592,21 +583,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn share_zip_download_caps_the_body_but_fits_a_full_zip_request() {
-        let (_dir, app_state, share_id) = shared_library().await;
-        let full_request = vec![db::u128_to_hex_32(u128::MAX); db::MAX_PAGE_SIZE as usize];
-        let request =
-            axum::http::Request::post(format!("/api/v1/shares/{share_id}/blobs/download"))
-                .header(axum::http::header::CONTENT_TYPE, "application/json")
-                .body(axum::body::Body::from(
-                    " ".repeat(super::SHARE_ZIP_BODY_LIMIT + 1),
-                ))
-                .unwrap();
+    async fn share_zip_download_refuses_a_body_over_the_default_limit() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        let request = axum::http::Request::post("/api/v1/shares/missing/blobs/download")
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(
+                " ".repeat(crate::test_support::DEFAULT_BODY_LIMIT + 1),
+            ))
+            .unwrap();
 
         let response = send(&app_state, request).await;
 
         assert_eq!(response.status(), axum::http::StatusCode::PAYLOAD_TOO_LARGE);
-        assert!(serde_json::to_vec(&full_request).unwrap().len() <= super::SHARE_ZIP_BODY_LIMIT);
     }
 
     #[tokio::test]

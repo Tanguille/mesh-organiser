@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
@@ -32,7 +32,11 @@ pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
-            .route("/models", post(add_model))
+            // An upload carries whole model files, so it alone lifts axum's 2 MB body limit.
+            .route(
+                "/models",
+                post(add_model).layer(DefaultBodyLimit::disable()),
+            )
             .route("/models", get(get_models))
             .route("/models", delete(delete_models))
             .route("/models/count", get(get_model_count))
@@ -328,4 +332,51 @@ pub async fn add_model(
     .await?;
 
     Ok(Json(model_ids).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    /// An upload carries whole model files, so its route must take a body past axum's default
+    /// limit even though no other route does.
+    #[tokio::test]
+    async fn add_model_reads_a_multipart_body_over_the_default_limit() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        db::user_db::add_user(&app_state.db, "alice", "alice@example.com", "secret")
+            .await
+            .unwrap();
+        let app = crate::test_support::with_session(
+            crate::controller::auth_controller::login_router().merge(super::router()),
+            app_state,
+        )
+        .await;
+        let login =
+            tower::ServiceExt::oneshot(app.clone(), crate::test_support::login_request("secret"))
+                .await
+                .unwrap();
+        let cookie = login.headers()[axum::http::header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_string();
+        // A form field, not a file, so the handler reads every byte without importing anything.
+        let source_url = "x".repeat(crate::test_support::DEFAULT_BODY_LIMIT + 1024 * 1024);
+        let body = format!(
+            "--boundary\r\nContent-Disposition: form-data; name=\"source_url\"\r\n\r\n{source_url}\r\n--boundary--\r\n"
+        );
+        let upload = axum::http::Request::post("/api/v1/models")
+            .header(
+                axum::http::header::CONTENT_TYPE,
+                "multipart/form-data; boundary=boundary",
+            )
+            .header(axum::http::header::COOKIE, cookie)
+            .body(axum::body::Body::from(body))
+            .unwrap();
+
+        let response = tower::ServiceExt::oneshot(app, upload).await.unwrap();
+
+        // "No files uploaded", answered only once the whole body has been read.
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    }
 }

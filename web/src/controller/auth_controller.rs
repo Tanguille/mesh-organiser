@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -14,18 +14,13 @@ use crate::{
     user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
 };
 
-/// Credentials are an email and a password, or a token: a few hundred bytes. The body is read
-/// before anyone is authenticated, so it is capped well above that instead of left unbounded.
-const LOGIN_BODY_LIMIT: usize = 8 * 1024;
-
 /// The credential checks, which the caller rate-limits against guessing.
 pub fn login_router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
             .route("/login/password", post(password))
-            .route("/login/token", post(token))
-            .layer(DefaultBodyLimit::max(LOGIN_BODY_LIMIT)),
+            .route("/login/token", post(token)),
     )
 }
 
@@ -152,31 +147,15 @@ mod tests {
         }
     }
 
-    /// POSTs `password` for alice to `login_router` behind the session layers, and through the
-    /// body limit that `app.rs` lifts for every route.
+    /// POSTs `password` for alice to `login_router` behind the session layers.
     async fn password_login(password: &str) -> axum::http::StatusCode {
         let (_dir, app_state) = crate::test_support::app_state().await;
         db::user_db::add_user(&app_state.db, "alice", "alice@example.com", "secret")
             .await
             .unwrap();
-        let store = crate::session_store::SqliteStore::new(app_state.db.as_ref().clone());
-        store.migrate().await.unwrap();
-        let auth_layer = axum_login::AuthManagerLayerBuilder::new(
-            crate::user::Backend::new(app_state.db.clone()),
-            tower_sessions::SessionManagerLayer::new(store),
-        )
-        .build();
-        let router = super::login_router()
-            .with_state(app_state)
-            .layer(auth_layer)
-            .layer(axum::extract::DefaultBodyLimit::disable());
-        let body = serde_json::json!({ "email": "alice@example.com", "password": password });
-        let request = axum::http::Request::post("/api/v1/login/password")
-            .header(axum::http::header::CONTENT_TYPE, "application/json")
-            .body(axum::body::Body::from(body.to_string()))
-            .unwrap();
+        let router = crate::test_support::with_session(super::login_router(), app_state).await;
 
-        tower::ServiceExt::oneshot(router, request)
+        tower::ServiceExt::oneshot(router, crate::test_support::login_request(password))
             .await
             .unwrap()
             .status()
@@ -191,9 +170,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_router_refuses_an_oversized_body() {
+    async fn login_router_refuses_a_body_over_the_default_limit() {
         assert_eq!(
-            password_login(&"x".repeat(super::LOGIN_BODY_LIMIT)).await,
+            password_login(&"x".repeat(crate::test_support::DEFAULT_BODY_LIMIT)).await,
             axum::http::StatusCode::PAYLOAD_TOO_LARGE
         );
     }

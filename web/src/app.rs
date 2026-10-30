@@ -11,7 +11,7 @@ use std::{
 
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Request},
+    extract::Request,
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
@@ -349,7 +349,6 @@ impl App {
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(auth_layer)
-            .layer(DefaultBodyLimit::disable())
             .layer(CompressionLayer::new())
             .fallback_service(serve_dir);
 

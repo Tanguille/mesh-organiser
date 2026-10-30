@@ -1,5 +1,8 @@
 //! Fixtures shared by the crate's unit tests.
 
+/// The body limit axum applies to a route that sets none.
+pub const DEFAULT_BODY_LIMIT: usize = 2 * 1024 * 1024;
+
 /// An app state over a fresh, migrated database and data dir; the `TempDir` must outlive the
 /// test. The migrations seed the local account as user 1, which `User::default()` names.
 pub async fn app_state() -> (tempfile::TempDir, service::AppState) {
@@ -66,4 +69,30 @@ pub async fn add_model_with_file(app_state: &service::AppState, name: &str, sha2
     )
     .await
     .unwrap()
+}
+
+/// `router` behind the session and auth layers `app.rs` installs.
+pub async fn with_session(
+    router: axum::Router<service::AppState>,
+    app_state: service::AppState,
+) -> axum::Router {
+    let store = crate::session_store::SqliteStore::new(app_state.db.as_ref().clone());
+    store.migrate().await.unwrap();
+    let auth_layer = axum_login::AuthManagerLayerBuilder::new(
+        crate::user::Backend::new(app_state.db.clone()),
+        tower_sessions::SessionManagerLayer::new(store),
+    )
+    .build();
+
+    router.with_state(app_state).layer(auth_layer)
+}
+
+/// A password login for alice@example.com.
+pub fn login_request(password: &str) -> axum::http::Request<axum::body::Body> {
+    let body = serde_json::json!({ "email": "alice@example.com", "password": password });
+
+    axum::http::Request::post("/api/v1/login/password")
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(body.to_string()))
+        .unwrap()
 }
