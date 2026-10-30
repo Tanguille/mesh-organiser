@@ -9,6 +9,7 @@ import { ILabelApi } from "#lib/api/shared/label_api";
 import { IModelApi, createModelInstance } from "#lib/api/shared/model_api";
 import { configurationDefault } from "#lib/api/shared/settings_api";
 import { ISlicerApi } from "#lib/api/shared/slicer_api";
+import { IThreemfApi, type ThreemfMetadata } from "#lib/api/shared/threemf_api";
 import { configuration } from "#lib/configuration.svelte";
 import ModelCard from "./model.svelte";
 
@@ -81,5 +82,51 @@ describe("Model", () => {
     await tick();
 
     expect(previewToggle.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("keeps the current model's 3MF metadata when the previous model's arrives late", async () => {
+    provideApis();
+    const pending = new Map<number, (metadata: ThreemfMetadata) => void>();
+    getContainer().addSingleton(IThreemfApi, {
+      getThreemfMetadata: vi.fn(
+        (model: { id: number }) =>
+          new Promise<ThreemfMetadata>((resolve) =>
+            pending.set(model.id, resolve),
+          ),
+      ),
+    });
+    const threemfModel = (id: number) =>
+      createModelInstance(
+        id,
+        `Plate ${id}`,
+        createBlobInstance(id, `hash-${id}`, "3mf", 1024, timestamp),
+        null,
+        null,
+        timestamp,
+        timestamp,
+        null,
+        [],
+        [],
+        `model-${id}`,
+      );
+    const metadata = (nozzleDiameter: number): ThreemfMetadata => ({
+      nozzle_diameter: nozzleDiameter,
+      layer_height: null,
+      material_type: null,
+      supports_enabled: null,
+    });
+    const { rerender, findByText, queryByText } = render(ModelCard, {
+      model: threemfModel(1),
+    });
+    await rerender({ model: threemfModel(2) });
+
+    pending.get(2)!(metadata(0.4));
+    expect(await findByText("0.4 mm")).toBeTruthy();
+    pending.get(1)!(metadata(0.6));
+    // Lets the late response's continuation run and render.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(queryByText("0.6 mm")).toBeNull();
+    expect(queryByText("0.4 mm")).toBeTruthy();
   });
 });

@@ -85,9 +85,11 @@
   let layer_height = $state<number | null>(null);
   let material_type = $state<string | null>(null);
   let supports_enabled = $state<boolean | null>(null);
+  let metadataLoadGeneration = 0;
 
   $effect(() => {
     let current_model = $state.snapshot(model);
+    const gen = ++metadataLoadGeneration;
 
     untrack(async () => {
       nozzle_diameter = null;
@@ -105,7 +107,8 @@
 
       let metadata = await threemfApi.getThreemfMetadata(current_model);
 
-      if (!metadata) {
+      // The model changed while this fetch ran, so the response is stale.
+      if (gen !== metadataLoadGeneration || !metadata) {
         return;
       }
 
