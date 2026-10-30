@@ -16,7 +16,11 @@ use std::{
 use tempfile::TempDir;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
-use db::{model::user::User, model_db};
+use db::{
+    label_db, label_keyword_db,
+    model::user::User,
+    model_db::{self, ModelFilterOptions},
+};
 use service::{
     AppState, export_service,
     import_service::{get_model_count, import_path},
@@ -364,6 +368,65 @@ async fn import_path_zip_reimport_keeps_live_and_trashed_models_in_their_group_a
         .await
         .unwrap();
     assert_eq!(group_count, 1);
+}
+
+/// Adds a label named after `keyword` that keyword matching applies on import.
+async fn add_keyword_label(app_state: &AppState, keyword: &str) -> i64 {
+    let user = User::default();
+    let label_id = label_db::add_label(&app_state.db, &user, keyword, 0, None)
+        .await
+        .unwrap()
+        .id;
+    label_keyword_db::set_keywords_for_label(
+        &app_state.db,
+        &user,
+        label_id,
+        vec![keyword.to_string()],
+        None,
+    )
+    .await
+    .unwrap();
+
+    label_id
+}
+
+/// The label ids of each model the import added.
+async fn imported_label_ids(app_state: &AppState, import_state: &ImportState) -> Vec<Vec<i64>> {
+    model_db::get_all_models(
+        &app_state.db,
+        &User::default(),
+        ModelFilterOptions {
+            model_ids: Some(import_state.all_model_ids()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|model| model.labels.iter().map(|label| label.id).collect())
+    .collect()
+}
+
+#[tokio::test]
+async fn import_path_zip_labels_new_models_by_the_group_it_creates() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let label_id = add_keyword_label(&app_state, "gear").await;
+    let root = TempDir::new().unwrap();
+    let zip_path = root.path().join("Gear_Pack.zip");
+    write_zip(&zip_path, &["wheel.stl", "axle.stl"]);
+
+    let result = import_path(
+        zip_path.to_str().unwrap(),
+        &app_state,
+        import_state(false, false, false),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        imported_label_ids(&app_state, &result).await,
+        vec![vec![label_id]; 2]
+    );
 }
 
 #[tokio::test]

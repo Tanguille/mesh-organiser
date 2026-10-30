@@ -62,6 +62,8 @@ pub async fn import_path(
             let mut import_state = import_state_clone.lock().await;
             import_state.update_status(ImportStatus::FinishedModels);
             import_state.create_groups_from_all_sets(app_state).await?;
+            // After grouping, so a new model also matches keywords in its new group's name.
+            add_labels_by_keywords(&import_state.imported_models, app_state, &import_state).await;
 
             let import_state = {
                 let fake = ImportState::new(None, false, false, false, User::default());
@@ -118,7 +120,6 @@ async fn import_path_inner(
 ) -> Result<(), ServiceError> {
     let path_buff = PathBuf::from(path);
     let name = util::prettify_file_name(&path_buff, path_buff.is_dir());
-    let later_import_state = Arc::clone(&import_state);
 
     let recursive = {
         let import_state = import_state.lock().await;
@@ -139,12 +140,6 @@ async fn import_path_inner(
         return Err(ServiceError::InternalError(String::from(
             "Unsupported file type",
         )));
-    }
-
-    {
-        let guard = later_import_state.lock().await;
-        add_labels_by_keywords(&guard.imported_models, app_state, &guard).await;
-        drop(guard);
     }
 
     Ok(())
