@@ -322,7 +322,7 @@ async fn import_models_from_dir(
 
     let entries: Vec<PathBuf> = read_dir(path)?
         .map_ok(|entry| entry.path())
-        .filter_ok(|f| f.is_file())
+        .filter_ok(|path| path.is_file())
         .collect::<Result<_, _>>()?;
 
     let max = configuration.core_parallelism * ASYNC_MULT;
@@ -521,7 +521,7 @@ fn get_model_count_from_dir_recursive(path: &Path) -> Result<usize, ServiceError
 fn get_model_count_from_dir(path: &Path) -> Result<usize, ServiceError> {
     let size = read_dir(path)?
         .map_ok(|entry| entry.path())
-        .filter_ok(|f| f.is_file() && is_supported_extension(f))
+        .filter_ok(|path| path.is_file() && is_supported_extension(path))
         .process_results(|paths| paths.count())?;
 
     Ok(size)
