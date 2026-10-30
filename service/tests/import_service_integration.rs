@@ -17,7 +17,7 @@ use tempfile::TempDir;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 use db::{
-    label_db, label_keyword_db,
+    MAX_PAGE_SIZE, label_db, label_keyword_db,
     model::user::User,
     model_db::{self, ModelFilterOptions},
 };
@@ -427,6 +427,34 @@ async fn import_path_zip_labels_new_models_by_the_group_it_creates() {
         imported_label_ids(&app_state, &result).await,
         vec![vec![label_id]; 2]
     );
+}
+
+#[tokio::test]
+async fn import_path_labels_every_model_of_an_import_larger_than_a_page() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let label_id = add_keyword_label(&app_state, "gear").await;
+    let root = TempDir::new().unwrap();
+    let zip_path = root.path().join("Parts.zip");
+    let model_count = usize::try_from(MAX_PAGE_SIZE).unwrap() + 1;
+    let names: Vec<String> = (0..model_count)
+        .map(|index| format!("gear_{index}.stl"))
+        .collect();
+    write_zip(
+        &zip_path,
+        &names.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+
+    let result = import_path(
+        zip_path.to_str().unwrap(),
+        &app_state,
+        import_state(false, false, false),
+    )
+    .await
+    .unwrap();
+
+    let labels = imported_label_ids(&app_state, &result).await;
+    let unlabeled = labels.iter().filter(|ids| **ids != [label_id]).count();
+    assert_eq!((labels.len(), unlabeled), (model_count, 0));
 }
 
 #[tokio::test]
