@@ -68,6 +68,15 @@ export async function downloadFile(
   });
 }
 
+// Shown as is on the import page and in sync errors.
+export function importFailureReason(reason: unknown): string {
+  if (isCommandError(reason)) {
+    return `${reason.error_message} - ${reason.error_inner_message}`;
+  }
+
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
 async function importModel(
   path: string,
   recursive: boolean,
@@ -146,11 +155,7 @@ export class TauriImportApi implements ITauriImportApi {
       } catch (reason: unknown) {
         importState.status = localImportState.status = ImportStatus.Failure;
         importState.failure_reason = localImportState.failure_reason =
-          isCommandError(reason)
-            ? `${reason.error_message} - ${reason.error_inner_message}`
-            : reason instanceof Error
-              ? reason.message
-              : String(reason);
+          importFailureReason(reason);
         console.error("Failed to import model:", reason);
         return localImportState;
       }
