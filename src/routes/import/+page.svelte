@@ -125,6 +125,8 @@
   });
 
   let importGroupsLoadGen = 0;
+  let importGroupsLoading = $state(false);
+  let importGroupsLoadFailed = $state(false);
 
   $effect(() => {
     const status = importState.status;
@@ -139,20 +141,41 @@
       .flat();
 
     const gen = ++importGroupsLoadGen;
+    importGroupsLoadFailed = false;
+    // The server rejects a page size of 0, so an empty import skips the fetch.
+    // A local, as reading importGroupsLoading here would make it a dependency.
+    const hasModels = importedModelIds.length > 0;
+    importGroupsLoading = hasModels;
+    if (!hasModels) {
+      return;
+    }
+
     untrack(async () => {
-      const groups = await groupApi.getGroups(
-        defaultGroupFilter({
-          modelIds: importedModelIds,
-          orderBy: GroupOrderBy.NameDesc,
-          includeUngroupedModels: true,
-        }),
-        1,
-        importedModelIds.length,
-      );
-      if (gen !== importGroupsLoadGen) {
-        return;
+      try {
+        const groups = await groupApi.getGroups(
+          defaultGroupFilter({
+            modelIds: importedModelIds,
+            orderBy: GroupOrderBy.NameDesc,
+            includeUngroupedModels: true,
+          }),
+          1,
+          importedModelIds.length,
+        );
+        if (gen !== importGroupsLoadGen) {
+          return;
+        }
+        importedGroups = groups;
+      } catch (e) {
+        if (gen !== importGroupsLoadGen) {
+          return;
+        }
+        importGroupsLoadFailed = true;
+        console.error("Failed to load the imported models", e);
+      } finally {
+        if (gen === importGroupsLoadGen) {
+          importGroupsLoading = false;
+        }
       }
-      importedGroups = groups;
     });
   });
 </script>
@@ -189,9 +212,17 @@
             onEmpty={resetImportState}
           />
         </div>
-      {:else}
+      {:else if importGroupsLoading}
         <div class="flex h-full w-full items-center justify-center">
           <Spinner />
+        </div>
+      {:else}
+        <div class="flex h-full w-full items-center justify-center text-sm">
+          {#if importGroupsLoadFailed}
+            Could not load the imported models.
+          {:else}
+            No models were imported.
+          {/if}
         </div>
       {/if}
     </div>

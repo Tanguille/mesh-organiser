@@ -1,15 +1,20 @@
 // @vitest-environment jsdom
 /**
- * Behaviour test for the import page's desktop buttons: a file or folder dialog
- * that rejects must re-enable both buttons. The error itself still escapes to
- * the layout's unhandled-rejection toast.
+ * Behaviour tests for the import page. A file or folder dialog that rejects
+ * must re-enable both desktop buttons; the error itself still escapes to the
+ * layout's unhandled-rejection toast. A finished import with no models, or
+ * whose groups fail to load, shows a message instead of spinning forever.
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getContainer, resetContainer } from "#lib/api/dependency_injection";
 import { IGroupApi } from "#lib/api/shared/group_api";
-import { ITauriImportApi } from "#lib/api/shared/tauri_import_api";
+import {
+  ImportStatus,
+  ITauriImportApi,
+} from "#lib/api/shared/tauri_import_api";
+import { importState, resetImportState } from "#lib/import.svelte";
 import Page from "./+page.svelte";
 
 vi.hoisted(() => {
@@ -37,8 +42,42 @@ function importButton(name: string) {
 
 describe("import +page", () => {
   afterEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    resetImportState();
     resetContainer();
     vi.restoreAllMocks();
+  });
+
+  it("shows a message for a finished import without models, skipping the group fetch", async () => {
+    const groupApi = { getGroups: vi.fn().mockResolvedValue([]) };
+    getContainer().addSingleton(IGroupApi, groupApi);
+    Object.assign(importState, {
+      status: ImportStatus.Finished,
+      imported_models: [],
+    });
+
+    render(Page);
+
+    expect(await screen.findByText("No models were imported.")).toBeTruthy();
+    // The server rejects a page size of 0.
+    expect(groupApi.getGroups).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when the imported groups fail to load", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    getContainer().addSingleton(IGroupApi, {
+      getGroups: vi.fn().mockRejectedValue(new Error("offline")),
+    });
+    Object.assign(importState, {
+      status: ImportStatus.Finished,
+      imported_models: [{ group_id: null, group_name: null, model_ids: [1] }],
+    });
+
+    render(Page);
+
+    expect(
+      await screen.findByText("Could not load the imported models."),
+    ).toBeTruthy();
   });
 
   it.each([
