@@ -312,27 +312,19 @@ async fn query_models(
 
 /// Every live model of `user` among `ids`, each once and in `model_id` order.
 ///
-/// Queries at most `MAX_PAGE_SIZE` ids at a time, so each query stays bounded without dropping
-/// the ids past the first page.
+/// One unpaged query: the SQL `IN` drops repeated ids, and the bundled SQLite takes up to
+/// 32766 bound ids.
 pub async fn get_models_via_ids(
     db: &DbContext,
     user: &User,
-    mut ids: Vec<i64>,
+    ids: Vec<i64>,
 ) -> Result<Vec<Model>, DbError> {
-    // Sorted and deduplicated, so the chunks concatenate into the order one query would return.
-    ids.sort_unstable();
-    ids.dedup();
-    let mut models = Vec::with_capacity(ids.len());
+    let options = ModelFilterOptions {
+        model_ids: Some(ids),
+        ..Default::default()
+    };
 
-    for chunk in ids.chunks(MAX_PAGE_SIZE as usize) {
-        let options = ModelFilterOptions {
-            model_ids: Some(chunk.to_vec()),
-            ..Default::default()
-        };
-        models.extend(get_all_models(db, user, options).await?);
-    }
-
-    Ok(models)
+    get_all_models(db, user, options).await
 }
 
 /// Fetches a single model by id, returning `None` when it does not exist for the user.
