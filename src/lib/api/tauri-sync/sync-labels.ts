@@ -20,6 +20,37 @@ import {
   type ResourceSet,
 } from "./algorithm";
 
+/**
+ * Orders labels so every child comes before its parent: uploading a parent links
+ * only the children already on the remote. A comparator sort can't do this, as
+ * unrelated labels compare equal and hide a parent-child pair from each other.
+ * A cycle is broken where the walk re-enters it, losing that one link.
+ */
+function childrenFirst<T extends Label>(labels: T[]): T[] {
+  const labelsById = new Map(labels.map((label) => [label.meta.id, label]));
+  const visited = new Set<number>();
+  const ordered: T[] = [];
+
+  function visit(label: T): void {
+    if (visited.has(label.meta.id)) {
+      return;
+    }
+
+    visited.add(label.meta.id);
+    for (const child of label.children) {
+      const childLabel = labelsById.get(child.id);
+      if (childLabel) {
+        visit(childLabel);
+      }
+    }
+    ordered.push(label);
+  }
+
+  labels.forEach(visit);
+
+  return ordered;
+}
+
 async function stepUploadToRemote(
   toUpload: Label[],
   localApi: ILabelApi,
@@ -46,16 +77,17 @@ async function stepUploadToRemote(
       label.meta.color,
     );
 
-    const keywords = await localApi.getKeywordsForLabel(label.meta);
-    remoteApi.setKeywordsOnLabel(newLabel, keywords);
-
-    const localModelsForLabel = await getAllModels(localModelApi, [
-      label.meta.id,
+    const [keywords, localModelsForLabel] = await Promise.all([
+      localApi.getKeywordsForLabel(label.meta),
+      getAllModels(localModelApi, [label.meta.id]),
     ]);
-    await remoteApi.addLabelToModels(
-      newLabel,
-      remoteCounterparts(localModelsForLabel, remoteModelsById),
-    );
+    await Promise.all([
+      remoteApi.setKeywordsOnLabel(newLabel, keywords),
+      remoteApi.addLabelToModels(
+        newLabel,
+        remoteCounterparts(localModelsForLabel, remoteModelsById),
+      ),
+    ]);
     await remoteApi.setChildrenOnLabel(
       newLabel,
       filterByGlobalIds(remoteLabelMetas, label.children),
@@ -91,21 +123,25 @@ async function stepSyncToRemote(
       isServerToLocal,
     );
 
-    const keywords = await localApi.getKeywordsForLabel(localLabel.meta);
-    await remoteApi.setKeywordsOnLabel(remoteLabel.meta, keywords);
-
-    const [localModelsForLabel, remoteModelsForLabel] = await Promise.all([
-      getAllModels(localModelApi, [localLabel.meta.id]),
-      getAllModels(remoteModelApi, [remoteLabel.meta.id]),
+    const [keywords, localModelsForLabel, remoteModelsForLabel] =
+      await Promise.all([
+        localApi.getKeywordsForLabel(localLabel.meta),
+        getAllModels(localModelApi, [localLabel.meta.id]),
+        getAllModels(remoteModelApi, [remoteLabel.meta.id]),
+      ]);
+    // The keywords are independent of the model links, but the old links must
+    // be gone before the new ones go in, or a model in both sets loses its label.
+    await Promise.all([
+      remoteApi.setKeywordsOnLabel(remoteLabel.meta, keywords),
+      remoteApi
+        .removeLabelFromModels(remoteLabel.meta, remoteModelsForLabel)
+        .then(() =>
+          remoteApi.addLabelToModels(
+            remoteLabel.meta,
+            remoteCounterparts(localModelsForLabel, remoteModelsById),
+          ),
+        ),
     ]);
-    await remoteApi.removeLabelFromModels(
-      remoteLabel.meta,
-      remoteModelsForLabel,
-    );
-    await remoteApi.addLabelToModels(
-      remoteLabel.meta,
-      remoteCounterparts(localModelsForLabel, remoteModelsById),
-    );
     await remoteApi.setChildrenOnLabel(
       remoteLabel.meta,
       filterByGlobalIds(remoteLabelMetas, localLabel.children),
@@ -144,22 +180,8 @@ export async function syncLabels(
     lastSynced,
   );
 
-  function sortFunction(a: Label, b: Label): number {
-    if (a.children.some((aChild) => b.meta.id === aChild.id)) {
-      // A needs to come after B
-      return 1;
-    }
-
-    if (b.children.some((bChild) => a.meta.id === bChild.id)) {
-      // B needs to come after A
-      return -1;
-    }
-
-    return 0;
-  }
-
-  syncState.toUpload.sort(sortFunction);
-  syncState.toDownload.sort(sortFunction);
+  syncState.toUpload = childrenFirst(syncState.toUpload);
+  syncState.toDownload = childrenFirst(syncState.toDownload);
 
   await applySyncResult(syncState, {
     upload: (toUpload) =>

@@ -6,6 +6,8 @@
  * add_model command.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WatchEvent } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
@@ -166,6 +168,28 @@ describe("initImportListeners registration", () => {
       listenedEvents,
     );
     expect(mocks.watch).not.toHaveBeenCalled();
+  });
+
+  it("listens to every import event the Rust emitter sends", async () => {
+    const emitterSource = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../../src-tauri/src/tauri_import_state.rs",
+          import.meta.url,
+        ),
+      ),
+      "utf-8",
+    );
+    const emittedEvents = [
+      ...emitterSource.matchAll(/const \w+_EVENT: &str = "([^"]+)";/g),
+    ].map(([, name]) => name);
+
+    await initApi();
+
+    expect(emittedEvents).toHaveLength(6);
+    expect(mocks.listen.mock.calls.map(([name]) => name)).toEqual(
+      expect.arrayContaining(emittedEvents),
+    );
   });
 
   it("watches the Downloads folder only when watch_downloads_folder is enabled", async () => {
@@ -805,5 +829,35 @@ describe("open-in-slicer link", () => {
         "Failed to open models in slicer",
       );
     }
+  });
+});
+
+describe("startImportProcess failure reason", () => {
+  it.each([
+    [
+      "a command error",
+      {
+        error_message: "Import failed",
+        error_inner_message: "disk full",
+        error_type: "InternalError",
+      },
+      "Import failed - disk full",
+    ],
+    [
+      "a plain Error",
+      new Error("path is not readable"),
+      "path is not readable",
+    ],
+    ["a string", "command add_model not found", "command add_model not found"],
+  ])("records %s as the failure reason", async (_shape, reason, expected) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.invoke.mockRejectedValueOnce(reason);
+    const api = new TauriImportApi();
+
+    const result = await api.startImportProcess(["/a.stl"], {});
+
+    expect(result.status).toBe(ImportStatus.Failure);
+    expect(result.failure_reason).toBe(expected);
+    expect(importState.failure_reason).toBe(expected);
   });
 });

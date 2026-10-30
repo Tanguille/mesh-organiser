@@ -12,7 +12,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use crate::{
     export_service::{ensure_unique_file, get_temp_dir},
     service_error::ServiceError,
-    util::{cleanse_evil_from_name, percent_decode},
+    util::{cleanse_evil_from_name, path_to_utf8, percent_decode},
 };
 
 static FILENAME_QUOTED: LazyLock<Regex> =
@@ -139,11 +139,8 @@ async fn download_file_to_dir(url: &str, dir: &Path) -> Result<(PathBuf, String)
 /// Returns `DownloadResult` with `path` set and `source_uri: None`.
 pub async fn download_file_to(url: &str, dir: &Path) -> Result<DownloadResult, ServiceError> {
     let (path, _) = download_file_to_dir(url, dir).await?;
-    let path = path
-        .to_str()
-        .ok_or_else(|| ServiceError::InternalError("Path is not valid UTF-8".into()))?;
     Ok(DownloadResult {
-        path: path.to_string(),
+        path: path_to_utf8(&path)?.to_string(),
         source_uri: None,
     })
 }
@@ -192,8 +189,9 @@ pub async fn download_file(
             source_uri = Some(String::from("https://nexprint.com/"));
             // Nexprint embeds a content-disposition-style `filename="..."` in the URL;
             // quoted-only on purpose — see quoted_filename.
-            let decoded_url = percent_decode(url).unwrap();
-            quoted_filename(&decoded_url)
+            percent_decode(url)
+                .ok()
+                .and_then(|decoded_url| quoted_filename(&decoded_url))
                 .filter(|name| !name.is_empty())
                 .unwrap_or(current_filename)
         } else {
@@ -210,10 +208,7 @@ pub async fn download_file(
         file_path = new_path;
     }
 
-    let path = file_path
-        .to_str()
-        .ok_or_else(|| ServiceError::InternalError("Path is not valid UTF-8".into()))?
-        .to_string();
+    let path = path_to_utf8(&file_path)?.to_string();
 
     Ok(DownloadResult { path, source_uri })
 }

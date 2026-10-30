@@ -67,7 +67,7 @@ impl Slicer {
 }
 
 fn open_with_args_and_paths(
-    program: &str,
+    program: impl AsRef<std::ffi::OsStr>,
     args: &[String],
     paths: Vec<PathBuf>,
 ) -> Result<(), ServiceError> {

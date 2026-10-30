@@ -14,6 +14,7 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 
 use db::{
     model::{model_group::ModelGroupMeta, user::User},
@@ -26,7 +27,7 @@ use service::{
 
 use crate::{
     error::ApplicationError,
-    tauri_app_state::{AccountLinkEmit, InitialState, TauriAppState},
+    tauri_app_state::{AccountLinkEmit, InitialState, PendingLinks, TauriAppState},
     tauri_import_state::import_state_new_tauri,
 };
 
@@ -117,6 +118,20 @@ async fn get_initial_state(
     let initial_state = state.initial_state.lock().unwrap().take();
 
     Ok(initial_state.unwrap_or_else(|| InitialState::new(&state.get_configuration())))
+}
+
+/// Emits the links that arrived before the frontend listened. The frontend calls this once its
+/// listeners are registered; links after that are emitted straight away.
+#[tauri::command]
+async fn release_pending_links(
+    pending_links: State<'_, PendingLinks>,
+    app_handle: AppHandle,
+) -> Result<(), ApplicationError> {
+    for link in pending_links.release() {
+        emit_link(&app_handle, &link);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -363,7 +378,8 @@ fn extract_deep_link(data: &str) -> Option<String> {
             return Some(encoded.to_string());
         }
 
-        return Some(service::percent_decode(encoded).unwrap());
+        // An escape that does not decode to UTF-8 makes the link unusable, like a missing `?file=`.
+        return service::percent_decode(encoded).ok();
     }
 
     None
@@ -403,6 +419,35 @@ fn extract_open_in_slicer_via_deep_link(data: &str) -> Option<Vec<String>> {
     (!sha256s.is_empty()).then_some(sha256s)
 }
 
+/// Hands a link that reached the running app to the frontend, logging one it cannot use.
+fn emit_link(app: &AppHandle, link: &str) {
+    // An event emitted before the frontend listens is dropped, so hold the link until it asks.
+    if app.state::<PendingLinks>().hold(link) {
+        println!("Holding link until the frontend listens {link:?}");
+        return;
+    }
+
+    if let Some(deep_link) = extract_deep_link(link) {
+        println!("Emitting deep link {deep_link:?}");
+        app.emit(
+            "deep-link",
+            DeepLinkEmit {
+                download_url: deep_link,
+                source_url: None,
+            },
+        )
+        .unwrap();
+    } else if let Some(account_link) = extract_account_link_via_deep_link(link) {
+        println!("Emitting account link");
+        app.emit("account-link", account_link).unwrap();
+    } else if let Some(sha256s) = extract_open_in_slicer_via_deep_link(link) {
+        println!("Emitting open in slicer link {sha256s:?}");
+        app.emit("open-in-slicer", sha256s).unwrap();
+    } else {
+        println!("Failed to extract deep link {link:?}");
+    }
+}
+
 /// Reads the configuration from the settings file.
 ///
 /// # Panics
@@ -413,9 +458,11 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
     let path = PathBuf::from(app_data_path);
     let path = path.join("settings.json");
 
+    // Only a first run probes for an installed slicer; `Default` and serde never do.
     if !path.exists() {
         return Configuration {
             data_path: String::from(app_data_path),
+            slicer: Slicer::iter().find(Slicer::is_installed),
             ..Default::default()
         };
     }
@@ -438,64 +485,38 @@ pub fn run() {
     });
 
     let app = tauri::Builder::default()
+        // Managed on the builder rather than in setup: the single-instance callback can run
+        // before setup finishes and already needs it.
+        .manage(PendingLinks::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+            println!("a new app instance was opened with {argv:?}");
 
-            if argv.len() == 2
-            {
-                let deep_link = extract_deep_link(&argv[1]);
-                let account_link = extract_account_link_via_deep_link(&argv[1]);
-                let open_in_slicer = extract_open_in_slicer_via_deep_link(&argv[1]);
-
-                if let Some(deep_link) = deep_link
-                {
-                    println!("Emitting deep link {deep_link:?}");
-                    app.emit("deep-link", DeepLinkEmit { download_url: deep_link, source_url: None } ).unwrap();
-                }
-                else if let Some(account_link) = account_link
-                {
-                    println!("Emitting account link");
-                    app.emit("account-link", account_link ).unwrap();
-                }
-                else if let Some(sha256s) = open_in_slicer
-                {
-                    println!("Emitting open in slicer link {sha256s:?}");
-                    app.emit("open-in-slicer", sha256s).unwrap();
-                }
-                else
-                {
-                    println!("Failed to extract deep link {:?}", argv[1]);
-                }
-            }
-            else
-            {
+            if argv.len() == 2 {
+                emit_link(app, &argv[1]);
+            } else {
                 let window = app.get_webview_window("main");
 
                 if let Some(window) = window {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
-                }
-                else
-                {
+                } else {
                     println!("Failed to get window to focus");
                 }
             }
-          }))
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_process::init())
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed)
-                && window.label() == "main" {
-                    for window in window.app_handle().webview_windows() {
-                        let _ = window.1.close();
-                    }
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                for window in window.app_handle().webview_windows() {
+                    let _ = window.1.close();
                 }
+            }
         })
         .setup(|app| {
             tauri::async_runtime::block_on(async move {
@@ -508,8 +529,7 @@ pub fn run() {
                 );
 
                 if !fs::exists(&app_data_path).unwrap_or(false) {
-                    fs::create_dir_all(&app_data_path)
-                        .expect("failed to create app data dir");
+                    fs::create_dir_all(&app_data_path).expect("failed to create app data dir");
                 }
 
                 let app_data_path_clone = String::from(&app_data_path);
@@ -517,21 +537,18 @@ pub fn run() {
                 std::panic::set_hook(Box::new(move |info| {
                     let loc = PathBuf::from(&app_data_path_clone).join("crash.log");
 
-                    let error_message = info
-                        .payload()
-                        .downcast_ref::<&'static str>()
-                        .map_or_else(
-                            || {
-                                info.payload()
-                                    .downcast_ref::<String>()
-                                    .map_or("Box<Any>", |s| &s[..])
-                            },
-                            |s| *s,
-                        );
+                    let error_message = info.payload().downcast_ref::<&'static str>().map_or_else(
+                        || {
+                            info.payload()
+                                .downcast_ref::<String>()
+                                .map_or("Box<Any>", |s| &s[..])
+                        },
+                        |s| *s,
+                    );
 
-                    if let Ok(mut file) = File::create(loc)
-                    {
-                        let _ = writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
+                    if let Ok(mut file) = File::create(loc) {
+                        let _ =
+                            writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
                     }
 
                     println!("Panic occurred: {error_message}\n{info:?}");
@@ -547,19 +564,42 @@ pub fn run() {
 
                 let mut argv = std::env::args();
 
-                if argv.len() == 2
-                {
-                    let arg = argv.nth(1).unwrap();
-                    initial_state.deep_link_url = extract_deep_link(&arg);
-                    initial_state.account_link = extract_account_link_via_deep_link(&arg);
-                    initial_state.open_in_slicer_sha256s = extract_open_in_slicer_via_deep_link(&arg);
-                }
-
-                let user = user_db::get_user_by_id(&db, config.last_user_id)
-                        .await
+                // macOS hands a launch URL to the deep-link plugin through an Apple event, not
+                // argv. On Windows and Linux the plugin never records one, because its schemes are
+                // only configured in tauri.macos.conf.json, so no link is handled twice.
+                let launch_link = if argv.len() == 2 {
+                    argv.nth(1)
+                } else {
+                    app.deep_link()
+                        .get_current()
                         .ok()
                         .flatten()
-                        .unwrap_or_else(User::default);
+                        .and_then(|urls| urls.into_iter().next())
+                        .map(String::from)
+                };
+
+                if let Some(link) = launch_link {
+                    initial_state.deep_link_url = extract_deep_link(&link);
+                    initial_state.account_link = extract_account_link_via_deep_link(&link);
+                    initial_state.open_in_slicer_sha256s =
+                        extract_open_in_slicer_via_deep_link(&link);
+                }
+
+                // URLs opened while the app runs reach macOS the same way. On Windows and Linux they
+                // arrive as a second instance's argv, which the single-instance callback handles,
+                // and the plugin stays silent for the same missing-schemes reason.
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        emit_link(&handle, url.as_str());
+                    }
+                });
+
+                let user = user_db::get_user_by_id(&db, config.last_user_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(User::default);
 
                 let state = TauriAppState {
                     app_state: AppState {
@@ -613,6 +653,7 @@ pub fn run() {
             api::set_labels_on_model,
             open_in_slicer,
             get_initial_state,
+            release_pending_links,
             download_file,
             open_in_folder,
             api::set_label_on_models,
@@ -708,6 +749,17 @@ mod tests {
             super::extract_deep_link("bambustudio://open/?file=bad%zz.stl"),
             Some("bad%zz.stl".to_string())
         );
+    }
+
+    #[test]
+    fn extract_deep_link_invalid_utf8_escape_returns_none() {
+        // `%FF` is a well-formed escape whose byte is not valid UTF-8.
+        for link in [
+            "cura://open?file=%FF",
+            "prusaslicer://open/?file=https%3A%2F%2Fex.com%2F%FF.stl",
+        ] {
+            assert_eq!(super::extract_deep_link(link), None, "{link}");
+        }
     }
 
     #[test]

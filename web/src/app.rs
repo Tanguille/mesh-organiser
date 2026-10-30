@@ -11,7 +11,7 @@ use std::{
 
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Request},
+    extract::Request,
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
@@ -19,8 +19,7 @@ use axum::{
 };
 use axum_login::AuthManagerLayerBuilder;
 use time::{Duration, OffsetDateTime};
-use tokio::{fs, signal, task::AbortHandle};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
+use tokio::{fs, signal};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowHeaders, AllowMethods, CorsLayer},
@@ -28,11 +27,7 @@ use tower_http::{
 };
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
 
-use db::{
-    db_context::{self, DbContext},
-    model::user::User,
-    user_db,
-};
+use db::{db_context, model::user::User, user_db};
 use service::{
     AppState, Configuration, export_service, import_state::ImportState, thumbnail_service,
 };
@@ -267,11 +262,17 @@ impl App {
     pub async fn serve(self, port: u16) -> Result<(), Box<dyn Error>> {
         let session_store = self.session_store;
 
-        let deletion_task = tokio::task::spawn(
-            session_store
-                .clone()
-                .continuously_delete_expired(tokio::time::Duration::from_mins(1)),
-        );
+        // Runs until the runtime shuts down; nothing joins it. The loop returns on its first
+        // error, so log that instead of losing expiry cleanup silently.
+        let cleanup_store = session_store.clone();
+        tokio::task::spawn(async move {
+            if let Err(error) = cleanup_store
+                .continuously_delete_expired(tokio::time::Duration::from_mins(1))
+                .await
+            {
+                eprintln!("Session expiry cleanup stopped: {error}");
+            }
+        });
 
         let signing_key_path = PathBuf::from(&self.state.app_data_path).join("signing.key");
         let key = if signing_key_path.exists() {
@@ -309,18 +310,7 @@ impl App {
             .allow_headers(AllowHeaders::mirror_request())
             .allow_credentials(true);
 
-        let governor_config = Arc::new(
-            GovernorConfigBuilder::default()
-                .per_second(5)
-                .burst_size(10)
-                .finish()
-                .ok_or_else(|| {
-                    io::Error::new(ErrorKind::InvalidData, "Failed to create governor config")
-                })?,
-        );
-
-        let login_router =
-            auth_controller::login_router().layer(GovernorLayer::new(governor_config));
+        let login_router = crate::controller::rate_limited(auth_controller::login_router());
         // Opt-in: the endpoint lets an agent edit the library, so it is mounted only when
         // `ENABLE_MCP=true`. Merging an empty router leaves `/mcp` unrouted.
         let mcp_router =
@@ -359,7 +349,6 @@ impl App {
             .layer(cors_layer)
             .layer(middleware::from_fn(update_session_middleware))
             .layer(auth_layer)
-            .layer(DefaultBodyLimit::disable())
             .layer(CompressionLayer::new())
             .fallback_service(serve_dir);
 
@@ -367,23 +356,23 @@ impl App {
 
         println!("Server running on port {port}");
 
-        // Connect info is required by the auth rate limiter: tower_governor's
-        // default PeerIpKeyExtractor 500s every request without a peer address.
+        // Connect info is required by the rate limiters (`controller::rate_limited`):
+        // tower_governor's default PeerIpKeyExtractor 500s every request without a peer address.
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
-        // The shutdown signal also aborts the session deletion task.
-        .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle(), db))
+        .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-        deletion_task.await??;
+        // Only after in-flight requests have drained, which may still need the pool.
+        db.close().await;
 
         Ok(())
     }
 }
 
-async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbContext>) {
+async fn shutdown_signal() {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -402,56 +391,22 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle, db: Arc<DbCont
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        () = ctrl_c => { deletion_task_abort_handle.abort() },
-        () = terminate => { deletion_task_abort_handle.abort() },
+        () = ctrl_c => {},
+        () = terminate => {},
     }
-
-    db.close().await;
 }
 
 #[cfg(test)]
 mod tests {
-    /// Adds a blob whose model file and thumbnail exist on disk, as an import leaves them.
-    async fn add_blob_with_files(
-        app_state: &service::AppState,
-        sha256: &str,
-    ) -> (i64, std::path::PathBuf, std::path::PathBuf) {
-        let blob_id = db::blob_db::add_blob(&app_state.db, sha256, "stl", 1, None)
-            .await
-            .unwrap();
-        let blob = db::blob_db::get_blob_via_sha256(&app_state.db, sha256)
-            .await
-            .unwrap()
-            .unwrap();
-        let model_path = service::export_service::get_model_path_for_blob(&blob, app_state);
-        let image_path = service::export_service::get_image_path_for_blob(&blob, app_state);
-        std::fs::write(&model_path, sha256).unwrap();
-        std::fs::write(&image_path, sha256).unwrap();
-
-        (blob_id, model_path, image_path)
-    }
-
     #[tokio::test]
     async fn apply_local_account_sweeps_dead_blobs_and_keeps_referenced_ones() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let data_path = dir.path().to_string_lossy().to_string();
-        let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
         // The migrations seed the local account as user 1, which `apply_local_account` edits.
-        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
-        let app_state = service::AppState {
-            db: std::sync::Arc::new(db),
-            configuration: std::sync::Mutex::new(service::Configuration {
-                data_path: data_path.clone(),
-                ..Default::default()
-            }),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: data_path,
-        };
+        let (_dir, app_state) = crate::test_support::app_state().await;
         // No model references this blob, as a skipped or interrupted sweep leaves it.
-        let (_, dead_model_path, dead_image_path) = add_blob_with_files(&app_state, "dead").await;
+        let (_, dead_model_path, dead_image_path) =
+            crate::test_support::add_blob_with_files(&app_state, "dead").await;
         let (kept_blob_id, kept_model_path, kept_image_path) =
-            add_blob_with_files(&app_state, "kept").await;
+            crate::test_support::add_blob_with_files(&app_state, "kept").await;
         let local_user = db::model::user::User::default();
         db::model_db::add_model(&app_state.db, &local_user, "kept", kept_blob_id, None, None)
             .await

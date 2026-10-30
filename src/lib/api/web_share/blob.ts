@@ -1,4 +1,9 @@
-import { blobThumbnailUrl, type Blob, type IBlobApi } from "../shared/blob_api";
+import {
+  blobsZipDownloadUrl,
+  blobThumbnailUrl,
+  type Blob,
+  type IBlobApi,
+} from "../shared/blob_api";
 import {
   HttpMethod,
   type IServerRequestApi,
@@ -33,10 +38,11 @@ export class WebShareBlobApi implements IBlobApi {
   }
 
   async getBlobsDownloadUrl(blobs: Blob[]): Promise<string> {
-    const blobIds = blobs.map((blob) => blob.sha256).join(",");
-    return (
-      document.location.origin +
-      `/api/v1/blobs/download?share_id=${this.share.id}&blobs=${blobIds}`
+    const zipDir = await this.requestApi.request<string>(
+      `/shares/${this.share.id}/blobs/download`,
+      HttpMethod.POST,
+      blobs.map((blob) => blob.sha256),
     );
+    return blobsZipDownloadUrl(document.location.origin, zipDir);
   }
 }

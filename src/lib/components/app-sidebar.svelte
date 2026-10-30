@@ -302,12 +302,15 @@
     {#if !panicState.inPanic}
       <Sidebar.Group>
         <Sidebar.GroupLabel>Labels</Sidebar.GroupLabel>
-        <AddLabelPopover onsubmit={addLabel}>
-          <Sidebar.GroupAction title="New label">
-            <span class="sr-only">New label</span>
-            <Plus />
-          </Sidebar.GroupAction>
-        </AddLabelPopover>
+        <!-- GroupAction lends its styling to the popover trigger, so there is one button, not two nested. -->
+        <Sidebar.GroupAction title="New label">
+          {#snippet child({ props })}
+            <AddLabelPopover onsubmit={addLabel} triggerProps={props}>
+              <span class="sr-only">New label</span>
+              <Plus />
+            </AddLabelPopover>
+          {/snippet}
+        </Sidebar.GroupAction>
 
         <Sidebar.GroupContent>
           <Sidebar.Menu>
@@ -368,7 +371,7 @@
           {...props}
         >
           {#if chevron && (sidebar.open || sidebar.isMobile)}
-            <ChevronRight class="chevron" className="transition-transform" />
+            <ChevronRight class="chevron transition-transform" />
           {/if}
           <Icon class={iconClass} style={`color: ${meta.color};`} />
           <span class="mr-3">{meta.name}</span>

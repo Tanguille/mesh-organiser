@@ -68,6 +68,15 @@ export async function downloadFile(
   });
 }
 
+// Shown as is on the import page and in sync errors.
+function importFailureReason(reason: unknown): string {
+  if (isCommandError(reason)) {
+    return `${reason.error_message} - ${reason.error_inner_message}`;
+  }
+
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
 async function importModel(
   path: string,
   recursive: boolean,
@@ -144,19 +153,30 @@ export class TauriImportApi implements ITauriImportApi {
           return localImportState;
         }
       } catch (reason: unknown) {
-        importState.status = localImportState.status = ImportStatus.Failure;
-        importState.failure_reason = localImportState.failure_reason =
-          isCommandError(reason)
-            ? `${reason.error_message} - ${reason.error_inner_message}`
-            : "unknown - unknown";
-        console.error("Failed to import model:", reason);
-        return localImportState;
+        return this.recordFailure(
+          localImportState,
+          reason,
+          "Failed to import model:",
+        );
       }
     }
 
     await updateSidebarState();
     console.log("Finished importing models:", importState);
     importState.status = localImportState.status = ImportStatus.Finished;
+    return localImportState;
+  }
+
+  // Marks the global and the caller's import state failed with `reason`.
+  protected recordFailure(
+    localImportState: ImportState,
+    reason: unknown,
+    logMessage: string,
+  ): ImportState {
+    importState.status = localImportState.status = ImportStatus.Failure;
+    importState.failure_reason = localImportState.failure_reason =
+      importFailureReason(reason);
+    console.error(logMessage, reason);
     return localImportState;
   }
 

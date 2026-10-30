@@ -112,7 +112,6 @@ export async function initTauriLocalApis(): Promise<void> {
 
   Object.assign(configuration, config);
 
-  console.log("initial state:", state);
   if (state.deep_link_url) {
     await tauriImport.handleDeepLink({
       download_url: state.deep_link_url,
@@ -224,6 +223,11 @@ export async function initTauriLocalApis(): Promise<void> {
   if (state.open_in_slicer_sha256s) {
     await tauriImport.handleOpenInSlicerLink(state.open_in_slicer_sha256s);
   }
+
+  // Links that reached the app while it was starting were held back, since
+  // their handlers or the apis those use did not exist yet; both do now. Panic
+  // mode returns before this, as it registers no import listeners.
+  await invoke("release_pending_links");
 }
 
 async function checkForUpdates(): Promise<void> {

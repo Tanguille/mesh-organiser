@@ -92,6 +92,10 @@ export function blobThumbnailUrl(origin: string, sha256: string): string {
   return origin + "/api/v1/blobs/" + sha256 + "/thumb";
 }
 
+export function blobsZipDownloadUrl(origin: string, zipDir: string): string {
+  return origin + "/api/v1/blobs/download/" + zipDir;
+}
+
 export const IBlobApi = Symbol("IBlobApi");
 
 export interface IBlobApi {

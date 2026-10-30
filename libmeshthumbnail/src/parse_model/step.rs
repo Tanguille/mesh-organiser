@@ -18,8 +18,8 @@ const TOLERANCE_ENV: &str = "LIBMESHTHUMBNAIL_STEP_TRIANGULATION_TOLERANCE";
 
 /// OCCT's mesh kernel keeps process-wide state (`BRepMesh_IncrementalMesh`, FFI handles) that is
 /// not safe to invoke from multiple threads concurrently — parallel STEP parses have been
-/// observed to segfault inside cadrum's C++ wrapper. Serialize all cadrum meshing through this
-/// guard; STEP parsing is I/O + CPU bound on a small set of solids per file, so a single
+/// observed to segfault inside cadrum's C++ wrapper. Serialize all cadrum reading and meshing
+/// through this guard; STEP parsing is I/O + CPU bound on a small set of solids per file, so a single
 /// in-flight parse is acceptable and avoids a much larger OCCT refactor.
 static OCCT_GUARD: Mutex<()> = Mutex::new(());
 
@@ -48,10 +48,10 @@ fn mesh_from_reader(reader: &mut impl Read) -> Result<cadrum::Mesh, MeshThumbnai
         deflection_linear: step_tolerance(),
         ..cadrum::Tessellation::default()
     };
+    // Poison propagates as a panic on purpose: it means a previous OCCT call panicked.
+    let _guard = OCCT_GUARD.lock().expect("OCCT guard poisoned");
     let solids = Solid::read_step(reader)?;
 
-    // Poison propagates as a panic on purpose: it means a previous mesh call panicked.
-    let _guard = OCCT_GUARD.lock().expect("OCCT guard poisoned");
     Ok(Solid::mesh(&solids, tessellation)?)
 }
 

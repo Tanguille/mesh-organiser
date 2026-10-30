@@ -31,7 +31,8 @@ pub struct ShareScope {
 }
 
 impl ShareScope {
-    /// Resolves a share and its owning user, erroring if the owner no longer exists.
+    /// Resolves a share and its owning user. Every public share endpoint routes through here, so
+    /// an unknown share is a `RowNotFound` (a 404) for all of them; a missing owner is an error.
     pub async fn resolve(app_state: &AppState, share_id: &str) -> Result<Self, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
 
@@ -212,5 +213,82 @@ mod tests {
     #[test]
     fn restrict_keeps_share_order_and_ignores_requested_duplicates() {
         assert_eq!(scope(vec![1, 2, 3]).restrict(&[3, 1, 3, 1]), vec![1, 3]);
+    }
+
+    /// The public share routes, routed as the server mounts them.
+    async fn get(app_state: &service::AppState, uri: &str) -> axum::http::StatusCode {
+        let router = axum::Router::new()
+            .merge(super::router())
+            .merge(crate::controller::model_controller::router())
+            .merge(crate::controller::group_controller::router())
+            .with_state(app_state.clone());
+        let request = axum::http::Request::get(uri)
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        tower::ServiceExt::oneshot(router, request)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn share_handlers_serve_a_known_share_and_are_not_found_for_an_unknown_one() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        let share_id =
+            db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
+                .await
+                .unwrap();
+
+        for (id, status) in [
+            (share_id.as_str(), axum::http::StatusCode::OK),
+            ("missing", axum::http::StatusCode::NOT_FOUND),
+        ] {
+            for uri in [
+                format!("/api/v1/shares/{id}"),
+                format!("/api/v1/shares/{id}/models?page=1&page_size=10"),
+                format!("/api/v1/shares/{id}/groups?page=1&page_size=10"),
+            ] {
+                assert_eq!(get(&app_state, &uri).await, status, "{uri}");
+            }
+        }
+    }
+
+    async fn set_model_ids(
+        app_state: &service::AppState,
+        share_id: &str,
+        model_ids: Vec<i64>,
+    ) -> axum::http::StatusCode {
+        let result = super::set_model_ids_on_share(
+            crate::user::CurrentUser(db::model::user::User::default()),
+            axum::extract::Path(share_id.to_string()),
+            axum::extract::State(app_state.clone()),
+            axum::Json(crate::controller::ModelIdsParams { model_ids }),
+        )
+        .await;
+
+        axum::response::IntoResponse::into_response(result).status()
+    }
+
+    #[tokio::test]
+    async fn set_model_ids_on_share_is_not_found_for_an_unknown_share_or_model() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        let share_id =
+            db::share_db::create_share(&app_state.db, &db::model::user::User::default(), "prints")
+                .await
+                .unwrap();
+
+        assert_eq!(
+            set_model_ids(&app_state, "missing", vec![]).await,
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            set_model_ids(&app_state, &share_id, vec![999]).await,
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            set_model_ids(&app_state, &share_id, vec![]).await,
+            axum::http::StatusCode::NO_CONTENT
+        );
     }
 }

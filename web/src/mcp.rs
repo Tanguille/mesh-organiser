@@ -171,8 +171,8 @@ fn non_empty(name: &str) -> Result<&str, String> {
     Ok(name)
 }
 
-/// Sorted and deduplicated, because `ensure_owned` rejects duplicates; bounded, because
-/// `get_models` returns at most `MAX_PAGE_SIZE` rows.
+/// Sorted and deduplicated, because `ensure_owned` rejects duplicates; bounded to
+/// `MAX_PAGE_SIZE` so one tool call stays a single page of db work.
 fn unique_ids(mut ids: Vec<i64>) -> Result<Vec<i64>, String> {
     ids.sort_unstable();
     ids.dedup();
@@ -553,10 +553,11 @@ impl MeshServer {
         Parameters(params): Parameters<MeshIdsParams>,
     ) -> ToolResult {
         let user = current_user(&parts)?;
-        if params.mesh_ids.len() > MAX_MESH_DETAILS {
+        let mesh_ids = unique_ids(params.mesh_ids)?;
+        if mesh_ids.len() > MAX_MESH_DETAILS {
             return Err(format!("At most {MAX_MESH_DETAILS} meshes per call").into());
         }
-        let meshes = owned_meshes(&self.app_state.db, user, params.mesh_ids).await?;
+        let meshes = owned_meshes(&self.app_state.db, user, mesh_ids).await?;
         let max = self.app_state.get_configuration().core_parallelism;
 
         let mut details = service::run_bounded(
@@ -607,10 +608,11 @@ impl MeshServer {
         Parameters(params): Parameters<MeshIdsParams>,
     ) -> Result<CallToolResult, ToolError> {
         let user = current_user(&parts)?;
-        if params.mesh_ids.len() > MAX_THUMBNAILS {
+        let mesh_ids = unique_ids(params.mesh_ids)?;
+        if mesh_ids.len() > MAX_THUMBNAILS {
             return Err(format!("At most {MAX_THUMBNAILS} meshes per call").into());
         }
-        let meshes = owned_meshes(&self.app_state.db, user, params.mesh_ids).await?;
+        let meshes = owned_meshes(&self.app_state.db, user, mesh_ids).await?;
 
         let mut content = Vec::with_capacity(meshes.len() * 2);
         for mesh in &meshes {
@@ -1079,20 +1081,7 @@ mod tests {
 
     /// A server over a fresh database and data dir; the `TempDir` must outlive the test.
     async fn test_server() -> (tempfile::TempDir, super::MeshServer) {
-        let dir = tempfile::TempDir::new().unwrap();
-        let data_path = dir.path().to_string_lossy().to_string();
-        let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
-        let db = db::db_context::setup_db(&dir.path().join("db.sqlite"), &backup_dir).await;
-        let app_state = service::AppState {
-            db: std::sync::Arc::new(db),
-            configuration: std::sync::Mutex::new(service::Configuration {
-                data_path: data_path.clone(),
-                ..Default::default()
-            }),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: data_path,
-        };
+        let (dir, app_state) = crate::test_support::app_state().await;
 
         (dir, super::MeshServer { app_state })
     }
@@ -2755,6 +2744,41 @@ mod tests {
 
         assert_eq!(fifty_one.unwrap_err().0, "At most 50 meshes per call");
         assert_eq!(fifty.as_array().unwrap().len(), 50);
+    }
+
+    #[tokio::test]
+    async fn get_meshes_counts_a_repeated_id_once_against_the_limit() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let mesh_id = add_mesh(&server, &user, "boat").await;
+
+        let details = parse(
+            server
+                .get_meshes(
+                    authenticated(&user),
+                    parameters(serde_json::json!({ "mesh_ids": vec![mesh_id; 51] })),
+                )
+                .await,
+        );
+
+        assert_eq!(details.as_array().unwrap().len(), 1);
+        assert_eq!(details[0]["id"], mesh_id);
+    }
+
+    #[tokio::test]
+    async fn get_mesh_thumbnails_counts_a_repeated_id_once_against_the_limit() {
+        let (_dir, server) = test_server().await;
+        let user = add_user(&server, "owner@example.com").await;
+        let mesh_id = add_mesh(&server, &user, "boat").await;
+
+        let result = server
+            .get_mesh_thumbnails(
+                authenticated(&user),
+                parameters(serde_json::json!({ "mesh_ids": vec![mesh_id; 9] })),
+            )
+            .await;
+
+        assert_eq!(result.unwrap().content.len(), 2);
     }
 
     #[tokio::test]

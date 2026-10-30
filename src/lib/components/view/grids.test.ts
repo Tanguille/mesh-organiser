@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getContainer, resetContainer } from "#lib/api/dependency_injection";
 import { IBlobApi, createBlobInstance } from "#lib/api/shared/blob_api";
@@ -46,6 +52,9 @@ vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({ page: { url: new URL("http://localhost/") } }));
 
 afterEach(() => {
+  // Unmount first: a still-mounted grid re-renders on the configuration reset
+  // and reads the apis from the emptied container.
+  cleanup();
   media.width = 1920;
   resetContainer();
   Object.assign(configuration, configurationDefault());
@@ -126,7 +135,8 @@ describe.each(grids)("$name", ({ emptyText, mount }) => {
   });
 });
 
-function groupStreamWithModels() {
+// Registers the apis the grids' items read from and returns two models of one group.
+function calibrationParts() {
   const container = getContainer();
   container.addSingleton(IBlobApi, {
     getBlobThumbnailUrl: vi.fn().mockResolvedValue("data:image/png;base64,"),
@@ -163,12 +173,45 @@ function groupStreamWithModels() {
       `model-${id}`,
     ),
   );
+
+  return { meta, models };
+}
+
+function groupStreamWithModels() {
+  const { meta, models } = calibrationParts();
   const group = createGroupInstance(meta, models, [], null, []);
   const stream = emptyStream();
   stream.fetch.mockResolvedValueOnce([group]);
 
   return stream;
 }
+
+describe.each([
+  { checkboxes: false, rowChildren: 1 },
+  { checkboxes: true, rowChildren: 2 },
+])(
+  "ModelGrid list rows with multiselect checkboxes $checkboxes",
+  ({ checkboxes, rowChildren }) => {
+    it("lets the option fill the full-width row", async () => {
+      configuration.size_option_models = "List_Medium";
+      configuration.show_multiselect_checkboxes = checkboxes;
+      const stream = emptyStream();
+      stream.fetch.mockResolvedValueOnce(calibrationParts().models);
+      render(ModelGrid, { modelStream: stream as IModelStreamManager });
+
+      const option = await screen.findByRole("option", { name: /Part 1/ });
+      const row = option.parentElement!;
+
+      expect([...row.classList]).toEqual(
+        expect.arrayContaining(["flex", "w-full"]),
+      );
+      expect([...option.classList]).toEqual(
+        expect.arrayContaining(["flex-1", "min-w-0"]),
+      );
+      expect(row.children).toHaveLength(rowChildren);
+    });
+  },
+);
 
 it("closes the selected group preview on mobile and clears the selection", async () => {
   media.width = 800;

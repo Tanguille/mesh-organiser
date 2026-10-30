@@ -42,6 +42,35 @@ impl InitialState {
     }
 }
 
+/// Links that reached the running app before the frontend listened for their events.
+///
+/// The launch link travels in [`InitialState`] instead; these are the ones that arrive while the
+/// frontend is still starting. `None` once the frontend released them.
+pub struct PendingLinks(Mutex<Option<Vec<String>>>);
+
+impl Default for PendingLinks {
+    fn default() -> Self {
+        Self(Mutex::new(Some(Vec::new())))
+    }
+}
+
+impl PendingLinks {
+    /// Holds `link` for the frontend, or returns false once it listens for links itself.
+    pub fn hold(&self, link: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .as_mut()
+            .map(|pending_links| pending_links.push(link.to_string()))
+            .is_some()
+    }
+
+    /// Marks the frontend as listening and returns the held links, oldest first.
+    pub fn release(&self) -> Vec<String> {
+        self.0.lock().unwrap().take().unwrap_or_default()
+    }
+}
+
 /// A deep link was newly enabled: it is on now and was off before.
 fn deep_link_newly_enabled(old: &Configuration, new: &Configuration) -> bool {
     [
@@ -213,5 +242,30 @@ mod tests {
         let new = with_deep_links(false);
 
         assert!(!super::deep_link_newly_enabled(&old, &new));
+    }
+
+    #[test]
+    fn pending_links_are_held_until_released_oldest_first() {
+        let pending_links = super::PendingLinks::default();
+
+        assert!(pending_links.hold("cura://open?file=a.stl"));
+        assert!(pending_links.hold("meshorganiser://link_account?x=1"));
+
+        assert_eq!(
+            pending_links.release(),
+            vec![
+                "cura://open?file=a.stl".to_string(),
+                "meshorganiser://link_account?x=1".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn pending_links_are_not_held_once_released() {
+        let pending_links = super::PendingLinks::default();
+        assert_eq!(pending_links.release(), Vec::<String>::new());
+
+        assert!(!pending_links.hold("cura://open?file=a.stl"));
+        assert_eq!(pending_links.release(), Vec::<String>::new());
     }
 }

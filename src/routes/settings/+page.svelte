@@ -238,7 +238,7 @@
         {@render thumbnailColorPicker("Color of the thumbnails")}
 
         <div class="flex flex-col space-y-1.5">
-          <Label for="color">Thumbnail model rotation</Label>
+          <Label>Thumbnail model rotation</Label>
           <div class="grid grid-cols-3 gap-4">
             {#each ["X", "Y", "Z"] as axis, i (axis)}
               <div class="flex flex-col gap-2">

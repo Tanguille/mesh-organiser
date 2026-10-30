@@ -3,6 +3,9 @@ use sqlx::{QueryBuilder, Sqlite};
 use crate::{DbError, model::user::User};
 
 /// Appends `(?, ?, …)` with one bind per value. Caller must prefix e.g. `column IN `.
+// ponytail: one bind per value, so a list past SQLite's 32766-variable limit fails the query.
+// `get_models_via_ids` chunks for that; bind one JSON array through `json_each(?)` here if
+// other callers ever need lists that long.
 pub fn push_in<'t, T>(builder: &mut QueryBuilder<Sqlite>, values: impl IntoIterator<Item = T>)
 where
     T: sqlx::Encode<'t, Sqlite> + sqlx::Type<Sqlite>,

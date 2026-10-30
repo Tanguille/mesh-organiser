@@ -29,8 +29,10 @@ struct GcodeImage {
 }
 
 impl GcodeImage {
-    const fn area(&self) -> u32 {
-        self.width * self.height
+    // The dimensions come from the file's header, so widen before multiplying: two u32 values
+    // always fit in a u64, while a u32 product overflows for a header such as 70000x70000.
+    fn area(&self) -> u64 {
+        u64::from(self.width) * u64::from(self.height)
     }
 }
 
