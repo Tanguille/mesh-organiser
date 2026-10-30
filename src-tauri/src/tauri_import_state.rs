@@ -77,8 +77,9 @@ pub fn import_state_new_tauri(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn failure_reason_event_name_matches_the_frontend_listener() {
-        // Must match the `listen` call in `src/lib/api/tauri/tauri_import.ts`.
+    fn failure_reason_event_name_is_import_failure() {
+        // The frontend listens for this name; the paired assertion is the `listenedEvents`
+        // list in `src/lib/api/tauri/tauri_import.test.ts`.
         assert_eq!(super::IMPORT_FAILURE_REASON_EVENT, "import-failure");
     }
 }
