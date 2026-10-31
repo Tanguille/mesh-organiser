@@ -1,28 +1,38 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM rust:1.99.0-slim AS build
+# Explicit Debian release: the binary links against the build image's glibc, so the
+# runtime image must never silently move to a newer or older release than the build.
+FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-trixie AS build
+ARG TARGETARCH
 WORKDIR /source
-COPY . .
-ARG VITE_APP_VERSION
-ARG TARGETPLATFORM
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget xz-utils libfontconfig1-dev libssl-dev openssl \
-    build-essential cmake gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+# The build image ships gcc; the arm64 cross build also needs a cross linker and the arm64 libc headers.
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && if [ "$TARGETARCH" = arm64 ]; then apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; fi \
     && rm -rf /var/lib/apt/lists/*
 
 SHELL ["/bin/sh", "-o", "pipefail", "-c"]
 RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.shrc" SHELL="$(which sh)" sh -
+ENV PNPM_HOME=/root/.local/share/pnpm
+ENV PATH=$PNPM_HOME/bin:$PATH
 
-RUN chmod +x ./build-web.sh && ./build-web.sh
 # Debian's nodejs is older than SvelteKit supports, so install the Node pinned in mise.toml.
-RUN export PNPM_HOME="/root/.local/share/pnpm" && export PATH="$PNPM_HOME/bin:$PATH" && pnpm runtime set node "$(sed -n 's/^node = "\(.*\)"/\1/p' mise.toml)" -g && pnpm i && export VITE_API_PLATFORM=web && pnpm build
+# Copied on its own so source changes don't re-download Node.
+COPY mise.toml .
+RUN pnpm runtime set node "$(sed -n 's/^node = "\(.*\)"/\1/p' mise.toml)" -g
 
-FROM debian:stable-slim AS runtime
+COPY . .
+RUN bash ./build-web.sh
+
+ARG VITE_APP_VERSION
+ENV VITE_API_PLATFORM=web
+RUN pnpm install --frozen-lockfile && pnpm build
+
+FROM debian:trixie-slim AS runtime
 WORKDIR /app
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-COPY --from=build --chown=appuser:appuser /source/web/target/release/web .
+COPY --from=build --chown=appuser:appuser /out/web .
 COPY --from=build --chown=appuser:appuser /source/build ./www
 
 RUN apt-get update && apt-get install -y --no-install-recommends wget \
