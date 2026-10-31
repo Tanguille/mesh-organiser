@@ -223,4 +223,4 @@ cargo clippy --workspace --all-targets --all-features
 cargo build --workspace
 ```
 
-The workspace enables **`clippy::pedantic`** (including cast lints such as `cast_possible_truncation`, `cast_possible_wrap`, `cast_sign_loss`), **`clippy::nursery`**, **`clippy::style`**, plus `unnecessary_self_imports` (restriction; see root `Cargo.toml` `[workspace.lints.clippy]`). Prefer explicit conversions (`try_from`, `checked_*`, `unsigned_abs`) or a targeted `#[allow(...)]` with a one-line reason when a cast is intentional.
+The workspace enables **`clippy::pedantic`** (including cast lints such as `cast_possible_truncation`, `cast_possible_wrap`, `cast_sign_loss`), **`clippy::nursery`**, plus `unnecessary_self_imports` (restriction; see root `Cargo.toml` `[workspace.lints.clippy]`); `clippy::style` stays at its warn-by-default level. Prefer explicit conversions (`try_from`, `checked_*`, `unsigned_abs`) or a targeted `#[allow(...)]` with a one-line reason when a cast is intentional.
