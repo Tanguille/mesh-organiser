@@ -6,7 +6,7 @@ ARG VITE_APP_VERSION
 ARG TARGETPLATFORM
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget xz-utils nodejs libfontconfig1-dev libssl-dev openssl \
+    wget xz-utils libfontconfig1-dev libssl-dev openssl \
     build-essential cmake gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
     && rm -rf /var/lib/apt/lists/*
 
@@ -14,7 +14,8 @@ SHELL ["/bin/sh", "-o", "pipefail", "-c"]
 RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.shrc" SHELL="$(which sh)" sh -
 
 RUN chmod +x ./build-web.sh && ./build-web.sh
-RUN export PNPM_HOME="/root/.local/share/pnpm" && export PATH="$PNPM_HOME:$PATH" && pnpm i && export VITE_API_PLATFORM=web && pnpm build
+# Debian's nodejs is older than SvelteKit supports, so install the Node pinned in mise.toml.
+RUN export PNPM_HOME="/root/.local/share/pnpm" && export PATH="$PNPM_HOME/bin:$PATH" && pnpm runtime set node "$(sed -n 's/^node = "\(.*\)"/\1/p' mise.toml)" -g && pnpm i && export VITE_API_PLATFORM=web && pnpm build
 
 FROM debian:stable-slim AS runtime
 WORKDIR /app

@@ -21,5 +21,6 @@ esac
 cd web
 rustup target add $RUST_TARGET
 cargo build --release --locked --target=$RUST_TARGET
+# `web` is a workspace member, so cargo writes to the root target/, not web/target/.
 mkdir -p /source/web/target/release
-cp /source/web/target/$RUST_TARGET/release/web /source/web/target/release/web
+cp /source/target/$RUST_TARGET/release/web /source/web/target/release/web
