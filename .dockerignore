@@ -1,4 +1,6 @@
+.git
+.claude
+build
+.svelte-kit
 **/node_modules
-node_modules
 **/target
-target
