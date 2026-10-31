@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.1](https://github.com/Tanguille/mesh-organiser/compare/v5.0.0...v5.0.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **docker:** make the web image build again ([#542](https://github.com/Tanguille/mesh-organiser/issues/542)) ([087a5be](https://github.com/Tanguille/mesh-organiser/commit/087a5be48c84a9c1a1918c74f1dab2ad1c16f03e))
+
 ## [5.0.0](https://github.com/Tanguille/mesh-organiser/compare/v4.0.2...v5.0.0) (2026-10-31)
 
 
