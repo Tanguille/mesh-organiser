@@ -14,7 +14,7 @@ SHELL ["/bin/sh", "-o", "pipefail", "-c"]
 RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.shrc" SHELL="$(which sh)" sh -
 
 RUN chmod +x ./build-web.sh && ./build-web.sh
-RUN export PNPM_HOME="/root/.local/share/pnpm" && export PATH="$PNPM_HOME:$PATH" && pnpm i && export VITE_API_PLATFORM=web && pnpm build
+RUN export PNPM_HOME="/root/.local/share/pnpm" && export PATH="$PNPM_HOME/bin:$PATH" && pnpm i && export VITE_API_PLATFORM=web && pnpm build
 
 FROM debian:stable-slim AS runtime
 WORKDIR /app
