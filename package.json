@@ -32,7 +32,7 @@
     "@threlte/core": "^8.6.0",
     "@threlte/extras": "^9.21.1",
     "@types/qs": "^6.15.1",
-    "@types/three": "^0.186.0",
+    "@types/three": "^0.187.0",
     "fflate": "^0.8.3",
     "qs": "^6.16.0",
     "three": "0.187.0",
