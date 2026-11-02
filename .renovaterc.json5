@@ -55,6 +55,13 @@
       minimumReleaseAge: "1 day",
     },
     {
+      // Renovate 44 defaults to timestamp-required: a release without a timestamp stays pending
+      // forever. rust:1.99.1-slim had none, so the 1-day patch rule above never released it.
+      description: "Do not hold Docker tags that come without a release timestamp",
+      matchDatasources: ["docker"],
+      minimumReleaseAgeBehaviour: "timestamp-optional",
+    },
+    {
       description: "Hold tower-sessions below 0.15 until axum-login publishes tower-sessions 0.15 support",
       matchPackageNames: ["tower-sessions", "tower-sessions-core"],
       allowedVersions: "<0.15",
