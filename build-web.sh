@@ -1,26 +1,22 @@
 #!/bin/bash
 set -e
 
-case "$TARGETPLATFORM" in
-    "linux/amd64")
-        export RUST_TARGET=x86_64-unknown-linux-gnu
-        export CC_x86_64_unknown_linux_gnu=gcc
-        export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc
+case "$TARGETARCH" in
+    amd64)
+        RUST_TARGET=x86_64-unknown-linux-gnu
         ;;
-    "linux/arm64")
-        export RUST_TARGET=aarch64-unknown-linux-gnu
-        export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+    arm64)
+        RUST_TARGET=aarch64-unknown-linux-gnu
+        # cc-rs finds aarch64-linux-gnu-gcc itself; cargo has to be told to link with it.
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
         ;;
     *)
-        echo "Unsupported platform: $TARGETPLATFORM"
+        echo "Unsupported architecture: $TARGETARCH"
         exit 1
         ;;
 esac
 
-cd web
-rustup target add $RUST_TARGET
-cargo build --release --locked --target=$RUST_TARGET
+rustup target add "$RUST_TARGET"
+cargo build -p web --release --locked --target "$RUST_TARGET"
 # `web` is a workspace member, so cargo writes to the root target/, not web/target/.
-mkdir -p /source/web/target/release
-cp /source/target/$RUST_TARGET/release/web /source/web/target/release/web
+install -D "target/$RUST_TARGET/release/web" /out/web
