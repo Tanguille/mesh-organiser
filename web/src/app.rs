@@ -505,7 +505,6 @@ mod tests {
         assert_eq!(o.len(), 3);
     }
 
-
     #[tokio::test]
     async fn apply_local_account_sweeps_dead_blobs_and_keeps_referenced_ones() {
         // The migrations seed the local account as user 1, which `apply_local_account` edits.
