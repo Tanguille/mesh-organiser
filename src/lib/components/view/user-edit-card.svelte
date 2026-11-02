@@ -31,24 +31,15 @@
   let newUser = $state(createFakeUser());
   let isDesktop = $state<boolean>(false);
 
-  // From https://www.geeksforgeeks.org/javascript/how-to-generate-a-random-password-using-javascript/
   function genPass(len: number) {
-    const lower = "abcdefghijklmnopqrstuvwxyz";
-    const upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    const numChars = "0123456789";
-    const specialChars = "!$%^&()=+[]{}|;:,.<>?";
-    let chars = lower;
-    chars += upperChars;
-    chars += numChars;
-    chars += specialChars;
+    const chars =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$%^&()=+[]{}|;:,.<>?";
 
-    let pass = "";
-    for (let i = 0; i < len; i++) {
-      const randIdx = Math.floor(Math.random() * chars.length);
-      pass += chars[randIdx];
-    }
-
-    return pass;
+    // The modulo bias of a 32-bit value over 83 characters is negligible.
+    return Array.from(
+      crypto.getRandomValues(new Uint32Array(len)),
+      (value) => chars[value % chars.length],
+    ).join("");
   }
 
   function createFakeUser(): User {

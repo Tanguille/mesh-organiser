@@ -6,6 +6,8 @@
  * add_model command.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WatchEvent } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
@@ -17,7 +19,10 @@ import {
   importState,
   resetImportState,
 } from "#lib/import.svelte";
+import { getContainer, resetContainer } from "../dependency_injection";
+import { IModelApi, type Model } from "../shared/model_api";
 import { configurationDefault } from "../shared/settings_api";
+import { ISlicerApi } from "../shared/slicer_api";
 import { ImportStatus, type ImportState } from "../shared/tauri_import_api";
 import { TauriImportApi } from "./tauri_import";
 
@@ -29,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   toastPromise: vi.fn(),
   unminimize: vi.fn(),
   setFocus: vi.fn(),
+  confirm: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
@@ -39,12 +45,21 @@ vi.mock("@tauri-apps/api/window", () => ({
     setFocus: mocks.setFocus,
   }),
 }));
-vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
+  confirm: mocks.confirm,
+}));
 vi.mock("@tauri-apps/plugin-fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tauri-apps/plugin-fs")>()),
   watch: mocks.watch,
 }));
-vi.mock("svelte-sonner", () => ({ toast: { promise: mocks.toastPromise } }));
+vi.mock("svelte-sonner", async (importOriginal) => {
+  const { toast } = await importOriginal<typeof import("svelte-sonner")>();
+  // Preserve Sonner's return-id/error-handling contract instead of returning the operation.
+  mocks.toastPromise.mockImplementation(toast.promise);
+
+  return { toast: { promise: mocks.toastPromise } };
+});
 vi.mock("$app/navigation", () => ({ goto: mocks.goto }));
 vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({
@@ -89,7 +104,7 @@ beforeEach(() => {
 
     return finishedImport;
   });
-  mocks.toastPromise.mockImplementation((promise: Promise<unknown>) => promise);
+  mocks.confirm.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -98,6 +113,7 @@ afterEach(() => {
   handlers.clear();
   unlisteners.clear();
   watchCallback = undefined;
+  resetContainer();
   Object.assign(configuration, configurationDefault());
   resetImportState();
   Object.assign(accountLinkData, {
@@ -141,16 +157,39 @@ const listenedEvents = [
   "download-finished",
   "tauri://drag-drop",
   "account-link",
+  "open-in-slicer",
 ];
 
 describe("initImportListeners registration", () => {
-  it("listens to exactly the import, download, drag-drop and account-link events", async () => {
+  it("listens to exactly the import, download, drag-drop, account-link and open-in-slicer events", async () => {
     await initApi();
 
     expect(mocks.listen.mock.calls.map(([name]) => name)).toEqual(
       listenedEvents,
     );
     expect(mocks.watch).not.toHaveBeenCalled();
+  });
+
+  it("listens to every import event the Rust emitter sends", async () => {
+    const emitterSource = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../../src-tauri/src/tauri_import_state.rs",
+          import.meta.url,
+        ),
+      ),
+      "utf-8",
+    );
+    const emittedEvents = [
+      ...emitterSource.matchAll(/const \w+_EVENT: &str = "([^"]+)";/g),
+    ].map(([, name]) => name);
+
+    await initApi();
+
+    expect(emittedEvents).toHaveLength(6);
+    expect(mocks.listen.mock.calls.map(([name]) => name)).toEqual(
+      expect.arrayContaining(emittedEvents),
+    );
   });
 
   it("watches the Downloads folder only when watch_downloads_folder is enabled", async () => {
@@ -538,5 +577,287 @@ describe("drag-drop and account-link handlers", () => {
       userName: "alice",
       linkToken: "token-1",
     });
+  });
+});
+
+describe("open-in-slicer link", () => {
+  const firstSha256 = "0123456789abcdef0123456789abcdef";
+  const secondSha256 = "fedcba9876543210fedcba9876543210";
+  const thirdSha256 = "00000000000000000000000000000001";
+  const unknownSha256 = "ffffffffffffffffffffffffffffffff";
+
+  function modelWithSha256(id: number, sha256: string): Model {
+    return { id, name: `model ${id}`, blob: { sha256 } } as unknown as Model;
+  }
+
+  const library = [
+    modelWithSha256(1, firstSha256),
+    modelWithSha256(2, secondSha256),
+    modelWithSha256(3, thirdSha256),
+  ];
+
+  // Registers a one-page library and a slicer spy in the container the
+  // linked-models lookup resolves from.
+  function provideLibrary(models = library) {
+    const getModels = vi.fn(async (_filter: unknown, page: number) =>
+      page === 1 ? models : [],
+    );
+    const openInSlicer = vi.fn().mockResolvedValue(undefined);
+    getContainer().addSingleton(IModelApi, { getModels });
+    getContainer().addSingleton(ISlicerApi, { openInSlicer });
+
+    return { getModels, openInSlicer };
+  }
+
+  it("Sonner returns a toast id before the operation settles and handles its rejection", async () => {
+    const { toast } =
+      await vi.importActual<typeof import("svelte-sonner")>("svelte-sonner");
+    let rejectOperation!: (reason: Error) => void;
+    const operation = new Promise<number>((_resolve, reject) => {
+      rejectOperation = reject;
+    });
+    const onError = vi.fn().mockReturnValue("Could not open the slicer");
+    const id = toast.promise(operation, {
+      loading: "Opening models in slicer",
+      error: onError,
+    });
+
+    expect(["number", "string"]).toContain(typeof id);
+    await expect(Promise.resolve(id)).resolves.toBe(id);
+    expect(onError).not.toHaveBeenCalled();
+    const reason = new Error("No slicer selected in settings");
+    rejectOperation(reason);
+
+    await vi.waitFor(() =>
+      expect(onError).toHaveBeenCalledExactlyOnceWith(reason),
+    );
+  });
+
+  it.each([
+    [
+      "no configured slicer",
+      null,
+      firstSha256,
+      "No slicer selected in settings",
+    ],
+    [
+      "an unresolved sha256",
+      "OrcaSlicer",
+      unknownSha256,
+      "None of the linked models are in your library",
+    ],
+  ] as const)(
+    "does not reject the cold-start handler for %s",
+    async (_scenario, slicer, sha256, expectedMessage) => {
+      configuration.slicer = slicer;
+      const { getModels, openInSlicer } = provideLibrary();
+      const api = new TauriImportApi();
+
+      await expect(
+        api.handleOpenInSlicerLink([sha256]),
+      ).resolves.toBeUndefined();
+
+      const [[operation]] = mocks.toastPromise.mock.calls;
+      await expect(operation).rejects.toThrow(expectedMessage);
+      expect(mocks.confirm).not.toHaveBeenCalled();
+      expect(openInSlicer).not.toHaveBeenCalled();
+      if (slicer === null) {
+        expect(getModels).not.toHaveBeenCalled();
+      } else {
+        expect(getModels).toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("opens only the library models whose blob sha256 is linked", async () => {
+    configuration.slicer = "OrcaSlicer";
+    const { openInSlicer } = provideLibrary();
+    const api = new TauriImportApi();
+
+    const opened = await api.openLinkedModelsInSlicer([
+      thirdSha256,
+      firstSha256,
+    ]);
+
+    expect(opened).toBe(2);
+    expect(openInSlicer.mock.calls).toEqual([[[library[0], library[2]]]]);
+  });
+
+  it("opens just the matching model when one linked sha256 is unknown", async () => {
+    configuration.slicer = "OrcaSlicer";
+    const { openInSlicer } = provideLibrary();
+    const api = new TauriImportApi();
+
+    const opened = await api.openLinkedModelsInSlicer([
+      unknownSha256,
+      secondSha256,
+    ]);
+
+    expect(opened).toBe(1);
+    expect(openInSlicer.mock.calls).toEqual([[[library[1]]]]);
+  });
+
+  it("asks to confirm the models by name before opening them", async () => {
+    configuration.slicer = "OrcaSlicer";
+    provideLibrary();
+    const api = new TauriImportApi();
+
+    await api.openLinkedModelsInSlicer([firstSha256, secondSha256]);
+
+    expect(mocks.confirm.mock.calls).toEqual([
+      ["Open model 1, model 2 in the slicer?", { title: "Open in slicer" }],
+    ]);
+  });
+
+  it.each([
+    [5, "Open model 1, model 2, model 3, model 4, model 5 in the slicer?"],
+    [
+      7,
+      "Open model 1, model 2, model 3, model 4, model 5 and 2 more in the slicer?",
+    ],
+  ])(
+    "the confirmation for %i models names at most 5 of them",
+    async (count, message) => {
+      configuration.slicer = "OrcaSlicer";
+      const models = Array.from({ length: count }, (_, index) =>
+        modelWithSha256(index + 1, `sha256-${index + 1}`),
+      );
+      const { openInSlicer } = provideLibrary(models);
+      const api = new TauriImportApi();
+
+      const opened = await api.openLinkedModelsInSlicer(
+        models.map((model) => model.blob.sha256),
+      );
+
+      expect(mocks.confirm.mock.calls).toEqual([
+        [message, { title: "Open in slicer" }],
+      ]);
+      expect(opened).toBe(count);
+      expect(openInSlicer.mock.calls).toEqual([[models]]);
+    },
+  );
+
+  it("declining the confirmation opens nothing and returns 0", async () => {
+    configuration.slicer = "OrcaSlicer";
+    mocks.confirm.mockResolvedValue(false);
+    const { openInSlicer } = provideLibrary();
+    const api = new TauriImportApi();
+
+    const opened = await api.openLinkedModelsInSlicer([firstSha256]);
+
+    expect(opened).toBe(0);
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    expect(openInSlicer).not.toHaveBeenCalled();
+  });
+
+  it("the open-in-slicer toast says Cancelled when the confirmation is declined", async () => {
+    configuration.slicer = "OrcaSlicer";
+    mocks.confirm.mockResolvedValue(false);
+    const { openInSlicer } = provideLibrary();
+    await initApi();
+
+    await emit("open-in-slicer", [firstSha256]);
+
+    const [[pendingToast, toastMessages]] = mocks.toastPromise.mock.calls;
+    await expect(pendingToast).resolves.toBe(0);
+    expect(openInSlicer).not.toHaveBeenCalled();
+    expect(toastMessages.success(0)).toBe("Cancelled");
+  });
+
+  it("throws and opens nothing when no linked sha256 is in the library", async () => {
+    configuration.slicer = "OrcaSlicer";
+    const { openInSlicer } = provideLibrary();
+    const api = new TauriImportApi();
+
+    await expect(api.openLinkedModelsInSlicer([unknownSha256])).rejects.toThrow(
+      "None of the linked models are in your library",
+    );
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(openInSlicer).not.toHaveBeenCalled();
+  });
+
+  it("throws without reading the library when no slicer is configured", async () => {
+    const { getModels, openInSlicer } = provideLibrary();
+    const api = new TauriImportApi();
+
+    await expect(api.openLinkedModelsInSlicer([firstSha256])).rejects.toThrow(
+      "No slicer selected in settings",
+    );
+    expect(getModels).not.toHaveBeenCalled();
+    expect(openInSlicer).not.toHaveBeenCalled();
+  });
+
+  it("the open-in-slicer event opens the linked models behind a toast with the opened count", async () => {
+    configuration.slicer = "OrcaSlicer";
+    const { openInSlicer } = provideLibrary();
+    await initApi();
+
+    await emit("open-in-slicer", [firstSha256, secondSha256]);
+
+    const [[pendingToast, toastMessages]] = mocks.toastPromise.mock.calls;
+    await expect(pendingToast).resolves.toBe(2);
+    expect(openInSlicer.mock.calls).toEqual([[[library[0], library[1]]]]);
+    expect(toastMessages.loading).toBe("Opening models in slicer");
+    expect(toastMessages.success(2)).toBe("Opened 2 model(s) in slicer");
+  });
+
+  it("the open-in-slicer toast shows the failure's message, a command error's inner message, or a generic one", async () => {
+    provideLibrary();
+    await initApi();
+
+    await expect(
+      emit("open-in-slicer", [firstSha256]),
+    ).resolves.toBeUndefined();
+
+    const [[pendingToast, toastMessages]] = mocks.toastPromise.mock.calls;
+    const reason = await pendingToast.catch((error: unknown) => error);
+    expect(toastMessages.error(reason)).toBe("No slicer selected in settings");
+    // A rejected Tauri command is a plain serialized error object, not an Error.
+    expect(
+      toastMessages.error({
+        error_message: "Internal error",
+        error_inner_message: "Custom slicer executable not found: x",
+        error_type: "InternalError",
+      }),
+    ).toBe("Custom slicer executable not found: x");
+    for (const other of [
+      "not an error",
+      { error_message: "Internal error" },
+      undefined,
+    ]) {
+      expect(toastMessages.error(other)).toBe(
+        "Failed to open models in slicer",
+      );
+    }
+  });
+});
+
+describe("startImportProcess failure reason", () => {
+  it.each([
+    [
+      "a command error",
+      {
+        error_message: "Import failed",
+        error_inner_message: "disk full",
+        error_type: "InternalError",
+      },
+      "Import failed - disk full",
+    ],
+    [
+      "a plain Error",
+      new Error("path is not readable"),
+      "path is not readable",
+    ],
+    ["a string", "command add_model not found", "command add_model not found"],
+  ])("records %s as the failure reason", async (_shape, reason, expected) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.invoke.mockRejectedValueOnce(reason);
+    const api = new TauriImportApi();
+
+    const result = await api.startImportProcess(["/a.stl"], {});
+
+    expect(result.status).toBe(ImportStatus.Failure);
+    expect(result.failure_reason).toBe(expected);
+    expect(importState.failure_reason).toBe(expected);
   });
 });

@@ -5,9 +5,10 @@
   import { Label } from "#lib/components/ui/label/index.js";
   import Button from "#lib/components/ui/button/button.svelte";
   import type { ClassValue } from "svelte/elements";
+  import { numberToColorString } from "#lib/api/shared/label_api";
 
   function generateRandomColor() {
-    return "#" + Math.floor(Math.random() * 0xffffff).toString(16);
+    return numberToColorString(Math.floor(Math.random() * 0x1000000));
   }
 
   let newLabelName = $state("New label");
@@ -35,6 +36,8 @@
   const props: {
     children: Snippet;
     class?: ClassValue;
+    /** Extra attributes for the trigger button, e.g. from a parent's `child` snippet. */
+    triggerProps?: Record<string, unknown>;
     onsubmit: (label_name: string, label_color: string) => Promise<void>;
     closeAfterCreation?: boolean;
   } = $props();
@@ -48,7 +51,7 @@
     }
   }}
 >
-  <Popover.Trigger class={props.class}>
+  <Popover.Trigger class={props.class} {...props.triggerProps}>
     {@render props.children?.()}
   </Popover.Trigger>
   <Popover.Content class="w-80">

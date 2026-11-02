@@ -169,7 +169,7 @@ export function configurationDefault(): Configuration {
     max_size_model_3mf_preview: 15,
     max_size_model_stl_preview: 30,
     max_size_model_obj_preview: 30,
-    max_size_model_step_preview: 30,
+    max_size_model_step_preview: 10,
     only_show_single_image_in_groups: true,
     custom_slicer_path: "",
     group_split_view: "split-left-right",

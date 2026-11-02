@@ -96,6 +96,7 @@ pub async fn get_models(
             trashed: false,
             page,
             page_size,
+            ..Default::default()
         },
     )
     .await?;

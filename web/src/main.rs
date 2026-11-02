@@ -7,9 +7,12 @@ use crate::app::App;
 mod app;
 mod controller;
 mod error;
+mod mcp;
 mod path_safety;
 mod query_bounds;
 mod session_store;
+#[cfg(test)]
+mod test_support;
 mod user;
 mod web_import_state;
 

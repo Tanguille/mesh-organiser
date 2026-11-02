@@ -7,13 +7,14 @@ use std::{
 };
 
 use arboard::Clipboard;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
     menu::{MenuBuilder, SubmenuBuilder},
     webview::{DownloadEvent, PageLoadEvent},
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 
 use db::{
     model::{model_group::ModelGroupMeta, user::User},
@@ -27,7 +28,7 @@ use service::{
 use crate::{
     error::ApplicationError,
     mobile_guard::require_local_desktop_app,
-    tauri_app_state::{AccountLinkEmit, InitialState, TauriAppState},
+    tauri_app_state::{AccountLinkEmit, InitialState, PendingLinks, TauriAppState},
     tauri_import_state::import_state_new_tauri,
 };
 
@@ -130,6 +131,20 @@ async fn get_initial_state(
     let initial_state = state.initial_state.lock().unwrap().take();
 
     Ok(initial_state.unwrap_or_else(|| InitialState::new(&state.get_configuration())))
+}
+
+/// Emits the links that arrived before the frontend listened. The frontend calls this once its
+/// listeners are registered; links after that are emitted straight away.
+#[tauri::command]
+async fn release_pending_links(
+    pending_links: State<'_, PendingLinks>,
+    app_handle: AppHandle,
+) -> Result<(), ApplicationError> {
+    for link in pending_links.release() {
+        emit_link(&app_handle, &link);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -386,7 +401,8 @@ fn extract_deep_link(data: &str) -> Option<String> {
             return Some(encoded.to_string());
         }
 
-        return Some(service::percent_decode(encoded).unwrap());
+        // An escape that does not decode to UTF-8 makes the link unusable, like a missing `?file=`.
+        return service::percent_decode(encoded).ok();
     }
 
     None
@@ -401,6 +417,60 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
     serde_html_form::from_str(query).ok()
 }
 
+/// Parses `meshorganiser://open_in_slicer?sha256=<a>[,<b>...]` into its blob sha256s.
+///
+/// Entries that are not a stored blob sha256 (32 lowercase hex chars) are dropped; a link left
+/// with none is not an open-in-slicer link.
+fn extract_open_in_slicer_via_deep_link(data: &str) -> Option<Vec<String>> {
+    #[derive(Deserialize)]
+    struct OpenInSlicerQuery {
+        sha256: String,
+    }
+
+    // Accept both `open_in_slicer/?` and `open_in_slicer?`, like the other meshorganiser links.
+    let query = data
+        .strip_prefix("meshorganiser://open_in_slicer/?")
+        .or_else(|| data.strip_prefix("meshorganiser://open_in_slicer?"))?;
+    let query: OpenInSlicerQuery = serde_html_form::from_str(query).ok()?;
+    let sha256s: Vec<String> = query
+        .sha256
+        .split(',')
+        .filter(|sha256| db::is_blob_sha256(sha256))
+        .map(String::from)
+        .collect();
+
+    (!sha256s.is_empty()).then_some(sha256s)
+}
+
+/// Hands a link that reached the running app to the frontend, logging one it cannot use.
+fn emit_link(app: &AppHandle, link: &str) {
+    // An event emitted before the frontend listens is dropped, so hold the link until it asks.
+    if app.state::<PendingLinks>().hold(link) {
+        println!("Holding link until the frontend listens {link:?}");
+        return;
+    }
+
+    if let Some(deep_link) = extract_deep_link(link) {
+        println!("Emitting deep link {deep_link:?}");
+        app.emit(
+            "deep-link",
+            DeepLinkEmit {
+                download_url: deep_link,
+                source_url: None,
+            },
+        )
+        .unwrap();
+    } else if let Some(account_link) = extract_account_link_via_deep_link(link) {
+        println!("Emitting account link");
+        app.emit("account-link", account_link).unwrap();
+    } else if let Some(sha256s) = extract_open_in_slicer_via_deep_link(link) {
+        println!("Emitting open in slicer link {sha256s:?}");
+        app.emit("open-in-slicer", sha256s).unwrap();
+    } else {
+        println!("Failed to extract deep link {link:?}");
+    }
+}
+
 /// Reads the configuration from the settings file.
 ///
 /// # Panics
@@ -411,9 +481,11 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
     let path = PathBuf::from(app_data_path);
     let path = path.join("settings.json");
 
+    // Only a first run probes for an installed slicer; `Default` and serde never do.
     if !path.exists() {
         return Configuration {
             data_path: String::from(app_data_path),
+            slicer: Slicer::iter().find(Slicer::is_installed),
             ..Default::default()
         };
     }
@@ -436,59 +508,39 @@ pub fn run() {
     });
 
     let app = tauri::Builder::default()
+        // Managed on the builder rather than in setup: the single-instance callback can run
+        // before setup finishes and already needs it.
+        .manage(PendingLinks::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+            println!("a new app instance was opened with {argv:?}");
 
-            if argv.len() == 2
-            {
-                let deep_link = extract_deep_link(&argv[1]);
-                let account_link = extract_account_link_via_deep_link(&argv[1]);
-
-                if let Some(deep_link) = deep_link
-                {
-                    println!("Emitting deep link {deep_link:?}");
-                    app.emit("deep-link", DeepLinkEmit { download_url: deep_link, source_url: None } ).unwrap();
-                }
-                else if let Some(account_link) = account_link
-                {
-                    println!("Emitting account link");
-                    app.emit("account-link", account_link ).unwrap();
-                }
-                else
-                {
-                    println!("Failed to extract deep link {:?}", argv[1]);
-                }
-            }
-            else
-            {
+            if argv.len() == 2 {
+                emit_link(app, &argv[1]);
+            } else {
                 let window = app.get_webview_window("main");
 
                 if let Some(window) = window {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
-                }
-                else
-                {
+                } else {
                     println!("Failed to get window to focus");
                 }
             }
-          }))
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_process::init())
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed)
-                && window.label() == "main" {
-                    for window in window.app_handle().webview_windows() {
-                        let _ = window.1.close();
-                    }
+            if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                for window in window.app_handle().webview_windows() {
+                    let _ = window.1.close();
                 }
+            }
         })
         .setup(|app| {
             tauri::async_runtime::block_on(async move {
@@ -501,8 +553,7 @@ pub fn run() {
                 );
 
                 if !fs::exists(&app_data_path).unwrap_or(false) {
-                    fs::create_dir_all(&app_data_path)
-                        .expect("failed to create app data dir");
+                    fs::create_dir_all(&app_data_path).expect("failed to create app data dir");
                 }
 
                 let app_data_path_clone = String::from(&app_data_path);
@@ -510,21 +561,18 @@ pub fn run() {
                 std::panic::set_hook(Box::new(move |info| {
                     let loc = PathBuf::from(&app_data_path_clone).join("crash.log");
 
-                    let error_message = info
-                        .payload()
-                        .downcast_ref::<&'static str>()
-                        .map_or_else(
-                            || {
-                                info.payload()
-                                    .downcast_ref::<String>()
-                                    .map_or("Box<Any>", |s| &s[..])
-                            },
-                            |s| *s,
-                        );
+                    let error_message = info.payload().downcast_ref::<&'static str>().map_or_else(
+                        || {
+                            info.payload()
+                                .downcast_ref::<String>()
+                                .map_or("Box<Any>", |s| &s[..])
+                        },
+                        |s| *s,
+                    );
 
-                    if let Ok(mut file) = File::create(loc)
-                    {
-                        let _ = writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
+                    if let Ok(mut file) = File::create(loc) {
+                        let _ =
+                            writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
                     }
 
                     println!("Panic occurred: {error_message}\n{info:?}");
@@ -540,18 +588,42 @@ pub fn run() {
 
                 let mut argv = std::env::args();
 
-                if argv.len() == 2
-                {
-                    let arg = argv.nth(1).unwrap();
-                    initial_state.deep_link_url = extract_deep_link(&arg);
-                    initial_state.account_link = extract_account_link_via_deep_link(&arg);
-                }
-
-                let user = user_db::get_user_by_id(&db, config.last_user_id)
-                        .await
+                // macOS hands a launch URL to the deep-link plugin through an Apple event, not
+                // argv. On Windows and Linux the plugin never records one, because its schemes are
+                // only configured in tauri.macos.conf.json, so no link is handled twice.
+                let launch_link = if argv.len() == 2 {
+                    argv.nth(1)
+                } else {
+                    app.deep_link()
+                        .get_current()
                         .ok()
                         .flatten()
-                        .unwrap_or_else(User::default);
+                        .and_then(|urls| urls.into_iter().next())
+                        .map(String::from)
+                };
+
+                if let Some(link) = launch_link {
+                    initial_state.deep_link_url = extract_deep_link(&link);
+                    initial_state.account_link = extract_account_link_via_deep_link(&link);
+                    initial_state.open_in_slicer_sha256s =
+                        extract_open_in_slicer_via_deep_link(&link);
+                }
+
+                // URLs opened while the app runs reach macOS the same way. On Windows and Linux they
+                // arrive as a second instance's argv, which the single-instance callback handles,
+                // and the plugin stays silent for the same missing-schemes reason.
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        emit_link(&handle, url.as_str());
+                    }
+                });
+
+                let user = user_db::get_user_by_id(&db, config.last_user_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(User::default);
 
                 let state = TauriAppState {
                     app_state: AppState {
@@ -605,6 +677,7 @@ pub fn run() {
             api::set_labels_on_model,
             open_in_slicer,
             get_initial_state,
+            release_pending_links,
             download_file,
             open_in_folder,
             api::set_label_on_models,
@@ -706,6 +779,17 @@ mod tests {
     }
 
     #[test]
+    fn extract_deep_link_invalid_utf8_escape_returns_none() {
+        // `%FF` is a well-formed escape whose byte is not valid UTF-8.
+        for link in [
+            "cura://open?file=%FF",
+            "prusaslicer://open/?file=https%3A%2F%2Fex.com%2F%FF.stl",
+        ] {
+            assert_eq!(super::extract_deep_link(link), None, "{link}");
+        }
+    }
+
+    #[test]
     fn extract_deep_link_elegooslicer_is_not_decoded() {
         assert_eq!(
             super::extract_deep_link("elegooslicer://open/?file=a%20b.stl"),
@@ -716,5 +800,154 @@ mod tests {
     #[test]
     fn extract_deep_link_unknown_scheme_returns_none() {
         assert_eq!(super::extract_deep_link("evil://open/?file=a.stl"), None);
+    }
+
+    // Stored blob sha256s are the first 128 bits of the digest as 32 lowercase hex chars.
+    const FIRST_SHA256: &str = "0123456789abcdef0123456789abcdef";
+    const SECOND_SHA256: &str = "fedcba9876543210fedcba9876543210";
+
+    #[test]
+    fn extract_open_in_slicer_single_sha256() {
+        let link = format!("meshorganiser://open_in_slicer?sha256={FIRST_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(sha256s, Some(vec![FIRST_SHA256.to_string()]));
+    }
+
+    #[test]
+    fn extract_open_in_slicer_several_sha256s_keep_link_order() {
+        let link = format!("meshorganiser://open_in_slicer?sha256={SECOND_SHA256},{FIRST_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(
+            sha256s,
+            Some(vec![SECOND_SHA256.to_string(), FIRST_SHA256.to_string()])
+        );
+    }
+
+    #[test]
+    fn extract_open_in_slicer_accepts_slash_before_query() {
+        let link = format!("meshorganiser://open_in_slicer/?sha256={FIRST_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(sha256s, Some(vec![FIRST_SHA256.to_string()]));
+    }
+
+    #[test]
+    fn extract_open_in_slicer_drops_invalid_entries() {
+        let link = format!(
+            "meshorganiser://open_in_slicer?sha256=junk,{FIRST_SHA256},,../etc/passwd,{SECOND_SHA256}"
+        );
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(
+            sha256s,
+            Some(vec![FIRST_SHA256.to_string(), SECOND_SHA256.to_string()])
+        );
+    }
+
+    #[test]
+    fn extract_open_in_slicer_rejects_uppercase_hex() {
+        for sha256 in [
+            FIRST_SHA256.to_uppercase(),
+            format!("{}A", &FIRST_SHA256[..31]),
+        ] {
+            let link = format!("meshorganiser://open_in_slicer?sha256={sha256}");
+
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{sha256}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_rejects_wrong_length() {
+        // 31 and 33 chars, and a full 64-char sha256 digest instead of the stored 32-char prefix.
+        for sha256 in [
+            FIRST_SHA256[..31].to_string(),
+            format!("{FIRST_SHA256}0"),
+            format!("{FIRST_SHA256}{SECOND_SHA256}"),
+        ] {
+            let link = format!("meshorganiser://open_in_slicer?sha256={sha256}");
+
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{sha256}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_without_valid_entries_returns_none() {
+        for list in [
+            "",
+            ",",
+            "junk",
+            "junk,,zz",
+            "g123456789abcdef0123456789abcdef",
+        ] {
+            let link = format!("meshorganiser://open_in_slicer?sha256={list}");
+
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{list:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_ignores_other_links() {
+        for link in [
+            format!("meshorganiser://link_account?sha256={FIRST_SHA256}"),
+            "meshorganiser://link_account/?base_url=a&user_name=b&link_token=c".to_string(),
+            format!("meshorganiser://open?file={FIRST_SHA256}"),
+            format!("meshorganiser://open_in_slicer?file={FIRST_SHA256}"),
+            format!("orcaslicer://open_in_slicer?sha256={FIRST_SHA256}"),
+            format!("evil://open_in_slicer?sha256={FIRST_SHA256}"),
+            format!("MESHORGANISER://open_in_slicer?sha256={FIRST_SHA256}"),
+        ] {
+            assert_eq!(
+                super::extract_open_in_slicer_via_deep_link(&link),
+                None,
+                "{link}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_open_in_slicer_splits_encoded_commas() {
+        // The query is form-decoded first, so a percent-encoded `,` separates entries like a
+        // literal one.
+        let link =
+            format!("meshorganiser://open_in_slicer?sha256={FIRST_SHA256}%2C{SECOND_SHA256}");
+
+        let sha256s = super::extract_open_in_slicer_via_deep_link(&link);
+
+        assert_eq!(
+            sha256s,
+            Some(vec![FIRST_SHA256.to_string(), SECOND_SHA256.to_string()])
+        );
+    }
+
+    #[test]
+    fn open_in_slicer_link_is_not_a_download_or_account_link() {
+        for link in [
+            format!("meshorganiser://open_in_slicer?sha256={FIRST_SHA256}"),
+            format!("meshorganiser://open_in_slicer/?sha256={FIRST_SHA256}"),
+        ] {
+            assert_eq!(super::extract_deep_link(&link), None, "{link}");
+            assert!(
+                super::extract_account_link_via_deep_link(&link).is_none(),
+                "{link}"
+            );
+        }
     }
 }

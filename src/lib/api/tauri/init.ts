@@ -72,6 +72,7 @@ interface InitialState {
   max_parallelism?: number;
   collapse_sidebar?: boolean;
   account_link?: AccountLinkEmit;
+  open_in_slicer_sha256s?: string[];
 }
 
 async function getInitialState(): Promise<InitialState> {
@@ -111,7 +112,6 @@ export async function initTauriLocalApis(): Promise<void> {
 
   Object.assign(configuration, config);
 
-  console.log("initial state:", state);
   if (state.deep_link_url) {
     await tauriImport.handleDeepLink({
       download_url: state.deep_link_url,
@@ -157,6 +157,12 @@ export async function initTauriLocalApis(): Promise<void> {
           currentUser.syncUrl,
           appDataDirPath,
         );
+
+        if (state.open_in_slicer_sha256s) {
+          await tauriImport.handleOpenInSlicerLink(
+            state.open_in_slicer_sha256s,
+          );
+        }
         return;
       } else {
         const remoteModelApi = new WebModelApi(tauriRequestApi);
@@ -211,6 +217,17 @@ export async function initTauriLocalApis(): Promise<void> {
   container.addSingleton(IThumbnailApi, thumbnailApi);
 
   await tauriImport.initImportListeners();
+
+  // Unlike the download deep link this needs the model and slicer apis, so it
+  // runs once they are registered (here, or in the online-account branch).
+  if (state.open_in_slicer_sha256s) {
+    await tauriImport.handleOpenInSlicerLink(state.open_in_slicer_sha256s);
+  }
+
+  // Links that reached the app while it was starting were held back, since
+  // their handlers or the apis those use did not exist yet; both do now. Panic
+  // mode returns before this, as it registers no import listeners.
+  await invoke("release_pending_links");
 }
 
 async function checkForUpdates(): Promise<void> {

@@ -1,13 +1,12 @@
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use sqlx::QueryBuilder;
 
 use crate::{
     DbError, LABELS,
     db_context::DbContext,
     ensure_owned,
-    label_db::set_last_updated_on_labels,
     model::{label_keyword::LabelKeyword, user::User},
-    timestamp_or_now,
+    push_in, set_timestamp_column, timestamp_or_now,
 };
 
 pub async fn get_keywords_for_label(
@@ -58,6 +57,11 @@ pub async fn get_all_keywords(
     Ok(result)
 }
 
+/// Replaces the keywords of `label_id` with `keywords`, dropping exact duplicates.
+///
+/// Keyword names are unique across all users' labels. The delete, insert and timestamp share
+/// one transaction, so a keyword another label holds keeps the previous keywords instead of
+/// leaving the label with none.
 pub async fn set_keywords_for_label(
     db: &DbContext,
     user: &User,
@@ -65,13 +69,18 @@ pub async fn set_keywords_for_label(
     keywords: Vec<String>,
     update_timestamp: Option<&str>,
 ) -> Result<(), DbError> {
+    // Checked before the transaction so it opens with a write: a deferred SQLite transaction
+    // that reads first can fail with SQLITE_BUSY when it later needs the write lock.
     ensure_owned(db, &LABELS, &[label_id], user).await?;
+    // A duplicate would fail the unique constraint against its own copy.
+    let keywords: IndexSet<String> = keywords.into_iter().collect();
 
+    let mut transaction = db.begin().await?;
     sqlx::query!(
         "DELETE FROM label_keywords WHERE keyword_label_id = ?",
         label_id,
     )
-    .execute(db)
+    .execute(&mut *transaction)
     .await?;
 
     if !keywords.is_empty() {
@@ -81,8 +90,41 @@ pub async fn set_keywords_for_label(
             builder.push_bind(keyword);
             builder.push_bind(label_id);
         });
-        query_builder.build().execute(db).await?;
+        query_builder.build().execute(&mut *transaction).await?;
     }
 
-    set_last_updated_on_labels(db, user, &[label_id], &timestamp_or_now(update_timestamp)).await
+    set_timestamp_column(
+        &mut *transaction,
+        &LABELS,
+        "label_last_modified",
+        &[label_id],
+        user,
+        &timestamp_or_now(update_timestamp),
+    )
+    .await?;
+
+    transaction.commit().await?;
+
+    Ok(())
+}
+
+/// The names among `keywords` that a label other than `label_id` holds, whoever owns it, since
+/// names are unique across all users. Only names come back, never the label or its owner.
+pub async fn get_keywords_held_elsewhere(
+    db: &DbContext,
+    keywords: &[String],
+    label_id: i64,
+) -> Result<Vec<String>, DbError> {
+    if keywords.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut query_builder =
+        QueryBuilder::new("SELECT keyword_name FROM label_keywords WHERE keyword_name IN ");
+    push_in(&mut query_builder, keywords);
+    query_builder.push(" AND keyword_label_id != ");
+    query_builder.push_bind(label_id);
+    query_builder.push(" ORDER BY keyword_name");
+
+    query_builder.build_query_scalar().fetch_all(db).await
 }

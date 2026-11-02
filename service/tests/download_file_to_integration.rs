@@ -202,6 +202,17 @@ async fn download_file_nexprint_decodes_quoted_filename_from_url() {
 }
 
 #[tokio::test]
+async fn download_file_nexprint_invalid_utf8_escape_falls_back_to_current_filename() {
+    // %FF decodes to a byte that is not UTF-8; a hostile URL must not panic the download.
+    assert_download(
+        "nexprint/model.stl?bad=%FF",
+        "model.stl",
+        "https://nexprint.com/",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn download_file_explicit_filename_overrides_site_logic() {
     let mock_server = MockServer::start().await;
 

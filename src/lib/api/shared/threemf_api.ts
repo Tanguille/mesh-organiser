@@ -33,7 +33,7 @@ export async function extractThreemfModels(
   toast.promise(promise, {
     loading: `Extracting models from '${model.name}'...`,
     success: (newGroup) => {
-      return `Imported '${newGroup.name}''`;
+      return `Imported '${newGroup.name}'`;
     },
   });
 

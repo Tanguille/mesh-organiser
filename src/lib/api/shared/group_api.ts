@@ -180,15 +180,44 @@ export interface IGroupApi {
  * Requests use the largest page size accepted by the server.
  */
 export async function getAllGroups(api: IGroupApi): Promise<Group[]> {
-  const all: Group[] = [];
-  for await (const page of groupStream(
-    api,
-    defaultGroupFilter(),
-    MAX_PAGE_SIZE,
-  )) {
-    all.push(...page);
+  return await drainGroups(api, defaultGroupFilter());
+}
+
+/**
+ * Fetches the groups holding any of `modelIds`, with their ungrouped models,
+ * by draining the API's paginated results. An empty list needs no request.
+ */
+export async function getGroupsOfModels(
+  api: IGroupApi,
+  modelIds: number[],
+  orderBy: GroupOrderBy,
+): Promise<Group[]> {
+  if (modelIds.length === 0) {
+    return [];
   }
-  return all;
+
+  return await drainGroups(
+    api,
+    defaultGroupFilter({ modelIds, orderBy, includeUngroupedModels: true }),
+  );
+}
+
+// Every backend caps page_size at MAX_PAGE_SIZE and pages after filtering, so
+// a shorter page is the last. groupStream would also ask for the empty page
+// after it, since the stream managers it serves cannot assume their page size
+// is the cap.
+async function drainGroups(
+  api: IGroupApi,
+  filter: GroupFilter,
+): Promise<Group[]> {
+  const all: Group[] = [];
+  for (let page = 1; ; page++) {
+    const groups = await api.getGroups(filter, page, MAX_PAGE_SIZE);
+    all.push(...groups);
+    if (groups.length < MAX_PAGE_SIZE) {
+      return all;
+    }
+  }
 }
 
 /** Yields successive nonempty pages of groups matching `filter`. */

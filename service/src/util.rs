@@ -1,7 +1,10 @@
-use std::{ffi::OsStr, future::Future, panic, path::Path, sync::LazyLock};
+use std::{future::Future, panic, path::Path, sync::LazyLock};
 
+use db::model::blob::FileType;
 use regex::Regex;
 use tokio::task::JoinSet;
+
+use crate::service_error::ServiceError;
 
 static COLLAPSE_WHITESPACE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r" {2,}").expect("valid regex literal"));
@@ -9,17 +12,16 @@ static COLLAPSE_WHITESPACE: LazyLock<Regex> =
 /// Returns a human-friendly file name (no path); strips extension if not a directory.
 #[must_use]
 pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
-    let extension = file.extension();
-    let mut file_name: String = String::from(
+    let name = if is_dir {
         file.file_name()
-            .unwrap_or_else(|| OsStr::new("unknown_filename"))
-            .to_str()
-            .unwrap(),
+    } else {
+        file.file_stem()
+    };
+    // Lossy: a Linux folder name need not be UTF-8, and this is only a display name.
+    let mut file_name = name.map_or_else(
+        || String::from("unknown_filename"),
+        |name| name.to_string_lossy().into_owned(),
     );
-
-    if !is_dir && let Some(ext) = extension {
-        file_name = String::from(&file_name[0..file_name.len() - ext.len() - 1]);
-    }
 
     file_name = file_name.replace(['_', '-', '+'], " ");
 
@@ -28,6 +30,33 @@ pub fn prettify_file_name(file: &Path, is_dir: bool) -> String {
     file_name = String::from(file_name.trim());
 
     file_name
+}
+
+/// `path` as text, for the callers that store or return it as a string.
+///
+/// # Errors
+///
+/// Returns `ServiceError::InternalError` if the path is not valid UTF-8.
+pub fn path_to_utf8(path: &Path) -> Result<&str, ServiceError> {
+    path.to_str()
+        .ok_or_else(|| ServiceError::InternalError("Path is not valid UTF-8".into()))
+}
+
+/// Writes the zip's central directory and flushes the writer under it.
+///
+/// `ZipFileWriter::close` does not flush, so a tokio `File` can still have the footer write
+/// pending, and a read right after would see a truncated zip.
+///
+/// # Errors
+///
+/// Returns an error if writing the central directory or flushing fails.
+pub async fn finish_zip<W: tokio::io::AsyncWrite + Unpin>(
+    writer: async_zip::tokio::write::ZipFileWriter<W>,
+) -> Result<(), ServiceError> {
+    let mut inner = writer.close().await?.into_inner();
+    tokio::io::AsyncWriteExt::flush(&mut inner).await?;
+
+    Ok(())
 }
 
 /// Percent-decodes `text` into an owned string; fails if the decoded bytes are not valid UTF-8.
@@ -41,7 +70,16 @@ pub fn percent_decode(text: &str) -> Result<String, std::str::Utf8Error> {
 #[must_use]
 pub fn cleanse_evil_from_name(name: &str) -> String {
     let cleansed = name
-        .replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], " ")
+        .replace(
+            |character: char| {
+                character.is_control()
+                    || matches!(
+                        character,
+                        '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                    )
+            },
+            " ",
+        )
         .trim()
         .to_string();
 
@@ -55,33 +93,29 @@ pub fn cleanse_evil_from_name(name: &str) -> String {
     cleansed
 }
 
+/// The stored type of an imported extension.
+///
+/// Import zips exactly what `FileType::is_zippable` names, so those get a `.zip` suffix that
+/// readers recognise as zipped. Re-import dedupe leaves legacy stored .stp blobs unchanged; see docs/commands.md.
 #[must_use]
 pub fn convert_extension_to_zip(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
-    String::from(match lowercase.as_str() {
-        "stl" => "stl.zip",
-        "obj" => "obj.zip",
-        "step" => "step.zip",
-        // Re-import dedupe leaves legacy stored .stp blobs unchanged; see docs/commands.md.
-        "stp" => "stp.zip",
-        "gcode" => "gcode.zip",
-        _ => &lowercase,
-    })
+    if FileType::from_extension(&lowercase).is_zippable() {
+        format!("{lowercase}.zip")
+    } else {
+        lowercase
+    }
 }
 
 #[must_use]
 pub fn convert_zip_to_extension(extension: &str) -> String {
     let lowercase = extension.to_lowercase();
 
-    String::from(match lowercase.as_str() {
-        "stl.zip" => "stl",
-        "obj.zip" => "obj",
-        "step.zip" => "step",
-        "stp.zip" => "stp",
-        "gcode.zip" => "gcode",
-        _ => &lowercase,
-    })
+    match lowercase.strip_suffix(".zip") {
+        Some(plain) if FileType::from_extension(&lowercase).is_zipped() => plain.to_string(),
+        _ => lowercase,
+    }
 }
 
 /// Runs one future per item with bounded parallelism, returning every task output in completion order.
@@ -209,6 +243,23 @@ mod tests {
         prettify_file_name,
     };
 
+    #[cfg(unix)]
+    #[test]
+    fn path_to_utf8_refuses_a_non_utf8_path() {
+        let path = std::path::Path::new(
+            <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(b"Caf\xe9.stl"),
+        );
+
+        assert!(matches!(
+            super::path_to_utf8(path),
+            Err(crate::ServiceError::InternalError(message)) if message == "Path is not valid UTF-8"
+        ));
+        assert_eq!(
+            super::path_to_utf8(std::path::Path::new("model.stl")).unwrap(),
+            "model.stl"
+        );
+    }
+
     #[test]
     fn percent_decode_decodes_multibyte_and_space() {
         assert_eq!(
@@ -300,6 +351,15 @@ mod tests {
         assert_eq!(cleanse_evil_from_name("..."), "unnamed");
     }
 
+    /// Model names are user-editable and become export and download file names, so control
+    /// characters go like the others.
+    #[test]
+    fn test_cleanse_evil_replaces_control_characters() {
+        for name in ["a\nb", "a\tb", "a\u{7f}b", "a\u{0}b", "a\u{85}b"] {
+            assert_eq!(cleanse_evil_from_name(name), "a b", "{name:?}");
+        }
+    }
+
     #[test]
     fn test_prettify_file_name_path_with_extension_is_file() {
         let path = PathBuf::from("some_dir/My_Cool-Model.stl");
@@ -377,17 +437,29 @@ mod tests {
 
     /// Import zips exactly the types `FileType::is_zippable` names and stores them under
     /// `convert_extension_to_zip`; readers unzip whatever `is_zipped` names. Both maps must agree,
-    /// or a blob is stored zipped but served raw.
+    /// or a blob is stored zipped but served raw. `FileType` matches by suffix, so `xstl` is
+    /// zippable too; types it does not zip must pass through both conversions lowercased.
     #[test]
     fn every_zippable_extension_is_stored_as_a_zipped_type() {
-        for extension in ["stl", "obj", "step", "stp", "gcode", "STP"] {
-            assert!(db::model::blob::FileType::from_extension(extension).is_zippable());
+        for extension in [
+            "stl", "STL", "obj", "step", "stp", "STP", "gcode", "xstl", "3mf", "png",
+        ] {
+            let lowercase = extension.to_lowercase();
             let stored = convert_extension_to_zip(extension);
-            assert!(
-                db::model::blob::FileType::from_extension(&stored).is_zipped(),
-                "{extension} is stored as {stored}, which readers do not unzip"
-            );
-            assert_eq!(convert_zip_to_extension(&stored), extension.to_lowercase());
+            if db::model::blob::FileType::from_extension(extension).is_zippable() {
+                assert!(
+                    db::model::blob::FileType::from_extension(&stored).is_zipped(),
+                    "{extension} is zipped on import but stored as {stored}, which readers do not unzip"
+                );
+                assert_eq!(convert_zip_to_extension(&stored), lowercase, "{extension}");
+            } else {
+                assert_eq!(stored, lowercase, "{extension}");
+                assert_eq!(
+                    convert_zip_to_extension(extension),
+                    lowercase,
+                    "{extension}"
+                );
+            }
         }
     }
 

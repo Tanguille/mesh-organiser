@@ -1,6 +1,6 @@
 # Publishing a release
 
-GitHub Actions builds the Tauri desktop app and publishes it as a public or draft release.
+GitHub Actions builds the Tauri desktop app and publishes it as a public or draft release. Public releases (tag push or **publish**) also push the web image to `ghcr.io/tanguille/mesh-organiser` as `latest` and `<tag>`; **draft** and **build-only** runs skip it.
 
 ## Automatic release PRs (release-please)
 

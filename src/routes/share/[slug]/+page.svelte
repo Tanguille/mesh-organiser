@@ -2,7 +2,7 @@
   import { page } from "$app/state";
   import { getContainer } from "#lib/api/dependency_injection";
   import {
-    defaultGroupFilter,
+    getGroupsOfModels,
     GroupOrderBy,
     IGroupApi,
     PredefinedGroupStreamManager,
@@ -11,6 +11,7 @@
   import { IShareApi, type Share } from "#lib/api/shared/share_api";
   import GroupGrid from "#lib/components/view/group-grid.svelte";
   import Spinner from "#lib/components/view/spinner.svelte";
+  import Share2 from "@lucide/svelte/icons/share-2";
   import { onMount } from "svelte";
 
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
@@ -19,18 +20,21 @@
   let shareId = $derived(page.params.slug!);
   let share = $state<Share | null>(null);
   let groups = $state<Group[]>([]);
+  let loadStatus = $state<"loading" | "failed" | "done">("loading");
 
   onMount(async () => {
-    share = await shareApi.getShare(shareId);
-    groups = await groupApi.getGroups(
-      defaultGroupFilter({
-        modelIds: share.modelIds,
-        orderBy: GroupOrderBy.CreatedAsc,
-        includeUngroupedModels: true,
-      }),
-      1,
-      share.modelIds.length,
-    );
+    try {
+      share = await shareApi.getShare(shareId);
+      groups = await getGroupsOfModels(
+        groupApi,
+        share.modelIds,
+        GroupOrderBy.CreatedAsc,
+      );
+      loadStatus = "done";
+    } catch (e) {
+      loadStatus = "failed";
+      console.error("Failed to load share", e);
+    }
   });
 </script>
 
@@ -48,8 +52,25 @@
       />
     </div>
   </div>
-{:else}
-  <div class="flex h-full w-full items-center justify-center">
+{:else if loadStatus === "loading"}
+  <div
+    role="status"
+    aria-label="Loading the share"
+    class="flex h-full w-full items-center justify-center"
+  >
     <Spinner />
+  </div>
+{:else}
+  <div
+    class="flex h-full w-full flex-col items-center justify-center gap-2 text-center"
+  >
+    <div class="mb-2 rounded-md bg-primary p-2">
+      <Share2 />
+    </div>
+    {#if loadStatus === "failed"}
+      Could not load this share.
+    {:else}
+      This share has no models.
+    {/if}
   </div>
 {/if}

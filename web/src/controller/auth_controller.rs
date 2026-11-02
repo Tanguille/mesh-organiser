@@ -107,13 +107,8 @@ mod tests {
         method: axum::http::Method,
         path: &str,
     ) -> bool {
-        // The pool is lazy and never connects: no request gets past the session extractor.
-        let app_state = service::AppState {
-            db: std::sync::Arc::new(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()),
-            configuration: std::sync::Mutex::new(service::Configuration::default()),
-            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-            app_data_path: String::new(),
-        };
+        // No request gets past the session extractor, so the lazy pool never connects.
+        let app_state = crate::test_support::lazy_app_state(std::path::Path::new(""));
         let request = axum::http::Request::builder()
             .method(method)
             .uri(path)
@@ -145,5 +140,44 @@ mod tests {
                 "{path}"
             );
         }
+    }
+
+    /// POSTs `password` for alice to `login_router` behind the session layers.
+    async fn password_login(
+        app_state: service::AppState,
+        password: &str,
+    ) -> axum::http::StatusCode {
+        let router = crate::test_support::with_session(super::login_router(), app_state).await;
+
+        tower::ServiceExt::oneshot(router, crate::test_support::login_request(password))
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn login_router_logs_in_with_normal_credentials() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        let password = crate::test_support::add_login_user(&app_state).await;
+
+        assert_eq!(
+            password_login(app_state, &password).await,
+            axum::http::StatusCode::NO_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn login_router_refuses_a_body_over_the_default_limit() {
+        // The 413 comes before any db or Argon2 work, so alice need not exist.
+        let (_dir, app_state) = crate::test_support::app_state().await;
+
+        assert_eq!(
+            password_login(
+                app_state,
+                &"x".repeat(crate::test_support::DEFAULT_BODY_LIMIT)
+            )
+            .await,
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE
+        );
     }
 }

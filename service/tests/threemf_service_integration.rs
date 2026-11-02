@@ -1,6 +1,5 @@
-//! Characterization tests for `extract_metadata` / `extract_models`: the non-3MF
-//! guard, which slicer config wins, and the serialized metadata shape the
-//! frontends receive.
+//! Characterization tests for 3MF metadata and extraction: entry-name case,
+//! bounded model XML reads, the non-3MF guard, and which slicer config wins.
 
 mod common;
 
@@ -10,7 +9,7 @@ use serde_json::json;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 use db::model::{Model, user::User};
-use service::{AppState, extract_metadata, extract_models};
+use service::{AppState, extract_metadata, extract_models, threemf_service};
 
 const PROJECT_SETTINGS: &str = r#"{
     "enable_support": "1",
@@ -66,19 +65,86 @@ async fn extract_metadata_and_models_reject_non_3mf_models() {
 async fn extract_metadata_reads_bambu_project_settings() {
     let (_dir, app_state) = common::test_app_state().await;
 
-    assert_eq!(
-        metadata_json(
-            &app_state,
-            &[("Metadata/project_settings.config", PROJECT_SETTINGS)]
-        )
-        .await,
-        json!({
-            "nozzle_diameter": 0.4_f32,
-            "layer_height": 0.2_f32,
-            "material_type": "PLA, PETG",
-            "supports_enabled": true,
-        })
+    for filename in [
+        "Metadata/project_settings.config",
+        "METADATA/PROJECT_SETTINGS.CONFIG",
+    ] {
+        assert_eq!(
+            metadata_json(&app_state, &[(filename, PROJECT_SETTINGS)]).await,
+            json!({
+                "nozzle_diameter": 0.4_f32,
+                "layer_height": 0.2_f32,
+                "material_type": "PLA, PETG",
+                "supports_enabled": true,
+            }),
+            "entry: {filename}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn read_model_metadata_accepts_uppercase_model_entry_names() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let model = threemf_model(
+        &app_state,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        &[(
+            "3D/3DMODEL.MODEL",
+            r#"<model><metadata name="Title">Boat</metadata></model>"#,
+        )],
     );
+
+    let metadata = threemf_service::read_model_metadata(&model, &app_state)
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.len(), 1);
+    assert_eq!(metadata.get("Title").map(String::as_str), Some("Boat"));
+}
+
+#[tokio::test]
+async fn read_model_metadata_ignores_entries_beyond_the_read_limit() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let mut xml = String::from(r#"<model><metadata name="Title">Boat</metadata>"#);
+    xml.push_str(&" ".repeat(256 * 1024 - xml.len()));
+    xml.push_str(r#"<metadata name="Designer">Late designer</metadata></model>"#);
+    let model = threemf_model(
+        &app_state,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        &[("3D/3dmodel.model", &xml)],
+    );
+
+    let metadata = threemf_service::read_model_metadata(&model, &app_state)
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.len(), 1);
+    assert_eq!(metadata.get("Title").map(String::as_str), Some("Boat"));
+}
+
+#[tokio::test]
+async fn read_model_metadata_ignores_values_cut_at_the_limit_including_partial_utf8() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let opening = r#"<metadata name="Description">"#;
+    for (value, included_bytes) in [("unfinished value", 5), ("é", 1)] {
+        let mut xml = String::from(r#"<model><metadata name="Title">Boat</metadata>"#);
+        xml.push_str(&" ".repeat(256 * 1024 - xml.len() - opening.len() - included_bytes));
+        xml.push_str(opening);
+        xml.push_str(value);
+        xml.push_str("</metadata></model>");
+        let model = threemf_model(
+            &app_state,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            &[("3D/3dmodel.model", &xml)],
+        );
+
+        let metadata = threemf_service::read_model_metadata(&model, &app_state)
+            .await
+            .unwrap();
+
+        assert_eq!(metadata.len(), 1, "value: {value}");
+        assert_eq!(metadata.get("Title").map(String::as_str), Some("Boat"));
+    }
 }
 
 #[tokio::test]

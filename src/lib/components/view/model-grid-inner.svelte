@@ -57,7 +57,7 @@
       {#if itemSize.includes("List")}
         {#each availableModels as model (model.id)}
           {@const isSelected = selection.selectedSet.has(model.id)}
-          <div class="grid w-full grid-cols-[auto_1fr] items-center gap-2">
+          <div class="flex w-full items-center gap-2">
             {@render ModelCheckbox(model, "", isSelected)}
             <div
               role="option"
@@ -67,7 +67,7 @@
               onclick={(e) => selection.onClick(model, e)}
               onkeydown={(e) => selection.onKeyDown(model, e)}
               onmousedown={(e) => selection.earlyOnClick(model, e, isSelected)}
-              class="min-w-0 cursor-pointer"
+              class="min-w-0 flex-1 cursor-pointer"
             >
               <ModelTinyList
                 {model}

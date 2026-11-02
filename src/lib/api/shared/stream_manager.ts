@@ -67,17 +67,23 @@ export async function* pagedStream<T>(
   let page = 1;
   let prefetchNextTask: Promise<T[]> | null = null;
 
-  while (true) {
-    prefetchNextTask ??= fetchPage(page);
+  try {
+    while (true) {
+      prefetchNextTask ??= fetchPage(page);
 
-    const items = await prefetchNextTask;
-    if (items.length === 0) {
-      break;
+      const items = await prefetchNextTask;
+      if (items.length === 0) {
+        break;
+      }
+
+      page += 1;
+      prefetchNextTask = fetchPage(page);
+
+      yield items;
     }
-
-    page += 1;
-    prefetchNextTask = fetchPage(page);
-
-    yield items;
+  } finally {
+    // A consumer that stops early never awaits the prefetched page; without
+    // this its rejection would surface as an unhandled one.
+    prefetchNextTask?.catch(() => {});
   }
 }

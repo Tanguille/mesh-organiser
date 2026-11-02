@@ -118,6 +118,8 @@ fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str
         <fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
     )
     .unwrap();
+    // The shim appends, so an empty log means it never ran (instead of a missing file).
+    fs::write(&log, "").unwrap();
 
     // PATH is changed only for this child, so parallel tests cannot launch a real slicer.
     let output = Command::new(env::current_exe().unwrap())
@@ -141,6 +143,14 @@ fn assert_flatpak_commands(case: &str, installed_package: &str, expected: &[&str
 async fn linux_flatpak_child() {
     let case = env::var("MESH_TEST_FLATPAK_CASE")
         .expect("Flatpak child requires the parent test's isolated environment");
+    if case == "deserialize" {
+        for json in ["{}", r#"{ "data_path": "/custom/data" }"#] {
+            let configuration: service::Configuration = serde_json::from_str(json).unwrap();
+            assert!(configuration.slicer.is_none(), "{json}");
+        }
+
+        return;
+    }
     let (_dir, app_state) = common::test_app_state().await;
     let paths = if case.ends_with("empty") {
         Vec::new()
@@ -223,6 +233,16 @@ fn linux_missing_flatpak_package_is_reported_before_empty_paths() {
             "info|io.github.softfever.OrcaSlicer|",
         ],
     );
+}
+
+/// Every settings save deserializes a `Configuration`, and its container-level
+/// `#[serde(default)]` builds `Configuration::default()` each time, so `Default` must not
+/// probe Flatpak for each slicer. Deserializing spawns nothing, and a missing slicer key
+/// stays `None` even when a slicer is installed.
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_configuration_deserialize_never_probes_flatpak() {
+    assert_flatpak_commands("deserialize", "com.prusa3d.PrusaSlicer", &[]);
 }
 
 #[cfg(target_os = "linux")]

@@ -49,12 +49,13 @@
 
   let linkLoadGen = 0;
 
-  // Re-fetch when share identity changes; `void share.id` keeps the effect keyed to id (not every field).
+  // Re-fetch only when the share's id changes: the snapshot is taken untracked, so editing
+  // another field (e.g. the name) does not re-run the effect.
   $effect(() => {
-    const share = $state.snapshot(props.share);
-    void share.id;
+    void props.share.id;
     const gen = ++linkLoadGen;
     untrack(async () => {
+      const share = $state.snapshot(props.share);
       try {
         const l = await shareApi.getShareLink(share);
         if (gen !== linkLoadGen) {

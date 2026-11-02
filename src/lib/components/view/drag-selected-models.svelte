@@ -34,7 +34,7 @@
       let deltaX = event.clientX - originX;
       let deltaY = event.clientY - originY;
 
-      if (Math.abs(deltaX + deltaY) >= DISTANCE_UNTIL_DRAGGING) {
+      if (Math.hypot(deltaX, deltaY) >= DISTANCE_UNTIL_DRAGGING) {
         startDragging($state.snapshot(props.models));
       }
     }

@@ -3,6 +3,7 @@
   import {
     IAdminUserApi,
     ISwitchUserApi,
+    IUserApi,
     IUserLoginApi,
     IUserManageSelfApi,
     IUserTokenApi,
@@ -40,11 +41,14 @@
   const userSyncApi = getContainer().optional<IUserSyncApi>(IUserSyncApi);
   const userAdminApi = getContainer().optional<IAdminUserApi>(IAdminUserApi);
   const userSwitchApi = getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
+  const userApi = getContainer().optional<IUserApi>(IUserApi);
 
   let diskUsage = $state<DiskUsageInfo | null>(null);
   let password = $state<string>("");
   let password2 = $state<string>("");
   let isDesktop = $state<boolean>(false);
+  // The account the edits go to; null until it loads.
+  let editedUser = $state<User | null>(null);
 
   const saveUserDebounced = debounce(async (editedUser: User) => {
     if (!currentUserEditApi) {
@@ -63,6 +67,15 @@
 
     try {
       await currentUserEditApi.editSelf(editedUser);
+      // The sidebar reads the global user, so mirror the edit when it is that same account.
+      // An online account is a separate server user, even if its id matches the local one.
+      if (
+        editedUser.id === currentUser.id &&
+        !currentUser.permissions.onlineAccount
+      ) {
+        currentUser.username = editedUser.username;
+        currentUser.email = editedUser.email;
+      }
 
       toast.success("User updated successfully");
     } catch (e) {
@@ -72,7 +85,11 @@
   }, 1000);
 
   async function onUpdateUser() {
-    let snapshot = $state.snapshot(currentUser);
+    if (!editedUser) {
+      return;
+    }
+
+    let snapshot = $state.snapshot(editedUser);
     await saveUserDebounced(snapshot);
   }
 
@@ -98,7 +115,11 @@
       password = "";
 
       if (loginApi) {
-        await loginApi.loginUser(currentUser.email, newPassword);
+        // An email edited in this card is in editedUser, not currentUser.
+        await loginApi.loginUser(
+          (editedUser ?? currentUser).email,
+          newPassword,
+        );
       }
     } catch (e) {
       toast.error("Failed to change password");
@@ -135,12 +156,22 @@
   }
 
   onMount(async () => {
-    if (diskUsageInfoApi) {
-      diskUsage = await diskUsageInfoApi.getDiskUsageInfo();
-    }
+    // Not awaited, so the account below loads without waiting for it.
+    diskUsageInfoApi?.getDiskUsageInfo().then((info) => (diskUsage = info));
 
     if (hostApi) {
       isDesktop = await isCurrentPlatformDesktop(hostApi);
+    }
+
+    // /users/me on web; on desktop the local user, or the server user for an
+    // online account, whose IUserApi is the server's.
+    // Falls back to the known account, so an expired session or an unreachable sync server
+    // still leaves editable fields. A snapshot, so unsaved edits don't leak into currentUser.
+    if (userApi) {
+      editedUser = await userApi.getCurrentUser().catch((e) => {
+        console.error("Failed to load the current user", e);
+        return $state.snapshot(currentUser);
+      });
     }
   });
 </script>
@@ -150,26 +181,30 @@
     <CardTitle>Edit current user</CardTitle>
   </CardHeader>
   <CardContent class="flex flex-col gap-5 text-sm">
-    <div class="flex flex-col gap-3">
-      <Label for="username">Username</Label>
-
-      <Input
-        id="username"
-        oninput={onUpdateUser}
-        bind:value={currentUser.username}
-      />
-    </div>
-    {#if !isDesktop}
+    {#if editedUser}
       <div class="flex flex-col gap-3">
-        <Label for="email">Email</Label>
+        <Label for="username">Username</Label>
 
         <Input
-          id="email"
-          type="email"
+          id="username"
           oninput={onUpdateUser}
-          bind:value={currentUser.email}
+          bind:value={editedUser.username}
         />
       </div>
+    {/if}
+    {#if !isDesktop}
+      {#if editedUser}
+        <div class="flex flex-col gap-3">
+          <Label for="email">Email</Label>
+
+          <Input
+            id="email"
+            type="email"
+            oninput={onUpdateUser}
+            bind:value={editedUser.email}
+          />
+        </div>
+      {/if}
 
       <Separator class="my-2" />
 
@@ -178,7 +213,7 @@
 
         <Input id="password" type="password" bind:value={password} />
 
-        <Label for="password">Verify new password</Label>
+        <Label for="password2">Verify new password</Label>
 
         <Input id="password2" type="password" bind:value={password2} />
 

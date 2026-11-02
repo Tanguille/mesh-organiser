@@ -19,22 +19,18 @@ impl Slicer {
         slicer_path: PathBuf,
         paths: Vec<PathBuf>,
     ) -> Result<(), ServiceError> {
-        open_with_args_and_paths(slicer_path.to_str().unwrap(), &[], paths)
+        open_with_args_and_paths(slicer_path, &[], paths)
     }
 }
 
-fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<String> {
-    let reg_key_result = RegKey::predef(root).open_subkey(subkey);
-
-    if reg_key_result.is_err() {
-        return None;
-    }
-
-    let reg_key = reg_key_result.unwrap();
-
-    let value: Result<OsString, std::io::Error> = reg_key.get_value(field);
-
-    value.map_or(None, |s| Some(s.to_str().unwrap().to_string()))
+// Kept as an `OsString`, since a path that is not valid UTF-16 still works with `PathBuf` and
+// `Command`.
+fn get_registry_key(root: HKEY, subkey: &str, field: &str) -> Option<OsString> {
+    RegKey::predef(root)
+        .open_subkey(subkey)
+        .ok()?
+        .get_value(field)
+        .ok()
 }
 
 fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
@@ -47,7 +43,13 @@ fn get_slicer_path(slicer: &Slicer) -> Option<PathBuf> {
             );
 
             if let Some(key) = key {
-                let path = PathBuf::from(key);
+                let mut path = PathBuf::from(key);
+
+                // The installer writes the install directory here, like Bambu's `InstallPath`;
+                // still accept a value that already points at the exe.
+                if path.is_dir() {
+                    path.push("prusa-slicer.exe");
+                }
 
                 if path.exists() {
                     return Some(path);

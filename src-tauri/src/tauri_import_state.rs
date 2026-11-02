@@ -4,12 +4,13 @@ use service::import_state::{ImportState, ImportStateEmitter};
 
 use crate::tauri_app_state::TauriAppState;
 
+// `src/lib/api/tauri/tauri_import.test.ts` checks the frontend listens to each of these.
 const IMPORT_STATUS_EVENT: &str = "import-status";
 const IMPORT_MODEL_GROUP_EVENT: &str = "import-model-group";
 const IMPORT_MODEL_TOTAL_EVENT: &str = "import-model-total";
 const IMPORT_MODEL_COUNT_EVENT: &str = "import-model-count";
 const IMPORT_THUMBNAIL_COUNT_EVENT: &str = "import-thumbnail-count";
-const IMPORT_FAILURE_REASON_EVENT: &str = "import-failure-reason";
+const IMPORT_FAILURE_REASON_EVENT: &str = "import-failure";
 
 pub struct TauriImportStateEmitter {
     handle: AppHandle,

@@ -344,6 +344,29 @@ fn handle_extract_image_claims_3mf_and_gcode_only() {
 }
 
 #[test]
+fn handle_extract_image_gcode_header_area_does_not_overflow() {
+    let directory = TempDir::new().unwrap();
+    let small = BASE64_STANDARD.encode(png_bytes(2, 1));
+    let large = BASE64_STANDARD.encode(png_bytes(4, 2));
+    // 65536 * 65536 does not fit in u32, so the header area must not be u32 arithmetic: it
+    // would panic in debug builds and wrap to 0 in release, losing to the 2x1 header.
+    let gcode = write_file(
+        &directory,
+        "print.gcode",
+        format!(
+            "; thumbnail begin 2x1 {}\n; {small}\n; thumbnail end\n\
+             ; thumbnail begin 65536x65536 {}\n; {large}\n; thumbnail end\n",
+            small.len(),
+            large.len(),
+        ),
+    );
+
+    let image = handle_extract_image(&gcode).unwrap().unwrap();
+
+    assert_eq!((image.width(), image.height()), (4, 2));
+}
+
+#[test]
 fn handle_extract_image_surfaces_missing_thumbnail_errors() {
     let directory = TempDir::new().unwrap();
 

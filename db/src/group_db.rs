@@ -209,8 +209,9 @@ pub async fn get_groups(
 
     // `page` is 1-based, so 0 must be treated as 1; a
     // `page_size` of 0 would make `.take(0)` silently return an empty list.
+    // `page` can be any u32 from the Tauri command, so saturate: a page past the end is empty.
     let page_size = options.page_size.clamp(1, MAX_PAGE_SIZE);
-    let offset = ((options.page.max(1) - 1) * page_size) as usize;
+    let offset = (options.page.max(1) - 1).saturating_mul(page_size) as usize;
 
     Ok(PaginatedResponse {
         items: groups
@@ -297,6 +298,7 @@ pub async fn add_empty_group(
     })
 }
 
+/// Fails with [`DbError::RowNotFound`] when the user owns no group with this id.
 pub async fn edit_group(
     db: &DbContext,
     user: &User,
@@ -308,7 +310,7 @@ pub async fn edit_group(
     validate_global_id(global_id)?;
     let timestamp = timestamp_or_now(update_timestamp);
 
-    sqlx::query!(
+    let result = sqlx::query!(
         "UPDATE models_group SET group_name = ?, group_last_modified = ?, group_unique_global_id = COALESCE(?, group_unique_global_id) WHERE group_id = ? AND group_user_id = ?",
         group_name,
         timestamp,
@@ -318,6 +320,10 @@ pub async fn edit_group(
     )
     .execute(db)
     .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(DbError::RowNotFound);
+    }
 
     Ok(())
 }
@@ -377,6 +383,31 @@ pub async fn get_group_count(
     };
 
     Ok(base + ungrouped)
+}
+
+pub struct GroupModelCount {
+    pub id: i64,
+    pub name: String,
+    pub model_count: i64,
+}
+
+/// The user's groups holding at least one live model, with how many, ordered by name.
+pub async fn get_group_model_counts(
+    db: &DbContext,
+    user: &User,
+) -> Result<Vec<GroupModelCount>, DbError> {
+    sqlx::query_as!(
+        GroupModelCount,
+        r#"SELECT group_id AS "id!", group_name AS "name!", COUNT(*) AS "model_count!: i64"
+         FROM models_group
+         INNER JOIN models ON models.model_group_id = models_group.group_id
+         WHERE group_user_id = ? AND model_deleted IS NULL
+         GROUP BY group_id
+         ORDER BY group_name"#,
+        user.id
+    )
+    .fetch_all(db)
+    .await
 }
 
 pub async fn set_last_updated_on_groups(

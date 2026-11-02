@@ -79,6 +79,24 @@ async fn get_models_via_ids_returns_only_requested_rows_and_valid_sql() {
 }
 
 #[tokio::test]
+async fn get_models_via_ids_returns_every_requested_model_past_the_bind_limit_in_model_id_order() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    // Past a page (1000) and past SQLite's 32766 bound variables, so the ids need two queries.
+    let model_ids = add_tied_models(&db, &user, 33_000).await;
+    // Reversed and repeated, yet each model comes back once in model_id order, as one query
+    // over every id would return it.
+    let requested: Vec<i64> = model_ids.iter().rev().chain(&model_ids).copied().collect();
+
+    let models = model_db::get_models_via_ids(&db, &user, requested)
+        .await
+        .unwrap();
+
+    let listed_ids: Vec<i64> = models.iter().map(|model| model.id).collect();
+    assert_eq!(listed_ids, model_ids);
+}
+
+#[tokio::test]
 async fn get_groups_filtered_by_ungrouped_model_do_not_expand_to_all_models() {
     let (_dir, db) = test_db().await;
     let user = User::default();
@@ -168,6 +186,17 @@ async fn get_groups_default_filter_options_does_not_panic() {
     let _ = group_db::get_groups(&db, &user, zero_opts)
         .await
         .expect("zero page/page_size must be clamped, not panic");
+
+    // The Tauri command passes `page` through unchecked, so `page * page_size` must not overflow.
+    let last_page_opts = group_db::GroupFilterOptions {
+        page: u32::MAX,
+        ..group_db::GroupFilterOptions::default()
+    };
+    let groups = group_db::get_groups(&db, &user, last_page_opts)
+        .await
+        .expect("a huge page must saturate, not overflow");
+    assert!(groups.items.is_empty());
+    assert_eq!(groups.page, u32::MAX);
 }
 
 #[tokio::test]
@@ -493,4 +522,47 @@ async fn get_groups_lists_a_group_whose_models_sit_past_the_first_page() {
             .collect::<Vec<_>>(),
         vec![late_model_id]
     );
+}
+
+#[tokio::test]
+async fn get_models_label_filter_keeps_every_label_of_a_matching_model() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let label_ids = add_labels(&db, &user, &["wanted", "other"]).await;
+    let (wanted_label_id, other_label_id) = (label_ids[0], label_ids[1]);
+    let blob_id = blob_db::add_blob(&db, "labeled", "stl", 1, None)
+        .await
+        .unwrap();
+    let carrier_id = model_db::add_model(&db, &user, "carrier", blob_id, None, None)
+        .await
+        .unwrap();
+    let other_only_id = model_db::add_model(&db, &user, "other-only", blob_id, None, None)
+        .await
+        .unwrap();
+    label_db::add_labels_on_models(&db, &user, &label_ids, &[carrier_id], None)
+        .await
+        .unwrap();
+    label_db::add_labels_on_models(&db, &user, &[other_label_id], &[other_only_id], None)
+        .await
+        .unwrap();
+
+    let models = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            label_ids: Some(vec![wanted_label_id]),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .items;
+
+    assert_eq!(
+        models.iter().map(|model| model.id).collect::<Vec<_>>(),
+        vec![carrier_id]
+    );
+    let mut carried_label_ids: Vec<i64> = models[0].labels.iter().map(|label| label.id).collect();
+    carried_label_ids.sort_unstable();
+    assert_eq!(carried_label_ids, vec![wanted_label_id, other_label_id]);
 }

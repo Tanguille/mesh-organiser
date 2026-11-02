@@ -62,6 +62,10 @@ pub async fn import_path(
             let mut import_state = import_state_clone.lock().await;
             import_state.update_status(ImportStatus::FinishedModels);
             import_state.create_groups_from_all_sets(app_state).await?;
+            // After grouping, so a model also matches keywords in the name of a group this import
+            // created. An online-account folder import uploads its files one by one and groups
+            // them on the client afterwards, so those folder names are not matched.
+            add_labels_by_keywords(&import_state.imported_models, app_state, &import_state).await;
 
             let import_state = {
                 let fake = ImportState::new(None, false, false, false, User::default());
@@ -90,9 +94,9 @@ pub async fn get_model_count(
 
     if path_buff.is_dir() {
         if recursive {
-            get_model_count_from_dir_recursive(path)
+            get_model_count_from_dir_recursive(&path_buff)
         } else {
-            get_model_count_from_dir(path)
+            get_model_count_from_dir(&path_buff)
         }
     } else if is_zip_path(&path_buff) {
         if import_as_path {
@@ -118,7 +122,6 @@ async fn import_path_inner(
 ) -> Result<(), ServiceError> {
     let path_buff = PathBuf::from(path);
     let name = util::prettify_file_name(&path_buff, path_buff.is_dir());
-    let later_import_state = Arc::clone(&import_state);
 
     let recursive = {
         let import_state = import_state.lock().await;
@@ -129,7 +132,7 @@ async fn import_path_inner(
         if recursive {
             import_models_from_dir_recursive(&path_buff, app_state, import_state).await?;
         } else {
-            import_models_from_dir(path, app_state, import_state, name).await?;
+            import_models_from_dir(&path_buff, app_state, import_state, name).await?;
         }
     } else if is_zip_path(&path_buff) {
         import_models_from_zip(path, app_state, import_state, name).await?;
@@ -139,12 +142,6 @@ async fn import_path_inner(
         return Err(ServiceError::InternalError(String::from(
             "Unsupported file type",
         )));
-    }
-
-    {
-        let guard = later_import_state.lock().await;
-        add_labels_by_keywords(&guard.imported_models, app_state, &guard).await;
-        drop(guard);
     }
 
     Ok(())
@@ -160,7 +157,6 @@ pub async fn add_labels_by_keywords(
         .iter()
         .flat_map(|r| r.model_ids.iter())
         .copied()
-        .unique()
         .collect::<Vec<i64>>();
 
     let Ok(models) = model_db::get_models_via_ids(db, &import_state.user, model_ids).await else {
@@ -220,9 +216,13 @@ pub async fn add_labels_by_keywords(
     }
 
     for (label_id, model_ids) in &label_to_models {
-        let _ =
-            label_db::add_labels_on_models(db, &import_state.user, &[*label_id], model_ids, None)
-                .await;
+        // One bind per id in `ensure_owned` and two per pair in the insert, so 10,000 ids per
+        // statement stays under SQLite's 32,766-variable limit.
+        for chunk in model_ids.chunks(10_000) {
+            let _ =
+                label_db::add_labels_on_models(db, &import_state.user, &[*label_id], chunk, None)
+                    .await;
+        }
     }
 }
 
@@ -231,11 +231,10 @@ async fn import_models_from_dir_recursive(
     app_state: &AppState,
     import_state: Arc<Mutex<ImportState>>,
 ) -> Result<(), ServiceError> {
-    let Ok(read_dir) = read_dir(path) else {
+    // A listing that fails partway is skipped like one that can't be opened.
+    let Ok(entries) = read_dir(path).and_then(Iterator::collect::<Result<Vec<_>, _>>) else {
         return Ok(());
     };
-
-    let entries: Vec<fs::DirEntry> = read_dir.map(|x| x.unwrap()).collect();
 
     for folder in entries.iter().filter(|f| f.path().is_dir()) {
         let import_state = Arc::clone(&import_state);
@@ -254,8 +253,7 @@ async fn import_models_from_dir_recursive(
     {
         let group_name = util::prettify_file_name(path, true);
 
-        let _ = import_models_from_dir(path.to_str().unwrap(), app_state, import_state, group_name)
-            .await;
+        let _ = import_models_from_dir(path, app_state, import_state, group_name).await;
     }
 
     Ok(())
@@ -316,7 +314,7 @@ async fn import_models_from_dir_inner(
 }
 
 async fn import_models_from_dir(
-    path: &str,
+    path: &Path,
     app_state: &AppState,
     import_state: Arc<Mutex<ImportState>>,
     group_name: String,
@@ -328,9 +326,9 @@ async fn import_models_from_dir(
         .add_new_import_set(Some(group_name));
 
     let entries: Vec<PathBuf> = read_dir(path)?
-        .map(|f| f.unwrap().path())
-        .filter(|f| f.is_file())
-        .collect();
+        .map_ok(|entry| entry.path())
+        .filter_ok(|path| path.is_file())
+        .collect::<Result<_, _>>()?;
 
     let max = configuration.core_parallelism * ASYNC_MULT;
 
@@ -445,12 +443,15 @@ where
     let blob_id = if let Some(blob) = blob_db::get_blob_via_sha256(&app_state.db, &hash).await? {
         blob.id
     } else if let Some(permanent_disk_path) = permanent_disk_path {
+        // The blob stores the path as text, so a non-UTF-8 one can't be referenced.
+        let disk_path = util::path_to_utf8(&permanent_disk_path)?;
+
         blob_db::add_blob(
             &app_state.db,
             &hash,
             file_type,
             i64::try_from(file_size).unwrap_or(i64::MAX),
-            Some(permanent_disk_path.to_str().unwrap().to_string()),
+            Some(disk_path.to_string()),
         )
         .await?
     } else {
@@ -470,9 +471,11 @@ where
             );
 
             writer.write_entry_whole(builder, &file_contents).await?;
-            writer.close().await?;
+            util::finish_zip(writer).await?;
         } else {
             file_handle.write_all(&file_contents).await?;
+            // A tokio `File` can still have the write pending when `write_all` returns.
+            file_handle.flush().await?;
         }
 
         blob_db::add_blob(
@@ -508,12 +511,13 @@ pub fn is_importable_upload(path: &Path) -> bool {
     is_supported_extension(path) || is_zip_path(path)
 }
 
-fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError> {
-    let entries: Vec<fs::DirEntry> = read_dir(path)?.map(|x| x.unwrap()).collect();
+fn get_model_count_from_dir_recursive(path: &Path) -> Result<usize, ServiceError> {
+    let entries: Vec<fs::DirEntry> = read_dir(path)?.collect::<Result<_, _>>()?;
     let mut count = 0;
 
     for folder in entries.iter().filter(|f| f.path().is_dir()) {
-        count += get_model_count_from_dir_recursive(folder.path().to_str().unwrap())?;
+        // An unreadable subfolder counts as empty, since the recursive import skips it.
+        count += get_model_count_from_dir_recursive(&folder.path()).unwrap_or(0);
     }
 
     count += get_model_count_from_dir(path)?;
@@ -521,11 +525,11 @@ fn get_model_count_from_dir_recursive(path: &str) -> Result<usize, ServiceError>
     Ok(count)
 }
 
-fn get_model_count_from_dir(path: &str) -> Result<usize, ServiceError> {
+fn get_model_count_from_dir(path: &Path) -> Result<usize, ServiceError> {
     let size = read_dir(path)?
-        .map(|f| f.unwrap().path())
-        .filter(|f| f.is_file() && is_supported_extension(f))
-        .count();
+        .map_ok(|entry| entry.path())
+        .filter_ok(|path| path.is_file() && is_supported_extension(path))
+        .process_results(|paths| paths.count())?;
 
     Ok(size)
 }

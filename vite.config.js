@@ -66,7 +66,6 @@ export default defineConfig(({ mode }) => {
         "@tauri-apps/plugin-fs",
         "@tauri-apps/plugin-http",
         "@tauri-apps/plugin-os",
-        "@tauri-apps/plugin-process",
         "@tauri-apps/plugin-updater",
         "bits-ui",
         "fflate",

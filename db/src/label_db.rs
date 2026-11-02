@@ -394,6 +394,56 @@ pub async fn set_childs_on_label(
     set_last_updated_on_labels(db, user, &[parent_label_id], &time_now()).await
 }
 
+/// Moves `label_id` under `parent_label_id`, or to the top level when `None`, dropping every
+/// parent it had. The user must own both labels; cycle checks are the caller's.
+///
+/// Stamps the label and its old and new parents, so sync sees both ends of the move.
+pub async fn set_label_parent(
+    db: &DbContext,
+    user: &User,
+    label_id: i64,
+    parent_label_id: Option<i64>,
+    update_timestamp: Option<&str>,
+) -> Result<(), DbError> {
+    // Checked before the transaction so it opens with a write: a deferred SQLite transaction
+    // that reads first can fail with SQLITE_BUSY when it later needs the write lock.
+    let owned_ids: Vec<i64> = std::iter::once(label_id).chain(parent_label_id).collect();
+    ensure_owned(db, &LABELS, &owned_ids, user).await?;
+
+    let mut transaction = db.begin().await?;
+    let old_parent_ids = sqlx::query_scalar!(
+        "DELETE FROM labels_labels WHERE child_label_id = ? RETURNING parent_label_id",
+        label_id
+    )
+    .fetch_all(&mut *transaction)
+    .await?;
+
+    if let Some(parent_label_id) = parent_label_id {
+        sqlx::query!(
+            "INSERT INTO labels_labels (parent_label_id, child_label_id) VALUES (?, ?)",
+            parent_label_id,
+            label_id
+        )
+        .execute(&mut *transaction)
+        .await?;
+    }
+
+    let stamped_ids: Vec<i64> = old_parent_ids.into_iter().chain(owned_ids).collect();
+    set_timestamp_column(
+        &mut *transaction,
+        &LABELS,
+        "label_last_modified",
+        &stamped_ids,
+        user,
+        &timestamp_or_now(update_timestamp),
+    )
+    .await?;
+
+    transaction.commit().await?;
+
+    Ok(())
+}
+
 pub async fn set_last_updated_on_labels(
     db: &DbContext,
     user: &User,

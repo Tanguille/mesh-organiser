@@ -23,7 +23,7 @@
     resetImportState,
   } from "#lib/import.svelte";
   import {
-    defaultGroupFilter,
+    getGroupsOfModels,
     type Group,
     GroupOrderBy,
     IGroupApi,
@@ -86,20 +86,18 @@
     },
   ];
 
-  async function handleTauriOpenFile() {
+  // Disables the import buttons while the native picker is open.
+  async function withDialog(open: () => Promise<void> | undefined) {
     dialog_open = true;
-    await tauriImportApi?.openFilesForImporting();
-    dialog_open = false;
+    try {
+      await open();
+    } finally {
+      dialog_open = false;
+    }
   }
 
   async function handleWebImport() {
     await webImportApi?.openFilesForImporting();
-  }
-
-  async function handleTauriOpenFolder() {
-    dialog_open = true;
-    await tauriImportApi?.openFolderForImporting();
-    dialog_open = false;
   }
 
   function setDefaultImportSettings() {
@@ -119,6 +117,7 @@
   });
 
   let importGroupsLoadGen = 0;
+  let importGroupsStatus = $state<"loading" | "failed" | "done">("done");
 
   $effect(() => {
     const status = importState.status;
@@ -132,21 +131,25 @@
       .map((res) => res.model_ids)
       .flat();
 
-    const gen = ++importGroupsLoadGen;
+    const generation = ++importGroupsLoadGen;
+    importGroupsStatus = "loading";
+
     untrack(async () => {
-      const groups = await groupApi.getGroups(
-        defaultGroupFilter({
-          modelIds: importedModelIds,
-          orderBy: GroupOrderBy.NameDesc,
-          includeUngroupedModels: true,
-        }),
-        1,
-        importedModelIds.length,
-      );
-      if (gen !== importGroupsLoadGen) {
+      const groups = await getGroupsOfModels(
+        groupApi,
+        importedModelIds,
+        GroupOrderBy.NameDesc,
+      ).catch((e) => {
+        console.error("Failed to load the imported models", e);
+        return null;
+      });
+      if (generation !== importGroupsLoadGen) {
         return;
       }
-      importedGroups = groups;
+      if (groups) {
+        importedGroups = groups;
+      }
+      importGroupsStatus = groups ? "done" : "failed";
     });
   });
 </script>
@@ -183,9 +186,17 @@
             onEmpty={resetImportState}
           />
         </div>
-      {:else}
+      {:else if importGroupsStatus === "loading"}
         <div class="flex h-full w-full items-center justify-center">
           <Spinner />
+        </div>
+      {:else}
+        <div class="flex h-full w-full items-center justify-center text-sm">
+          {#if importGroupsStatus === "failed"}
+            Could not load the imported models.
+          {:else}
+            No models were imported.
+          {/if}
         </div>
       {/if}
     </div>
@@ -201,12 +212,14 @@
             <div class="grid grid-cols-2 gap-4">
               <Button
                 class="grow"
-                onclick={handleTauriOpenFile}
+                onclick={() =>
+                  withDialog(() => tauriImportApi?.openFilesForImporting())}
                 disabled={dialog_open}><File /> Import File</Button
               >
               <Button
                 class="grow"
-                onclick={handleTauriOpenFolder}
+                onclick={() =>
+                  withDialog(() => tauriImportApi?.openFolderForImporting())}
                 disabled={dialog_open}
                 ><Folder /> Import Folder
               </Button>

@@ -3,6 +3,7 @@
 
 mod common;
 
+use common::add_bulk_models;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -286,28 +287,29 @@ async fn get_trashed_models_lists_newest_deleted_first() {
 async fn get_trashed_models_returns_more_rows_than_a_page_holds() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
-    let blob_id = blob_db::add_blob(&app_state.db, "shared", "stl", 1, None)
-        .await
-        .unwrap();
     let count = db::MAX_PAGE_SIZE + 1;
-    // One statement: a thousand single inserts would dominate the run time.
-    sqlx::query(
-        "WITH RECURSIVE counter(number) AS (SELECT 1 UNION ALL SELECT number + 1 FROM counter WHERE number < ?)
-         INSERT INTO models (model_name, model_blob_id, model_added, model_user_id, model_deleted)
-         SELECT 'trashed-' || number, ?, '2024-01-01T00:00:00Z', ?, '2024-01-01T00:00:00Z' FROM counter",
-    )
-    .bind(count)
-    .bind(blob_id)
-    .bind(user.id)
-    .execute(&*app_state.db)
-    .await
-    .unwrap();
+    add_bulk_models(&app_state, &user, count, Some("2024-01-01T00:00:00Z")).await;
 
     let trashed = export_service::get_trashed_models(&app_state, &user)
         .await
         .unwrap();
 
     assert_eq!(trashed.len(), count as usize);
+}
+
+#[tokio::test]
+async fn delete_models_trashes_more_models_than_a_page_holds() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let model_ids = add_bulk_models(&app_state, &user, db::MAX_PAGE_SIZE + 1, None).await;
+
+    export_service::delete_models(&app_state, &user, model_ids.clone())
+        .await
+        .unwrap();
+
+    let mut trashed = trashed_model_ids(&app_state, &user).await;
+    trashed.sort_unstable();
+    assert_eq!(trashed, model_ids);
 }
 
 #[tokio::test]

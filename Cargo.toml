@@ -9,7 +9,6 @@ unused_qualifications = "warn"
 # Priority is needed so our config below is respected over the pedantic group
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
-style = { level = "warn", priority = -1 }
 unnecessary_self_imports = "warn"
 # Every crate is internal to this workspace and fails with one error type throughout
 # (DbError, ServiceError, ...), so per-function errors/panics docs add nothing.
@@ -17,7 +16,7 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
 [workspace.package]
-version = "4.0.2"
+version = "5.0.0"
 edition = "2024"
 
 [workspace.dependencies]
@@ -52,7 +51,9 @@ password-auth = "1.0.0"
 rand = "0.10.3"
 regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false }
+rmcp = "3.7.0"
 rmp-serde = "1.3.1"
+schemars = "1.2.2"
 serde = "1.0.229"
 serde_html_form = "0.4.1"
 serde_json = "1.0.151"
@@ -74,7 +75,6 @@ tauri-plugin-http = { version = "2.6.0", features = [
 ], default-features = false }
 tauri-plugin-opener = "2.5.5"
 tauri-plugin-os = "2.3.2"
-tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = { version = "2.13.1", features = [
     "rustls-tls",
 ], default-features = false }
