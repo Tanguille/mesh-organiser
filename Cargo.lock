@@ -1333,7 +1333,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "db"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "bitflags 2.13.2",
  "chrono",
@@ -3127,7 +3127,7 @@ dependencies = [
 
 [[package]]
 name = "libmeshthumbnail"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "base64 0.23.1",
  "cadrum",
@@ -3274,7 +3274,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-organiser"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "arboard",
  "async_zip",
@@ -5260,7 +5260,7 @@ dependencies = [
 
 [[package]]
 name = "service"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "async_zip",
  "db",
@@ -7191,7 +7191,7 @@ checksum = "934504ea79927c25f18e980053b64269490284129b327334fc2591daf1539b9c"
 
 [[package]]
 name = "web"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "async-trait",
  "axum",
