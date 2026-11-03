@@ -16,7 +16,7 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
 [workspace.package]
-version = "5.0.0"
+version = "5.0.1"
 edition = "2024"
 
 [workspace.dependencies]
