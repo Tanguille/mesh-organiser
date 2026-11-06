@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Input } from "#lib/components/ui/input/index.js";
   import { onMount, type Snippet } from "svelte";
+  import { toast } from "svelte-sonner";
 
   import { getContainer } from "#lib/api/dependency_injection";
   import { ILocalApi } from "#lib/api/shared/local_api";
@@ -11,6 +12,15 @@
   } from "#lib/api/shared/settings_api";
   import { IThumbnailApi } from "#lib/api/shared/thumbnail_api";
   import { IAdminUserApi } from "#lib/api/shared/user_api";
+  import {
+    isMobileApp,
+    normalizeServerBaseUrl,
+  } from "#lib/api/mobile/server_url";
+  import {
+    getServerUrl,
+    setServerUrl,
+    clearServerUrl,
+  } from "#lib/api/tauri/server_url";
   import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
   import {
     Card,
@@ -92,15 +102,17 @@
     if (localApi) {
       app_data_dir = await localApi.getAppDataDir();
     }
+
+    await loadServerUrl();
   });
 
-  let splitConversions = {
+  const splitConversions = {
     no_split: "No split",
     "split-left-right": "Split left/right",
     "split-top-bottom": "Split top/bottom",
   };
 
-  let startPageOptions = {
+  const startPageOptions = {
     "": "Default",
     import: "Import",
     models: "Models",
@@ -109,6 +121,38 @@
     "print-history": "Print History",
     projects: "Projects",
   };
+
+  const isMobileRemote = isMobileApp();
+  let serverUrl = $state("");
+
+  async function loadServerUrl() {
+    if (!isMobileRemote) return;
+    const url = await getServerUrl();
+    serverUrl = url ?? "";
+  }
+
+  async function saveServerUrl() {
+    try {
+      const normalized = normalizeServerBaseUrl(serverUrl);
+      await setServerUrl(normalized);
+      serverUrl = normalized;
+      toast.success("Server URL saved.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Invalid URL.", { description: msg });
+    }
+  }
+
+  async function handleClearServerUrl() {
+    try {
+      await clearServerUrl();
+      serverUrl = "";
+      toast.success("Server URL cleared.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Could not clear URL.", { description: msg });
+    }
+  }
 </script>
 
 {#snippet settingsCard(title: string, content: Snippet, footer?: Snippet)}
@@ -593,6 +637,36 @@
 
     {#if sections.includes(SettingSection.CurrentUser)}
       <CurrentUserEditCard />
+    {/if}
+
+    {#if isMobileRemote}
+      <Card>
+        <CardHeader>
+          <CardTitle>Remote server</CardTitle>
+        </CardHeader>
+        <CardContent class="flex flex-col gap-5 text-sm">
+          <div class="flex flex-col space-y-1.5">
+            <Label for="server-url">Server URL</Label>
+            <Input
+              id="server-url"
+              type="url"
+              placeholder="https://example.com:3000"
+              bind:value={serverUrl}
+            />
+            <p class="text-muted-foreground">
+              Base URL of your Mesh Organiser server instance.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Button onclick={saveServerUrl}>Save</Button>
+            <Button
+              variant="secondary"
+              onclick={handleClearServerUrl}
+              disabled={serverUrl.length === 0}>Clear</Button
+            >
+          </div>
+        </CardContent>
+      </Card>
     {/if}
 
     {#if userAdminApi && sections.includes(SettingSection.Users)}
