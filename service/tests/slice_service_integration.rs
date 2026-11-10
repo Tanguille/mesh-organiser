@@ -1,34 +1,18 @@
 //! Integration tests for [`service::slice_service`] (no real `OrcaSlicer` in CI).
 
-use std::sync::{Arc, Mutex};
-
 use db::{blob_db, model::user::User, model_db};
 use service::{
-    AppState, Configuration,
+    AppState,
     slice_service::{ORCA_SLICER_EXECUTABLE_ENV, slice_model_for_user},
 };
 use tempfile::tempdir;
 
+mod common;
+
+use common::{internal_error_message, test_app_state};
+
 async fn app_state_with_stl_model() -> (tempfile::TempDir, AppState, i64) {
-    let dir = tempdir().unwrap();
-    let data_path = dir.path().join("data");
-    std::fs::create_dir_all(&data_path).unwrap();
-    let db_path = data_path.join("db.sqlite");
-    let backup_dir = data_path.join("backup");
-    std::fs::create_dir_all(&backup_dir).unwrap();
-
-    let db = db::db_context::setup_db(&db_path, &backup_dir).await;
-    let config = Configuration {
-        data_path: data_path.to_string_lossy().to_string(),
-        ..Default::default()
-    };
-
-    let app_state = AppState {
-        db: Arc::new(db),
-        configuration: Mutex::new(config),
-        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
-        app_data_path: data_path.to_string_lossy().to_string(),
-    };
+    let (dir, app_state) = test_app_state().await;
 
     let model_dir = app_state.get_model_dir();
     let sha256 = "0123456789abcdef0123456789abcdef";
@@ -55,10 +39,27 @@ async fn app_state_with_stl_model() -> (tempfile::TempDir, AppState, i64) {
     (dir, app_state, model_id)
 }
 
-// Both cases mutate the process-wide slicer env var, so they live in one test: separate tests run
+/// Writes a stand-in slicer that puts `;sliced` into `<outputdir>/plate_1.gcode`, so the test
+/// fails if the `--outputdir` wiring or the g-code handoff breaks.
+#[cfg(unix)]
+fn fake_slicer(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = dir.join("fake-orca");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = --outputdir ]; then out=\"$2\"; fi\n  shift\ndone\nprintf ';sliced\\n' > \"$out/plate_1.gcode\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    path
+}
+
+// All cases mutate the process-wide slicer env var, so they live in one test: separate tests run
 // on parallel threads and would race on it.
 #[tokio::test]
-async fn slice_errors_when_slicer_unset_or_missing() {
+async fn slice_with_unset_missing_and_working_slicer() {
     let prior = std::env::var(ORCA_SLICER_EXECUTABLE_ENV).ok();
     let (_dir, app_state, model_id) = app_state_with_stl_model().await;
     let user = User::default();
@@ -66,34 +67,42 @@ async fn slice_errors_when_slicer_unset_or_missing() {
     // SAFETY: no other test in this binary touches this env var.
     unsafe { std::env::remove_var(ORCA_SLICER_EXECUTABLE_ENV) };
 
-    let unset_message = slice_model_for_user(&app_state, &user, model_id)
-        .await
-        .expect_err("missing slicer env should error")
-        .to_string();
+    let unset_message =
+        internal_error_message(slice_model_for_user(&app_state, &user, model_id).await);
     assert!(
-        unset_message.contains("Slicer not configured")
-            || unset_message.contains(ORCA_SLICER_EXECUTABLE_ENV)
-            || unset_message.contains("Internal error"),
+        unset_message.starts_with("Slicer not configured"),
         "unexpected message: {unset_message}"
     );
 
-    let ghost = tempdir()
-        .unwrap()
-        .path()
-        .join("nonexistent_orca_binary.exe");
+    let slicer_dir = tempdir().unwrap();
+    let ghost = slicer_dir.path().join("nonexistent_orca_binary.exe");
     // SAFETY: no other test in this binary touches this env var.
     unsafe { std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, ghost.as_os_str()) };
 
-    let missing_message = slice_model_for_user(&app_state, &user, model_id)
-        .await
-        .expect_err("missing executable should error")
-        .to_string();
+    let missing_message =
+        internal_error_message(slice_model_for_user(&app_state, &user, model_id).await);
     assert!(
-        missing_message.contains("not found")
-            || missing_message.contains("executable")
-            || missing_message.contains("Internal error"),
+        missing_message.starts_with("Slicer executable not found"),
         "unexpected message: {missing_message}"
     );
+
+    #[cfg(unix)]
+    {
+        // SAFETY: no other test in this binary touches this env var.
+        unsafe {
+            std::env::set_var(ORCA_SLICER_EXECUTABLE_ENV, fake_slicer(slicer_dir.path()));
+        };
+
+        let result = slice_model_for_user(&app_state, &user, model_id)
+            .await
+            .expect("fake slicer run should persist its g-code");
+        let models =
+            model_db::get_models_via_ids(&app_state.db, &user, vec![result.output_model_id])
+                .await
+                .unwrap();
+        assert_eq!(models[0].name, "MockPart (slice)");
+        assert!(models[0].blob.to_file_type().is_gcode());
+    }
 
     match prior {
         // SAFETY: no other test in this binary touches this env var.

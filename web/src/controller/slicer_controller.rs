@@ -57,3 +57,28 @@ async fn post_slice(
     })
     .into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SliceRequestBody, SliceResponseJson};
+
+    // The mobile client posts `{ modelId }` and reads `outputModelId`.
+    #[test]
+    fn slice_body_accepts_both_spellings_and_response_is_camel_case() {
+        for body in [r#"{"modelId":7}"#, r#"{"model_id":7}"#] {
+            let parsed: SliceRequestBody = serde_json::from_str(body).unwrap();
+            assert_eq!(parsed.model_id, 7);
+        }
+
+        let json = serde_json::to_value(SliceResponseJson {
+            success: true,
+            output_model_id: 9,
+            message: None,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"success": true, "outputModelId": 9})
+        );
+    }
+}

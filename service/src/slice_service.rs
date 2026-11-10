@@ -26,7 +26,7 @@ use std::{
 
 use db::{model::user::User, model_db};
 use serde::{Deserialize, Serialize};
-use tokio::process::Command;
+use tokio::{process::Command, sync::Semaphore};
 
 use crate::{
     export_service::get_path_from_model, import_service::import_single_model,
@@ -40,6 +40,13 @@ pub const ORCA_SLICER_EXECUTABLE_ENV: &str = "MESH_ORGANISER_ORCA_PATH";
 
 /// Subprocess wall-clock limit (large models can be slow).
 const SLICE_TIMEOUT: Duration = Duration::from_mins(10);
+
+/// One slicer process at a time: each is CPU- and disk-heavy, and the host is often a small NAS.
+static SLICE_GATE: Semaphore = Semaphore::const_new(1);
+
+/// Work dir prefix. Deliberately not under `export_service::TEMP_DIR_PREFIX`: the hourly reaper
+/// removes those after five minutes, and a slice may run for [`SLICE_TIMEOUT`].
+const SLICE_WORK_DIR_PREFIX: &str = "mesh_organiser_slice_";
 
 /// Result of a successful slice: new model row pointing at stored g-code blob.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,15 +68,11 @@ fn resolve_slicer_executable_path() -> Result<PathBuf, ServiceError> {
         )));
     }
 
+    // Canonical, so a relative value cannot resolve differently once spawned.
     let path = PathBuf::from(raw);
-    if !path.exists() {
-        return Err(ServiceError::InternalError(format!(
-            "Slicer executable not found: {}",
-            path.display()
-        )));
-    }
-
-    Ok(path)
+    std::fs::canonicalize(&path).map_err(|_| {
+        ServiceError::InternalError(format!("Slicer executable not found: {}", path.display()))
+    })
 }
 
 async fn find_gcode_in_output_dir(dir: &Path) -> Result<PathBuf, ServiceError> {
@@ -94,22 +97,21 @@ async fn find_gcode_in_output_dir(dir: &Path) -> Result<PathBuf, ServiceError> {
 }
 
 /// Stores slice output as a new **gcode** model via the regular import path (hash dedupe, zipped on disk).
-async fn persist_gcode_as_new_model(
-    file_contents: Vec<u8>,
+async fn persist_gcode_as_new_model<R>(
+    reader: &mut R,
+    file_size: usize,
     source_model_name: &str,
     app_state: &AppState,
     user: &User,
-) -> Result<SliceOrchestrationResult, ServiceError> {
+) -> Result<SliceOrchestrationResult, ServiceError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
     let name = format!("{} (slice)", cleanse_evil_from_name(source_model_name));
+    // import_single_model inserts the blob before the model row; the blob sweep holds this lock.
+    let _import_guard = app_state.import_mutex.lock().await;
     let output_model_id = import_single_model(
-        &mut file_contents.as_slice(),
-        "gcode",
-        file_contents.len(),
-        &name,
-        None,
-        app_state,
-        user,
-        None,
+        reader, "gcode", file_size, &name, None, app_state, user, None,
     )
     .await?;
 
@@ -119,7 +121,6 @@ async fn persist_gcode_as_new_model(
 /// Runs the external slicer; returns the path to the primary `.gcode` file.
 async fn run_slicer_subprocess(
     slicer: &Path,
-    work_dir: &Path,
     input_path: &Path,
     out_dir: &Path,
 ) -> Result<PathBuf, ServiceError> {
@@ -130,7 +131,6 @@ async fn run_slicer_subprocess(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .current_dir(work_dir)
         .arg("--slice")
         .arg("0")
         .arg("--outputdir")
@@ -186,21 +186,26 @@ pub async fn slice_model_for_user(
     }
 
     let slicer = resolve_slicer_executable_path()?;
+    let Ok(_slice_permit) = SLICE_GATE.try_acquire() else {
+        return Err(ServiceError::InternalError(
+            "Another slice is already running; try again when it finishes".to_string(),
+        ));
+    };
 
-    let work_dir = crate::export_service::get_temp_dir("slice");
-    let out_dir = work_dir.join("slice_out");
+    // Removed on drop, so every error path cleans up too.
+    let work_dir = tempfile::Builder::new()
+        .prefix(SLICE_WORK_DIR_PREFIX)
+        .tempdir()?;
+    let out_dir = work_dir.path().join("slice_out");
 
     // Lazy: zipped blobs are still extracted into `work_dir`; others are read in place from the
-    // model dir / disk path, which is safe because cleanup below only removes `work_dir`.
-    let input_path = get_path_from_model(&work_dir, &model, app_state, true).await?;
-    let gcode_path = run_slicer_subprocess(&slicer, &work_dir, &input_path, &out_dir).await?;
-    let file_contents = tokio::fs::read(&gcode_path).await?;
+    // model dir / disk path, which is safe because cleanup only removes `work_dir`.
+    let input_path = get_path_from_model(work_dir.path(), &model, app_state, true).await?;
+    let gcode_path = run_slicer_subprocess(&slicer, &input_path, &out_dir).await?;
+    let mut gcode = tokio::fs::File::open(&gcode_path).await?;
+    let gcode_size = usize::try_from(gcode.metadata().await?.len()).unwrap_or(usize::MAX);
 
-    let result = persist_gcode_as_new_model(file_contents, &model.name, app_state, user).await;
-
-    let _ = tokio::fs::remove_dir_all(&work_dir).await;
-
-    result
+    persist_gcode_as_new_model(&mut gcode, gcode_size, &model.name, app_state, user).await
 }
 
 #[cfg(test)]
@@ -247,11 +252,11 @@ mod tests {
             .await
             .expect_err("unknown model_id should error");
 
-        let msg = err.to_string();
+        let ServiceError::InternalError(msg) = err else {
+            panic!("expected InternalError, got {err:?}");
+        };
         assert!(
-            msg.contains("Model not found")
-                || msg.contains("not accessible")
-                || msg.contains("Internal error"),
+            msg.starts_with("Model not found"),
             "unexpected message: {msg}"
         );
     }
@@ -272,9 +277,15 @@ mod tests {
         let user = User::default();
         let gcode_bytes = b"G1 X0 Y0\nG1 X10 Y10\n".to_vec();
 
-        let first = persist_gcode_as_new_model(gcode_bytes.clone(), "Benchy", &app_state, &user)
-            .await
-            .unwrap();
+        let first = persist_gcode_as_new_model(
+            &mut gcode_bytes.as_slice(),
+            gcode_bytes.len(),
+            "Benchy",
+            &app_state,
+            &user,
+        )
+        .await
+        .unwrap();
         let models =
             model_db::get_models_via_ids(&app_state.db, &user, vec![first.output_model_id])
                 .await
@@ -290,9 +301,15 @@ mod tests {
             1
         );
 
-        let second = persist_gcode_as_new_model(gcode_bytes, "Other", &app_state, &user)
-            .await
-            .unwrap();
+        let second = persist_gcode_as_new_model(
+            &mut gcode_bytes.as_slice(),
+            gcode_bytes.len(),
+            "Other",
+            &app_state,
+            &user,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(second.output_model_id, first.output_model_id);
         assert_eq!(

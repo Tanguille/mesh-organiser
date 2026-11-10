@@ -52,6 +52,7 @@ const ENV_LOCAL_ACCOUNT_PASSWORD: &str = "LOCAL_ACCOUNT_PASSWORD";
 const ENV_REGENERATE_THUMBNAILS: &str = "REGENERATE_THUMBNAILS";
 const ENV_APP_CONFIG_PATH: &str = "APP_CONFIG_PATH";
 const ENV_ENABLE_MCP: &str = "ENABLE_MCP";
+const ENV_CORS_ORIGINS: &str = "MESH_ORGANISER_CORS_ORIGINS";
 
 pub struct App {
     state: AppState,
@@ -93,7 +94,7 @@ fn merge_cors_origins_from_env(
             continue;
         }
         saw_nonempty_token = true;
-        match t.parse::<HeaderValue>() {
+        match parse_origin(t) {
             Ok(h) => {
                 saw_valid_token = true;
                 if !origins.contains(&h) {
@@ -101,7 +102,7 @@ fn merge_cors_origins_from_env(
                 }
             }
             Err(e) => {
-                eprintln!("MESH_ORGANISER_CORS_ORIGINS: skipping invalid origin {t:?}: {e}");
+                eprintln!("{ENV_CORS_ORIGINS}: skipping invalid origin {t:?}: {e}");
             }
         }
     }
@@ -109,8 +110,10 @@ fn merge_cors_origins_from_env(
     if saw_nonempty_token && !saw_valid_token {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
-            "MESH_ORGANISER_CORS_ORIGINS: all entries were invalid after trimming; \
-             fix the value or unset the variable to use defaults only",
+            format!(
+                "{ENV_CORS_ORIGINS}: all entries were invalid after trimming; \
+                 fix the value or unset the variable to use defaults only"
+            ),
         )
         .into());
     }
@@ -118,8 +121,23 @@ fn merge_cors_origins_from_env(
     Ok(origins)
 }
 
+/// Accepts only a bare `scheme://host[:port]`, the exact shape a browser sends in `Origin`;
+/// anything else (no scheme, trailing slash, path) could never match and would fail silently.
+fn parse_origin(value: &str) -> Result<HeaderValue, String> {
+    let uri = value
+        .parse::<axum::http::Uri>()
+        .map_err(|e| e.to_string())?;
+    let is_http = matches!(uri.scheme_str(), Some("http" | "https"));
+    let has_path = uri.path() != "/" || uri.query().is_some() || value.ends_with('/');
+    if !is_http || uri.authority().is_none() || has_path {
+        return Err("expected scheme://host[:port] with no path or trailing slash".to_string());
+    }
+
+    value.parse::<HeaderValue>().map_err(|e| e.to_string())
+}
+
 fn cors_layer_from_env() -> Result<CorsLayer, Box<dyn Error>> {
-    let extra = env::var("MESH_ORGANISER_CORS_ORIGINS").ok();
+    let extra = env::var(ENV_CORS_ORIGINS).ok();
     let origins = merge_cors_origins_from_env(extra.as_deref())?;
     Ok(CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
@@ -503,6 +521,16 @@ mod tests {
     fn cors_merge_one_valid_among_invalid_succeeds() {
         let o = merge_cors_origins_from_env(Some("http://10.0.0.1:8080,\u{0}")).unwrap();
         assert_eq!(o.len(), 3);
+    }
+
+    #[test]
+    fn cors_merge_skips_values_that_cannot_match_an_origin() {
+        let o = merge_cors_origins_from_env(Some(
+            "https://mesh.example.com/,mesh.example.com,https://a.example.com/x,https://ok.example.com",
+        ))
+        .unwrap();
+        assert_eq!(o.len(), 3);
+        assert_eq!(o[2].as_bytes(), b"https://ok.example.com");
     }
 
     #[tokio::test]
