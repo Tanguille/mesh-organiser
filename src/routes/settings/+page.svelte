@@ -130,14 +130,27 @@
   const logoutApi = getContainer().optional<IUserLogoutApi>(IUserLogoutApi);
 
   async function logout() {
-    await logoutApi?.logoutCurrentUser();
-    location.reload();
+    try {
+      await logoutApi?.logoutCurrentUser();
+      location.reload();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Could not log out; you are still signed in.", {
+        description: msg,
+      });
+    }
   }
 
   async function loadServerUrl() {
     if (!isMobileRemote) return;
-    const url = await getServerUrl();
-    serverUrl = url ?? "";
+    try {
+      serverUrl = (await getServerUrl()) ?? "";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Could not read the stored server URL.", {
+        description: msg,
+      });
+    }
   }
 
   // The API container is built from the URL at startup, so reload to apply a change.
@@ -659,11 +672,13 @@
             <Input
               id="server-url"
               type="url"
+              autocomplete="url"
               placeholder="https://example.com:3000"
               bind:value={serverUrl}
             />
             <p class="text-muted-foreground">
-              Base URL of your Mesh Organiser server instance.
+              Base URL of your Mesh Organiser server instance. Saving reloads
+              the app; a different server asks you to sign in again.
             </p>
           </div>
           <div class="flex flex-wrap gap-2">

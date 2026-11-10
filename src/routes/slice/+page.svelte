@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   import { getContainer } from "#lib/api/dependency_injection";
   import { FileType } from "#lib/api/shared/blob_api";
   import {
@@ -69,7 +70,12 @@
       return;
     }
 
-    await slicerApi.openInSlicer([model]);
+    try {
+      await slicerApi.openInSlicer([model]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("Could not open in slicer.", { description: msg });
+    }
   }
 
   async function onSliceOnServer() {
@@ -145,7 +151,7 @@
       <p class="text-muted-foreground">
         No models found. Import some models to get started.
       </p>
-      <Button onclick={() => goto("/import")} class="mt-4">
+      <Button onclick={() => goto(resolve("/import"))} class="mt-4">
         Import Models
       </Button>
     </div>

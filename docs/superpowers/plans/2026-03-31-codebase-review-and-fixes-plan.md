@@ -95,7 +95,7 @@ Provide a summary of issues found, categorized by area and severity. Ask for app
 
 For each error handling issue:
 
-- Replace `.unwrap()` with `.context("message")?` where appropriate
+- Replace `.unwrap()` with `?` into the crate's error type (`ServiceError` / `ApplicationError`; see `docs/rust-style.md`) where appropriate
 - Add missing error propagation
 - Fix overly broad catch blocks
 
@@ -106,7 +106,7 @@ Example fix in Rust:
 let config = load_config().unwrap();
 
 // After
-let config = load_config().context("Failed to load config")?;
+let config = load_config()?; // ApplicationError implements From<...>
 ```
 
 - [ ] **Step 2: Apply duplication fixes**
@@ -156,7 +156,7 @@ git commit -m "fix(error-handling): replace unwrap with context in config loadin
 - [ ] **Step 1: Run frontend tests**
 
 ```bash
-npm run test
+pnpm run test
 ```
 
 Expected: All tests pass. If failures occur, investigate and fix.
@@ -179,12 +179,12 @@ If tests fail due to our changes, debug and fix.
 
 - [ ] **Step 4: Run linters**
 
-Frontend: `npm run check` (SvelteKit)
+Frontend: `pnpm run check` (SvelteKit)
 Backend: `cargo clippy --workspace --all-targets`
 
 - [ ] **Step 5: Format code**
 
-Frontend: `npm run format` (if available)
+Frontend: `pnpm run format`
 Backend: `cargo fmt --all`
 
 ---
