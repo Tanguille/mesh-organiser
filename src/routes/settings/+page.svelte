@@ -2,6 +2,7 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import { onMount, type Snippet } from "svelte";
   import { toast } from "svelte-sonner";
+  import { resolve } from "$app/paths";
 
   import { getContainer } from "#lib/api/dependency_injection";
   import { ILocalApi } from "#lib/api/shared/local_api";
@@ -11,8 +12,9 @@
     SettingSection,
   } from "#lib/api/shared/settings_api";
   import { IThumbnailApi } from "#lib/api/shared/thumbnail_api";
-  import { IAdminUserApi } from "#lib/api/shared/user_api";
+  import { IAdminUserApi, IUserLogoutApi } from "#lib/api/shared/user_api";
   import {
+    assertMobileReachable,
     isMobileApp,
     normalizeServerBaseUrl,
   } from "#lib/api/mobile/server_url";
@@ -124,6 +126,13 @@
 
   const isMobileRemote = isMobileApp();
   let serverUrl = $state("");
+  // The mobile app has no sidebar, so its logout lives on this card.
+  const logoutApi = getContainer().optional<IUserLogoutApi>(IUserLogoutApi);
+
+  async function logout() {
+    await logoutApi?.logoutCurrentUser();
+    location.reload();
+  }
 
   async function loadServerUrl() {
     if (!isMobileRemote) return;
@@ -131,12 +140,13 @@
     serverUrl = url ?? "";
   }
 
+  // The API container is built from the URL at startup, so reload to apply a change.
   async function saveServerUrl() {
     try {
       const normalized = normalizeServerBaseUrl(serverUrl);
+      assertMobileReachable(normalized);
       await setServerUrl(normalized);
-      serverUrl = normalized;
-      toast.success("Server URL saved.");
+      location.href = resolve("/");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Invalid URL.", { description: msg });
@@ -146,8 +156,7 @@
   async function handleClearServerUrl() {
     try {
       await clearServerUrl();
-      serverUrl = "";
-      toast.success("Server URL cleared.");
+      location.href = resolve("/");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Could not clear URL.", { description: msg });
@@ -664,6 +673,11 @@
               onclick={handleClearServerUrl}
               disabled={serverUrl.length === 0}>Clear</Button
             >
+            {#if logoutApi}
+              <Button variant="outline" class="ml-auto" onclick={logout}
+                >Log out</Button
+              >
+            {/if}
           </div>
         </CardContent>
       </Card>

@@ -7,11 +7,13 @@
   import { HttpMethod } from "#lib/api/shared/server_request_api";
   import { ServerRequestApi } from "#lib/api/web/request";
   import {
+    assertMobileReachable,
     isMobileApp,
     normalizeServerBaseUrl,
   } from "#lib/api/mobile/server_url";
-  import { setServerUrl } from "#lib/api/tauri/server_url";
+  import { getServerUrl, setServerUrl } from "#lib/api/tauri/server_url";
   import { resolve } from "$app/paths";
+  import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
 
   let serverUrl = $state("");
@@ -19,15 +21,28 @@
   let saving = $state(false);
   let testHint = $state<string | null>(null);
 
-  function stripBaseInput(raw: string): string {
-    return raw.trim().replace(/\/+$/, "");
+  // Test and Save accept exactly the same URLs.
+  function validatedUrl(): string {
+    const normalized = normalizeServerBaseUrl(serverUrl);
+    assertMobileReachable(normalized);
+
+    return normalized;
   }
+
+  onMount(async () => {
+    if (isMobileApp()) {
+      serverUrl = (await getServerUrl()) ?? "";
+    }
+  });
 
   async function testConnection() {
     testHint = null;
-    const base = stripBaseInput(serverUrl);
-    if (base.length === 0) {
-      toast.error("Enter a server URL first.");
+    let base: string;
+    try {
+      base = validatedUrl();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Invalid server URL.", { description: msg });
       return;
     }
 
@@ -56,8 +71,7 @@
     saving = true;
     testHint = null;
     try {
-      const normalized = normalizeServerBaseUrl(serverUrl);
-      await setServerUrl(normalized);
+      await setServerUrl(validatedUrl());
       // Full load at the root so the layout re-runs API init with the new URL.
       location.href = resolve("/");
     } catch (e) {
@@ -79,8 +93,8 @@
       <Card.Header>
         <Card.Title>Remote server</Card.Title>
         <Card.Description>
-          Enter the base URL of your Mesh Organiser server (same host you use in
-          the browser), e.g. https://nas.example.com:3000
+          Enter the HTTPS base URL of your Mesh Organiser server, e.g.
+          https://nas.example.com:3000
         </Card.Description>
       </Card.Header>
       <Card.Content class="flex flex-col gap-4">

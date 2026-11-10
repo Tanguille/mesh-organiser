@@ -8,13 +8,13 @@ Contract note for **Tauri mobile** talking to a remotely hosted **`web`** (Axum)
 
 **Prefer HTTPS** for the user-configured remote base URL in production: TLS protects credentials and payloads on the wire, and session cookies that must be cross-site often require **`Secure`** (and thus HTTPS). Plain HTTP to a host on the LAN is useful for local development only.
 
-**Release** mobile builds combine a stricter **Content-Security-Policy** (see [`src-tauri/tauri.release-csp.json`](../../src-tauri/tauri.release-csp.json) and [tauri-sveltekit.md](../tauri-sveltekit.md)): `connect-src` allows **`https:`** for remote API traffic and **loopback HTTP** (`http://127.0.0.1:*`, `http://localhost:*`) for dev; it does **not** allow arbitrary `http://*` origins. The **Tauri HTTP plugin** capability ([`src-tauri/capabilities/mobile.json`](../../src-tauri/capabilities/mobile.json)) is aligned: **`https://*:*`** plus loopback HTTP patterns only—**not** wide open HTTP to every host.
+The mobile app sends API traffic through the **Tauri HTTP plugin**, so the webview CSP does not apply to it. The plugin scope is the **mobile-only** capability ([`src-tauri/capabilities/mobile.json`](../../src-tauri/capabilities/mobile.json)): **`https://*:*`** plus loopback HTTP (`http://127.0.0.1:*`, `http://localhost:*`) for dev, **not** plain HTTP to LAN hosts. The desktop capability ([`default.json`](../../src-tauri/capabilities/default.json)) is limited to desktop platforms, so its HTTP entries do not widen this. The server setup screen rejects URLs outside this scope.
 
 ---
 
 ## Base URL and path construction
 
-- Store the server **base URL without a trailing slash** (scheme + host + optional port), e.g. `https://mesh.example.com` or `http://192.168.1.10:3000`.
+- Store the server **base URL without a trailing slash** (scheme + host + optional port), e.g. `https://mesh.example.com` or `https://192.168.1.10:3000`.
 - The client must build request URLs like the existing **`ServerRequestApi`** (`src/lib/api/shared/server_request_api.ts`, `src/lib/api/web/request.ts`):
 
   `baseUrl + "/api/v" + version + endpoint`
@@ -68,7 +68,6 @@ Sources: `web/src/controller/*_controller.rs`. Path parameters use Axum `{name}`
 
 | Method | Path                               |
 | ------ | ---------------------------------- |
-| `GET`  | `/api/v1/models/{model_id}/bytes`  |
 | `GET`  | `/api/v1/blobs/{sha256}/bytes`     |
 | `POST` | `/api/v1/blobs/download`           |
 | `GET`  | `/api/v1/blobs/{sha256}/thumb`     |
@@ -100,9 +99,7 @@ In the current Axum router, `route_layer(login_required!(Backend))` applies only
 | `DELETE` | `/api/v1/labels/{label_id}`          |
 | `POST`   | `/api/v1/labels/{label_id}/models`   |
 | `DELETE` | `/api/v1/labels/{label_id}/models`   |
-| `POST`   | `/api/v1/labels/{label_id}/childs`   |
 | `PUT`    | `/api/v1/labels/{label_id}/childs`   |
-| `DELETE` | `/api/v1/labels/{label_id}/childs`   |
 | `GET`    | `/api/v1/labels/{label_id}/keywords` |
 | `PUT`    | `/api/v1/labels/{label_id}/keywords` |
 | `PUT`    | `/api/v1/models/{model_id}/labels`   |
@@ -159,6 +156,8 @@ HTML share pages (`page_controller`, e.g. `/share/{share_id}`) are outside `/api
 - **Content-Type:** `application/json`
 - **Auth:** `login_required` (session); unauthenticated requests receive **401** / **403**.
 - **Request:** `{ "modelId": number }` (`model_id` is also accepted). Per-request slicer settings are not supported yet; the slicer's own defaults apply, and unknown fields such as `settings` are ignored.
+- **Capacity:** one slice runs at a time; a request while another is running fails with an `InternalError` rather than queueing.
+- **Timeouts:** the slice runs inside the request for up to 10 minutes. A reverse proxy in front of the server needs a read timeout at least that long, or large models answer 502/504 while the server still finishes and stores the output.
 - **Success (200):** JSON body is camelCase:
 
 | Field           | Type             | Meaning                                                                                                       |

@@ -44,4 +44,6 @@ export async function updateConfiguration(
 export const panicState = $state({
   inPanic: false,
   message: "",
+  /** The panic is a missing or invalid remote server URL, so offer server setup. */
+  serverSetup: false,
 });

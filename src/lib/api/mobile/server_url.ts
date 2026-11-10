@@ -66,3 +66,16 @@ export function normalizeServerBaseUrl(url: string): string {
 
   return withoutTrailing;
 }
+
+/**
+ * The mobile HTTP capability (`src-tauri/capabilities/mobile.json`) allows HTTPS to any host but
+ * plain HTTP only to loopback, so reject a URL the app could never reach.
+ */
+export function assertMobileReachable(baseUrl: string): void {
+  const { protocol, hostname } = new URL(baseUrl);
+  if (protocol !== "https:" && !["127.0.0.1", "localhost"].includes(hostname)) {
+    throw new Error(
+      "The app connects over HTTPS only; plain HTTP is limited to localhost",
+    );
+  }
+}

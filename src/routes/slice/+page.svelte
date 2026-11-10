@@ -6,6 +6,8 @@
   import {
     defaultModelFilter,
     IModelApi,
+    MAX_PAGE_SIZE,
+    modelStream,
     ModelOrderBy,
     type Model,
   } from "#lib/api/shared/model_api";
@@ -34,7 +36,9 @@
       loading = true;
       error = null;
       const modelApi = getContainer().require<IModelApi>(IModelApi);
-      models = await modelApi.getModels(
+      const all: Model[] = [];
+      for await (const page of modelStream(
+        modelApi,
         defaultModelFilter({
           orderBy: ModelOrderBy.AddedDesc,
           // G-code is already sliced output, so keep it out of the picker.
@@ -45,9 +49,11 @@
             FileType.STEP,
           ],
         }),
-        1,
-        100,
-      );
+        MAX_PAGE_SIZE,
+      )) {
+        all.push(...page);
+      }
+      models = all;
       loading = false;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -56,8 +62,14 @@
     }
   }
 
-  function viewModel(modelId: number) {
-    goto(`/model?selected=${modelId}`);
+  async function openInSlicer(model: Model) {
+    if (!slicerApi) {
+      toast.error("No slicer is available in this build.");
+
+      return;
+    }
+
+    await slicerApi.openInSlicer([model]);
   }
 
   async function onSliceOnServer() {
@@ -103,7 +115,7 @@
       {canSliceOnServer ? "Slice on server" : "Select a Model to Slice"}
     </h2>
     <p class="text-sm text-muted-foreground">
-      {models.length} models available
+      {models.length} sliceable models
     </p>
   </div>
 
@@ -114,8 +126,7 @@
     </p>
   {:else}
     <p class="text-sm text-muted-foreground">
-      Open a model to use <span class="font-medium">Open in slicer</span> with your
-      desktop app.
+      Tap a model to open it in your slicer.
     </p>
   {/if}
 
@@ -141,13 +152,16 @@
   {:else if canSliceOnServer}
     <div class="space-y-4">
       <div class="space-y-2">
-        <Label for="slice-model">Model</Label>
+        <Label id="slice-model-label">Model</Label>
         <div
+          role="group"
+          aria-labelledby="slice-model-label"
           class="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-2"
         >
           {#each models as model (model.id)}
             <button
               type="button"
+              aria-pressed={selectedModelId === model.id}
               class="flex w-full items-center space-x-3 rounded-md p-2 text-left transition-colors hover:bg-muted {selectedModelId ===
               model.id
                 ? 'bg-muted ring-2 ring-primary ring-offset-2 ring-offset-background'
@@ -191,8 +205,9 @@
     <div class="space-y-3">
       {#each models as model (model.id)}
         <button
+          type="button"
           class="flex w-full items-center space-x-4 rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:bg-muted"
-          onclick={() => viewModel(model.id)}
+          onclick={() => openInSlicer(model)}
         >
           <div
             class="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-muted"
@@ -210,11 +225,5 @@
         </button>
       {/each}
     </div>
-
-    <p class="text-sm text-muted-foreground">
-      Open a model, then use <span class="font-medium text-foreground"
-        >Open in slicer</span
-      > to send it to your desktop slicer.
-    </p>
   {/if}
 </div>

@@ -6,6 +6,7 @@ import { ISlicerApi } from "../shared/slicer_api";
 import { initWebApi } from "../web/init";
 import { MobileRemoteSlicerApi } from "../web/remote_slicer";
 import { panicState } from "#lib/configuration.svelte";
+import { normalizeServerBaseUrl } from "../mobile/server_url";
 import { getServerUrl } from "./server_url";
 
 export async function initTauriRemoteApis(): Promise<void> {
@@ -14,18 +15,22 @@ export async function initTauriRemoteApis(): Promise<void> {
   const persisted = await getServerUrl();
   const envUrl =
     (import.meta.env.VITE_MOBILE_SERVER_URL as string | undefined) ?? "";
-  const raw = (persisted?.trim() || envUrl.trim() || "").trim();
-  const baseUrl = raw.replace(/\/+$/, "");
+  const raw = persisted?.trim() || envUrl.trim();
 
-  if (baseUrl.length === 0) {
+  let baseUrl: string;
+  try {
+    baseUrl = normalizeServerBaseUrl(raw);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
     panicState.inPanic = true;
-    panicState.message =
-      "No remote server URL is configured.\nSet the server URL in the app settings (or VITE_MOBILE_SERVER_URL for development) and restart.";
+    panicState.serverSetup = true;
+    panicState.message = `No usable remote server URL is configured (${reason}).\nSet it below (or VITE_MOBILE_SERVER_URL for development).`;
 
     return;
   }
 
   panicState.inPanic = false;
+  panicState.serverSetup = false;
 
   // The webview origin is not the server, so requests go through plugin-http.
   await initWebApi(baseUrl, fetch);

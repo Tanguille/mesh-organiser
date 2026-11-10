@@ -26,7 +26,7 @@ Deliver a **coherent end-to-end** capability:
 
 ### 1.3 Success criteria (v1)
 
-- Mobile can **configure base URL** (with env defaults), **authenticate** consistently with web, **list and open models** (including thumbnails), and **request slicing** with **basic settings**, receiving artifacts/previews the server provides.
+- Mobile can **configure base URL** (with env defaults), **authenticate** consistently with web, **list and open models** (including thumbnails), and **request slicing** (slicer defaults; per-request settings deferred until a CLI mapping is verified), receiving artifacts/previews the server provides.
 - **`web`** exposes the **minimal HTTP surface** required for those flows under **`/api/v1/`**, reusing **`service`** / **`db`** patterns used elsewhere in `web` controllers.
 - **No full HTTP server** runs **inside** Android/iOS Tauri builds.
 - **Configuration** is discoverable via **documented environment variables** (§6).
@@ -66,7 +66,7 @@ flowchart LR
 - **Auth:** Same session/cookie (or token) behaviour as current **`web`** auth (`auth_controller`, `users/me`, etc.). Mobile client must send credentials the server expects; exact header/cookie strategy must match implementation (document in implementation plan).
 - **New endpoints (illustrative — names/payloads finalized in implementation plan):**
   - **Models / blobs / thumbnails:** largely **already present**; mobile client binds to existing shapes where possible.
-  - **Slicing:** e.g. `POST /api/v1/slicer/slice` (or nested under models) with **basic settings** (layer height, infill, supports, material) — **exact schema** defined when mapping to `service` capabilities.
+  - **Slicing:** e.g. `POST /api/v1/slicer/slice` (or nested under models) with `{ modelId }`. Per-request settings (layer height, infill, supports, material) are deferred until a slicer CLI mapping is verified; see [v1-mobile-remote.md](../../api/v1-mobile-remote.md).
 - **Deprecated relative to older mobile specs:** First-class **`/api/printers`**, **`POST .../print`**, **print job status** resources are **out of scope** unless a future spec reintroduces them for a concrete integration.
 
 ---
