@@ -52,7 +52,7 @@
     "clsx": "^2.1.1",
     "jsdom": "^31.0.0",
     "mode-watcher": "^1.1.0",
-    "oxfmt": "^0.77.0",
+    "oxfmt": "^0.78.0",
     "oxlint": "^1.89.0",
     "svelte": "^5.57.1",
     "svelte-check": "^4.7.6",
