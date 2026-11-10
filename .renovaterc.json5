@@ -71,5 +71,16 @@
       matchPackageNames: ["@sveltejs/kit", "@sveltejs/adapter-static"],
       groupName: "sveltekit",
     },
+    {
+      // The Rust plugins and their JS bindings share an IPC contract: tauri-plugin-http 2.9.0 reads a
+      // header the 2.8.x JS sends nothing for, so every webview fetch failed. One PR per family, and the
+      // 1-day hold matches npm so cargo cannot land ahead of its JS side.
+      description: "Group Tauri npm and cargo packages so each pair lands together",
+      matchPackageNames: ["@tauri-apps/**", "tauri", "tauri-*"],
+      groupName: "tauri",
+      semanticCommitType: "deps",
+      commitMessagePrefix: "deps(tauri):",
+      minimumReleaseAge: "1 day",
+    },
   ],
 }
