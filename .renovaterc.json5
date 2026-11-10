@@ -6,7 +6,7 @@
     // `pnpm install --frozen-lockfile`; this holds npm PRs 3 days (patches: 1, below).
     "security:minimumReleaseAgeNpm",
     // Pin every github> preset to the same tag; an unpinned one tracks main.
-    "github>home-operations/renovate-presets#10.0.1",
+    "github>home-operations/renovate-presets#11.0.0",
   ],
   // This repo is a fork; only a committed config makes Renovate process it.
   forkProcessing: "enabled",
@@ -53,6 +53,13 @@
       description: "Hold every npm update until it has aged 1 day, matching pnpm",
       matchManagers: ["npm"],
       minimumReleaseAge: "1 day",
+    },
+    {
+      // Renovate 44 defaults to timestamp-required: a release without a timestamp stays pending
+      // forever. rust:1.99.1-slim had none, so the 1-day patch rule above never released it.
+      description: "Do not hold Docker tags that come without a release timestamp",
+      matchDatasources: ["docker"],
+      minimumReleaseAgeBehaviour: "timestamp-optional",
     },
     {
       description: "Hold tower-sessions below 0.15 until axum-login publishes tower-sessions 0.15 support",
