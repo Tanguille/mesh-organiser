@@ -86,75 +86,53 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Builds an unsigned arm64 APK as a workflow artifact on every run. It is not attached to
+  # releases: that needs signing secrets first.
   build-android:
     permissions:
-      contents: write
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Same as build-tauri: the pnpm version comes from package.json `packageManager`.
       - name: Set up pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
           runtime: node@latest
           cache: true
           cache-dependency-path: pnpm-lock.yaml
           install: false
 
+      # Same toolchain source as build-tauri and rust-ci.yaml.
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          target: aarch64-linux-android
+          cache: false
+          rustflags: ""
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: release-android
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Compute release settings
-        id: release-settings
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "${{ github.event.inputs.releaseType }}" = "build-only" ]; then
-              echo "tag_name=" >> $GITHUB_OUTPUT
-              echo "upload_workflow_artifacts=true" >> $GITHUB_OUTPUT
-            else
-              echo "tag_name=v__VERSION__" >> $GITHUB_OUTPUT
-              echo "upload_workflow_artifacts=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "upload_workflow_artifacts=false" >> $GITHUB_OUTPUT
-          fi
-
+      # The runner image ships the Android SDK and NDK, so no setup action is needed.
       - name: Build Android APK (arm64)
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ steps.release-settings.outputs.tag_name }}
-          releaseName: "Mesh Organiser Android ${{ steps.release-settings.outputs.tag_name }}"
-          releaseBody: "Android APK build"
-          releaseDraft: false
-          prerelease: false
-          args: --config src-tauri/tauri.release-csp.json --target aarch64-linux-android --bundles apk
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          pnpm tauri android init --ci
+          pnpm tauri android build --ci --apk --target aarch64 --config src-tauri/tauri.release-csp.json
 
       - name: Upload APK as artifact
-        if: steps.release-settings.outputs.upload_workflow_artifacts == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mesh-organiser-android-arm64
-          path: src-tauri/target/aarch64-linux-android/release/bundle/apk/*.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
 
   build-tauri:
     permissions:

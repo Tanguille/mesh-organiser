@@ -507,15 +507,13 @@ pub fn run() {
         let _ = export_service::remove_stale_temp_dirs();
     });
 
-    let app = tauri::Builder::default()
-        // Managed on the builder rather than in setup: the single-instance callback can run
-        // before setup finishes and already needs it.
-        .manage(PendingLinks::default())
-        .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    // Managed on the builder rather than in setup: the single-instance callback can run
+    // before setup finishes and already needs it.
+    let builder = tauri::Builder::default().manage(PendingLinks::default());
+
+    // Desktop only: these crates are not dependencies on Android/iOS, which share this entry point.
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             println!("a new app instance was opened with {argv:?}");
 
@@ -532,6 +530,13 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    let app = builder
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
