@@ -6,6 +6,7 @@ use std::{
     thread,
 };
 
+#[cfg(desktop)]
 use arboard::Clipboard;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -295,6 +296,8 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
             "reload" => {
                 let _ = webview.eval("window.location.reload()");
             }
+            // Desktop only: arboard has no Android/iOS backend.
+            #[cfg(desktop)]
             "copy_url" => {
                 let url = webview.url().unwrap();
                 let mut clipboard = Clipboard::new().unwrap();
