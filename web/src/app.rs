@@ -128,9 +128,12 @@ fn parse_origin(value: &str) -> Result<HeaderValue, String> {
         .parse::<axum::http::Uri>()
         .map_err(|e| e.to_string())?;
     let is_http = matches!(uri.scheme_str(), Some("http" | "https"));
-    let has_path = uri.path() != "/" || uri.query().is_some() || value.ends_with('/');
+    let has_path =
+        uri.path() != "/" || uri.query().is_some() || value.ends_with('/') || value.contains('#');
     if !is_http || uri.authority().is_none() || has_path {
-        return Err("expected scheme://host[:port] with no path or trailing slash".to_string());
+        return Err(
+            "expected scheme://host[:port] with no path, fragment or trailing slash".to_string(),
+        );
     }
 
     value.parse::<HeaderValue>().map_err(|e| e.to_string())
@@ -342,6 +345,7 @@ impl App {
 
         apply_local_account(&app_state).await?;
         spawn_thumbnail_regeneration(&app_state);
+        service::slice_service::remove_leftover_work_dirs();
         spawn_hourly_cleanup(&app_state);
 
         Ok(Self {
@@ -526,7 +530,7 @@ mod tests {
     #[test]
     fn cors_merge_skips_values_that_cannot_match_an_origin() {
         let o = merge_cors_origins_from_env(Some(
-            "https://mesh.example.com/,mesh.example.com,https://a.example.com/x,https://ok.example.com",
+            "https://mesh.example.com/,mesh.example.com,https://a.example.com/x,https://b.example.com#x,https://ok.example.com",
         ))
         .unwrap();
         assert_eq!(o.len(), 3);

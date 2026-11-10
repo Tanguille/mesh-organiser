@@ -81,4 +81,50 @@ mod tests {
             serde_json::json!({"success": true, "outputModelId": 9})
         );
     }
+
+    fn slice_request(cookie: Option<&str>) -> axum::http::Request<axum::body::Body> {
+        let mut request = axum::http::Request::post("/api/v1/slicer/slice")
+            .header(axum::http::header::CONTENT_TYPE, "application/json");
+        if let Some(cookie) = cookie {
+            request = request.header(axum::http::header::COOKIE, cookie);
+        }
+
+        request
+            .body(axum::body::Body::from(r#"{"modelId":999999}"#))
+            .unwrap()
+    }
+
+    // Anonymous callers are refused; a signed-in caller reaches the handler, which answers 404
+    // for a model it does not have.
+    #[tokio::test]
+    async fn slice_route_requires_login_and_reaches_the_handler() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        let password = crate::test_support::add_login_user(&app_state).await;
+        let app = crate::test_support::with_session(
+            crate::controller::auth_controller::login_router().merge(super::router()),
+            app_state,
+        )
+        .await;
+
+        let anonymous = tower::ServiceExt::oneshot(app.clone(), slice_request(None))
+            .await
+            .unwrap();
+        assert_eq!(anonymous.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+        let login =
+            tower::ServiceExt::oneshot(app.clone(), crate::test_support::login_request(&password))
+                .await
+                .unwrap();
+        let cookie = login.headers()[axum::http::header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_string();
+        let signed_in = tower::ServiceExt::oneshot(app, slice_request(Some(&cookie)))
+            .await
+            .unwrap();
+        assert_eq!(signed_in.status(), axum::http::StatusCode::NOT_FOUND);
+    }
 }

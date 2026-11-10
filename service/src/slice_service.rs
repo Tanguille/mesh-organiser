@@ -1,4 +1,4 @@
-//! Server-side slice orchestration for the remote **`web`** API (Task 3 will call into this module).
+//! Server-side slice orchestration for the remote **`web`** API (`POST /api/v1/slicer/slice`).
 //!
 //! ## Slicer executable
 //!
@@ -30,7 +30,8 @@ use tokio::{process::Command, sync::Semaphore};
 
 use crate::{
     export_service::get_path_from_model, import_service::import_single_model,
-    service_error::ServiceError, util::cleanse_evil_from_name,
+    import_state::ImportState, service_error::ServiceError, thumbnail_service,
+    util::cleanse_evil_from_name,
 };
 
 use super::app_state::AppState;
@@ -47,6 +48,22 @@ static SLICE_GATE: Semaphore = Semaphore::const_new(1);
 /// Work dir prefix. Deliberately not under `export_service::TEMP_DIR_PREFIX`: the hourly reaper
 /// removes those after five minutes, and a slice may run for [`SLICE_TIMEOUT`].
 const SLICE_WORK_DIR_PREFIX: &str = "mesh_organiser_slice_";
+
+/// Removes slice work dirs a killed process left behind. Call once at startup, before any
+/// slice can run: an age-based sweep during a run could delete a live one.
+pub fn remove_leftover_work_dirs() {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        let ours = path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with(SLICE_WORK_DIR_PREFIX));
+        if ours && path.is_dir() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
 
 /// Result of a successful slice: new model row pointing at stored g-code blob.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -109,11 +126,26 @@ where
 {
     let name = format!("{} (slice)", cleanse_evil_from_name(source_model_name));
     // import_single_model inserts the blob before the model row; the blob sweep holds this lock.
-    let _import_guard = app_state.import_mutex.lock().await;
+    let import_guard = app_state.import_mutex.lock().await;
     let output_model_id = import_single_model(
         reader, "gcode", file_size, &name, None, app_state, user, None,
     )
     .await?;
+    drop(import_guard);
+
+    // Like every other import entry point, so the library shows the g-code preview.
+    let mut import_state = ImportState::new(None, false, false, false, user.clone());
+    // Not fatal: the g-code is stored, and a missing preview only shows the placeholder.
+    if let Err(e) = thumbnail_service::generate_thumbnails_for_model_ids(
+        app_state,
+        user,
+        vec![output_model_id],
+        &mut import_state,
+    )
+    .await
+    {
+        eprintln!("Thumbnail for sliced model {output_model_id} failed: {e}");
+    }
 
     Ok(SliceOrchestrationResult { output_model_id })
 }
@@ -148,11 +180,16 @@ async fn run_slicer_subprocess(
         .map_err(ServiceError::FileSystemFault)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Logged, not returned: the output names server paths the client should not see.
+        eprintln!(
+            "Slicer exited with status {}: stderr={} stdout={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
 
         return Err(ServiceError::InternalError(format!(
-            "Slicer exited with status {}: stderr={stderr} stdout={stdout}",
+            "Slicer exited with status {}; see the server log",
             output.status
         )));
     }
@@ -172,10 +209,9 @@ pub async fn slice_model_for_user(
     model_id: i64,
 ) -> Result<SliceOrchestrationResult, ServiceError> {
     let models = model_db::get_models_via_ids(&app_state.db, user, vec![model_id]).await?;
+    // RowNotFound, so the web API answers 404 like other handlers for an id the user lacks.
     let Some(model) = models.into_iter().next() else {
-        return Err(ServiceError::InternalError(format!(
-            "Model not found or not accessible: model_id={model_id}"
-        )));
+        return Err(db::DbError::RowNotFound.into());
     };
 
     let file_type = model.blob.to_file_type();
@@ -252,17 +288,14 @@ mod tests {
             .await
             .expect_err("unknown model_id should error");
 
-        let ServiceError::InternalError(msg) = err else {
-            panic!("expected InternalError, got {err:?}");
-        };
         assert!(
-            msg.starts_with("Model not found"),
-            "unexpected message: {msg}"
+            matches!(err, ServiceError::DatabaseError(db::DbError::RowNotFound)),
+            "expected RowNotFound, got {err:?}"
         );
     }
 
     #[tokio::test]
-    async fn find_gcode_in_output_dir_prefers_single_file() {
+    async fn find_gcode_in_output_dir_picks_lowest_path() {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("a.gcode"), b";a").unwrap();
         std::fs::write(dir.path().join("b.gcode"), b";b").unwrap();
