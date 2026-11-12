@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Explicit Debian release: the binary links against the build image's glibc, so the
 # runtime image must never silently move to a newer or older release than the build.
-FROM --platform=$BUILDPLATFORM rust:1.99.1-slim-trixie AS build
+FROM --platform=$BUILDPLATFORM rust:1.100.0-slim-trixie AS build
 ARG TARGETARCH
 WORKDIR /source
 
