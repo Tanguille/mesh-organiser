@@ -665,8 +665,7 @@ impl MeshServer {
                     "color": color_hex(label.meta.color),
                     "keywords": keywords
                         .get(&label.meta.id)
-                        .map(|keywords| keywords.iter().map(|keyword| keyword.name.as_str()).collect::<Vec<_>>())
-                        .unwrap_or_default(),
+                        .map_or_default(|keywords| keywords.iter().map(|keyword| keyword.name.as_str()).collect::<Vec<_>>()),
                     "parent_id": parent_ids.get(&label.meta.id),
                     "child_ids": label.children.iter().map(|child| child.id).collect::<Vec<_>>(),
                     "mesh_count": label.self_model_count,
