@@ -57,6 +57,13 @@ export function createUserInstance(
   };
 }
 
+// Users the "Local Sync" dialog may link to an online account. Online-only users already live
+// on the server. A leftover sync token must not hide a user: linking overwrites it, and hiding
+// it would leave the local library with no way to be synced.
+export function linkableUsers(users: User[]): User[] {
+  return users.filter((u) => !u.permissions.onlineAccount);
+}
+
 export function newlyCreatedUser(
   id: number,
   username: string,

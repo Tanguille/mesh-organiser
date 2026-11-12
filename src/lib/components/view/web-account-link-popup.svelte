@@ -17,6 +17,7 @@
     IAdminUserApi,
     ISwitchUserApi,
     IUserApi,
+    linkableUsers,
     type User,
   } from "#lib/api/shared/user_api";
   import { onMount } from "svelte";
@@ -102,9 +103,7 @@
 
   onMount(async () => {
     if (userAdminApi) {
-      users = (await userAdminApi.getAllUsers()).filter(
-        (u) => !(u.permissions.onlineAccount || !!u.syncToken),
-      );
+      users = linkableUsers(await userAdminApi.getAllUsers());
     }
 
     if (userApi) {
