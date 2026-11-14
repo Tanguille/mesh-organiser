@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.4](https://github.com/Tanguille/mesh-organiser/compare/v5.0.3...v5.0.4) (2026-11-14)
+
+
+### Dependencies
+
+* **npm:** Update dependency jsdom (31.0.0 ➔ 31.0.1) ([#609](https://github.com/Tanguille/mesh-organiser/issues/609)) ([3b89123](https://github.com/Tanguille/mesh-organiser/commit/3b89123d1b5597767a4afc77d22ff5ce753f1838))
+
 ## [5.0.3](https://github.com/Tanguille/mesh-organiser/compare/v5.0.2...v5.0.3) (2026-11-12)
 
 
