@@ -39,6 +39,9 @@
     ],
     "macOS": {
       "signingIdentity": "-"
+    },
+    "android": {
+      "minSdkVersion": 24
     }
   },
   "plugins": {

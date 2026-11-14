@@ -21,6 +21,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Builds an unsigned arm64 APK as a workflow artifact on every run. It is not attached to
+  # releases: that needs signing secrets first.
+  build-android:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same as build-tauri: the pnpm version comes from package.json `packageManager`.
+      - name: Set up pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@latest
+          cache: true
+          cache-dependency-path: pnpm-lock.yaml
+          install: false
+
+      # Same toolchain source as build-tauri and rust-ci.yaml.
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
+        with:
+          target: aarch64-linux-android
+          cache: false
+          rustflags: ""
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: release-android
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The runner image ships the Android SDK and NDK, so no setup action is needed.
+      - name: Build Android APK (arm64)
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          pnpm tauri android init --ci
+          pnpm tauri android build --ci --apk --target aarch64 --config src-tauri/tauri.release-csp.json
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mesh-organiser-android-arm64
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
   build-tauri:
     permissions:
       contents: write
