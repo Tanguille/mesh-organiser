@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.0.4](https://github.com/Tanguille/mesh-organiser/compare/v5.0.3...v5.0.4) (2026-11-15)
+
+
+### Dependencies
+
+* **cargo:** Update Rust crate rmcp (3.9.0 ➔ 3.10.0) ([#606](https://github.com/Tanguille/mesh-organiser/issues/606)) ([694d41f](https://github.com/Tanguille/mesh-organiser/commit/694d41f057737d992e9f3b5a01576db51c2e6170))
+* **cargo:** Update Rust crate zip (9.5.1 ➔ 9.6.0) ([#613](https://github.com/Tanguille/mesh-organiser/issues/613)) ([32e26e7](https://github.com/Tanguille/mesh-organiser/commit/32e26e769a01f09ba5ec1a99d52553ab419f6649))
+* **npm:** Update dependency @lucide/svelte (1.72.0 ➔ 1.73.0) ([#612](https://github.com/Tanguille/mesh-organiser/issues/612)) ([51f468e](https://github.com/Tanguille/mesh-organiser/commit/51f468e50309d521a2398ffe2420605adab5cac7))
+* **npm:** Update dependency jsdom (31.0.0 ➔ 31.0.1) ([#609](https://github.com/Tanguille/mesh-organiser/issues/609)) ([3b89123](https://github.com/Tanguille/mesh-organiser/commit/3b89123d1b5597767a4afc77d22ff5ce753f1838))
+* **npm:** Update pnpm ([#611](https://github.com/Tanguille/mesh-organiser/issues/611)) ([746775a](https://github.com/Tanguille/mesh-organiser/commit/746775a74e2dc75c1ed7508317c727c589d9daea))
+
 ## [5.0.3](https://github.com/Tanguille/mesh-organiser/compare/v5.0.2...v5.0.3) (2026-11-12)
 
 
