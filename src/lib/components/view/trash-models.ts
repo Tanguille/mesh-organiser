@@ -10,14 +10,10 @@ export async function trashModels(
   models: Model[],
   onDelete: (models: Model[]) => void,
 ) {
-  const affected = models;
   try {
-    const request = getContainer()
-      .require<IModelApi>(IModelApi)
-      .deleteModels(affected);
-    await request;
-    onDelete(affected);
-    toast.success(`Moved ${countWriter("model", affected)} to trash`, {
+    await getContainer().require<IModelApi>(IModelApi).deleteModels(models);
+    onDelete(models);
+    toast.success(`Moved ${countWriter("model", models)} to trash`, {
       action: { label: "View trash", onClick: () => goto(resolve("/trash")) },
     });
     await updateSidebarState().catch((error) =>
