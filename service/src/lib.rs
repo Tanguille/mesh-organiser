@@ -7,6 +7,8 @@ pub mod import_state;
 pub mod resource_service;
 pub mod service_error;
 pub mod slicer_service;
+pub mod sync_observation_service;
+pub mod sync_pull_service;
 pub mod threemf_service;
 pub mod thumbnail_service;
 pub mod user_service;

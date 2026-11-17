@@ -44,7 +44,7 @@ The app knows 4 layers of organisation:
 
 - Model: A singular 3d model of any kind
 - Group: A collection of 3d models with a strong relationship (like multiple parts of a bigger model)
-  - Groups their contents are not intended to be edited after creation. Use Labels for this goal.
+  - Models can be moved between groups. A model belongs to at most one group.
 - Label: A collection of 3d models with a weak relationship (like multiple models/groups of the same type; like 'wall art' or 'puzzle')
   - Labels thier contents can be edited at any time using the label dropdown menu on groups, models or a collection of models.
 - Project: A collection of groups needed to complete a project. Also offers a folder to store instructions (.pdf), or other misc files.
@@ -60,6 +60,15 @@ The app knows 4 layers of organisation:
   - Request more via the [Issues tab](https://github.com/tanguille/mesh-organiser/issues)
 - Deduplicates imported models using a hash
   - Importing the same model twice will not duplicate it; it'll be registered as the same model
+
+## Organising models
+
+- Select models with a click, Control/Command-click, or Shift-click. In the grid, Control/Command-A selects loaded results, arrow keys move focus, and Escape clears the selection.
+- Press Delete or choose **Move to trash** to trash selected models. Restore them from **Trash** if needed.
+- Use **Move to group** in the model details or context menu, or drag selected models onto a group. Drag them onto a label to add that label; labels do not change group membership.
+- Press F2 to rename a selected model or group. Open a group with Enter or a double-click.
+- Empty groups are kept as destinations. Deleted groups can be restored from Trash; their models are kept and ungrouped.
+- Sync is temporarily unavailable while safe group deletion and conflict handling are being implemented.
 
 ## Credits
 

@@ -3,7 +3,10 @@ import { resetSyncState } from "#lib/sync.svelte";
 import { dateToString } from "#lib/utils";
 import { invoke } from "@tauri-apps/api/core";
 import { getAllModels, IModelApi } from "../shared/model_api";
-import type { IServerRequestApi } from "../shared/server_request_api";
+import {
+  HttpMethod,
+  type IServerRequestApi,
+} from "../shared/server_request_api";
 import type { ISyncApi } from "../shared/sync_api";
 import { ISwitchUserApi, type User } from "../shared/user_api";
 import { WebBlobApi } from "../web/blob";
@@ -18,6 +21,13 @@ import { syncLabels } from "./sync-labels";
 import { WebLabelApi } from "../web/label";
 import { resetImportState } from "#lib/import.svelte";
 import { getContainer } from "../dependency_injection";
+
+function requireImplementedGroupSync(): void {
+  // shortcut: sync is paused until causal group conflict handling is implemented.
+  throw new Error(
+    "Sync is unavailable until safe group conflict handling is implemented.",
+  );
+}
 
 export class SyncApi implements ISyncApi {
   private requestApi: IServerRequestApi;
@@ -48,6 +58,26 @@ export class SyncApi implements ISyncApi {
       getContainer().optional<ISwitchUserApi>(ISwitchUserApi);
 
     try {
+      let capabilities: { group_deletion_protocol?: number };
+      try {
+        capabilities = await this.requestApi.request(
+          "/sync/capabilities",
+          HttpMethod.GET,
+          undefined,
+          "2",
+        );
+      } catch (cause) {
+        throw new Error(
+          "Cannot verify sync compatibility. Upgrade the server or retry.",
+          { cause },
+        );
+      }
+      if (capabilities?.group_deletion_protocol !== 1) {
+        throw new Error(
+          "This server needs an upgrade before syncing groups safely.",
+        );
+      }
+      requireImplementedGroupSync();
       await syncModels(serverModelApi, serverGroupApi, serverBlobApi);
 
       // Model identities are stable once syncModels completes, so drain and

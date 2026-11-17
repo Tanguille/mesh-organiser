@@ -403,13 +403,13 @@ pub async fn purge_expired_trash(app_state: &AppState) -> Result<(), ServiceErro
     let retention_days = app_state.get_configuration().trash_retention_days;
     // Even a zero-row purge must retry blobs left by a deferred or failed sweep.
     model_db::purge_trashed_models(&app_state.db, retention_days).await?;
+    group_db::purge_trashed_groups(&app_state.db, retention_days).await?;
 
-    // The blob sweep takes the import lock. Empty groups are swept only at startup:
-    // REST create-then-add, sync and MCP can leave one empty without holding the import lock.
+    // The blob sweep takes the import lock; empty groups remain valid destinations.
     delete_dead_blobs(app_state).await
 }
 
-/// Expires model rows before sweeping orphaned groups and files at startup.
+/// Expires model rows before sweeping orphaned files at startup.
 /// Expiry errors are logged so startup and the remaining cleanup can still proceed.
 pub async fn cleanup_library_on_startup(app_state: &AppState) -> Result<(), ServiceError> {
     let retention_days = app_state.get_configuration().trash_retention_days;
@@ -417,13 +417,12 @@ pub async fn cleanup_library_on_startup(app_state: &AppState) -> Result<(), Serv
         eprintln!("Purging expired trash failed: {e}");
     }
 
-    // Sweep groups before waiting for a long-running import or thumbnail regeneration;
-    // otherwise groups created during that wait could be deleted later in the session.
-    let group_cleanup = group_db::delete_dead_groups(&app_state.db).await;
-    let blob_cleanup = delete_dead_blobs(app_state).await;
-    group_cleanup?;
+    if let Err(e) = group_db::purge_trashed_groups(&app_state.db, retention_days).await {
+        eprintln!("Purging expired group trash failed: {e}");
+    }
 
-    blob_cleanup
+    // Empty groups are valid destinations and must survive startup.
+    delete_dead_blobs(app_state).await
 }
 
 /// Removes on-disk files for blobs that are no longer referenced.
@@ -458,6 +457,7 @@ pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(),
             eprintln!("Failed to remove dead blob image file: {e}");
         }
     }
+    crate::sync_observation_service::remove_owned_orphans(app_state).await?;
     Ok(())
 }
 

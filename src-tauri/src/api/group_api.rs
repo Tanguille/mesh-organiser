@@ -64,6 +64,36 @@ pub async fn ungroup(
 }
 
 #[tauri::command]
+pub async fn get_trashed_groups(
+    state: State<'_, TauriAppState>,
+) -> Result<Vec<group_db::DeletedGroup>, ApplicationError> {
+    let retention_days = state.app_state.get_configuration().trash_retention_days;
+    Ok(group_db::get_trashed_groups(
+        &state.app_state.db,
+        &state.get_current_user(),
+        retention_days,
+    )
+    .await?)
+}
+
+#[tauri::command]
+pub async fn restore_groups(
+    groups: Vec<group_db::GroupRestoreRequest>,
+    state: State<'_, TauriAppState>,
+) -> Result<(), ApplicationError> {
+    let retention_days = state.app_state.get_configuration().trash_retention_days;
+    group_db::restore_groups(
+        &state.app_state.db,
+        &state.get_current_user(),
+        &groups,
+        retention_days,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn add_group(
     group_name: &str,
     state: State<'_, TauriAppState>,

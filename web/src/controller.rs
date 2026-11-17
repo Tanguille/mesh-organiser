@@ -6,6 +6,10 @@ pub mod model_controller;
 pub mod page_controller;
 pub mod resource_controller;
 pub mod share_controller;
+#[cfg(test)]
+pub mod sync_controller;
+#[cfg(test)]
+pub mod sync_v2_transport_controller;
 pub mod threemf_controller;
 pub mod user_controller;
 

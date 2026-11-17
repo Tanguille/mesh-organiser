@@ -7,4 +7,8 @@
   let group = $derived({ id: parseInt(page.params.slug!) });
 </script>
 
-<GroupPage {group} onAllModelsDelete={() => goto(resolve("/group"))} />
+<GroupPage
+  {group}
+  onAllModelsDelete={() => goto(resolve("/group"))}
+  onGroupDelete={() => goto(resolve("/group"))}
+/>

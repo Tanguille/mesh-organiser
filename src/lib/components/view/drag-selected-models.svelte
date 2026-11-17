@@ -13,10 +13,18 @@
   let clicked = $state.raw(false);
   let originX = $state.raw(0);
   let originY = $state.raw(0);
+  let suppressClick = false;
   const DISTANCE_UNTIL_DRAGGING = 5;
 
   function onmousedown(event: MouseEvent) {
-    clicked = event.button === 0;
+    suppressClick = false;
+    clicked =
+      event.button === 0 &&
+      event.target instanceof Element &&
+      !!event.target.closest('[role="option"]') &&
+      !event.target.closest(
+        "button, input, textarea, select, a, [contenteditable=true]",
+      );
     stopDragging();
 
     if (clicked) {
@@ -36,12 +44,12 @@
 
       if (Math.hypot(deltaX, deltaY) >= DISTANCE_UNTIL_DRAGGING) {
         startDragging($state.snapshot(props.models));
+        suppressClick = true;
       }
     }
   }
 
   function onmouseup(_event: MouseEvent) {
-    stopDragging();
     clicked = false;
   }
 
@@ -52,7 +60,18 @@
   });
 </script>
 
+<svelte:window {onmousemove} {onmouseup} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class={props.class} {onmousedown} {onmousemove} {onmouseup}>
+<div
+  class={props.class}
+  {onmousedown}
+  onclickcapture={(event) => {
+    if (suppressClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+    }
+  }}
+>
   {@render props.children?.()}
 </div>

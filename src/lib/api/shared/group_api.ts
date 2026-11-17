@@ -22,6 +22,18 @@ export interface GroupMeta {
   uniqueGlobalId: string;
 }
 
+export interface DeletedGroup {
+  id: number;
+  name: string;
+  deleted: Date;
+  groupGlobalId: string;
+  deletionOperationId: string | null;
+}
+
+export type GroupRestoreRequest = Pick<DeletedGroup, "id" | "groupGlobalId"> & {
+  deletionOperationId: string;
+};
+
 export function createGroupMetaInstance(
   id: number,
   name: string,
@@ -151,6 +163,8 @@ export function defaultGroupFilter(
 export const IGroupApi = Symbol("IGroupApi");
 
 export interface IGroupApi {
+  getTrashedGroups?(): Promise<DeletedGroup[]>;
+  restoreGroups?(groups: GroupRestoreRequest[]): Promise<void>;
   /** Returns one page of groups selected by all active filter fields. */
   getGroups(
     filter: GroupFilter,

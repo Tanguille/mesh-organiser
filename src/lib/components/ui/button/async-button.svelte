@@ -11,8 +11,11 @@
 
   async function onClick() {
     active = false;
-    await props.onclick();
-    active = true;
+    try {
+      await props.onclick();
+    } finally {
+      active = true;
+    }
   }
 </script>
 

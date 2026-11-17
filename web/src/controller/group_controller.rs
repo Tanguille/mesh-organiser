@@ -26,6 +26,8 @@ pub fn router() -> Router<AppState> {
             .route("/groups", get(get_groups))
             .route("/groups/count", get(get_group_count))
             .route("/groups", post(add_group))
+            .route("/groups/trash", get(get_trashed_groups))
+            .route("/groups/restore", post(restore_groups))
             .route("/groups/detach_models", delete(remove_models_from_group))
             .route("/groups/{group_id}", put(edit_group))
             .route("/groups/{group_id}", delete(delete_group))
@@ -33,6 +35,32 @@ pub fn router() -> Router<AppState> {
             .route_layer(login_required!(Backend))
             .route("/shares/{share_id}/groups", get(get_share_groups)),
     )
+}
+
+pub async fn get_trashed_groups(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+) -> Result<Json<Vec<group_db::DeletedGroup>>, ApplicationError> {
+    let retention_days = app_state.get_configuration().trash_retention_days;
+    Ok(Json(
+        group_db::get_trashed_groups(&app_state.db, &user, retention_days).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct RestoreGroupsParams {
+    pub groups: Vec<group_db::GroupRestoreRequest>,
+}
+
+pub async fn restore_groups(
+    CurrentUser(user): CurrentUser,
+    State(app_state): State<AppState>,
+    Json(params): Json<RestoreGroupsParams>,
+) -> Result<StatusCode, ApplicationError> {
+    let retention_days = app_state.get_configuration().trash_retention_days;
+    group_db::restore_groups(&app_state.db, &user, &params.groups, retention_days).await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -247,3 +275,7 @@ pub async fn add_models_to_group(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+#[path = "group_recovery_tests.rs"]
+mod group_recovery_tests;

@@ -14,6 +14,10 @@ use crate::{
     user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
 };
 
+#[cfg(test)]
+#[path = "auth_protocol_tests.rs"]
+mod auth_protocol_tests;
+
 /// The credential checks, which the caller rate-limits against guessing.
 pub fn login_router() -> Router<AppState> {
     Router::new().nest(
@@ -50,6 +54,13 @@ pub async fn password(
     auth_session: AuthSession,
     Json(credentials): Json<PasswordCredentials>,
 ) -> Response {
+    if credentials.group_deletion_protocol != Some(1) {
+        return (
+            StatusCode::UPGRADE_REQUIRED,
+            "Upgrade the app to continue syncing",
+        )
+            .into_response();
+    }
     login_inner(
         auth_session,
         Credentials::Password(credentials),
@@ -62,6 +73,14 @@ pub async fn token(
     auth_session: AuthSession,
     Json(credentials): Json<TokenCredentials>,
 ) -> Response {
+    if credentials.group_deletion_protocol != Some(1) {
+        return (
+            StatusCode::UPGRADE_REQUIRED,
+            "Upgrade the app to continue syncing",
+        )
+            .into_response();
+    }
+
     login_inner(
         auth_session,
         Credentials::Token(credentials),
@@ -84,6 +103,15 @@ async fn login_inner(
     };
 
     if auth_session.login(&user).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+
+    if auth_session
+        .session
+        .insert("group_deletion_protocol", 1_u32)
+        .await
+        .is_err()
+    {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 

@@ -153,7 +153,7 @@ describe("DemoModelApi trash", () => {
     expect(mockLabels.has(label.id)).toBe(false);
   });
 
-  it("does not attach a restored model to replacement groups or labels reusing deleted ids", async () => {
+  it("does not attach a restored model to a replacement group or label reusing a deleted id", async () => {
     const api = new DemoModelApi();
     const groupApi = new DemoGroupApi();
     const labelApi = new DemoLabelApi();
@@ -170,7 +170,7 @@ describe("DemoModelApi trash", () => {
       "Replacement label",
       "#112233",
     );
-    expect(replacementGroup.id).toBe(group.id);
+    expect(mockGroups.get(replacementGroup.id)).toBe(replacementGroup);
     expect(replacementLabel.id).toBe(label.id);
 
     await api.restoreModels([model]);

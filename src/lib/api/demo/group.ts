@@ -1,10 +1,13 @@
+import { configuration } from "#lib/configuration.svelte";
 import {
   createGroupInstance,
   createGroupMetaInstance,
   groupOrderByComparator,
+  type DeletedGroup,
   type Group,
   type GroupFilter,
   type GroupMeta,
+  type GroupRestoreRequest,
   type IGroupApi,
 } from "../shared/group_api";
 import { modelMatchesSearch, type Model } from "../shared/model_api";
@@ -16,6 +19,23 @@ import {
   modelLabelsMap,
   resolveLabels,
 } from "./mock_data";
+import { groupHasTrashedModels, trashedModels } from "./model";
+
+const trashedGroups = new Map<
+  number,
+  {
+    group: GroupMeta;
+    deleted: Date;
+    members: Model[];
+    deletionOperationId: string;
+  }
+>();
+const lastDeletion = new Map<
+  number,
+  { groupGlobalId: string; deletionOperationId: string }
+>();
+let lastIssuedGroupId = 0;
+let lastDeletionId = 0;
 
 // The mock models that satisfy the membership predicate and pass the
 // model_ids / label_ids / text_search filters. Shared by the grouped and
@@ -62,15 +82,32 @@ export class DemoGroupApi implements IGroupApi {
     for (const groupId of new Set(group_ids ?? mockGroups.keys())) {
       const groupMeta = mockGroups.get(groupId);
       if (!groupMeta) continue;
+      const matchesGroupName =
+        text_search &&
+        groupMeta.name.toLowerCase().includes(text_search.toLowerCase());
 
       const modelsInGroup = collectGroupModels(
         model_ids,
         label_ids,
-        text_search,
+        matchesGroupName ? null : text_search,
         (modelId) => modelGroupMap.get(modelId) === groupId,
       );
 
-      if (modelsInGroup.length === 0 && !include_ungrouped_models) continue;
+      if (modelsInGroup.length === 0) {
+        const hasLiveModels = [...modelGroupMap.values()].includes(groupId);
+        const matchesName =
+          !text_search ||
+          groupMeta.name.toLowerCase().includes(text_search.toLowerCase());
+        if (
+          model_ids ||
+          label_ids ||
+          file_types ||
+          hasLiveModels ||
+          groupHasTrashedModels(groupMeta) ||
+          !matchesName
+        )
+          continue;
+      }
 
       // Union of the members' labels and Printed/Favorite flags, deduped.
       const memberLabelIds = modelsInGroup.flatMap(
@@ -124,9 +161,8 @@ export class DemoGroupApi implements IGroupApi {
     // Like the SQL backend: keep whole groups that contain any matching type.
     const filteredGroups = groups.filter(
       (g) =>
-        g.models.length > 0 &&
-        (!file_types ||
-          g.models.some((m) => file_types.includes(m.blob.filetype))),
+        !file_types ||
+        g.models.some((m) => file_types.includes(m.blob.filetype)),
     );
 
     filteredGroups.sort(groupOrderByComparator(order_by));
@@ -137,17 +173,18 @@ export class DemoGroupApi implements IGroupApi {
   }
 
   async addGroup(name: string): Promise<GroupMeta> {
-    let maxId = 0;
+    let maxId = lastIssuedGroupId;
     mockGroups.forEach((_group, id) => {
       if (id > maxId) maxId = id;
     });
 
+    lastIssuedGroupId = maxId + 1;
     const newGroup = createGroupMetaInstance(
-      maxId + 1,
+      lastIssuedGroupId,
       name,
       new Date().toISOString(),
       new Date().toISOString(),
-      "",
+      `demo-group-${lastIssuedGroupId}`,
     );
 
     mockGroups.set(newGroup.id, newGroup);
@@ -164,24 +201,113 @@ export class DemoGroupApi implements IGroupApi {
   }
 
   async deleteGroup(group: GroupMeta): Promise<void> {
+    const existingGroup = mockGroups.get(group.id);
+    if (!existingGroup) return;
+
+    if (!existingGroup.uniqueGlobalId)
+      existingGroup.uniqueGlobalId = `demo-group-${existingGroup.id}`;
+    const deletionOperationId = `demo-deletion-${++lastDeletionId}`;
+    lastDeletion.set(group.id, {
+      groupGlobalId: existingGroup.uniqueGlobalId,
+      deletionOperationId,
+    });
+    lastIssuedGroupId = Math.max(lastIssuedGroupId, group.id);
+    const members: Model[] = [];
     mockGroups.delete(group.id);
 
     mockModels.forEach((model, modelId) => {
       if (modelGroupMap.get(modelId) === group.id) {
+        members.push(model);
         model.group = null;
         modelGroupMap.delete(modelId);
       }
     });
+    trashedModels.forEach((model) => {
+      if (model.group === existingGroup) {
+        members.push(model);
+        model.group = null;
+      }
+    });
+    trashedGroups.set(group.id, {
+      group: existingGroup,
+      deleted: new Date(),
+      members,
+      deletionOperationId,
+    });
+  }
+
+  async getTrashedGroups(): Promise<DeletedGroup[]> {
+    return [...trashedGroups.values()]
+      .filter(
+        ({ deleted }) =>
+          deleted.getTime() >=
+          Math.floor(Date.now() / 1000) * 1000 -
+            configuration.trash_retention_days * 86400000,
+      )
+      .sort(
+        (a, b) =>
+          b.deleted.getTime() - a.deleted.getTime() || b.group.id - a.group.id,
+      )
+      .map(({ group, deleted, deletionOperationId }) => ({
+        id: group.id,
+        name: group.name,
+        deleted: new Date(deleted),
+        groupGlobalId: group.uniqueGlobalId,
+        deletionOperationId,
+      }));
+  }
+
+  async restoreGroups(groups: GroupRestoreRequest[]): Promise<void> {
+    const cutoff =
+      Math.floor(Date.now() / 1000) * 1000 -
+      configuration.trash_retention_days * 86400000;
+    for (const group of groups) {
+      const entry = trashedGroups.get(group.id);
+      const latest = lastDeletion.get(group.id);
+      if (
+        !latest ||
+        latest.groupGlobalId !== group.groupGlobalId ||
+        latest.deletionOperationId !== group.deletionOperationId ||
+        (!entry &&
+          mockGroups.get(group.id)?.uniqueGlobalId !== group.groupGlobalId) ||
+        (entry && entry.deleted.getTime() < cutoff)
+      ) {
+        throw new Error(`Group with id ${group.id} not found`);
+      }
+    }
+
+    const ids = new Set(groups.map((group) => group.id));
+    for (const id of ids) {
+      const entry = trashedGroups.get(id);
+      if (!entry) continue;
+      mockGroups.set(id, entry.group);
+      for (const model of entry.members) {
+        if (
+          mockModels.get(model.id) === model &&
+          !modelGroupMap.has(model.id)
+        ) {
+          model.group = entry.group;
+          modelGroupMap.set(model.id, id);
+        } else if (trashedModels.get(model.id) === model && !model.group) {
+          model.group = entry.group;
+        }
+      }
+      trashedGroups.delete(id);
+    }
   }
 
   async addModelsToGroup(
     group: GroupMeta,
     models: Pick<Model, "id">[],
   ): Promise<void> {
+    const destination = mockGroups.get(group.id);
+    if (!destination) {
+      throw new Error(`Group with id ${group.id} not found`);
+    }
     models.forEach((model) => {
       const existingModel = mockModels.get(model.id);
       if (existingModel) {
-        existingModel.group = group;
+        existingModel.group = destination;
         modelGroupMap.set(model.id, group.id);
       }
     });
@@ -198,7 +324,10 @@ export class DemoGroupApi implements IGroupApi {
   }
 
   async getGroupCount(include_ungrouped_models: boolean): Promise<number> {
-    let count = mockGroups.size;
+    const liveGroupIds = new Set(modelGroupMap.values());
+    let count = [...mockGroups.values()].filter(
+      (group) => liveGroupIds.has(group.id) || !groupHasTrashedModels(group),
+    ).length;
 
     if (include_ungrouped_models) {
       let ungroupedCount = 0;

@@ -28,19 +28,32 @@
   import { updateSidebarState } from "#lib/sidebar_data.svelte";
   import { IModelApi } from "#lib/api/shared/model_api";
   import { IResourceFolderApi } from "#lib/api/shared/resource_folder_api";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { configurationMeta } from "#lib/configuration.svelte";
 
   const props: {
     group: Group;
     class?: ClassValue;
     settingsVertical?: boolean;
-    onDelete?: () => void;
+    onDelete?: (group: Group) => void;
+    renameRequested?: number;
   } = $props();
   const tracked_group = $derived(props.group);
   const initialEditMode = $derived(!(props.settingsVertical ?? false));
-  let deleted = $state(false);
+  let deletedId = $state<number | null>(null);
   let editMode = $derived(initialEditMode);
+  let nameInput = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    const request = props.renameRequested;
+    if (!request || configurationMeta.applicationReadOnly) return;
+    editMode = true;
+    tick().then(() => {
+      if (props.renameRequested !== request) return;
+      nameInput?.focus();
+      nameInput?.select();
+    });
+  });
 
   const links = $derived([
     ...new Set(tracked_group.models.map((x) => x.link).filter((x) => x)),
@@ -57,10 +70,11 @@
     getContainer().optional<IResourceFolderApi>(IResourceFolderApi);
 
   async function onUngroup() {
-    await groupApi.deleteGroup(tracked_group.meta);
+    const affected = $state.snapshot(tracked_group);
+    await groupApi.deleteGroup(affected.meta);
+    props.onDelete?.(affected);
+    deletedId = affected.meta.id;
     await updateSidebarState();
-    props.onDelete?.();
-    deleted = true;
   }
 
   const save_group_debounced = debounce(async (edited_group: Group) => {
@@ -113,7 +127,7 @@
   });
 </script>
 
-{#if !deleted}
+{#if deletedId !== tracked_group.meta.id}
   <Card class={props.class}>
     <CardHeader class="relative">
       <div
@@ -144,6 +158,7 @@
             size="sm"
             class="w-9"
             variant="ghost"
+            aria-label="Edit group"
             onclick={() => (editMode = true)}><Edit /></Button
           >
         {/if}
@@ -185,6 +200,7 @@
       <Label for="name">Name</Label>
       <Input
         id="name"
+        bind:ref={nameInput}
         placeholder="Name of the model"
         oninput={onUpdateGroup}
         bind:value={tracked_group.meta.name}
@@ -211,28 +227,31 @@
         {/if}
       </div>
     </div>
-    <div class="flex flex-col space-y-1.5">
-      <Label>Project</Label>
-      <div class="flex flex-row gap-2">
-        <ResourceSelect
-          clazz="truncate grow"
-          onchange={onUpdateResource}
-          {availableResources}
-          bind:value={
-            () => availableResources.find((r) => r.id === resource?.id) || null,
-            (val) => (tracked_group.resource = val)
-          }
-        />
-        {#if resource}
-          <Button class="h-full" onclick={openResourceInFolder}
-            ><NotebookText /> Open project</Button
-          >
-        {:else if resourceFolderApi}
-          <Button class="h-full" onclick={onNewResource}
-            ><NotebookPen /> Create project</Button
-          >
-        {/if}
+    {#if tracked_group.models.length > 0}
+      <div class="flex flex-col space-y-1.5">
+        <Label>Project</Label>
+        <div class="flex flex-row gap-2">
+          <ResourceSelect
+            clazz="truncate grow"
+            onchange={onUpdateResource}
+            {availableResources}
+            bind:value={
+              () =>
+                availableResources.find((r) => r.id === resource?.id) || null,
+              (val) => (tracked_group.resource = val)
+            }
+          />
+          {#if resource}
+            <Button class="h-full" onclick={openResourceInFolder}
+              ><NotebookText /> Open project</Button
+            >
+          {:else if resourceFolderApi}
+            <Button class="h-full" onclick={onNewResource}
+              ><NotebookPen /> Create project</Button
+            >
+          {/if}
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 {/snippet}

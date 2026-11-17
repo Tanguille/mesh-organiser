@@ -22,7 +22,12 @@ export function stopDragging() {
 
 export async function addModelsToLabel(label: LabelMeta) {
   const labelApi = getContainer().require<ILabelApi>(ILabelApi);
-  const models = $state.snapshot(state.dragging_models);
+  const models = $state
+    .snapshot(state.dragging_models)
+    .filter(
+      (model) => !model.labels.some((existing) => existing.id === label.id),
+    );
+  if (models.length === 0) return;
   const promise = labelApi.addLabelToModels(label, models);
 
   toast.promise(promise, {
@@ -33,7 +38,12 @@ export async function addModelsToLabel(label: LabelMeta) {
   });
 
   await promise;
-  await updateSidebarState();
+  window.dispatchEvent(
+    new CustomEvent("models-labelled", { detail: { models, label } }),
+  );
+  await updateSidebarState().catch((error) =>
+    console.error("Failed to refresh sidebar:", error),
+  );
 }
 
 export async function addModelsToLabelId(label_id: number) {

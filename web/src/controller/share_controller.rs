@@ -254,6 +254,60 @@ mod tests {
         }
     }
 
+    async fn group_body(app_state: &service::AppState, share_id: &str) -> Vec<serde_json::Value> {
+        let router = axum::Router::new()
+            .merge(crate::controller::group_controller::router())
+            .with_state(app_state.clone());
+        let uri = format!("/api/v1/shares/{share_id}/groups?page=1&page_size=10");
+        let request = axum::http::Request::get(uri)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = tower::ServiceExt::oneshot(router, request).await.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn share_group_results_exclude_unrelated_empty_groups() {
+        let (_dir, app_state) = crate::test_support::app_state().await;
+        let user = db::model::user::User::default();
+        let empty = db::group_db::add_empty_group(&app_state.db, &user, "unshared empty", None)
+            .await
+            .unwrap();
+        let shared_group = db::group_db::add_empty_group(&app_state.db, &user, "shared", None)
+            .await
+            .unwrap();
+        let model_id =
+            crate::test_support::add_model_with_file(&app_state, "model", "share-model").await;
+        db::group_db::set_group_id_on_models(
+            &app_state.db,
+            &user,
+            Some(shared_group.id),
+            vec![model_id],
+            None,
+        )
+        .await
+        .unwrap();
+        let share_id = db::share_db::create_share(&app_state.db, &user, "prints")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            group_body(&app_state, &share_id).await,
+            [] as [serde_json::Value; 0]
+        );
+        db::share_db::set_model_ids_on_share(&app_state.db, &user, &share_id, vec![model_id])
+            .await
+            .unwrap();
+        let groups = group_body(&app_state, &share_id).await;
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0]["meta"]["id"], shared_group.id);
+        assert_ne!(groups[0]["meta"]["id"], empty.id);
+    }
+
     async fn set_model_ids(
         app_state: &service::AppState,
         share_id: &str,

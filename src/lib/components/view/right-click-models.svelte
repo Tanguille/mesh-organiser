@@ -17,14 +17,24 @@
     extractThreemfModels,
     IThreemfApi,
   } from "#lib/api/shared/threemf_api";
-  import { IGroupApi } from "#lib/api/shared/group_api";
+  import { IGroupApi, type GroupMeta } from "#lib/api/shared/group_api";
+  import GroupSelect from "#lib/components/view/group-select.svelte";
   import type { Snippet } from "svelte";
   import PackageOpen from "@lucide/svelte/icons/package-open";
   import { countWriter } from "#lib/utils";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import { configurationMeta } from "#lib/configuration.svelte";
 
-  const props: { children: Snippet; models: Model[]; class?: ClassValue } =
-    $props();
+  const props: {
+    children: Snippet;
+    models: Model[];
+    class?: ClassValue;
+    onTrash?: (models: Model[]) => void;
+    onModelsMoved?: (models: Model[], group: GroupMeta) => void;
+  } = $props();
   const shareApi = getContainer().optional<IShareApi>(IShareApi);
+  const slicerApi = getContainer().optional<ISlicerApi>(ISlicerApi);
+  const localApi = getContainer().optional<ILocalApi>(ILocalApi);
   const threemfApi = getContainer().optional<IThreemfApi>(IThreemfApi);
   const groupApi = getContainer().optional<IGroupApi>(IGroupApi);
   const group = $derived.by(() => {
@@ -74,12 +84,28 @@
       >Selected {countWriter("model", props.models)}</ContextMenu.Item
     >
     {#if props.models.length > 0}
-      <ContextMenu.Item inset onclick={onOpenInSlicer}
-        ><Slice class="mr-2 size-5" /> Open in slicer</ContextMenu.Item
-      >
-      <ContextMenu.Item inset onclick={onOpenInFolder}
-        ><FolderOpen class="mr-2 size-5" /> Open in folder</ContextMenu.Item
-      >
+      {#if slicerApi}
+        <ContextMenu.Item inset onclick={onOpenInSlicer}
+          ><Slice class="mr-2 size-5" /> Open in slicer</ContextMenu.Item
+        >
+      {/if}
+      {#if localApi}
+        <ContextMenu.Item inset onclick={onOpenInFolder}
+          ><FolderOpen class="mr-2 size-5" /> Open in folder</ContextMenu.Item
+        >
+      {/if}
+      {#if props.onTrash && !configurationMeta.applicationReadOnly}
+        <ContextMenu.Item inset onclick={() => props.onTrash?.(props.models)}>
+          <Trash2 class="mr-2 size-5" /> Move to trash
+        </ContextMenu.Item>
+      {/if}
+      {#if groupApi && !configurationMeta.applicationReadOnly}
+        <GroupSelect
+          models={props.models}
+          onModelsMoved={props.onModelsMoved}
+          menuItem
+        />
+      {/if}
     {/if}
     {#if group}
       <ContextMenu.Item inset onclick={onOpenGroup}

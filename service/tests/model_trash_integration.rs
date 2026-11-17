@@ -575,7 +575,7 @@ async fn import_of_a_trashed_file_purged_before_the_restore_imports_it_afresh() 
 }
 
 #[tokio::test]
-async fn startup_cleanup_purges_rows_and_groups_before_waiting_for_the_import_lock() {
+async fn startup_cleanup_purges_rows_before_waiting_for_the_import_lock_and_preserves_groups() {
     let (_dir, app_state) = common::test_app_state().await;
     let app_state = Arc::new(app_state);
     let user = User::default();
@@ -610,20 +610,19 @@ async fn startup_cleanup_purges_rows_and_groups_before_waiting_for_the_import_lo
         );
 
     tokio::time::timeout(Duration::from_secs(5), async {
-        while model_row_exists(&app_state, expired.id).await
-            || group_exists(&app_state, group_ids[0]).await
-        {
+        while model_row_exists(&app_state, expired.id).await {
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("startup did not purge expired rows and their empty groups before waiting on the lock");
+    .expect("startup did not purge expired rows before waiting on the lock");
     assert!(
         tokio::time::timeout(Duration::from_millis(100), &mut cleanup)
             .await
             .is_err()
     );
     assert!(group_exists(&app_state, group_ids[1]).await);
+    assert!(group_exists(&app_state, group_ids[0]).await);
     assert!(expired.model_path.exists());
     assert!(expired.image_path.exists());
     let fresh_group_id = group_db::add_empty_group(&app_state.db, &user, "new import", None)
@@ -636,7 +635,7 @@ async fn startup_cleanup_purges_rows_and_groups_before_waiting_for_the_import_lo
 
     assert!(
         group_exists(&app_state, fresh_group_id).await,
-        "group cleanup ran again after the lock wait"
+        "startup cleanup removed a group created during the lock wait"
     );
     assert!(group_exists(&app_state, group_ids[1]).await);
     assert_eq!(trashed_model_ids(&app_state, &user).await, vec![recent.id]);
@@ -647,7 +646,7 @@ async fn startup_cleanup_purges_rows_and_groups_before_waiting_for_the_import_lo
 }
 
 #[tokio::test]
-async fn startup_cleanup_still_sweeps_groups_and_blobs_when_expiry_deletion_fails() {
+async fn startup_cleanup_preserves_groups_and_sweeps_blobs_when_expiry_deletion_fails() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
     let expired = add_model_with_files(&app_state, &user, "expired").await;
@@ -678,7 +677,7 @@ async fn startup_cleanup_still_sweeps_groups_and_blobs_when_expiry_deletion_fail
         .unwrap();
 
     assert!(model_row_exists(&app_state, expired.id).await);
-    assert!(!group_exists(&app_state, empty_group_id).await);
+    assert!(group_exists(&app_state, empty_group_id).await);
     assert!(expired.model_path.exists());
     assert!(expired.image_path.exists());
     assert!(!orphan.model_path.exists());

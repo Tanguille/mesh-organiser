@@ -66,6 +66,32 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
             .expect("Failed to vacuum database after migrations");
     }
 
+    // A reopened backup must not issue events under its former writer counter.
+    let mut tx = db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .expect("failed to start writer rotation");
+    sqlx::query("INSERT OR IGNORE INTO local_causal_writers (replica_id) SELECT replica_id FROM group_causal_replica WHERE singleton = 1")
+        .execute(&mut *tx)
+        .await
+        .expect("failed to preserve causal writer");
+    let result = sqlx::query(
+        "UPDATE group_causal_replica SET replica_id = ?, counter = 0 WHERE singleton = 1",
+    )
+    .bind(crate::random_hex_32())
+    .execute(&mut *tx)
+    .await
+    .expect("failed to rotate causal writer");
+    assert_eq!(result.rows_affected(), 1, "missing causal writer");
+    sqlx::query("INSERT INTO local_causal_writers (replica_id) SELECT replica_id FROM group_causal_replica WHERE singleton = 1")
+        .execute(&mut *tx)
+        .await
+        .expect("failed to register causal writer");
+    crate::sync_transport::rotate_all(&mut tx)
+        .await
+        .expect("failed to rotate account writers");
+    tx.commit().await.expect("failed to commit writer rotation");
+
     db
 }
 

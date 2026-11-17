@@ -11,7 +11,7 @@
   import { goto } from "$app/navigation";
   import { resolve } from "#lib/paths";
   import { getContainer } from "#lib/api/dependency_injection";
-  import { IGroupApi } from "#lib/api/shared/group_api";
+  import { IGroupApi, type GroupMeta } from "#lib/api/shared/group_api";
   import { ILabelApi } from "#lib/api/shared/label_api";
   import { ILocalApi } from "#lib/api/shared/local_api";
   import { IModelApi, type Model } from "#lib/api/shared/model_api";
@@ -21,6 +21,7 @@
   import { Toggle } from "#lib/components/ui/toggle/index.js";
   import LabelBadge from "#lib/components/view/label-badge.svelte";
   import LabelSelect from "#lib/components/view/label-select.svelte";
+  import GroupSelect from "#lib/components/view/group-select.svelte";
   import LinkButton from "#lib/components/view/link-button.svelte";
   import ModelImg from "#lib/components/view/model-img.svelte";
   import ThreeCanvas from "#lib/components/view/three-d-canvas.svelte";
@@ -45,7 +46,7 @@
   import { IDownloadApi } from "#lib/api/shared/download_api";
   import Download from "@lucide/svelte/icons/download";
   import { toast } from "svelte-sonner";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import {
     extractThreemfModels,
     IThreemfApi,
@@ -61,17 +62,33 @@
     model: Model;
     class?: ClassValue;
     initialEditMode?: boolean;
-    onDelete?: () => void;
+    onDelete?: (models: Model[]) => void;
+    onGroupDelete?: (models: Model[]) => void;
+    onModelsMoved?: (models: Model[], group: GroupMeta) => void;
+    renameRequested?: number;
   } = $props();
-  let deleted = $state(false);
+  let deletedId = $state<number | null>(null);
+  let deleting = $state(false);
 
   let model: Model = $derived(props.model);
   let load3dPreview = $derived(loadModelAutomatically(configuration, model));
   const initialEditMode = $derived(props.initialEditMode ?? false);
   let editMode = $derived(initialEditMode);
+  let nameInput = $state<HTMLInputElement | null>(null);
   let group = $derived(model.group);
   let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
   let doNotAutoRotateModel = $state(false);
+
+  $effect(() => {
+    const request = props.renameRequested;
+    if (!request || configurationMeta.applicationReadOnly) return;
+    editMode = true;
+    tick().then(() => {
+      if (props.renameRequested !== request) return;
+      nameInput?.focus();
+      nameInput?.select();
+    });
+  });
 
   const modelApi = getContainer().require<IModelApi>(IModelApi);
   const groupApi = getContainer().require<IGroupApi>(IGroupApi);
@@ -145,10 +162,25 @@
   }
 
   async function onDelete() {
-    await modelApi.deleteModels([model]);
-    await updateSidebarState();
-    deleted = true;
-    props.onDelete?.();
+    if (deleting) return;
+    const affected = $state.snapshot(model);
+    deleting = true;
+    try {
+      await modelApi.deleteModels([affected]);
+      deletedId = affected.id;
+      props.onDelete?.([affected]);
+      toast.success(`Moved '${affected.name}' to trash`, {
+        action: { label: "View trash", onClick: () => goto(resolve("/trash")) },
+      });
+      updateSidebarState().catch((error) =>
+        console.error("Failed to refresh sidebar:", error),
+      );
+    } catch (error) {
+      console.error("Failed to move model to trash:", error);
+      toast.error("Could not move model to trash. Try again.");
+    } finally {
+      deleting = false;
+    }
   }
 
   async function markPrintedIfConfigured() {
@@ -186,8 +218,11 @@
 
   async function onUngroup() {
     if (group) {
-      await groupApi.removeModelsFromGroup([model]);
-      model.group = null;
+      const affectedModel = model;
+      const snapshot = $state.snapshot(affectedModel);
+      await groupApi.removeModelsFromGroup([snapshot]);
+      affectedModel.group = null;
+      props.onGroupDelete?.([snapshot]);
       await updateSidebarState();
     }
   }
@@ -206,7 +241,7 @@
   }
 </script>
 
-{#if deleted}
+{#if deletedId === model.id}
   <div class="flex h-64 items-center justify-center">
     <span class="text-2xl">Model moved to trash</span>
   </div>
@@ -224,16 +259,27 @@
         <Toggle
           class={isModelPreviewable(model) && load3dPreview ? "" : "hidden"}
           bind:pressed={doNotAutoRotateModel}
+          aria-label="Pause model rotation"
         >
           <Pin />
         </Toggle>
 
         {#if !configurationMeta.applicationReadOnly}
+          <Button
+            variant="ghost"
+            class="h-full w-9"
+            aria-label="Move to trash"
+            disabled={deleting}
+            onclick={onDelete}
+          >
+            <Trash2 />
+          </Button>
           {#if shareApi}
             <Button
               class="h-full w-9"
               onclick={() => createShare([model], shareApi)}
               variant="ghost"
+              aria-label="Share model"
             >
               <Share2 />
             </Button>
@@ -242,7 +288,12 @@
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               {#snippet child({ props })}
-                <Button {...props} class="h-full w-9" variant="ghost">
+                <Button
+                  {...props}
+                  class="h-full w-9"
+                  variant="ghost"
+                  aria-label="Model properties"
+                >
                   <ListCheck />
                 </Button>
               {/snippet}
@@ -281,6 +332,7 @@
         <Toggle
           class={isModelPreviewable(model) ? "" : "hidden"}
           bind:pressed={load3dPreview}
+          aria-label="Toggle 3D preview"
         >
           <Box />
         </Toggle>
@@ -294,9 +346,9 @@
           withFallback={true}
         />
 
-        {#if editMode}
+        {#if editMode && !configurationMeta.applicationReadOnly}
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
+            <DropdownMenu.Trigger aria-label="Model actions">
               <div class="{buttonVariants({ variant: 'ghost' })} h-full w-9">
                 <Ellipsis />
               </div>
@@ -320,7 +372,7 @@
                 <Ungroup /> Remove from current group
               </DropdownMenu.Item>
               <DropdownMenu.Separator />
-              <DropdownMenu.Item onclick={onDelete}>
+              <DropdownMenu.Item onclick={onDelete} disabled={deleting}>
                 <Trash2 /> Move to trash
               </DropdownMenu.Item>
             </DropdownMenu.Content>
@@ -330,6 +382,7 @@
             size="sm"
             variant="ghost"
             class="aspect-square h-full w-9"
+            aria-label="Edit model"
             onclick={() => (editMode = true)}><Edit /></Button
           >
         {/if}
@@ -365,7 +418,11 @@
         />
       </div>
 
-      {#if editMode}
+      {#if !configurationMeta.applicationReadOnly}
+        <GroupSelect models={[model]} onModelsMoved={props.onModelsMoved} />
+      {/if}
+
+      {#if editMode && !configurationMeta.applicationReadOnly}
         {@render EditContent()}
       {:else}
         {@render ViewContent()}
@@ -445,6 +502,7 @@
       <Label for="name">Name</Label>
       <Input
         id="name"
+        bind:ref={nameInput}
         placeholder="Name of the model"
         bind:value={model.name}
         oninput={onUpdateModel}

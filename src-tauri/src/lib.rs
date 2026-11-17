@@ -664,6 +664,8 @@ pub fn run() {
             api::delete_models,
             api::get_trashed_models,
             api::restore_models,
+            api::get_trashed_groups,
+            api::restore_groups,
             api::edit_label,
             api::delete_label,
             api::set_sync_state,

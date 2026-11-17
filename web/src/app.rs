@@ -14,7 +14,7 @@ use axum::{
     extract::Request,
     http::StatusCode,
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::any,
 };
 use axum_login::AuthManagerLayerBuilder;
@@ -115,7 +115,7 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
 
 /// Resets the local (user 1) account to a fresh random password and scrambles its
 /// validity token so no credential from a previous run survives. Uses
-/// `ENV_LOCAL_ACCOUNT_PASSWORD` when set. Also drops dead groups and blobs left
+/// `ENV_LOCAL_ACCOUNT_PASSWORD` when set. Also drops expired Trash and unreferenced blobs left
 /// by skipped or interrupted cleanup.
 async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>> {
     let local_pass = env::var(ENV_LOCAL_ACCOUNT_PASSWORD).unwrap_or_else(|_| {
@@ -194,11 +194,36 @@ fn spawn_thumbnail_regeneration(app_state: &AppState) {
     });
 }
 
-async fn update_session_middleware(
+pub async fn update_session_middleware(
     auth_session: AuthSession,
     request: Request,
     next: Next,
 ) -> Response {
+    let path = request.uri().path();
+    if auth_session.user.is_some()
+        && !matches!(
+            *request.method(),
+            axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+        )
+        && !matches!(
+            path,
+            "/api/v1/login/password" | "/api/v1/login/token" | "/api/v1/logout"
+        )
+        && !matches!(
+            auth_session
+                .session
+                .get::<u32>("group_deletion_protocol")
+                .await,
+            Ok(Some(1))
+        )
+    {
+        return (
+            StatusCode::UPGRADE_REQUIRED,
+            "Sign in again with an upgraded app",
+        )
+            .into_response();
+    }
+
     if auth_session.user.is_some() {
         let expiry_date = auth_session.session.expiry_date();
         let now = OffsetDateTime::now_utc();

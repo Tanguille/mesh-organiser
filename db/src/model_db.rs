@@ -359,22 +359,45 @@ pub async fn add_model(
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
     let hex = random_hex_32();
+    let birth_id = random_hex_32();
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let highwater: i64 =
+        sqlx::query_scalar("SELECT highwater FROM object_id_highwater WHERE object_kind = 'model'")
+            .fetch_one(&mut *transaction)
+            .await?;
+    let model_id = highwater
+        .checked_add(1)
+        .ok_or_else(|| DbError::Protocol("Model id space exhausted".into()))?;
 
-    let result = sqlx::query!(
-        "INSERT INTO models (model_name, model_blob_id, model_added, model_url, model_user_id, model_unique_global_id, model_last_modified)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-        name,
-        blob_id,
-        now,
-        link,
-        user.id,
-        hex,
-        timestamp,
+    sqlx::query(
+        "INSERT INTO models (model_id, model_name, model_blob_id, model_added, model_url, model_user_id, model_unique_global_id, model_last_modified, model_birth_id, model_genesis_unchanged)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
     )
-    .execute(db)
+    .bind(model_id)
+    .bind(name)
+    .bind(blob_id)
+    .bind(&now)
+    .bind(link)
+    .bind(user.id)
+    .bind(&hex)
+    .bind(timestamp)
+    .bind(&birth_id)
+    .execute(&mut *transaction)
     .await?;
+    crate::causal_envelope::record_local_creation(
+        &mut transaction,
+        user,
+        crate::causal_envelope::Entity {
+            kind: crate::causal_envelope::EntityKind::Model,
+            global_id: hex,
+            birth_id: Some(birth_id),
+        },
+        crate::causal_envelope::Action::ModelCreated,
+    )
+    .await?;
+    transaction.commit().await?;
 
-    Ok(result.last_insert_rowid())
+    Ok(model_id)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -392,6 +415,26 @@ pub async fn edit_model(
     validate_global_id(global_id)?;
     let timestamp = timestamp_or_now(update_timestamp);
     let flags = i64::from(flags.bits());
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    if let Some(target) = global_id {
+        let existing: Option<(String, String, Option<String>)> = sqlx::query_as("SELECT model_unique_global_id, model_incarnation, model_birth_id FROM models WHERE model_id = ? AND model_user_id = ?")
+            .bind(id).bind(user.id).fetch_optional(&mut *transaction).await?;
+        if let Some((current, incarnation, birth_id)) = existing
+            && current != target
+        {
+            let duplicate: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM models WHERE model_user_id = ? AND model_unique_global_id = ? AND model_id != ?)")
+                .bind(user.id).bind(target).bind(id).fetch_one(&mut *transaction).await?;
+            let conflicting_birth: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM entity_births WHERE user_id = ? AND entity_kind = 'model' AND global_id = ? AND birth_id IS NOT ?)")
+                .bind(user.id).bind(target).bind(birth_id).fetch_one(&mut *transaction).await?;
+            let history_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM membership_causal_events WHERE user_id = ? AND (model_incarnation = ? OR model_global_id = ?))")
+                .bind(user.id).bind(incarnation).bind(target).fetch_one(&mut *transaction).await?;
+            if duplicate || conflicting_birth || history_exists {
+                return Err(DbError::Protocol(
+                    "Cannot change a model identity with causal history".into(),
+                ));
+            }
+        }
+    }
     sqlx::query!(
         "UPDATE models SET model_name = ?, model_url = ?, model_desc = ?, model_flags = ?, model_last_modified = ?, model_unique_global_id = COALESCE(?, model_unique_global_id) WHERE model_id = ? AND model_user_id = ?",
         name,
@@ -403,10 +446,9 @@ pub async fn edit_model(
         id,
         user.id
     )
-    .execute(db)
+    .execute(&mut *transaction)
     .await?;
-
-    Ok(())
+    transaction.commit().await
 }
 
 /// Moves the user's live models among `ids` to the trash.

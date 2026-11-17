@@ -7,6 +7,25 @@ use crate::{
     random_hex_32, time_now,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct SyncIdentity {
+    pub instance_id: String,
+    pub account_id: String,
+}
+
+pub async fn get_sync_identity(
+    db: &DbContext,
+    user_id: i64,
+) -> Result<Option<SyncIdentity>, DbError> {
+    sqlx::query_as(
+        "SELECT sync_instance.instance_id, sync_accounts.account_id FROM sync_instance JOIN sync_accounts ON sync_accounts.user_id = ? WHERE sync_instance.singleton = 1",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+}
+
+#[derive(sqlx::FromRow)]
 #[allow(clippy::struct_field_names)]
 struct UserDbQuery {
     user_id: i64,
@@ -18,6 +37,45 @@ struct UserDbQuery {
     user_sync_url: Option<String>,
     user_permissions: i64,
     user_password_hash: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct AuthUserDbQuery {
+    #[sqlx(flatten)]
+    user: UserDbQuery,
+    account_id: String,
+}
+
+#[derive(Clone, Copy)]
+pub enum AuthUserLookup<'a> {
+    Id(i64),
+    Email(&'a str),
+    SyncToken(&'a str),
+}
+
+pub async fn get_auth_user(
+    db: &DbContext,
+    lookup: AuthUserLookup<'_>,
+) -> Result<Option<(User, String)>, DbError> {
+    let mut query = sqlx::QueryBuilder::new(
+        "SELECT u.user_id, u.user_name, u.user_email, u.user_created_at, u.user_last_sync, u.user_sync_token, u.user_sync_url, u.user_permissions, u.user_password_hash, a.account_id FROM users u JOIN sync_accounts a ON a.user_id = u.user_id WHERE ",
+    );
+    match lookup {
+        AuthUserLookup::Id(id) => {
+            query.push("u.user_id = ").push_bind(id);
+        }
+        AuthUserLookup::Email(email) => {
+            query.push("u.user_email = ").push_bind(email);
+        }
+        AuthUserLookup::SyncToken(token) => {
+            query.push("u.user_sync_token = ").push_bind(token);
+        }
+    }
+    Ok(query
+        .build_query_as::<AuthUserDbQuery>()
+        .fetch_optional(db)
+        .await?
+        .map(|row| (row.user.into_user(), row.account_id)))
 }
 
 impl UserDbQuery {
@@ -166,6 +224,7 @@ pub async fn set_user_sync_token(
 }
 
 pub async fn clear_user_sync(db: &DbContext, user_id: i64) -> Result<(), DbError> {
+    let mut tx = db.begin().await?;
     let bits = i64::from(UserPermissions::OnlineAccount.bits() ^ u32::MAX);
 
     sqlx::query!(
@@ -173,8 +232,18 @@ pub async fn clear_user_sync(db: &DbContext, user_id: i64) -> Result<(), DbError
         bits,
         user_id
     )
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
+
+    sqlx::query("DELETE FROM sync_transport_local_authorities WHERE user_id=?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM causal_account_writers WHERE user_id=?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
     Ok(())
 }
