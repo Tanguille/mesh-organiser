@@ -18,7 +18,9 @@
   // with this off Renovate merges itself only once every check is green (needs Checks: read).
   platformAutomerge: false,
   // The operator webhook starts a run on any ticked dashboard checkbox; Renovate resets it on rewrite.
-  dependencyDashboardFooter: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
+  dependencyDashboard: {
+    footer: "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository",
+  },
   packageRules: [
     // The base preset titles majors and 0.x minors `type(scope)!:`, other minors `feat(scope):` and
     // patches `fix(scope):`; release-please reads `!` (even on hidden ci:/chore: types) as an app
