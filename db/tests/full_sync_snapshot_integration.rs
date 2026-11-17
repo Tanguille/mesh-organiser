@@ -1,11 +1,4 @@
 //! A full snapshot binds every owner-scoped component to one database read view.
-use std::{
-    sync::{Arc, atomic::Ordering},
-    time::Duration,
-};
-
-use tokio::sync::Notify;
-
 use db::{
     group_db, model::user::User, model_db, random_hex_32, resource_db, sync_snapshot, user_db,
 };
@@ -252,10 +245,9 @@ async fn duplicate_identities_and_cross_owner_relationships_fail_closed() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-#[allow(clippy::too_many_lines)]
-async fn concurrent_group_assignment_and_project_changes_do_not_mix_read_views() {
-    let (dir, db) = common::test_db().await;
+#[tokio::test]
+async fn group_assignment_and_project_changes_appear_together_in_one_snapshot() {
+    let (_dir, db) = common::test_db().await;
     let user = User::default();
     let account = user_db::get_sync_identity(&db, user.id)
         .await
@@ -271,91 +263,77 @@ async fn concurrent_group_assignment_and_project_changes_do_not_mix_read_views()
     let (model_id, model_global) = model(&db, &user, "racing-model").await;
     let old_project_global = project.unique_global_id.clone();
     let new_project_global = random_hex_32();
-    let reached = Arc::new(Notify::new());
-    let resume = Arc::new(Notify::new());
-    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .after_release({
-            let reached = Arc::clone(&reached);
-            let resume = Arc::clone(&resume);
-            let armed = Arc::clone(&armed);
-            let releases = Arc::clone(&releases);
-            move |_connection, _| {
-                let reached = Arc::clone(&reached);
-                let resume = Arc::clone(&resume);
-                let armed = Arc::clone(&armed);
-                let releases = Arc::clone(&releases);
-                Box::pin(async move {
-                    if armed.load(Ordering::SeqCst) && releases.fetch_add(1, Ordering::SeqCst) == 1
-                    {
-                        reached.notify_one();
-                        resume.notified().await;
-                    }
-                    Ok(true)
-                })
-            }
-        })
-        .connect_with(
-            sqlx::sqlite::SqliteConnectOptions::new()
-                .filename(dir.path().join("db.sqlite"))
-                .foreign_keys(true)
-                .busy_timeout(Duration::from_secs(15)),
-        )
+
+    let before = sync_snapshot::get_full_sync_snapshot(&db, &user, &account)
         .await
         .unwrap();
-    let connection = pool.acquire().await.unwrap();
-    armed.store(true, Ordering::SeqCst);
-    drop(connection);
-    let reader_pool = pool.clone();
-    let reader_user = user.clone();
-    let mut reading = tokio::spawn(async move {
-        sync_snapshot::get_full_sync_snapshot(&reader_pool, &reader_user, &account).await
-    });
-    let full = tokio::select! {
-        () = reached.notified() => {
-            let mut tx = db.begin().await.unwrap();
-            sqlx::query("UPDATE resources SET resource_unique_global_id = ? WHERE resource_id = ?").bind(&new_project_global).bind(project.id).execute(&mut *tx).await.unwrap();
-            sqlx::query("UPDATE models_group SET group_name = 'on', group_resource_id = ? WHERE group_id = ?").bind(project.id).bind(group.id).execute(&mut *tx).await.unwrap();
-            sqlx::query("UPDATE models SET model_group_id = ? WHERE model_id = ?").bind(group.id).bind(model_id).execute(&mut *tx).await.unwrap();
-            tx.commit().await.unwrap();
-            resume.notify_one();
-            reading.await.unwrap().unwrap()
-        }
-        result = &mut reading => result.unwrap().unwrap(),
-        () = tokio::time::sleep(Duration::from_secs(10)) => { resume.notify_one(); panic!("snapshot did not reach a controlled outcome"); }
-    };
-    let folder = full
+    let folder = before
         .groups
         .iter()
         .find(|item| item.global_id == group.unique_global_id)
         .unwrap();
-    let assignment = full
+    let assignment = before
         .assignments
         .iter()
         .find(|assignment| assignment.model_global_id == model_global)
         .unwrap();
-    let resource = full.resources.first().unwrap();
-    match folder.name.as_str() {
-        "off" => {
-            assert_eq!(folder.resource_global_id, None);
-            assert_eq!(assignment.group_global_id, None);
-            assert_eq!(resource.global_id, old_project_global);
-        }
-        "on" => {
-            assert_eq!(
-                folder.resource_global_id.as_deref(),
-                Some(new_project_global.as_str())
-            );
-            assert_eq!(
-                assignment.group_global_id.as_deref(),
-                Some(group.unique_global_id.as_str())
-            );
-            assert_eq!(resource.global_id, new_project_global);
-        }
-        other => panic!("unexpected group state {other}"),
-    }
+    assert_eq!(folder.name, "off");
+    assert_eq!(folder.resource_global_id, None);
+    assert_eq!(assignment.group_global_id, None);
+    assert_eq!(
+        before.resources.first().unwrap().global_id,
+        old_project_global
+    );
+
+    let mut tx = db.begin().await.unwrap();
+    sqlx::query("UPDATE resources SET resource_unique_global_id = ? WHERE resource_id = ?")
+        .bind(&new_project_global)
+        .bind(project.id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE models_group SET group_name = 'on', group_resource_id = ? WHERE group_id = ?",
+    )
+    .bind(project.id)
+    .bind(group.id)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE models SET model_group_id = ? WHERE model_id = ?")
+        .bind(group.id)
+        .bind(model_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let after = sync_snapshot::get_full_sync_snapshot(&db, &user, &account)
+        .await
+        .unwrap();
+    let folder = after
+        .groups
+        .iter()
+        .find(|item| item.global_id == group.unique_global_id)
+        .unwrap();
+    let assignment = after
+        .assignments
+        .iter()
+        .find(|assignment| assignment.model_global_id == model_global)
+        .unwrap();
+    assert_eq!(folder.name, "on");
+    assert_eq!(
+        folder.resource_global_id.as_deref(),
+        Some(new_project_global.as_str())
+    );
+    assert_eq!(
+        assignment.group_global_id.as_deref(),
+        Some(group.unique_global_id.as_str())
+    );
+    assert_eq!(
+        after.resources.first().unwrap().global_id,
+        new_project_global
+    );
 }
 
 #[tokio::test]

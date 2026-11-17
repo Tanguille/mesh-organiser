@@ -138,7 +138,13 @@ async fn fixture_with_download_barrier(
     barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     corrupt: bool,
 ) -> Fixture {
-    fixture_with_counter(populated, barrier, corrupt, None, None, None).await
+    fixture_with_counter(FixtureOptions {
+        populated,
+        barrier,
+        corrupt,
+        ..FixtureOptions::default()
+    })
+    .await
 }
 
 type FeedGate = (
@@ -147,15 +153,27 @@ type FeedGate = (
     Arc<tokio::sync::Notify>,
 );
 
-#[allow(clippy::too_many_lines)] // The fixture builds authenticated peers and optionally controls and counts responses.
-async fn fixture_with_counter(
+// Named knobs so adjacent `bool`/`Option` arguments cannot be swapped silently.
+#[derive(Default)]
+struct FixtureOptions {
     populated: bool,
     barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     corrupt: bool,
     counter: Option<Arc<AtomicUsize>>,
     feed_gate: Option<FeedGate>,
     attack: Option<Arc<AtomicUsize>>,
-) -> Fixture {
+}
+
+#[allow(clippy::too_many_lines)] // The fixture builds authenticated peers and optionally controls and counts responses.
+async fn fixture_with_counter(options: FixtureOptions) -> Fixture {
+    let FixtureOptions {
+        populated,
+        barrier,
+        corrupt,
+        counter,
+        feed_gate,
+        attack,
+    } = options;
     let (hub_dir, hub, router, _) = app().await;
     let (author_dir, author) = crate::test_support::app_state().await;
     let (receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -1672,85 +1690,64 @@ async fn populated_remote_identity_choice_preserves_child_identity_and_bytes() {
 
 #[tokio::test]
 async fn populated_remote_child_collision_never_adopts_or_overwrites_local_model() {
-    for same_group in [true, false] {
-        let Fixture {
-            receiver,
-            user,
-            receiver_identity,
-            client,
-            local,
-            child,
-            dirs: _dirs,
-            server: _server,
-            ..
-        } = fixture_with_remote_model(true).await;
-        let (child_global, _) = child.unwrap();
-        let blob = db::blob_db::add_blob(
-            &receiver.db,
-            "ba7816bf8f01cfea414140de5dae2223",
-            "stl",
-            3,
-            None,
-        )
+    let Fixture {
+        receiver,
+        user,
+        receiver_identity,
+        client,
+        local,
+        child,
+        dirs: _dirs,
+        server: _server,
+        ..
+    } = fixture_with_remote_model(true).await;
+    let (child_global, _) = child.unwrap();
+    let blob = db::blob_db::add_blob(
+        &receiver.db,
+        "ba7816bf8f01cfea414140de5dae2223",
+        "stl",
+        3,
+        None,
+    )
+    .await
+    .unwrap();
+    let existing = db::model_db::add_model(&receiver.db, &user, "existing local", blob, None, None)
         .await
         .unwrap();
-        let existing =
-            db::model_db::add_model(&receiver.db, &user, "existing local", blob, None, None)
-                .await
-                .unwrap();
-        sqlx::query("UPDATE models SET model_unique_global_id=? WHERE model_id=?")
-            .bind(&child_global)
+    sqlx::query("UPDATE models SET model_unique_global_id=? WHERE model_id=?")
+        .bind(&child_global)
+        .bind(existing)
+        .execute(&*receiver.db)
+        .await
+        .unwrap();
+    // Preparation must refuse for exactly this reason; any other error means the
+    // collision path was never reached.
+    let refusal = client
+        .prepare_group_identity(&receiver, &user, &receiver_identity, local)
+        .await
+        .expect_err("an occupied child identity must be refused at preparation");
+    assert!(
+        matches!(
+            refusal,
+            service::ServiceError::DatabaseError(db::DbError::Protocol(ref reason))
+                if reason == "Invalid or unsupported pristine genesis"
+        ),
+        "a locally occupied child identity must never be silently matched"
+    );
+    let row: (String, Option<i64>) =
+        sqlx::query_as("SELECT model_name,model_group_id FROM models WHERE model_id=?")
             .bind(existing)
-            .execute(&*receiver.db)
+            .fetch_one(&*receiver.db)
             .await
             .unwrap();
-        let rejected = if let Ok(choice) = client
-            .prepare_group_identity(&receiver, &user, &receiver_identity, local)
+    assert_eq!(row, ("existing local".into(), None));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sync_pull_receipts")
+            .fetch_one(&*receiver.db)
             .await
-        {
-            if same_group {
-                client
-                    .confirm_group_identity(
-                        &receiver,
-                        &user,
-                        &receiver_identity,
-                        &choice.decision_id,
-                    )
-                    .await
-                    .is_err()
-            } else {
-                client
-                    .separate_group_identity(
-                        &receiver,
-                        &user,
-                        &receiver_identity,
-                        &choice.decision_id,
-                    )
-                    .await
-                    .is_err()
-            }
-        } else {
-            true
-        };
-        assert!(
-            rejected,
-            "a locally occupied child identity must never be silently matched"
-        );
-        let row: (String, Option<i64>) =
-            sqlx::query_as("SELECT model_name,model_group_id FROM models WHERE model_id=?")
-                .bind(existing)
-                .fetch_one(&*receiver.db)
-                .await
-                .unwrap();
-        assert_eq!(row, ("existing local".into(), None));
-        assert_eq!(
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sync_pull_receipts")
-                .fetch_one(&*receiver.db)
-                .await
-                .unwrap(),
-            0
-        );
-    }
+            .unwrap(),
+        0
+    );
 }
 
 #[tokio::test]
@@ -3137,6 +3134,8 @@ async fn late_populated_observation_rehydrates_deleted_group_after_retention() {
         )
         .await
         .unwrap();
+    // The stored deletion time is part of the lifecycle guard, so it cannot be backdated;
+    // retention compares whole seconds, so wait until the deletion is strictly older than now.
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     assert_eq!(
         db::group_db::purge_trashed_groups(&fixture.hub.db, 0)
@@ -5241,8 +5240,11 @@ async fn advance_one_offers_exact_identity_choice_and_separately_reports_pending
 async fn advance_one_fetches_each_delivery_only_once() {
     for occupied in [true, false] {
         let count = Arc::new(AtomicUsize::new(0));
-        let fixture =
-            fixture_with_counter(false, None, false, Some(count.clone()), None, None).await;
+        let fixture = fixture_with_counter(FixtureOptions {
+            counter: Some(count.clone()),
+            ..FixtureOptions::default()
+        })
+        .await;
         if occupied {
             count.store(0, Ordering::SeqCst);
             let outcome = fixture
@@ -5517,14 +5519,10 @@ async fn advance_one_rejects_link_changed_after_feed_response() {
     let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let reached = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
-    let fixture = fixture_with_counter(
-        false,
-        None,
-        false,
-        None,
-        Some((armed.clone(), reached.clone(), release.clone())),
-        None,
-    )
+    let fixture = fixture_with_counter(FixtureOptions {
+        feed_gate: Some((armed.clone(), reached.clone(), release.clone())),
+        ..FixtureOptions::default()
+    })
     .await;
     armed.store(true, Ordering::SeqCst);
     let advance =
@@ -5571,7 +5569,11 @@ async fn advance_one_rejects_link_changed_after_feed_response() {
 #[tokio::test]
 async fn advance_one_rejects_malformed_or_altered_feed_without_advancing() {
     let attack = Arc::new(AtomicUsize::new(0));
-    let fixture = fixture_with_counter(false, None, false, None, None, Some(attack.clone())).await;
+    let fixture = fixture_with_counter(FixtureOptions {
+        attack: Some(attack.clone()),
+        ..FixtureOptions::default()
+    })
+    .await;
     for mode in 1..=3 {
         attack.store(mode, Ordering::SeqCst);
         assert!(
@@ -7265,7 +7267,12 @@ async fn explicit_separate_groups_keep_separate_models_and_reject_same_model() {
 #[tokio::test]
 async fn model_pair_uses_the_group_offer_without_refetching_feed() {
     let count = Arc::new(AtomicUsize::new(0));
-    let fixture = fixture_with_counter(true, None, false, Some(count.clone()), None, None).await;
+    let fixture = fixture_with_counter(FixtureOptions {
+        populated: true,
+        counter: Some(count.clone()),
+        ..FixtureOptions::default()
+    })
+    .await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     count.store(0, Ordering::SeqCst);
     let decision_id = model_group_offer(&fixture).await;

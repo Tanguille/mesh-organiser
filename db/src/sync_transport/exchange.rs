@@ -138,7 +138,7 @@ impl Item {
                 .birth_id
                 .clone()
                 .ok_or_else(|| failure("identity_blocked")),
-            Self::Operation { operation_id, .. } if operation_id.len() == 32 => {
+            Self::Operation { operation_id, .. } if crate::util::is_lower_hex(operation_id, 32) => {
                 Ok(operation_id.clone())
             }
             Self::Operation { .. } => Err(failure("unsupported")),
@@ -485,6 +485,8 @@ async fn source_echo(
     let owner = &authorization.user;
     let local = &authorization.identity;
     let server = &authorization.server;
+    // A local writer is its own authority, so the second EXISTS binds `writer_id` twice on purpose:
+    // once as the issuing writer and once as its authority.
     let delegated:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM local_writer_delegations WHERE user_id=? AND account_id=? AND writer_id=? AND authority_writer_id=? AND connection_id=? AND server_instance_id=? AND server_account_id=?) OR EXISTS(SELECT 1 FROM sync_transport_local_writers WHERE user_id=? AND local_instance_id=? AND local_account_id=? AND writer_id=? AND writer_id=? AND connection_id=? AND server_instance_id=? AND server_account_id=?)")
         .bind(owner.id).bind(&local.account_id).bind(&issuer.writer_id).bind(&issuer.authority_writer_id).bind(&issuer.connection_id).bind(&server.instance_id).bind(&server.account_id)
         .bind(owner.id).bind(&local.instance_id).bind(&local.account_id).bind(&issuer.writer_id).bind(&issuer.authority_writer_id).bind(&issuer.connection_id).bind(&server.instance_id).bind(&server.account_id).fetch_one(&mut *db).await?;
@@ -513,4 +515,29 @@ async fn source_echo(
     }
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    fn operation(operation_id: &str) -> super::Item {
+        super::Item::Operation {
+            operation_id: operation_id.to_string(),
+            focus_birth_id: String::new(),
+            envelopes: Vec::new(),
+            author_context: None,
+        }
+    }
+
+    #[test]
+    fn operation_id_must_be_canonical_lowercase_hex() {
+        let valid = "0123456789abcdef0123456789abcdef";
+        assert_eq!(operation(valid).id(&[]).unwrap(), valid);
+        for invalid in [
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "0123456789ABCDEF0123456789ABCDEF",
+            "0123456789abcdef",
+        ] {
+            assert!(operation(invalid).id(&[]).is_err(), "{invalid}");
+        }
+    }
 }

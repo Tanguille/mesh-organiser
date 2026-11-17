@@ -533,7 +533,8 @@ async fn label_snapshots_count_toward_combined_byte_limit() {
     let limit = i64::try_from(db::causal_store::MAX_OWNER_BYTES).unwrap();
     let mut previous = 0_i64;
     let mut last = 0_i64;
-    for _ in 0..400 {
+    let iterations = usize::try_from(limit / 40_000).unwrap().saturating_add(8);
+    for _ in 0..iterations {
         let total: i64 = sqlx::query_scalar("SELECT COALESCE((SELECT SUM(length(CAST(e.envelope AS BLOB))+length(CAST(b.materialization AS BLOB))+length(CAST(b.local_guard AS BLOB))+COALESCE(length(CAST(b.observation_evidence AS BLOB)),0)) FROM causal_genesis_bindings b JOIN causal_events e USING(user_id,writer_id,counter) WHERE b.user_id=? AND b.capability='group_lifecycle_v1'),0)+COALESCE((SELECT SUM(length(CAST(manifest AS BLOB))+COALESCE(length(CAST(label_snapshot AS BLOB)),0)) FROM causal_observation_batches WHERE user_id=?),0)").bind(user.id).bind(user.id).fetch_one(&db).await.unwrap();
         let group = common::legacy_group(&db, &user, "group").await;
         let blob = blob_db::add_blob(&db, &random_hex_32(), "stl", 1, None)

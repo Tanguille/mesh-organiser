@@ -71,8 +71,8 @@ async fn legacy_keep_journal_cannot_claim_explicit_none_as_an_exact_replay() {
         resource: group_db::KeepResource::None,
         name: "folder".into(),
     };
-    // Payload format used before Keep requests explicitly specified project intent.
-    let mut legacy = String::from("g");
+    // Current payload format, minus the trailing project-intent marker that older Keep requests lacked.
+    let mut legacy = String::from("lifecycle-v1;g");
     encode(&mut legacy, Some(&condition.group_global_id));
     encode(
         &mut legacy,

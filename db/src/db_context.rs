@@ -71,14 +71,13 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
         .execute(&mut *transaction)
         .await
         .expect("failed to preserve causal writer");
-    let result = sqlx::query(
-        "UPDATE group_causal_replica SET replica_id = ?, counter = 0 WHERE singleton = 1",
-    )
-    .bind(crate::random_hex_32())
-    .execute(&mut *transaction)
-    .await
-    .expect("failed to rotate causal writer");
-    assert_eq!(result.rows_affected(), 1, "missing causal writer");
+    // A missing singleton row is tolerated: the register below then inserts nothing, and the
+    // library must still open rather than abort startup.
+    sqlx::query("UPDATE group_causal_replica SET replica_id = ?, counter = 0 WHERE singleton = 1")
+        .bind(crate::random_hex_32())
+        .execute(&mut *transaction)
+        .await
+        .expect("failed to rotate causal writer");
     sqlx::query("INSERT INTO local_causal_writers (replica_id) SELECT replica_id FROM group_causal_replica WHERE singleton = 1")
         .execute(&mut *transaction)
         .await
@@ -259,5 +258,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(ids, vec![(1,), (3,), (5,)]);
+    }
+
+    /// A database whose causal writer singleton row is gone must still open.
+    #[tokio::test]
+    async fn setup_db_opens_without_causal_writer_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("db.sqlite");
+        let backup_dir = dir.path().join("backups");
+
+        let db = super::setup_db(&db_path, &backup_dir).await;
+        sqlx::query("DELETE FROM group_causal_replica")
+            .execute(&db)
+            .await
+            .unwrap();
+        db.close().await;
+
+        let db = super::setup_db(&db_path, &backup_dir).await;
+        db.close().await;
     }
 }

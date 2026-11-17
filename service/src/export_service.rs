@@ -463,7 +463,11 @@ pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(),
             eprintln!("Failed to remove dead blob image file: {e}");
         }
     }
-    crate::sync_observation_service::remove_owned_orphans(app_state).await?;
+    // An unreconcilable sync stage must not abort the ordinary dead-blob sweep.
+    if let Err(e) = crate::sync_observation_service::remove_owned_orphans(app_state).await {
+        eprintln!("Owned blob orphan cleanup failed: {e}");
+    }
+
     Ok(())
 }
 

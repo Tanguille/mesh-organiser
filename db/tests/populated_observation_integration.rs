@@ -374,7 +374,8 @@ async fn populated_manifest_bytes_count_toward_storage_limit() {
     let limit = i64::try_from(db::causal_store::MAX_OWNER_BYTES).unwrap();
     let mut last_core = 0_i64;
     let mut previous_core = 0_i64;
-    for _ in 0..200 {
+    let iterations = usize::try_from(limit / 40_000).unwrap().saturating_add(8);
+    for _ in 0..iterations {
         let (core, manifests): (i64, i64) = sqlx::query_as("SELECT COALESCE((SELECT SUM(length(CAST(e.envelope AS BLOB))+length(CAST(b.materialization AS BLOB))+length(CAST(b.local_guard AS BLOB))+COALESCE(length(CAST(b.observation_evidence AS BLOB)),0)) FROM causal_genesis_bindings b JOIN causal_events e USING(user_id,writer_id,counter) WHERE b.user_id=? AND b.capability='group_lifecycle_v1'),0), COALESCE((SELECT SUM(length(CAST(manifest AS BLOB))) FROM causal_observation_batches WHERE user_id=?),0)").bind(user.id).bind(user.id).fetch_one(&db).await.unwrap();
         let remaining = limit - core;
         let base = (last_core - previous_core) - 120_000;

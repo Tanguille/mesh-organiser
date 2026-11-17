@@ -60,15 +60,8 @@ pub(super) async fn publish(
         Ok(value) => value,
         Err(error) => return failure(error),
     };
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        receive(&mut multipart, &mut incoming),
-    )
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => return error,
-        Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
+    if let Err(error) = receive(&mut multipart, &mut incoming).await {
+        return error;
     }
     // Losing the HTTP future cannot cancel the file/DB commit sequence. Exact retries
     // recover an ACK after a disconnect, without creating another group or file.
@@ -115,26 +108,33 @@ async fn metadata(multipart: &mut Multipart) -> Result<super::Publish, Response>
 
     serde_json::from_slice(&bytes).map_err(|_| StatusCode::CONFLICT.into_response())
 }
+/// Idle (not total) deadline: a progressing transfer of up to `MAX_TOTAL_BYTES` must not be cut
+/// off on a slow link, while a stalled peer still releases its staging permit.
+const RECEIVE_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[allow(clippy::result_large_err)] // Local HTTP helpers return the already-built rejection response.
+async fn idle<T>(
+    step: impl Future<Output = Result<T, axum::extract::multipart::MultipartError>>,
+) -> Result<T, Response> {
+    tokio::time::timeout(RECEIVE_IDLE_TIMEOUT, step)
+        .await
+        .map_or_else(
+            |_| Err(StatusCode::REQUEST_TIMEOUT.into_response()),
+            |result| result.map_err(|error| error.status().into_response()),
+        )
+}
 #[allow(clippy::result_large_err)] // Preserve multipart status and structured protocol errors without wrappers.
 async fn receive(
     multipart: &mut Multipart,
     incoming: &mut IncomingObservation,
 ) -> Result<(), Response> {
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| error.status().into_response())?
-    {
+    while let Some(mut field) = idle(multipart.next_field()).await? {
         let key = field
             .name()
             .and_then(|name| name.strip_prefix("blob."))
             .ok_or_else(|| StatusCode::CONFLICT.into_response())?;
         let mut blob = incoming.start_blob(key).await.map_err(failure)?;
-        while let Some(chunk) = field
-            .chunk()
-            .await
-            .map_err(|error| error.status().into_response())?
-        {
+        while let Some(chunk) = idle(field.chunk()).await? {
             blob.write(&chunk).await.map_err(failure)?;
         }
         incoming.finish_blob(blob).await.map_err(failure)?;
