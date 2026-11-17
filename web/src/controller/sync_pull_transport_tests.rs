@@ -18,6 +18,13 @@ impl Drop for TlsHub {
 
 impl TlsHub {
     pub(super) async fn serve(router: Router) -> Self {
+        // Select the process-level CryptoProvider explicitly. Under feature
+        // unification the test binary's rustls feature set can be ambiguous,
+        // in which case `ServerConfig::builder()` below panics instead of
+        // auto-detecting a provider. Installing it here (idempotently) is the
+        // fix rustls recommends; the `aws-lc-rs` provider matches the rest of
+        // the app (reqwest / tokio-rustls).
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let cert = rustls::pki_types::CertificateDer::from(
             include_bytes!("test_tls/localhost.der").to_vec(),
         );
