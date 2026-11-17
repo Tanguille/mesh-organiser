@@ -1,11 +1,12 @@
 //! Model incarnation tokens survive upgrades and prevent row identity reuse.
-mod common;
 
-use db::{blob_db, db_context::DbContext, model::user::User, model_db};
+use db::{blob_db, db_context::DbContext, model::user::User};
+
+mod common;
 
 async fn add_model(db: &DbContext, name: &str) -> i64 {
     let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
-    model_db::add_model(db, &User::default(), name, blob, None, None)
+    db::model_db::add_model(db, &User::default(), name, blob, None, None)
         .await
         .unwrap()
 }

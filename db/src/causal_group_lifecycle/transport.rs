@@ -1,13 +1,13 @@
 //! The hub authenticates every original author before admitting a whole operation.
-use super::{OperationBundle, author_context, checked, graph::Graph, invalid, project, storage};
+
 use crate::{
     DbError,
     causal_envelope::{self, Action, CausalEnvelope, EntityKind},
-    model::user::User,
 };
-use sqlx::SqliteConnection;
 
-pub fn encode_operation(bundle: &OperationBundle) -> Result<serde_json::Value, DbError> {
+use super::{author_context, invalid, storage};
+
+pub fn encode_operation(bundle: &super::OperationBundle) -> Result<serde_json::Value, DbError> {
     let envelopes = bundle
         .envelopes
         .iter()
@@ -38,6 +38,7 @@ fn validate_operation(focus: &str, events: &[CausalEnvelope]) -> Result<(), DbEr
             {
                 return Err(invalid());
             }
+
             to
         }
         Action::ModelDestinationResolved { to, .. } => to,
@@ -75,8 +76,8 @@ fn validate_operation(focus: &str, events: &[CausalEnvelope]) -> Result<(), DbEr
 }
 
 pub async fn apply(
-    db: &mut SqliteConnection,
-    user: &User,
+    db: &mut sqlx::SqliteConnection,
+    user: &crate::model::user::User,
     operation: &str,
     focus: &str,
     envelopes: Vec<CausalEnvelope>,
@@ -88,7 +89,7 @@ pub async fn apply(
     if context.is_none() {
         validate_operation(focus, &envelopes)?;
     }
-    let (mut scopes, prior) = checked(db, user).await?;
+    let (mut scopes, prior) = super::checked(db, user).await?;
     if scopes.iter().any(|scope| scope.paused) {
         return Err(crate::sync_transport::failure("scope_paused"));
     }
@@ -107,6 +108,7 @@ pub async fn apply(
         {
             return Err(crate::sync_transport::failure("too_large"));
         }
+
         return Err(crate::sync_transport::failure(&format!(
             "needs_dependencies:{encoded}"
         )));
@@ -121,9 +123,9 @@ pub async fn apply(
     }
     let mut events = storage::events(db, user).await?;
     events.extend(envelopes.clone());
-    let graph = Graph::new(&scopes, events)?;
+    let graph = super::graph::Graph::new(&scopes, events)?;
     storage::write(db, user, operation, focus, &envelopes, author_context, true).await?;
-    project::apply(db, user, &mut scopes, &graph).await?;
+    super::project::apply(db, user, &mut scopes, &graph).await?;
 
     Ok(())
 }

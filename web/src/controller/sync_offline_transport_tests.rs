@@ -1,4 +1,6 @@
 //! Offline authority is private and does not enable the production sync route.
+use db::causal_group_rename::NameState;
+
 use super::*;
 
 #[path = "sync_combined_transport_tests.rs"]
@@ -39,7 +41,6 @@ async fn register_identity(
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn offline_edit_after_restart_uses_fresh_authorized_writer_and_keeps_old_dot() {
-    use db::causal_group_rename::NameState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let registration = registration(&router, &cookie, &source).await;
@@ -358,7 +359,6 @@ async fn pre_authority_event_cannot_gain_a_fabricated_proof() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn independently_reopened_database_copies_get_distinct_offline_writers() {
-    use db::causal_group_rename::NameState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let registration = registration(&router, &cookie, &source).await;
@@ -565,7 +565,6 @@ async fn malformed_or_unpinned_authority_cannot_change_account_clock() {
 
 #[tokio::test]
 async fn legacy_activation_does_not_give_other_accounts_the_issued_writer() {
-    use db::causal_group_rename::NameState;
     let (_hub_dir, _hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let alice = db::model::user::User::default();

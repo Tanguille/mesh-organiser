@@ -1,11 +1,13 @@
 //! Assignment and group revisions must commit with the state they describe.
 
+use db::{db_context::DbContext, group_db, model::user::User, model_db};
+
 mod common;
 
-use db::{blob_db, db_context::DbContext, group_db, model::user::User, model_db};
-
 async fn model(db: &DbContext, user: &User, name: &str) -> i64 {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap()
@@ -51,10 +53,10 @@ async fn moves_and_ungrouping_advance_only_affected_revisions() {
     let (_dir, db) = common::test_db().await;
     assert_revision_columns(&db).await;
     let user = User::default();
-    let a = group_db::add_empty_group(&db, &user, "A", None)
+    let first_group = group_db::add_empty_group(&db, &user, "A", None)
         .await
         .unwrap();
-    let b = group_db::add_empty_group(&db, &user, "B", None)
+    let second_group = group_db::add_empty_group(&db, &user, "B", None)
         .await
         .unwrap();
     let other = group_db::add_empty_group(&db, &user, "other", None)
@@ -63,36 +65,36 @@ async fn moves_and_ungrouping_advance_only_affected_revisions() {
     let moving = model(&db, &user, "moving").await;
     let untouched = model(&db, &user, "untouched").await;
     let initial = assignment(&db, moving).await;
-    let initial_a = group_revision(&db, a.id).await;
-    let initial_b = group_revision(&db, b.id).await;
+    let initial_a = group_revision(&db, first_group.id).await;
+    let initial_b = group_revision(&db, second_group.id).await;
     let initial_other = group_revision(&db, other.id).await;
     let initial_untouched = assignment(&db, untouched).await;
 
-    group_db::set_group_id_on_models(&db, &user, Some(a.id), vec![moving, moving], None)
+    group_db::set_group_id_on_models(&db, &user, Some(first_group.id), vec![moving, moving], None)
         .await
         .unwrap();
     let after_add = assignment(&db, moving).await;
-    let after_a = group_revision(&db, a.id).await;
-    assert_eq!(after_add.0, Some(a.id));
+    let after_a = group_revision(&db, first_group.id).await;
+    assert_eq!(after_add.0, Some(first_group.id));
     assert!(after_add.1 > initial.1);
     assert!(after_a > initial_a);
-    assert_eq!(group_revision(&db, b.id).await, initial_b);
+    assert_eq!(group_revision(&db, second_group.id).await, initial_b);
     assert_eq!(group_revision(&db, other.id).await, initial_other);
     assert_eq!(assignment(&db, untouched).await, initial_untouched);
 
-    group_db::set_group_id_on_models(&db, &user, Some(a.id), vec![moving], None)
+    group_db::set_group_id_on_models(&db, &user, Some(first_group.id), vec![moving], None)
         .await
         .unwrap();
     assert_eq!(assignment(&db, moving).await, after_add);
-    assert_eq!(group_revision(&db, a.id).await, after_a);
+    assert_eq!(group_revision(&db, first_group.id).await, after_a);
 
-    group_db::set_group_id_on_models(&db, &user, Some(b.id), vec![moving], None)
+    group_db::set_group_id_on_models(&db, &user, Some(second_group.id), vec![moving], None)
         .await
         .unwrap();
     let after_move = assignment(&db, moving).await;
-    let moved_a = group_revision(&db, a.id).await;
-    let moved_b = group_revision(&db, b.id).await;
-    assert_eq!(after_move.0, Some(b.id));
+    let moved_a = group_revision(&db, first_group.id).await;
+    let moved_b = group_revision(&db, second_group.id).await;
+    assert_eq!(after_move.0, Some(second_group.id));
     assert!(after_move.1 > after_add.1);
     assert!(moved_a > after_a);
     assert!(moved_b > initial_b);
@@ -103,16 +105,16 @@ async fn moves_and_ungrouping_advance_only_affected_revisions() {
         .await
         .unwrap();
     let after_detach = assignment(&db, moving).await;
-    let detached_b = group_revision(&db, b.id).await;
+    let detached_b = group_revision(&db, second_group.id).await;
     assert_eq!(after_detach.0, None);
     assert!(after_detach.1 > after_move.1);
     assert!(detached_b > moved_b);
-    assert_eq!(group_revision(&db, a.id).await, moved_a);
+    assert_eq!(group_revision(&db, first_group.id).await, moved_a);
     group_db::set_group_id_on_models(&db, &user, None, vec![moving], None)
         .await
         .unwrap();
     assert_eq!(assignment(&db, moving).await, after_detach);
-    assert_eq!(group_revision(&db, b.id).await, detached_b);
+    assert_eq!(group_revision(&db, second_group.id).await, detached_b);
 }
 
 #[tokio::test]

@@ -1,13 +1,12 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
-use sqlx::SqliteConnection;
-
-use super::{MoveChoice, MoveState, MoveToken, invalid, storage::Scope};
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
+    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity},
     causal_store,
 };
+
+use super::{MoveChoice, MoveState, invalid, storage::Scope};
 
 type Key = (String, String);
 type DestinationKey = Option<(String, String)>;
@@ -21,7 +20,7 @@ fn dot((writer_id, counter): Key) -> Dot {
 fn destination_key(value: Option<&Entity>) -> Result<DestinationKey, DbError> {
     value
         .map(|group| {
-            if group.kind != EntityKind::Group {
+            if group.kind != causal_envelope::EntityKind::Group {
                 return Err(invalid());
             }
             Ok((
@@ -41,7 +40,7 @@ pub(super) struct Graph {
 
 impl Graph {
     pub fn state(&self, scope: &Scope) -> MoveState {
-        let token = MoveToken {
+        let token = super::MoveToken {
             entity: scope.root.entity.clone(),
             incarnation: scope.incarnation.clone(),
             revision: scope.revision,
@@ -81,7 +80,7 @@ impl Graph {
     }
 }
 
-pub(super) async fn load(db: &mut SqliteConnection, scope: &Scope) -> Result<Graph, DbError> {
+pub(super) async fn load(db: &mut sqlx::SqliteConnection, scope: &Scope) -> Result<Graph, DbError> {
     let (count, bytes): (i64, i64) = sqlx::query_as("SELECT COUNT(*), COALESCE(SUM(length(CAST(e.envelope AS BLOB))), 0) FROM model_move_events m JOIN causal_events e ON e.user_id = m.user_id AND e.writer_id = m.writer_id AND e.counter = m.counter WHERE m.user_id = ? AND m.birth_id = ?")
         .bind(scope.user_id).bind(&scope.birth_id).fetch_one(&mut *db).await?;
     if usize::try_from(count).map_err(|_| invalid())? > causal_store::MAX_OWNER_EVENTS
@@ -167,7 +166,7 @@ fn reduce(nodes: &BTreeMap<Key, CausalEnvelope>, root: &CausalEnvelope) -> Resul
             children.entry(parent).or_default().push(id.clone());
         }
     }
-    let mut ready = VecDeque::from([key(&root.event)]);
+    let mut ready = std::collections::VecDeque::from([key(&root.event)]);
     let mut values = BTreeMap::new();
     let mut frontier = BTreeSet::new();
     while let Some(id) = ready.pop_front() {
@@ -176,6 +175,7 @@ fn reduce(nodes: &BTreeMap<Key, CausalEnvelope>, root: &CausalEnvelope) -> Resul
             if !matches!(event.action, Action::ModelCreated) {
                 return Err(invalid());
             }
+
             None
         } else {
             value(event, &values)?

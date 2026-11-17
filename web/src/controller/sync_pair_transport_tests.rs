@@ -1,6 +1,19 @@
 //! The user-initiated account link must bind a real authenticated TLS peer atomically.
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+use axum::{
+    middleware::{self, Next},
+    response::IntoResponse,
+};
+use tokio::sync::Notify;
+
+use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
+
 use super::{
-    pull::{TEST_CA, TlsHub, publish_observed_source},
+    pull::{TEST_CA, TlsHub},
     *,
 };
 
@@ -15,9 +28,9 @@ async fn link_state(state: &service::AppState, user: &db::model::user::User) -> 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Authentication, first pull and same-link retry form one end-to-end scenario.
 async fn user_initiated_pair_establishes_one_authenticated_link_and_pulls() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
-    let (_source_dir, _source, global, _, _) = publish_observed_source(&router, &cookie).await;
+    let (_source_dir, _source, global, _, _) =
+        pull::publish_observed_source(&router, &cookie).await;
     let (_local_dir, local) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
     let identity = db::user_db::get_sync_identity(&local.db, user.id)
@@ -128,7 +141,6 @@ async fn user_initiated_pair_establishes_one_authenticated_link_and_pulls() {
 
 #[tokio::test]
 async fn failed_authentication_never_installs_a_local_link() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, _) = app().await;
     let (_local_dir, local) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -214,7 +226,6 @@ async fn failed_authentication_never_installs_a_local_link() {
 
 #[tokio::test]
 async fn pairing_retry_rejects_revoked_remote_grant_without_rotating_local_writer() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, _) = app().await;
     let (_local_dir, local) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -303,15 +314,6 @@ async fn pairing_retry_rejects_revoked_remote_grant_without_rotating_local_write
 
 #[tokio::test]
 async fn forged_handshake_or_redirect_cannot_commit_pairing() {
-    use axum::{
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
     let (_hub_dir, hub, router, _) = app().await;
     let (_local_dir, local) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -383,7 +385,6 @@ async fn forged_handshake_or_redirect_cannot_commit_pairing() {
 
 #[tokio::test]
 async fn failed_authority_commit_rolls_back_url_token_and_binding() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, _) = app().await;
     let (_local_dir, local) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -436,10 +437,6 @@ async fn failed_authority_commit_rolls_back_url_token_and_binding() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // One handshake barrier covers cancellation and both local identity races.
 async fn cancelled_or_stale_pairing_cannot_install_credentials() {
-    use axum::middleware::{self, Next};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use std::sync::Arc;
-    use tokio::sync::Notify;
     for mode in [0, 1, 2] {
         let (_hub_dir, hub, router, _) = app().await;
         let (_local_dir, local) = crate::test_support::app_state().await;
@@ -543,9 +540,6 @@ async fn cancelled_or_stale_pairing_cannot_install_credentials() {
 
 #[tokio::test]
 async fn competing_pair_attempts_cannot_install_two_local_authorities() {
-    use axum::middleware::{self, Next};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use std::sync::Arc;
     let (_hub_dir, hub, router, _) = app().await;
     let (_local_dir, local) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();

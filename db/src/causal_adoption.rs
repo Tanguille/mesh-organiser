@@ -2,12 +2,7 @@
 //! not authenticated synchronization or identity merging between legacy peers.
 
 use crate::{
-    DbError,
-    causal_envelope::{CausalEnvelope, Dot, Entity},
-    causal_genesis::{GenesisBundle, GenesisInstallation},
-    db_context::DbContext,
-    model::user::User,
-    sync_peer::PeerBinding,
+    DbError, db_context::DbContext, model::user::User, sync_peer::PeerBinding,
     user_db::SyncIdentity,
 };
 
@@ -15,22 +10,22 @@ pub use crate::causal_genesis::observation::GroupObservation;
 
 #[derive(Debug)]
 pub struct ObservedGroupBundle {
-    inner: GenesisBundle,
+    inner: crate::causal_genesis::GenesisBundle,
 }
 
 impl ObservedGroupBundle {
     #[must_use]
-    pub const fn entity(&self) -> &Entity {
+    pub const fn entity(&self) -> &crate::causal_envelope::Entity {
         self.inner.entity()
     }
 
     #[must_use]
-    pub const fn event(&self) -> &Dot {
+    pub const fn event(&self) -> &crate::causal_envelope::Dot {
         self.inner.event()
     }
 
     #[must_use]
-    pub const fn envelope(&self) -> &CausalEnvelope {
+    pub const fn envelope(&self) -> &crate::causal_envelope::CausalEnvelope {
         self.inner.envelope()
     }
 
@@ -65,7 +60,7 @@ pub async fn install_observed_group(
     identity: &SyncIdentity,
     peer: &PeerBinding,
     bundle: &ObservedGroupBundle,
-) -> Result<GenesisInstallation, DbError> {
+) -> Result<crate::causal_genesis::GenesisInstallation, DbError> {
     crate::causal_genesis::install_pristine_genesis(db, user, identity, peer, &bundle.inner, None)
         .await
 }

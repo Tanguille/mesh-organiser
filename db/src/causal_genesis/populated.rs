@@ -1,27 +1,31 @@
 //! Atomic observed membership boundaries. No previous moves are manufactured.
+
+use sqlx::SqliteConnection;
+
+use crate::{
+    DbError,
+    causal_envelope::{CausalEnvelope, Entity, EntityKind},
+    db_context::DbContext,
+    model::user::User,
+    user_db::SyncIdentity,
+    util::sha256_hex,
+};
+
+use super::{
+    GenesisBundle, invalid,
+    materialization::{self, Materialization},
+    observation,
+};
+
 mod capture;
 mod identity;
-pub(super) mod model_identity;
-pub(super) use identity::enroll_identity;
 mod labels;
+pub(super) mod model_identity;
 mod persistence;
 mod project;
 pub mod transport;
-use sqlx::SqliteConnection;
 
-use super::{
-    GenesisBundle, encode, invalid,
-    materialization::{self, Guard, Materialization},
-    observation,
-};
-use crate::{
-    DbError,
-    causal_envelope::{Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
-    db_context::DbContext,
-    model::user::User,
-    sync_peer::{PeerBinding, validate_local},
-    user_db::SyncIdentity,
-};
+pub(super) use identity::enroll_identity;
 
 #[derive(Debug)]
 pub struct PopulatedGroupObservation {
@@ -117,7 +121,7 @@ impl ObservedPopulatedGroupBundle {
         self.group.entity()
     }
     #[must_use]
-    pub const fn group_event(&self) -> &Dot {
+    pub const fn group_event(&self) -> &crate::causal_envelope::Dot {
         self.group.event()
     }
     #[must_use]
@@ -177,7 +181,7 @@ struct Proof {
     source_account_id: String,
     original: serde_json::Value,
     initial_group: Option<Entity>,
-    members: Vec<Dependency>,
+    members: Vec<crate::causal_envelope::Dependency>,
     materialization_digest: String,
     history: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -205,7 +209,7 @@ pub(super) async fn observe_in(
     identity: &SyncIdentity,
     group_id: i64,
 ) -> Result<PopulatedGroupObservation, DbError> {
-    validate_local(db, user, identity).await?;
+    crate::sync_peer::validate_local(db, user, identity).await?;
     let (group, models) = capture::read(db, user, group_id).await?;
     let labels = labels::capture(db, user, group_id).await?;
     let project = project::capture(db, user, group.resource_id).await?;
@@ -234,7 +238,7 @@ pub async fn install(
     db: &DbContext,
     user: &User,
     identity: &SyncIdentity,
-    peer: &PeerBinding,
+    peer: &crate::sync_peer::PeerBinding,
     bundle: &ObservedPopulatedGroupBundle,
     blobs: &[ModelBlobBinding],
 ) -> Result<PopulatedGroupInstallation, DbError> {
@@ -248,7 +252,7 @@ pub fn validate(
     source: &SyncIdentity,
 ) -> Result<(Option<String>, Option<Entity>), DbError> {
     let proof_value: Proof = serde_json::from_str(proof).map_err(|_| invalid())?;
-    if !matches!(&root.action,Action::LegacyObserved{observation_digest} if *observation_digest==observation::digest(proof))
+    if !matches!(&root.action,crate::causal_envelope::Action::LegacyObserved{observation_digest} if *observation_digest==sha256_hex(proof.as_bytes()))
         || root.entity.birth_id.is_none()
         || !root.parents.is_empty()
         || proof_value.history != "unknown_before_observation"
@@ -258,7 +262,7 @@ pub fn validate(
         || proof_value.original["birth_id"]
             .as_str()
             .is_some_and(|birth| Some(birth) != root.entity.birth_id.as_deref())
-        || proof_value.materialization_digest != observation::digest(materialization)
+        || proof_value.materialization_digest != sha256_hex(materialization.as_bytes())
     {
         return Err(invalid());
     }
@@ -295,7 +299,9 @@ pub async fn labels_valid(
 ) -> Result<bool, DbError> {
     let (snapshot,instance_id,account_id):(Option<String>,String,String)=sqlx::query_as("SELECT label_snapshot,COALESCE(verified_source_instance,source_instance_id),COALESCE(verified_source_account,source_account_id) FROM causal_observation_batches WHERE user_id=? AND batch_id=?")
         .bind(user.id).bind(batch_id).fetch_one(&mut *db).await?;
-    let digest = snapshot.as_deref().map(observation::digest);
+    let digest = snapshot
+        .as_deref()
+        .map(|value| sha256_hex(value.as_bytes()));
     let mismatched:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM causal_observation_batch_members m JOIN causal_genesis_bindings b USING(user_id,entity_kind,birth_id) WHERE m.user_id=? AND m.batch_id=? AND json_extract(b.observation_evidence,'$.label_snapshot_digest') IS NOT ?)")
         .bind(user.id).bind(batch_id).bind(digest).fetch_one(&mut *db).await?;
     if mismatched {
@@ -326,7 +332,9 @@ pub async fn project_valid(
 ) -> Result<bool, DbError> {
     let (snapshot,instance_id,account_id):(Option<String>,String,String)=sqlx::query_as("SELECT project_snapshot,COALESCE(verified_source_instance,source_instance_id),COALESCE(verified_source_account,source_account_id) FROM causal_observation_batches WHERE user_id=? AND batch_id=?")
         .bind(user.id).bind(batch_id).fetch_one(&mut *db).await?;
-    let digest = snapshot.as_deref().map(observation::digest);
+    let digest = snapshot
+        .as_deref()
+        .map(|value| sha256_hex(value.as_bytes()));
     let mismatch:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM causal_observation_batch_members m JOIN causal_genesis_bindings b USING(user_id,entity_kind,birth_id) WHERE m.user_id=? AND m.batch_id=? AND json_extract(b.observation_evidence,'$.project_snapshot_digest') IS NOT ?)")
         .bind(user.id).bind(batch_id).bind(digest).fetch_one(&mut *db).await?;
     if mismatch {

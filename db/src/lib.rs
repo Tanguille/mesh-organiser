@@ -23,14 +23,14 @@ pub mod sync_peer;
 pub mod sync_snapshot;
 pub mod sync_transport;
 pub mod user_db;
-pub use paginated_response::PaginatedResponse;
 mod util;
 
+pub use paginated_response::PaginatedResponse;
 pub(crate) use query_util::{
     GROUPS, LABELS, MODELS, RESOURCES, ensure_owned, push_in, set_timestamp_column,
 };
 
-pub use util::{is_blob_sha256, random_hex_32, time_now, u128_to_hex_32};
+pub use util::{is_blob_sha256, is_lower_hex, random_hex_32, sha256_hex, time_now, u128_to_hex_32};
 pub(crate) use util::{parse_concat_ids, timestamp_or_now, validate_global_id};
 
 pub type DbError = sqlx::Error;

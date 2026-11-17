@@ -1,6 +1,9 @@
 //! Wire envelopes are typed, bounded and canonical before they are persisted or exchanged.
-use db::causal_envelope::{canonical_causal_envelope, parse_causal_envelope};
 use serde_json::{Value, json};
+
+use db::causal_envelope::{
+    MAX_CONTEXT_ITEMS, MAX_NAME_BYTES, canonical_causal_envelope, parse_causal_envelope,
+};
 
 const WRITER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WRITER_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -342,7 +345,6 @@ fn duplicate_dot_across_different_dependency_entities_is_rejected() {
 
 #[test]
 fn name_context_and_total_wire_size_bounds_are_enforced() {
-    use db::causal_envelope::{MAX_CONTEXT_ITEMS, MAX_ENVELOPE_BYTES, MAX_NAME_BYTES};
     let mut input = envelope(
         group(),
         json!({"type":"group_renamed", "name":"x".repeat(MAX_NAME_BYTES)}),
@@ -354,7 +356,7 @@ fn name_context_and_total_wire_size_bounds_are_enforced() {
     input["event"]["counter"] = json!((MAX_CONTEXT_ITEMS + 2).to_string());
     input["parents"] = Value::Array(
         (1..=MAX_CONTEXT_ITEMS)
-            .map(|n| dot(WRITER, &n.to_string()))
+            .map(|item| dot(WRITER, &item.to_string()))
             .collect(),
     );
     assert!(parse(&input));
@@ -364,7 +366,7 @@ fn name_context_and_total_wire_size_bounds_are_enforced() {
         .push(dot(WRITER, &(MAX_CONTEXT_ITEMS + 1).to_string()));
     assert!(!parse(&input));
     let mut wire = envelope(group(), json!({"type":"group_renamed", "name":"x"})).to_string();
-    wire.push_str(&" ".repeat(MAX_ENVELOPE_BYTES));
+    wire.push_str(&" ".repeat(db::causal_envelope::MAX_ENVELOPE_BYTES));
     assert!(parse_causal_envelope(&wire).is_err());
 }
 

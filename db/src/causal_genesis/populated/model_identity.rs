@@ -1,15 +1,10 @@
 //! A second model observation is evidence of an explicit match, never a causal parent.
-use super::{
-    ModelBlobBinding, ObservedPopulatedGroupBundle, PopulatedGroupInstallation, invalid,
-    persistence, transport,
-};
+
+use sqlx::SqliteConnection;
+
 use crate::causal_genesis::{
-    identity::{self, GroupIdentityOutcome, IndependentRoot, LocalObservationStage},
+    identity::{self, GroupIdentityOutcome, IndependentRoot},
     materialization, storage,
-};
-use crate::sync_transport::{
-    observations::ObservationPlan,
-    pull::{Authorization, Delivery},
 };
 use crate::{
     DbError,
@@ -17,7 +12,11 @@ use crate::{
     model::user::User,
     user_db::SyncIdentity,
 };
-use sqlx::SqliteConnection;
+
+use super::{
+    ModelBlobBinding, ObservedPopulatedGroupBundle, PopulatedGroupInstallation, invalid,
+    persistence,
+};
 
 pub(super) fn validate_link(bundle: &ObservedPopulatedGroupBundle) -> Result<(), DbError> {
     let Some(link) = bundle
@@ -40,6 +39,7 @@ pub(super) fn validate_link(bundle: &ObservedPopulatedGroupBundle) -> Result<(),
     {
         return Err(invalid());
     }
+
     Ok(())
 }
 
@@ -69,6 +69,7 @@ async fn matching_baseline(
     {
         return Err(invalid());
     }
+
     Ok(())
 }
 
@@ -154,17 +155,17 @@ async fn insert(
 #[allow(clippy::too_many_arguments)] // Both independent boundaries, bytes and receipt share one transaction.
 pub(in crate::causal_genesis) async fn enroll(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    auth: &crate::sync_transport::pull::Authorization,
     decision_id: &str,
     group_id: i64,
-    delivery: Delivery,
-    mut plan: ObservationPlan,
+    delivery: crate::sync_transport::pull::Delivery,
+    mut plan: crate::sync_transport::observations::ObservationPlan,
     blobs: &[ModelBlobBinding],
-    source: &LocalObservationStage,
+    source: &identity::LocalObservationStage,
 ) -> Result<GroupIdentityOutcome, DbError> {
     let capture = super::observe_in(db, &auth.user, &auth.identity, group_id).await?;
     let remote = plan.bundle.models.first().ok_or_else(invalid)?;
-    let link = transport::IdentityLink {
+    let link = super::transport::IdentityLink {
         observation_id: decision_id.to_owned(),
         baseline: plan.bundle.group.event().clone(),
         model: Some(Dependency {

@@ -1,6 +1,7 @@
+use crate::util::sha256_hex;
+
 use super::{
-    BTreeMap, DbError, Entity, Node, Snapshot, SqliteConnection, SyncIdentity, User, components,
-    encode, invalid, observation,
+    DbError, Node, Snapshot, SqliteConnection, SyncIdentity, User, components, encode, invalid,
 };
 
 #[derive(sqlx::FromRow)]
@@ -29,7 +30,7 @@ async fn matches(
     binding: &Binding,
 ) -> Result<bool, DbError> {
     if binding.global_id != node.global_id
-        || binding.snapshot_digest != observation::digest(&encode(node)?)
+        || binding.snapshot_digest != sha256_hex(encode(node)?.as_bytes())
         || binding.component_digest != component
     {
         return Ok(false);
@@ -56,7 +57,7 @@ async fn record(
     let (incarnation,revision):(String,i64)=sqlx::query_as("SELECT l.label_incarnation,v.revision FROM labels l JOIN label_observation_versions v ON v.label_id=l.label_id WHERE l.label_id=? AND l.label_user_id=?")
         .bind(id).bind(user.id).fetch_one(&mut *db).await?;
     sqlx::query("INSERT INTO observed_label_bindings(user_id,source_instance_id,source_account_id,source_incarnation,global_id,local_label_id,local_incarnation,local_revision,snapshot_digest,component_digest) VALUES(?,?,?,?,?,?,?,?,?,?)")
-        .bind(user.id).bind(&source.instance_id).bind(&source.account_id).bind(&node.incarnation).bind(&node.global_id).bind(id).bind(incarnation).bind(revision).bind(observation::digest(&encode(node)?)).bind(component).execute(db).await?;
+        .bind(user.id).bind(&source.instance_id).bind(&source.account_id).bind(&node.incarnation).bind(&node.global_id).bind(id).bind(incarnation).bind(revision).bind(sha256_hex(encode(node)?.as_bytes())).bind(component).execute(db).await?;
     Ok(())
 }
 
@@ -86,6 +87,7 @@ pub(super) async fn enroll(
             .await?;
         }
     }
+
     Ok(())
 }
 
@@ -94,16 +96,17 @@ pub(super) async fn install(
     user: &User,
     source: &SyncIdentity,
     snapshot: &Snapshot,
-    models: &[(Entity, i64)],
+    models: &[(super::Entity, i64)],
 ) -> Result<(), DbError> {
     let components = components(snapshot)?;
-    let mut ids = BTreeMap::new();
+    let mut ids = super::BTreeMap::new();
     let mut fresh = Vec::new();
     for node in &snapshot.nodes {
         let id = if let Some(prior) = binding(db, user, source, node).await? {
             if !matches(db, user, node, &components[&node.incarnation], &prior).await? {
                 return Err(invalid());
             }
+
             prior.local_label_id
         } else {
             let occupied:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM labels WHERE label_user_id=? AND label_unique_global_id=?) OR EXISTS(SELECT 1 FROM observed_label_bindings WHERE user_id=? AND global_id=?)")
@@ -142,6 +145,7 @@ pub(super) async fn install(
     for (node, id) in fresh {
         record(db, user, source, node, &components[&node.incarnation], id).await?;
     }
+
     Ok(())
 }
 
@@ -160,5 +164,6 @@ pub(super) async fn valid(
             return Ok(false);
         }
     }
+
     Ok(true)
 }

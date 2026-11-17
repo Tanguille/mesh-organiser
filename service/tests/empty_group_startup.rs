@@ -2,18 +2,15 @@
 
 mod common;
 
-use db::{group_db, model::user::User};
-use service::export_service;
-
 #[tokio::test]
 async fn startup_cleanup_preserves_an_owned_empty_group() {
     let (_dir, app_state) = common::test_app_state().await;
-    let user = User::default();
-    let group = group_db::add_empty_group(&app_state.db, &user, "Empty destination", None)
+    let user = db::model::user::User::default();
+    let group = db::group_db::add_empty_group(&app_state.db, &user, "Empty destination", None)
         .await
         .unwrap();
 
-    export_service::cleanup_library_on_startup(&app_state)
+    service::export_service::cleanup_library_on_startup(&app_state)
         .await
         .unwrap();
 

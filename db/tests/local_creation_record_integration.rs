@@ -1,16 +1,16 @@
 //! Local creation records are immutable groundwork, not an authoritative sync frontier.
-mod common;
 use db::{
     blob_db,
     causal_envelope::{self, Action, CreationCompleteness, EntityKind},
-    db_context::DbContext,
     group_db,
     model::user::User,
     model_db, random_hex_32, user_db,
 };
 
+mod common;
+
 async fn record(
-    db: &DbContext,
+    db: &db::db_context::DbContext,
     user: &User,
     kind: EntityKind,
     birth: &str,
@@ -208,7 +208,7 @@ async fn migration_does_not_fabricate_genesis_for_existing_known_or_unknown_birt
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_020_000)
+        .filter(|item| item.version < 20_261_113_020_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)

@@ -1,7 +1,5 @@
 //! The shared journal retains creation evidence; it is not a complete sync frontier.
-mod common;
 use db::{
-    blob_db,
     causal_envelope::{
         self, Action, CausalEnvelope, CreationCompleteness, Dot, Entity, EntityKind,
     },
@@ -12,13 +10,15 @@ use db::{
     model_db, random_hex_32, user_db,
 };
 
+mod common;
+
 #[tokio::test]
 async fn local_creation_uses_shared_journal_and_rolls_back_on_failure() {
     let (_dir, db) = common::test_db().await;
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'causal_events')").fetch_one(&db).await.unwrap();
     assert!(exists, "creation records need the shared event journal");
     let user = User::default();
-    let blob = blob_db::add_blob(&db, "journal-model", "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, "journal-model", "stl", 1, None)
         .await
         .unwrap();
     let before: i64 =
@@ -94,7 +94,7 @@ async fn migration_preserves_creation_and_receipt_bytes_dots_and_unknown_history
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_110_000)
+        .filter(|item| item.version < 20_261_113_110_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
@@ -218,7 +218,7 @@ async fn duplicate_dot_between_old_stores_aborts_journal_migration_atomically() 
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_110_000)
+        .filter(|item| item.version < 20_261_113_110_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)

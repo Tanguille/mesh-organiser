@@ -1,15 +1,19 @@
 //! Local rename events preserve unknown ancestry and commit atomically with group edits.
-mod common;
 
 use db::{
-    db_context::DbContext,
     group_db,
     group_history::{self, HistoryOrigin},
     model::user::User,
-    random_hex_32, user_db,
+    user_db,
 };
 
-async fn history(db: &DbContext, user: &User, id: &str) -> group_history::GroupHistory {
+mod common;
+
+async fn history(
+    db: &db::db_context::DbContext,
+    user: &User,
+    id: &str,
+) -> group_history::GroupHistory {
     let result = group_history::get_group_history(db, user, id)
         .await
         .unwrap();
@@ -72,9 +76,10 @@ async fn local_renames_form_a_chain_but_pre_upgrade_ancestry_stays_unknown() {
 async fn history_is_owner_scoped_and_survives_database_reopen() {
     let (dir, db) = common::test_db().await;
     let owner = User::default();
-    let foreign_id = user_db::add_user(&db, "foreign", "foreign@example.test", &random_hex_32())
-        .await
-        .unwrap();
+    let foreign_id =
+        user_db::add_user(&db, "foreign", "foreign@example.test", &db::random_hex_32())
+            .await
+            .unwrap();
     let foreign = user_db::get_user_by_id(&db, foreign_id)
         .await
         .unwrap()
@@ -219,14 +224,14 @@ async fn unrelated_groups_have_independent_frontiers_and_ambiguous_ids_fail_clos
     group_db::edit_group(&db, &user, second.id, "second renamed", None, None)
         .await
         .unwrap();
-    let a = history(&db, &user, &first.unique_global_id).await;
-    let b = history(&db, &user, &second.unique_global_id).await;
-    assert_eq!(a.events.len(), 1);
-    assert_eq!(b.events.len(), 1);
-    assert_eq!(a.events[0].name, "first renamed");
-    assert_eq!(b.events[0].name, "second renamed");
-    assert_eq!(a.events[0].parents, vec![]);
-    assert_eq!(b.events[0].parents, vec![]);
+    let first_history = history(&db, &user, &first.unique_global_id).await;
+    let second_history = history(&db, &user, &second.unique_global_id).await;
+    assert_eq!(first_history.events.len(), 1);
+    assert_eq!(second_history.events.len(), 1);
+    assert_eq!(first_history.events[0].name, "first renamed");
+    assert_eq!(second_history.events[0].name, "second renamed");
+    assert_eq!(first_history.events[0].parents, vec![]);
+    assert_eq!(second_history.events[0].parents, vec![]);
     let duplicate =
         sqlx::query("UPDATE models_group SET group_unique_global_id = ? WHERE group_id = ?")
             .bind(&first.unique_global_id)

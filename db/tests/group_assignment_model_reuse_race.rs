@@ -1,15 +1,15 @@
 //! A reused model id must never let a concurrent assignment modify another owner's model.
-mod common;
-use db::{blob_db, group_db, model::user::User, model_db, random_hex_32, user_db};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
+
+use sqlx::sqlite::SqliteConnectOptions;
 use tokio::sync::Notify;
+
+use db::{group_db, model::user::User, model_db, random_hex_32, user_db};
+
+mod common;
 
 async fn insert_legacy_model(db: &sqlx::SqlitePool, user: &User, blob: i64, id: i64) {
     sqlx::query("INSERT INTO models (model_id, model_name, model_blob_id, model_added, model_user_id, model_unique_global_id, model_last_modified) VALUES (?, 'legacy', ?, '2020-01-01T00:00:00Z', ?, ?, '2020-01-01T00:00:00Z')")
@@ -41,7 +41,7 @@ async fn assignment_cannot_move_another_users_model_after_id_reuse() {
         .unwrap();
     let source = common::legacy_group(&db, &owner, "source").await;
     let target = common::legacy_group(&db, &owner, "target").await;
-    let blob = blob_db::add_blob(&db, "reuse-race-model", "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, "reuse-race-model", "stl", 1, None)
         .await
         .unwrap();
     let model = 1;
@@ -52,9 +52,9 @@ async fn assignment_cannot_move_another_users_model_after_id_reuse() {
 
     let reached = Arc::new(Notify::new());
     let resume = Arc::new(Notify::new());
-    let armed = Arc::new(AtomicBool::new(false));
-    let releases = Arc::new(AtomicUsize::new(0));
-    let pool = SqlitePoolOptions::new()
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .after_release({
             let reached = Arc::clone(&reached);

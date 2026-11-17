@@ -1,18 +1,23 @@
 //! Explicit legacy identity confirmation; production synchronization remains gated.
-use super::{AuthenticatedHub, NextDelivery, PublicationOutcome, invalid};
-use crate::{
-    AppState, ServiceError,
-    sync_observation_service::{self, IncomingObservation},
-};
-use db::causal_genesis::identity::{self, Decision, DecisionOutcome, IdentityTransfer};
 pub use db::causal_genesis::identity::{
     GroupIdentityChoice, GroupIdentityOutcome, GroupSeparationOutcome, NamePublication,
     ReceivedNameChoice,
 };
-use db::sync_transport::{self, pull::Delivery};
-use db::{causal_envelope::Dot, model::user::User, user_db::SyncIdentity};
+use db::{
+    causal_genesis::identity::{self, Decision, DecisionOutcome, IdentityTransfer},
+    model::user::User,
+    sync_transport,
+    user_db::SyncIdentity,
+};
 
-impl AuthenticatedHub {
+use crate::{
+    AppState, ServiceError,
+    sync_observation_service::{self, IncomingObservation},
+};
+
+use super::invalid;
+
+impl super::AuthenticatedHub {
     pub async fn prepare_received_group_name(
         &self,
         state: &AppState,
@@ -97,7 +102,8 @@ impl AuthenticatedHub {
         identity: &SyncIdentity,
         local_group_id: i64,
     ) -> Result<GroupIdentityChoice, ServiceError> {
-        let NextDelivery::Item(delivery, item) = self.next_delivery(state, user, identity).await?
+        let super::NextDelivery::Item(delivery, item) =
+            self.next_delivery(state, user, identity).await?
         else {
             return Err(invalid());
         };
@@ -151,6 +157,7 @@ impl AuthenticatedHub {
             let state = state.clone();
             let authorization = self.authorization.clone();
             let decision_id = decision_id.to_owned();
+
             return Ok(tokio::spawn(async move {
                 match decision {
                     Decision::ModelPair(_) => unreachable!("model pair has a local model stage"),
@@ -201,7 +208,7 @@ impl AuthenticatedHub {
     pub(super) async fn download_observation(
         &self,
         state: &AppState,
-        delivery: &Delivery,
+        delivery: &sync_transport::pull::Delivery,
         item: &serde_json::Value,
     ) -> Result<IncomingObservation, ServiceError> {
         let sequence = delivery.sequence;
@@ -240,8 +247,8 @@ impl AuthenticatedHub {
         state: &AppState,
         user: &User,
         identity: &SyncIdentity,
-        event: &Dot,
-    ) -> Result<PublicationOutcome, ServiceError> {
+        event: &db::causal_envelope::Dot,
+    ) -> Result<super::PublicationOutcome, ServiceError> {
         if !self.authorization.matches(user, identity) {
             return Err(invalid());
         }

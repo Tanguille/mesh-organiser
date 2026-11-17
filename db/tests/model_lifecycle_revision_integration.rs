@@ -1,16 +1,16 @@
 //! Model lifecycle revisions prevent stale assignment snapshots from surviving Trash ABA.
-mod common;
 
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db::{self, AssignmentBatchResult, AssignmentChange},
     model::user::User,
     model_db, random_hex_32,
 };
 
+mod common;
+
 async fn model(db: &DbContext, user: &User) -> i64 {
-    let blob = blob_db::add_blob(db, &random_hex_32(), "stl", 1, None)
+    let blob = db::blob_db::add_blob(db, &random_hex_32(), "stl", 1, None)
         .await
         .unwrap();
     model_db::add_model(db, user, "model", blob, None, None)
@@ -176,7 +176,7 @@ async fn migration_backfills_existing_live_and_trashed_models() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let migrations = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_030_000)
+        .filter(|item| item.version < 20_261_113_030_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(migrations)

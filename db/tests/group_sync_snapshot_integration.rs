@@ -1,12 +1,13 @@
 //! A sync snapshot must represent one owner's complete, consistent group state.
+
+use db::{group_db, model::user::User, model_db, user_db};
+
 mod common;
 
-use db::{
-    blob_db, db_context::DbContext, group_db, model::user::User, model_db, random_hex_32, user_db,
-};
-
-async fn add_model(db: &DbContext, user: &User, name: &str) -> (i64, String) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+async fn add_model(db: &db::db_context::DbContext, user: &User, name: &str) -> (i64, String) {
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     let id = model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
@@ -23,9 +24,10 @@ async fn add_model(db: &DbContext, user: &User, name: &str) -> (i64, String) {
 async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
     let (_dir, db) = common::test_db().await;
     let owner = User::default();
-    let foreign_id = user_db::add_user(&db, "foreign", "foreign@example.test", &random_hex_32())
-        .await
-        .unwrap();
+    let foreign_id =
+        user_db::add_user(&db, "foreign", "foreign@example.test", &db::random_hex_32())
+            .await
+            .unwrap();
     let foreign = user_db::get_user_by_id(&db, foreign_id)
         .await
         .unwrap()
@@ -86,7 +88,7 @@ async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
     let active_row = snapshot
         .groups
         .iter()
-        .find(|g| g.global_id == active.unique_global_id)
+        .find(|group| group.global_id == active.unique_global_id)
         .unwrap();
     assert_eq!(active_row.name, "active");
     assert_eq!(active_row.deleted_at, None);
@@ -100,7 +102,7 @@ async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
     let deleted_row = snapshot
         .groups
         .iter()
-        .find(|g| g.global_id == deleted.unique_global_id)
+        .find(|group| group.global_id == deleted.unique_global_id)
         .unwrap();
     assert_eq!(deleted_row.name, "deleted");
     assert!(deleted_row.deleted_at.is_some());
@@ -123,7 +125,7 @@ async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
         let assignment = snapshot
             .assignments
             .iter()
-            .find(|a| &a.model_global_id == global)
+            .find(|assignment| &assignment.model_global_id == global)
             .unwrap();
         assert_eq!(assignment.group_global_id.as_deref(), group);
         assert_eq!(assignment.deleted_at.is_some(), trashed);
@@ -140,7 +142,7 @@ async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
         let record = snapshot
             .deletions
             .iter()
-            .find(|d| &d.group_global_id == global)
+            .find(|deletion| &deletion.group_global_id == global)
             .unwrap();
         assert_ne!(record.operation_id, "");
         assert_ne!(record.deleted_at, "");
@@ -158,13 +160,13 @@ async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
         !snapshot
             .assignments
             .iter()
-            .any(|a| a.model_global_id == foreign_global)
+            .any(|assignment| assignment.model_global_id == foreign_global)
     );
     assert!(
         !snapshot
             .deletions
             .iter()
-            .any(|d| d.group_global_id == foreign_group.unique_global_id)
+            .any(|deletion| deletion.group_global_id == foreign_group.unique_global_id)
     );
     let empty = group_db::get_group_sync_snapshot(
         &db,
@@ -187,7 +189,7 @@ async fn snapshot_contains_complete_owner_state_and_retains_deletion_history() {
     let record = restored
         .deletions
         .iter()
-        .find(|d| d.group_global_id == deleted.unique_global_id)
+        .find(|deletion| deletion.group_global_id == deleted.unique_global_id)
         .unwrap();
     assert!(record.restored_at.is_some());
 }
@@ -284,12 +286,12 @@ async fn snapshots_never_mix_states_from_concurrent_commits() {
         let group_row = snapshot
             .groups
             .iter()
-            .find(|g| g.global_id == group.unique_global_id)
+            .find(|item| item.global_id == group.unique_global_id)
             .unwrap();
         let model = snapshot
             .assignments
             .iter()
-            .find(|m| m.model_global_id == model_global)
+            .find(|assignment| assignment.model_global_id == model_global)
             .unwrap();
         assert_eq!(group_row.name == "on", model.group_global_id.is_some());
     }

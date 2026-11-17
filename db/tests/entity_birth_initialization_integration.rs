@@ -1,13 +1,14 @@
 //! A known portable birth does not imply a known initialization event.
-mod common;
 use db::{
     blob_db,
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
+    causal_envelope::{self, Action, EntityKind},
     db_context::DbContext,
     group_db,
     model::{ModelFlags, user::User},
     model_db, random_hex_32, user_db,
 };
+
+mod common;
 
 async fn assert_schema(db: &DbContext) {
     let columns: Vec<String> =
@@ -220,7 +221,7 @@ async fn migration_keeps_known_births_with_old_creation_records_unknown() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_060_000)
+        .filter(|item| item.version < 20_261_113_060_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
@@ -261,14 +262,14 @@ async fn migration_keeps_known_births_with_old_creation_records_unknown() {
         } else {
             "model"
         };
-        let envelope = CausalEnvelope {
+        let envelope = causal_envelope::CausalEnvelope {
             version: 2,
-            entity: Entity {
+            entity: causal_envelope::Entity {
                 kind,
                 global_id: global.clone(),
                 birth_id: Some(birth.clone()),
             },
-            event: Dot {
+            event: causal_envelope::Dot {
                 writer_id: writer.clone(),
                 counter: counter.to_string(),
             },

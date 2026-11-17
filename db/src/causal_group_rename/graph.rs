@@ -1,14 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-
-use sqlx::SqliteConnection;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     DbError,
     causal_envelope::{self, Action, CausalEnvelope, Dot},
-    causal_store::{MAX_OWNER_BYTES, MAX_OWNER_DEPENDENCIES, MAX_OWNER_EVENTS},
 };
 
-use super::{NameChoice, NameState, NameToken, invalid, storage::Scope};
+use super::{NameChoice, NameState, invalid, storage::Scope};
 
 type Key = (String, String);
 
@@ -42,7 +39,7 @@ impl Graph {
     }
 
     pub fn state(&self, scope: &Scope) -> NameState {
-        let token = NameToken {
+        let token = super::NameToken {
             entity: scope.root.entity.clone(),
             generation: scope.generation,
             revision: scope.revision,
@@ -85,14 +82,14 @@ impl Graph {
     }
 }
 
-pub(super) async fn load(db: &mut SqliteConnection, scope: &Scope) -> Result<Graph, DbError> {
+pub(super) async fn load(db: &mut sqlx::SqliteConnection, scope: &Scope) -> Result<Graph, DbError> {
     let (count, bytes): (i64, i64) = sqlx::query_as("SELECT COUNT(*), COALESCE(SUM(length(CAST(e.envelope AS BLOB))), 0) FROM group_rename_events n JOIN causal_events e ON e.user_id = n.user_id AND e.writer_id = n.writer_id AND e.counter = n.counter WHERE n.user_id = ? AND n.birth_id = ?")
         .bind(scope.user_id).bind(&scope.birth_id).fetch_one(&mut *db).await?;
-    if usize::try_from(count).map_err(|_| invalid())? > MAX_OWNER_EVENTS
+    if usize::try_from(count).map_err(|_| invalid())? > crate::causal_store::MAX_OWNER_EVENTS
         || usize::try_from(bytes)
             .map_err(|_| invalid())?
             .saturating_add(scope.root_wire.len())
-            > MAX_OWNER_BYTES
+            > crate::causal_store::MAX_OWNER_BYTES
     {
         return Err(invalid());
     }
@@ -169,7 +166,7 @@ fn reduce(nodes: &BTreeMap<Key, CausalEnvelope>, root: &CausalEnvelope) -> Resul
     for (id, event) in nodes {
         remaining.insert(id.clone(), event.parents.len());
         edges = edges.saturating_add(event.parents.len());
-        if edges > MAX_OWNER_DEPENDENCIES {
+        if edges > crate::causal_store::MAX_OWNER_DEPENDENCIES {
             return Err(invalid());
         }
         for parent in &event.parents {
@@ -181,7 +178,7 @@ fn reduce(nodes: &BTreeMap<Key, CausalEnvelope>, root: &CausalEnvelope) -> Resul
             children.entry(parent).or_default().push(id.clone());
         }
     }
-    let mut ready = VecDeque::from([key(&root.event)]);
+    let mut ready = std::collections::VecDeque::from([key(&root.event)]);
     let mut names = BTreeMap::new();
     let mut frontier = BTreeSet::new();
     let indices = nodes.keys().cloned().zip(0..nodes.len()).collect();
@@ -207,6 +204,7 @@ fn reduce(nodes: &BTreeMap<Key, CausalEnvelope>, root: &CausalEnvelope) -> Resul
                 if !valid {
                     return Err(invalid());
                 }
+
                 name
             }
             _ => return Err(invalid()),

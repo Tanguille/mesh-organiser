@@ -1,12 +1,13 @@
 use sqlx::SqliteConnection;
 
-use super::{counter, invalid};
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
-    causal_store::{self, IdentityStatus},
+    causal_envelope::{self, Dot, Entity},
+    causal_store,
     model::user::User,
 };
+
+use super::{counter, invalid};
 
 pub(super) struct Scope {
     pub user_id: i64,
@@ -14,7 +15,7 @@ pub(super) struct Scope {
     pub local_id: i64,
     pub incarnation: String,
     pub revision: i64,
-    pub root: CausalEnvelope,
+    pub root: causal_envelope::CausalEnvelope,
     pub root_wire: String,
     pub paused: bool,
     pub current_group_id: Option<i64>,
@@ -53,7 +54,7 @@ pub(super) async fn load(
     let current_destination = match (row.group_id, row.group_global) {
         (None, None) => None,
         (Some(_), Some(global_id)) => Some(Entity {
-            kind: EntityKind::Group,
+            kind: causal_envelope::EntityKind::Group,
             global_id,
             birth_id: row.group_birth,
         }),
@@ -62,11 +63,11 @@ pub(super) async fn load(
     let root = causal_envelope::parse_causal_envelope(&row.root_wire).map_err(|_| invalid())?;
     if root.entity.global_id != row.global_id
         || root.entity.birth_id.as_deref() != Some(&row.birth_id)
-        || !matches!(root.action, Action::ModelCreated)
+        || !matches!(root.action, causal_envelope::Action::ModelCreated)
         || !root.parents.is_empty()
         || !root.dependencies.is_empty()
         || causal_store::identity_status(db, user.id, &root.entity).await?
-            != IdentityStatus::Uncontested
+            != causal_store::IdentityStatus::Uncontested
     {
         return Ok(None);
     }

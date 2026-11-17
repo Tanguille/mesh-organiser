@@ -1,7 +1,5 @@
 //! Group lifecycle and model assignment sync must commit as one guarded operation.
-mod common;
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db::{
         self, AssignmentBatchResult, AssignmentChange, GroupLifecycleChange, GroupPrecondition,
@@ -10,8 +8,12 @@ use db::{
     model_db, random_hex_32, user_db,
 };
 
+mod common;
+
 async fn model(db: &DbContext, user: &User, name: &str) -> (i64, String) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     let id = model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
@@ -32,7 +34,7 @@ async fn change(
     let item = snapshot
         .assignments
         .iter()
-        .find(|m| m.model_global_id == global)
+        .find(|assignment| assignment.model_global_id == global)
         .unwrap();
     AssignmentChange {
         model_global_id: global.into(),
@@ -46,19 +48,22 @@ async fn change(
 }
 async fn condition(db: &DbContext, user: &User, global: &str) -> GroupPrecondition {
     let snapshot = group_db::get_group_sync_snapshot(db, user).await.unwrap();
-    let h = snapshot
+    let group_head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == global)
+        .find(|head| head.group_global_id == global)
         .unwrap();
-    let group = snapshot.groups.iter().find(|g| g.global_id == global);
+    let group = snapshot
+        .groups
+        .iter()
+        .find(|group| group.global_id == global);
     GroupPrecondition {
         group_global_id: global.into(),
-        expected_generation: h.generation,
-        expected_head: h.head,
-        expected_state: h.state.clone(),
-        expected_revision: group.map(|g| g.revision),
-        expected_deleted_at: group.and_then(|g| g.deleted_at.clone()),
+        expected_generation: group_head.generation,
+        expected_head: group_head.head,
+        expected_state: group_head.state.clone(),
+        expected_revision: group.map(|group| group.revision),
+        expected_deleted_at: group.and_then(|group| group.deleted_at.clone()),
     }
 }
 async fn assignments(db: &DbContext, user: &User) -> Vec<(String, Option<String>)> {
@@ -67,7 +72,7 @@ async fn assignments(db: &DbContext, user: &User) -> Vec<(String, Option<String>
         .unwrap()
         .assignments
         .into_iter()
-        .map(|a| (a.model_global_id, a.group_global_id))
+        .map(|assignment| (assignment.model_global_id, assignment.group_global_id))
         .collect()
 }
 fn delete(global: &str, deletion_id: &str) -> GroupLifecycleChange {
@@ -133,7 +138,7 @@ async fn delete_and_explicit_restore_are_atomic_and_replay_safe() {
         snapshot
             .groups
             .iter()
-            .find(|g| &g.global_id == global)
+            .find(|group| &group.global_id == global)
             .unwrap()
             .deleted_at
             .is_some()
@@ -142,7 +147,7 @@ async fn delete_and_explicit_restore_are_atomic_and_replay_safe() {
         snapshot
             .deletions
             .iter()
-            .any(|d| d.operation_id == deletion_id && d.restored_at.is_none())
+            .any(|deletion| deletion.operation_id == deletion_id && deletion.restored_at.is_none())
     );
     assert!(matches!(
         group_db::apply_group_sync_batch(
@@ -224,7 +229,7 @@ async fn keep_recreates_purged_group_only_for_matching_deletion() {
     let deletion = snap
         .deletions
         .iter()
-        .find(|d| &d.group_global_id == global)
+        .find(|deletion| &deletion.group_global_id == global)
         .unwrap()
         .operation_id
         .clone();
@@ -523,7 +528,7 @@ async fn keep_restores_recoverable_group_but_restore_rejects_expired_snapshot() 
     let deletion = snapshot
         .deletions
         .iter()
-        .find(|d| &d.group_global_id == global)
+        .find(|deletion| &deletion.group_global_id == global)
         .unwrap()
         .operation_id
         .clone();
@@ -556,7 +561,7 @@ async fn keep_restores_recoverable_group_but_restore_rejects_expired_snapshot() 
         .unwrap()
         .deletions
         .into_iter()
-        .find(|d| d.restored_at.is_none())
+        .find(|deletion| deletion.restored_at.is_none())
         .unwrap()
         .operation_id;
     sqlx::query(

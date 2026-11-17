@@ -1,5 +1,4 @@
 //! Opt-in test router. It is deliberately not mounted by the production app.
-use crate::user::{AuthSession, CurrentSyncUser};
 use axum::{
     Json, Router,
     extract::{Query, State},
@@ -7,7 +6,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+
 use service::AppState;
+
+use crate::user::{AuthSession, CurrentSyncUser};
 #[path = "sync_observation_transport.rs"]
 mod observation;
 
@@ -73,7 +75,10 @@ struct List {
 async fn current(session: &AuthSession, protocol: u32) -> bool {
     protocol == 1
         && matches!(
-            session.session.get::<u32>("group_deletion_protocol").await,
+            session
+                .session
+                .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
+                .await,
             Ok(Some(1))
         )
 }
@@ -96,6 +101,7 @@ fn response<T: serde::Serialize>(result: Result<T, db::DbError>) -> Response {
                 else {
                     return StatusCode::INTERNAL_SERVER_ERROR.into_response();
                 };
+
                 return (
                     StatusCode::CONFLICT,
                     Json(serde_json::json!({"status":"needs_dependencies","missing":missing})),
@@ -157,6 +163,7 @@ fn cursor(value: &str) -> Option<i64> {
     {
         return None;
     }
+
     value.parse().ok()
 }
 async fn list(

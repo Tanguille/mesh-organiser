@@ -1,12 +1,15 @@
 //! Project receipts preserve association and do not infer identity from globals.
-mod common;
 use db::{
     blob_db,
     causal_adoption::{self, ModelBlobBinding},
+    causal_group_lifecycle,
+    causal_group_rename::NameState,
     group_db,
     model::user::User,
     model_db, random_hex_32, resource_db, sync_peer, user_db,
 };
+
+mod common;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -119,14 +122,11 @@ async fn populated_project_observation_preserves_project_and_assignment() {
         .await
         .unwrap();
     for group_id in [installed.group_id, installed2.group_id] {
-        let state = db::causal_group_lifecycle::get_state(&b, &user, &bi, group_id)
+        let state = causal_group_lifecycle::get_state(&b, &user, &bi, group_id)
             .await
             .unwrap();
         assert!(
-            matches!(
-                state.name,
-                db::causal_group_rename::NameState::Paused { .. }
-            ),
+            matches!(state.name, NameState::Paused { .. }),
             "project ABA must pause each associated scope"
         );
     }
@@ -149,13 +149,10 @@ async fn populated_project_observation_preserves_project_and_assignment() {
         retained.is_some(),
         "trashing all members must preserve the project"
     );
-    let state = db::causal_group_lifecycle::get_state(&b, &user, &bi, installed.group_id)
+    let state = causal_group_lifecycle::get_state(&b, &user, &bi, installed.group_id)
         .await
         .unwrap();
-    assert!(matches!(
-        state.name,
-        db::causal_group_rename::NameState::Paused { .. }
-    ));
+    assert!(matches!(state.name, NameState::Paused { .. }));
 }
 
 #[tokio::test]
@@ -428,6 +425,7 @@ async fn project_snapshots_count_toward_combined_byte_limit() {
             );
             let after: (i64,i64,i64) = sqlx::query_as("SELECT (SELECT COUNT(*) FROM causal_genesis_bindings),(SELECT COUNT(*) FROM causal_observation_batches),(SELECT counter FROM group_causal_replica WHERE singleton=1)").fetch_one(&db).await.unwrap();
             assert_eq!(after, before);
+
             return;
         }
         result.unwrap();
@@ -439,8 +437,6 @@ async fn project_snapshots_count_toward_combined_byte_limit() {
 
 #[tokio::test]
 async fn late_rename_keeps_purged_group_and_original_project_incarnation() {
-    use db::causal_group_lifecycle::{self, GroupLifecycle, OperationImportResult};
-    use db::causal_group_rename::NameState;
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let user = User::default();
@@ -515,7 +511,7 @@ async fn late_rename_keeps_purged_group_and_original_project_incarnation() {
     );
     let imported = imported.unwrap();
     assert!(
-        matches!(imported,OperationImportResult::Applied(ref state) if matches!(state.lifecycle,GroupLifecycle::Active))
+        matches!(imported,causal_group_lifecycle::OperationImportResult::Applied(ref state) if matches!(state.lifecycle,causal_group_lifecycle::GroupLifecycle::Active))
     );
     let row: (i64,String,Option<i64>,String) = sqlx::query_as("SELECT g.group_id,g.group_name,g.group_resource_id,r.resource_incarnation FROM models_group g JOIN resources r ON r.resource_id=g.group_resource_id WHERE g.group_user_id=? AND g.group_unique_global_id=?").bind(user.id).bind(&group.unique_global_id).fetch_one(&a).await.unwrap();
     assert_ne!(row.0, group.id);
@@ -535,7 +531,6 @@ async fn late_rename_keeps_purged_group_and_original_project_incarnation() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn replaced_target_project_pauses_populated_and_empty_groups() {
-    use db::causal_group_rename::NameState;
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let user = User::default();
@@ -653,7 +648,7 @@ async fn replaced_target_project_pauses_populated_and_empty_groups() {
             .unwrap();
     assert_ne!(incarnation, new_incarnation);
     for id in [installed.group_id, installed_empty.group_id] {
-        let state = db::causal_group_lifecycle::get_state(&b, &user, &bi, id)
+        let state = causal_group_lifecycle::get_state(&b, &user, &bi, id)
             .await
             .unwrap();
         assert!(

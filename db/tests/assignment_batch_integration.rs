@@ -1,17 +1,19 @@
 //! Assignment batches must be atomic, owner-scoped and safe to retry.
-mod common;
 
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db::{self, AssignmentBatchResult, AssignmentChange, GroupPrecondition},
     model::user::User,
-    model_db, random_hex_32, user_db,
+    random_hex_32, user_db,
 };
 
+mod common;
+
 async fn model(db: &DbContext, user: &User, name: &str) -> (i64, String) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
-    let id = model_db::add_model(db, user, name, blob, None, None)
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
+    let id = db::model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
     let global = sqlx::query_scalar("SELECT model_unique_global_id FROM models WHERE model_id = ?")
@@ -27,7 +29,7 @@ async fn change(db: &DbContext, user: &User, id: &str, target: Option<&str>) -> 
     let item = snapshot
         .assignments
         .iter()
-        .find(|m| m.model_global_id == id)
+        .find(|assignment| assignment.model_global_id == id)
         .unwrap();
     AssignmentChange {
         model_global_id: id.to_owned(),
@@ -42,11 +44,15 @@ async fn change(db: &DbContext, user: &User, id: &str, target: Option<&str>) -> 
 
 async fn precondition(db: &DbContext, user: &User, id: &str) -> GroupPrecondition {
     let snapshot = group_db::get_group_sync_snapshot(db, user).await.unwrap();
-    let group = snapshot.groups.iter().find(|g| g.global_id == id).unwrap();
+    let group = snapshot
+        .groups
+        .iter()
+        .find(|group| group.global_id == id)
+        .unwrap();
     let head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == id)
+        .find(|head| head.group_global_id == id)
         .unwrap();
     GroupPrecondition {
         group_global_id: id.to_owned(),
@@ -63,38 +69,45 @@ async fn snapshot(db: &DbContext, user: &User) -> String {
     let groups: Vec<_> = snapshot
         .groups
         .into_iter()
-        .map(|g| (g.global_id, g.name, g.revision, g.deleted_at))
+        .map(|group| {
+            (
+                group.global_id,
+                group.name,
+                group.revision,
+                group.deleted_at,
+            )
+        })
         .collect();
     let assignments: Vec<_> = snapshot
         .assignments
         .into_iter()
-        .map(|m| {
+        .map(|assignment| {
             (
-                m.model_global_id,
-                m.incarnation,
-                m.group_global_id,
-                m.revision,
-                m.deleted_at,
+                assignment.model_global_id,
+                assignment.incarnation,
+                assignment.group_global_id,
+                assignment.revision,
+                assignment.deleted_at,
             )
         })
         .collect();
     let deletions: Vec<_> = snapshot
         .deletions
         .into_iter()
-        .map(|d| {
+        .map(|deletion| {
             (
-                d.group_global_id,
-                d.operation_id,
-                d.deleted_at,
-                d.restored_at,
-                d.revision,
+                deletion.group_global_id,
+                deletion.operation_id,
+                deletion.deleted_at,
+                deletion.restored_at,
+                deletion.revision,
             )
         })
         .collect();
     let heads: Vec<_> = snapshot
         .heads
         .into_iter()
-        .map(|h| (h.group_global_id, h.generation, h.head, h.state))
+        .map(|item| (item.group_global_id, item.generation, item.head, item.state))
         .collect();
     format!("{groups:?}{assignments:?}{deletions:?}{heads:?}")
 }
@@ -136,7 +149,7 @@ async fn batch_is_atomic_and_exact_retry_is_idempotent_and_order_independent() {
         let item = after
             .assignments
             .iter()
-            .find(|m| &m.model_global_id == global)
+            .find(|assignment| &assignment.model_global_id == global)
             .unwrap();
         assert_eq!(
             item.group_global_id.as_deref(),
@@ -147,7 +160,7 @@ async fn batch_is_atomic_and_exact_retry_is_idempotent_and_order_independent() {
         after
             .groups
             .iter()
-            .find(|g| g.global_id == source.unique_global_id)
+            .find(|group| group.global_id == source.unique_global_id)
             .unwrap()
             .revision
             > source_before.expected_revision.unwrap()
@@ -156,7 +169,7 @@ async fn batch_is_atomic_and_exact_retry_is_idempotent_and_order_independent() {
         after
             .groups
             .iter()
-            .find(|g| g.global_id == target.unique_global_id)
+            .find(|group| group.global_id == target.unique_global_id)
             .unwrap()
             .revision
             > target_before.expected_revision.unwrap()
@@ -376,17 +389,17 @@ async fn injected_failure_rolls_back_all_changes_and_allows_retry() {
 async fn concurrent_competing_assignments_cannot_both_succeed() {
     let (_dir, db) = common::test_db().await;
     let user = User::default();
-    let a = group_db::add_empty_group(&db, &user, "A", None)
+    let first_group = group_db::add_empty_group(&db, &user, "A", None)
         .await
         .unwrap();
-    let b = group_db::add_empty_group(&db, &user, "B", None)
+    let second_group = group_db::add_empty_group(&db, &user, "B", None)
         .await
         .unwrap();
     let (_, global) = model(&db, &user, "race").await;
-    let to_a = change(&db, &user, &global, Some(&a.unique_global_id)).await;
-    let to_b = change(&db, &user, &global, Some(&b.unique_global_id)).await;
-    let pre_a = precondition(&db, &user, &a.unique_global_id).await;
-    let pre_b = precondition(&db, &user, &b.unique_global_id).await;
+    let to_a = change(&db, &user, &global, Some(&first_group.unique_global_id)).await;
+    let to_b = change(&db, &user, &global, Some(&second_group.unique_global_id)).await;
+    let pre_a = precondition(&db, &user, &first_group.unique_global_id).await;
+    let pre_b = precondition(&db, &user, &second_group.unique_global_id).await;
     let op_a = random_hex_32();
     let op_b = random_hex_32();
     let changes_a = [to_a];
@@ -406,12 +419,12 @@ async fn concurrent_competing_assignments_cannot_both_succeed() {
     let item = after
         .assignments
         .iter()
-        .find(|m| m.model_global_id == global)
+        .find(|assignment| assignment.model_global_id == global)
         .unwrap();
     let winner = if left.is_ok() {
-        &a.unique_global_id
+        &first_group.unique_global_id
     } else {
-        &b.unique_global_id
+        &second_group.unique_global_id
     };
     assert_eq!(item.group_global_id.as_deref(), Some(winner.as_str()));
 }

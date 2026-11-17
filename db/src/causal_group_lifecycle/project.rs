@@ -1,14 +1,15 @@
 use sqlx::SqliteConnection;
 
-use super::{
-    graph::Graph,
-    invalid,
-    storage::{self, Scope},
-};
 use crate::{
     DbError,
     causal_envelope::{Action, EntityKind},
     model::user::User,
+};
+
+use super::{
+    graph::Graph,
+    invalid,
+    storage::{self, Scope},
 };
 
 pub(super) async fn apply(
@@ -143,5 +144,6 @@ async fn history(
             .await?;
         }
     }
+
     Ok(())
 }

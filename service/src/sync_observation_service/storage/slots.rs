@@ -1,10 +1,14 @@
 //! Permanent certified directories; generation tokens fence their active intents.
-use super::{
-    AppState, File, Path, ServiceError, Stage, entry_identity, identity, invalid, open_directory,
-    open_lease, root, sync_handle, text, verify_path_handle,
-};
+use std::io::{Seek, Write};
+
+use rustix::fs::{Mode, OFlags};
+
 use db::sync_transport::stage_slots::{self, StageSlot};
-use std::io::{Seek, SeekFrom, Write};
+
+use super::{
+    AppState, File, Path, ServiceError, Stage, identity, invalid, open_directory, open_lease, root,
+    sync_handle, text, verify_path_handle,
+};
 
 async fn owner(state: &AppState) -> Result<StageSlot, ServiceError> {
     let root = root(state)?;
@@ -79,7 +83,7 @@ fn verify_files(
             slot.lease_device.as_deref(),
             slot.lease_inode.as_deref(),
         )
-        || entry_identity(handle, ".lease")?
+        || super::entry_identity(handle, ".lease")?
             != Some((
                 rustix::fs::FileType::RegularFile,
                 identity(&lease.metadata()?)?.0,
@@ -124,7 +128,7 @@ async fn activate(
     lease.set_len(0)?;
     lease.write_all(token.as_bytes())?;
     lease.sync_all()?;
-    lease.seek(SeekFrom::Start(0))?;
+    lease.seek(std::io::SeekFrom::Start(0))?;
     // This owner exists before COMMIT can be dispatched. Cancellation releases
     // its lease but cannot clear a generation whose commit may still complete.
     let mut reservation = Stage {
@@ -141,7 +145,6 @@ async fn activate(
 }
 
 pub(super) async fn acquire(state: &AppState) -> Result<Stage, ServiceError> {
-    use rustix::fs::{Mode, OFlags};
     let mut owner = owner(state).await?;
     for slot in stage_slots::list(&state.db).await? {
         if !same_owner(&slot, &owner) || slot.directory_device.is_none() {

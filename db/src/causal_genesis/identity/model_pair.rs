@@ -1,13 +1,11 @@
 //! One explicit legacy pair. Identity consent does not select a file or metadata version.
+
+use sqlx::SqliteConnection;
+
 use super::{
-    Authorization, DbContext, DbError, Delivery, GroupIdentityOutcome, Position, choice, invalid,
+    Authorization, DbContext, DbError, Delivery, GroupIdentityOutcome, choice, invalid,
     observations, populated,
 };
-use crate::{
-    causal_envelope::{Dot, EntityKind},
-    model::user::User,
-};
-use sqlx::SqliteConnection;
 
 #[derive(Debug)]
 pub struct ModelIdentityChoice {
@@ -56,7 +54,7 @@ pub struct ModelIdentityOutcome {
 
 pub(super) async fn validate_pair(
     db: &mut SqliteConnection,
-    user: &User,
+    user: &crate::model::user::User,
     snapshot: &populated::IdentitySnapshot,
     plan: &observations::ObservationPlan,
     model_id: i64,
@@ -72,7 +70,7 @@ pub(super) async fn validate_pair(
         || local.birth_id.is_some()
         || local.deleted.is_some()
         || local.global_id != remote.entity().global_id
-        || remote.entity().kind != EntityKind::Model
+        || remote.entity().kind != crate::causal_envelope::EntityKind::Model
     {
         return Err(invalid());
     }
@@ -89,6 +87,7 @@ pub(super) async fn validate_pair(
     if history {
         return Err(invalid());
     }
+
     Ok(local.materialization() == remote.materialization)
 }
 
@@ -168,7 +167,7 @@ pub(super) async fn pending(
     ),
     DbError,
 > {
-    let position: Position = serde_json::from_str(&row.delivery).map_err(|_| invalid())?;
+    let position: super::Position = serde_json::from_str(&row.delivery).map_err(|_| invalid())?;
     let delivery = position.delivery(auth.clone());
     let item = serde_json::from_str(&row.item).map_err(|_| invalid())?;
     let plan = observations::parse(&item)?;
@@ -225,12 +224,13 @@ pub(super) async fn finish(
         if previous != decision.name() {
             return Err(invalid());
         }
-        let event = Dot {
+        let event = crate::causal_envelope::Dot {
             writer_id: row.writer_id.ok_or_else(invalid)?,
             counter: row.counter.ok_or_else(invalid)?.to_string(),
         };
         let outbox_id = row.local_outbox_id.ok_or_else(invalid)?;
         crate::sync_transport::outbox::require_retained(db, auth, &outbox_id, &event).await?;
+
         return Ok(ModelIdentityOutcome {
             group: GroupIdentityOutcome {
                 group_id: row.local_group_id,

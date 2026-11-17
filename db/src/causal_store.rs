@@ -4,9 +4,8 @@ use sqlx::SqliteConnection;
 
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity},
+    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot},
     db_context::DbContext,
-    group_history::ReplicaPrincipal,
     model::user::User,
     sync_peer::{validate_identity, validate_local},
     user_db::SyncIdentity,
@@ -54,7 +53,7 @@ pub async fn receive(
     db: &DbContext,
     user: &User,
     expected_local: &SyncIdentity,
-    principal: &ReplicaPrincipal,
+    principal: &crate::group_history::ReplicaPrincipal,
     wire: &str,
 ) -> Result<ReceiveResult, DbError> {
     validate_identity(expected_local)?;
@@ -239,7 +238,7 @@ pub(crate) async fn check_quota(
 pub(crate) async fn identity_status(
     db: &mut SqliteConnection,
     owner: i64,
-    entity: &Entity,
+    entity: &causal_envelope::Entity,
 ) -> Result<IdentityStatus, DbError> {
     let Some(birth) = &entity.birth_id else {
         return Ok(IdentityStatus::Unknown);
@@ -532,5 +531,6 @@ pub(crate) async fn store_checked_receipt(
                 .bind(user_id).bind(&dot.writer_id).bind(event_key(dot)?.1).bind(&parent.event.writer_id).bind(event_key(&parent.event)?.1).execute(&mut *db).await?;
         }
     }
+
     Ok(())
 }

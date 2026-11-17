@@ -1,6 +1,8 @@
 //! One allocator for every local journal path; authenticated accounts have their own clock.
-use crate::DbError;
+
 use sqlx::SqliteConnection;
+
+use crate::DbError;
 
 pub async fn read(db: &mut SqliteConnection, user: i64) -> Result<(String, i64), DbError> {
     if let Some(clock) =

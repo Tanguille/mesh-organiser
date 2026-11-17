@@ -1,5 +1,14 @@
 //! Scoped portable group names. Network sync remains disabled.
 
+use crate::{
+    DbError,
+    causal_envelope::{self, Action, CausalEnvelope, Dot},
+    db_context::DbContext,
+    model::user::User,
+    sync_peer::{validate_identity, validate_local},
+    user_db::SyncIdentity,
+};
+
 mod graph;
 mod journal;
 #[cfg(test)]
@@ -7,18 +16,9 @@ mod journal;
 mod name_choice_tests;
 mod storage;
 
-use crate::{
-    DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity},
-    db_context::DbContext,
-    model::user::User,
-    sync_peer::{PeerBinding, validate_identity, validate_local},
-    user_db::SyncIdentity,
-};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NameToken {
-    pub entity: Entity,
+    pub entity: causal_envelope::Entity,
     pub generation: i64,
     pub revision: i64,
     pub frontier: Vec<Dot>,
@@ -130,6 +130,7 @@ pub async fn get_state(
     validate_local(&mut tx, user, identity).await?;
     if let Some(state) = crate::causal_group_lifecycle::name_state(&mut tx, user, group_id).await? {
         tx.commit().await?;
+
         return Ok(state);
     }
     let state = if let Some(mut scope) = storage::load(&mut tx, user, group_id).await? {
@@ -181,7 +182,7 @@ pub async fn import_event(
     db: &DbContext,
     user: &User,
     identity: &SyncIdentity,
-    peer: &PeerBinding,
+    peer: &crate::sync_peer::PeerBinding,
     bundle: &RenameBundle,
 ) -> Result<RenameImportResult, DbError> {
     validate_identity(identity)?;
@@ -261,6 +262,7 @@ pub async fn resolve(
         crate::causal_group_lifecycle::resolve_name(&mut tx, user, group_id, token, name).await?
     {
         tx.commit().await?;
+
         return Ok(state);
     }
     let Some(mut scope) = storage::load(&mut tx, user, group_id).await? else {

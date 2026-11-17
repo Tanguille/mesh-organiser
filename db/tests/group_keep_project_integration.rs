@@ -1,16 +1,16 @@
 //! Keep-after-purge must restore the selected project and models atomically.
-mod common;
 
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db::{
         self, AssignmentBatchResult, AssignmentChange, GroupLifecycleChange, GroupPrecondition,
         KeepResource,
     },
     model::user::User,
-    model_db, random_hex_32, resource_db, user_db,
+    random_hex_32, resource_db, user_db,
 };
+
+mod common;
 
 async fn prepare(db: &DbContext, user: &User) -> (String, String, String, GroupPrecondition) {
     let group = group_db::add_empty_group(db, user, "original", None)
@@ -36,7 +36,7 @@ async fn prepare(db: &DbContext, user: &User) -> (String, String, String, GroupP
     let head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == group.unique_global_id)
+        .find(|head| head.group_global_id == group.unique_global_id)
         .unwrap();
     let pre = GroupPrecondition {
         group_global_id: group.unique_global_id.clone(),
@@ -46,14 +46,15 @@ async fn prepare(db: &DbContext, user: &User) -> (String, String, String, GroupP
         expected_revision: None,
         expected_deleted_at: None,
     };
+
     (group.unique_global_id, birth, deletion, pre)
 }
 
 async fn assignment(db: &DbContext, user: &User, global: &str) -> (i64, AssignmentChange) {
-    let blob = blob_db::add_blob(db, &random_hex_32(), "stl", 1, None)
+    let blob = db::blob_db::add_blob(db, &random_hex_32(), "stl", 1, None)
         .await
         .unwrap();
-    let id = model_db::add_model(db, user, "model", blob, None, None)
+    let id = db::model_db::add_model(db, user, "model", blob, None, None)
         .await
         .unwrap();
     let (model_global_id, incarnation, revision, lifecycle): (String, String, i64, i64) = sqlx::query_as("SELECT model_unique_global_id, model_incarnation, model_assignment_revision, model_lifecycle_revision FROM models WHERE model_id = ?").bind(id).fetch_one(db).await.unwrap();
@@ -76,7 +77,7 @@ async fn resource_identity(db: &DbContext, user: &User, global: &str) -> String 
         .await
         .unwrap()
         .into_iter()
-        .find(|r| r.global_id == global)
+        .find(|item| item.global_id == global)
         .unwrap()
         .incarnation
 }
@@ -117,7 +118,7 @@ async fn resource_snapshot_is_owner_scoped_and_incarnation_survives_rename() {
     assert!(
         !local
             .iter()
-            .any(|r| r.global_id == foreign.unique_global_id)
+            .any(|local| local.global_id == foreign.unique_global_id)
     );
     let identity = local[0].incarnation.clone();
     resource_db::edit_resource(
@@ -181,7 +182,7 @@ async fn keep_rehydrates_selected_model_and_project_atomically_and_replays() {
         snapshot
             .groups
             .iter()
-            .find(|g| g.global_id == global)
+            .find(|group| group.global_id == global)
             .unwrap()
             .resource_global_id
             .as_deref(),
@@ -537,12 +538,12 @@ async fn keep_existing_trashed_group_can_explicitly_clear_its_old_project() {
     let head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == group.unique_global_id)
+        .find(|head| head.group_global_id == group.unique_global_id)
         .unwrap();
     let current = snapshot
         .groups
         .iter()
-        .find(|g| g.global_id == group.unique_global_id)
+        .find(|item| item.global_id == group.unique_global_id)
         .unwrap();
     let pre = GroupPrecondition {
         group_global_id: group.unique_global_id.clone(),
@@ -573,6 +574,6 @@ async fn keep_existing_trashed_group_can_explicitly_clear_its_old_project() {
             .await
             .unwrap()
             .iter()
-            .any(|r| r.id == resource.id)
+            .any(|item| item.id == resource.id)
     );
 }

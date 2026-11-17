@@ -1,20 +1,19 @@
 //! Internal opaque move transfers do not authenticate or enable network sync.
-mod common;
 use db::{
     blob_db, causal_genesis,
     causal_model_move::{self, MoveImportResult, MoveResolveResult, MoveState},
-    db_context::DbContext,
     group_db,
     model::user::User,
     model_db, random_hex_32, sync_peer, user_db,
-    user_db::SyncIdentity,
 };
+
+mod common;
 
 struct Device {
     dir: tempfile::TempDir,
-    db: DbContext,
+    db: db::db_context::DbContext,
     user: User,
-    identity: SyncIdentity,
+    identity: user_db::SyncIdentity,
     model: i64,
     groups: [i64; 3],
 }
@@ -106,19 +105,25 @@ async fn three_devices() -> (Device, Device, Device) {
         },
     )
 }
-async fn state(d: &Device) -> MoveState {
-    let result = causal_model_move::get_state(&d.db, &d.user, &d.identity, d.model).await;
+async fn state(device: &Device) -> MoveState {
+    let result =
+        causal_model_move::get_state(&device.db, &device.user, &device.identity, device.model)
+            .await;
     assert!(
         result.is_ok(),
         "verified model genesis must expose move state: {result:?}"
     );
     result.unwrap()
 }
-async fn applied(d: &Device, source: &Device, event: &causal_model_move::MoveBundle) -> MoveState {
-    let peer = sync_peer::bind_peer(&d.db, &d.user, &d.identity, &source.identity)
+async fn applied(
+    device: &Device,
+    source: &Device,
+    event: &causal_model_move::MoveBundle,
+) -> MoveState {
+    let peer = sync_peer::bind_peer(&device.db, &device.user, &device.identity, &source.identity)
         .await
         .unwrap();
-    match causal_model_move::import_event(&d.db, &d.user, &d.identity, &peer, event)
+    match causal_model_move::import_event(&device.db, &device.user, &device.identity, &peer, event)
         .await
         .unwrap()
     {
@@ -126,8 +131,8 @@ async fn applied(d: &Device, source: &Device, event: &causal_model_move::MoveBun
         x @ MoveImportResult::NeedsDependencies { .. } => panic!("expected applied event: {x:?}"),
     }
 }
-fn tip(s: MoveState) -> db::causal_envelope::Dot {
-    match s {
+fn tip(move_state: MoveState) -> db::causal_envelope::Dot {
+    match move_state {
         MoveState::Ready { token, .. } => token.frontier[0].clone(),
         x => panic!("expected ready: {x:?}"),
     }
@@ -171,9 +176,10 @@ async fn three_devices_retain_conflicting_destinations_and_reject_stale_choice()
         .await
         .unwrap();
     let (old_token, none_offered) = match applied(&a, &b, &be).await {
-        MoveState::Conflict { token, choices } => {
-            (token, choices.iter().any(|c| c.destination.is_none()))
-        }
+        MoveState::Conflict { token, choices } => (
+            token,
+            choices.iter().any(|choice| choice.destination.is_none()),
+        ),
         x => panic!("expected conflict {x:?}"),
     };
     assert!(none_offered);
@@ -221,8 +227,12 @@ async fn three_devices_retain_conflicting_destinations_and_reject_stale_choice()
         .unwrap();
     let mut parents = event.envelope().parents.clone();
     let mut expected = token.frontier.clone();
-    parents.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
-    expected.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
+    parents.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
+    expected.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
     assert_eq!(parents, expected);
 }
 
@@ -251,7 +261,7 @@ async fn missing_move_parent_requests_dependency_without_receipt_then_retry_afte
         .await
         .unwrap();
     assert!(
-        matches!(result,MoveImportResult::NeedsDependencies{ref missing,ref state} if missing.iter().any(|d|d.event==parent) && *state==before)
+        matches!(result,MoveImportResult::NeedsDependencies{ref missing,ref state} if missing.iter().any(|dependency|dependency.event==parent) && *state==before)
     );
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM causal_events WHERE writer_id=? AND counter=?)",
@@ -342,8 +352,12 @@ async fn equal_concurrent_destinations_keep_both_tips_and_next_move_observes_bot
         .unwrap();
     let mut actual = event.envelope().parents.clone();
     let mut expected = tips;
-    actual.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
-    expected.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
+    actual.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
+    expected.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
     assert_eq!(actual, expected);
 }
 
@@ -496,7 +510,6 @@ async fn resolution_rejects_destinations_not_offered_by_conflict() {
 
 #[tokio::test]
 async fn relayed_resolution_cannot_introduce_unoffered_destination() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot};
     let (a, b, c) = three_devices().await;
     group_db::set_group_id_on_models(&a.db, &a.user, Some(a.groups[0]), vec![a.model], None)
         .await
@@ -520,21 +533,21 @@ async fn relayed_resolution_cannot_introduce_unoffered_destination() {
     let before = applied(&c, &b, &be).await;
     assert!(matches!(before, MoveState::Conflict { .. }));
     let writer = random_hex_32();
-    let forged = CausalEnvelope {
+    let forged = db::causal_envelope::CausalEnvelope {
         version: 2,
         entity: token.entity.clone(),
-        event: Dot {
+        event: db::causal_envelope::Dot {
             writer_id: writer.clone(),
             counter: "1".into(),
         },
         parents: token.frontier.clone(),
         dependencies: vec![],
-        action: Action::ModelDestinationResolved {
+        action: db::causal_envelope::Action::ModelDestinationResolved {
             to: None,
             target_lifecycle: None,
         },
     };
-    let bytes = causal_envelope::canonical_causal_envelope(&forged).unwrap();
+    let bytes = db::causal_envelope::canonical_causal_envelope(&forged).unwrap();
     sqlx::query("INSERT INTO causal_events(user_id,writer_id,counter,envelope) VALUES (?,?,1,?)")
         .bind(a.user.id)
         .bind(&writer)
@@ -543,18 +556,25 @@ async fn relayed_resolution_cannot_introduce_unoffered_destination() {
         .await
         .unwrap();
     sqlx::query("INSERT INTO model_move_events(user_id,birth_id,writer_id,counter,provenance) VALUES (?,?,?,1,'local')").bind(a.user.id).bind(token.entity.birth_id.as_ref().unwrap()).bind(&writer).execute(&a.db).await.unwrap();
-    let exported =
-        causal_model_move::export_event(&a.db, &a.user, &a.identity, &forged.event).await;
-    if let Ok(bundle) = exported {
-        let peer = sync_peer::bind_peer(&c.db, &c.user, &c.identity, &a.identity)
-            .await
-            .unwrap();
-        let received =
-            causal_model_move::import_event(&c.db, &c.user, &c.identity, &peer, &bundle).await;
-        assert!(
-            received.is_err(),
-            "a relayed resolution cannot invent an unoffered destination"
-        );
+    // The origin device already refuses to export an unoffered destination, and
+    // MoveBundle cannot be built outside the crate, so export rejection is the first
+    // defence. If export ever accepts the forged event, import must still reject it.
+    match causal_model_move::export_event(&a.db, &a.user, &a.identity, &forged.event).await {
+        Err(error) => assert!(
+            matches!(error, db::DbError::Protocol(_)),
+            "export must reject the forged resolution as a protocol error, got {error:?}"
+        ),
+        Ok(bundle) => {
+            let peer = sync_peer::bind_peer(&c.db, &c.user, &c.identity, &a.identity)
+                .await
+                .unwrap();
+            let received =
+                causal_model_move::import_event(&c.db, &c.user, &c.identity, &peer, &bundle).await;
+            assert!(
+                received.is_err(),
+                "a relayed resolution cannot invent an unoffered destination"
+            );
+        }
     }
     assert_eq!(state(&c).await, before);
     let present: bool = sqlx::query_scalar(
@@ -674,7 +694,7 @@ async fn unknown_target_genesis_requests_dependency_without_ack_then_install_and
     );
     let result = result.unwrap();
     assert!(
-        matches!(result,MoveImportResult::NeedsDependencies{ref missing,ref state} if missing.iter().any(|d|d.event==*genesis.event() && d.entity==*genesis.entity()) && *state==before)
+        matches!(result,MoveImportResult::NeedsDependencies{ref missing,ref state} if missing.iter().any(|dependency|dependency.event==*genesis.event() && dependency.entity==*genesis.entity()) && *state==before)
     );
     let stored: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM causal_events WHERE writer_id=? AND counter=?)",

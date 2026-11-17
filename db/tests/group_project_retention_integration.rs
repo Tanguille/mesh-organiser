@@ -1,17 +1,18 @@
+use db::{group_db, model_db, resource_db};
+
 mod common;
-use db::{blob_db, group_db, model::user::User, model_db, random_hex_32, resource_db};
 
 #[tokio::test]
 async fn project_survives_when_every_group_model_is_trashed_and_restored() {
     let (_dir, db) = common::test_db().await;
-    let user = User::default();
+    let user = db::model::user::User::default();
     let group = group_db::add_empty_group(&db, &user, "folder", None)
         .await
         .unwrap();
     let project = resource_db::add_resource(&db, &user, "project", None)
         .await
         .unwrap();
-    let blob = blob_db::add_blob(&db, &random_hex_32(), "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, &db::random_hex_32(), "stl", 1, None)
         .await
         .unwrap();
     let model = model_db::add_model(&db, &user, "model", blob, None, None)

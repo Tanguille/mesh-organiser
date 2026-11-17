@@ -1,6 +1,8 @@
 //! A received name resolution must choose from the names visible in its ancestry.
-use super::*;
+
 use crate::{causal_genesis, group_db, sync_peer, user_db};
+
+use super::*;
 
 async fn test_db() -> (tempfile::TempDir, DbContext) {
     let dir = tempfile::tempdir().unwrap();

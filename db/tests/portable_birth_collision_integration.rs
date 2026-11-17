@@ -1,11 +1,12 @@
 //! A retained birth must prevent a different entity from taking its global identity.
-mod common;
 
 use db::{
     blob_db, group_db,
     model::{ModelFlags, user::User},
     model_db, random_hex_32, user_db,
 };
+
+mod common;
 
 #[tokio::test]
 async fn purged_model_identity_cannot_be_reused_by_different_birth_for_same_owner() {

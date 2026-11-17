@@ -1,19 +1,19 @@
 //! Scoped model destinations. Network sync remains disabled.
 
-mod graph;
-mod journal;
-mod project;
-mod storage;
-mod targets;
-
 use crate::{
     DbError,
     causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity},
     db_context::DbContext,
     model::user::User,
-    sync_peer::{PeerBinding, validate_identity, validate_local},
+    sync_peer::{validate_identity, validate_local},
     user_db::SyncIdentity,
 };
+
+mod graph;
+mod journal;
+mod project;
+mod storage;
+mod targets;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MoveToken {
@@ -130,6 +130,7 @@ pub async fn get_state(
     validate_local(&mut tx, user, identity).await?;
     if let Some(state) = crate::causal_group_lifecycle::move_state(&mut tx, user, model_id).await? {
         tx.commit().await?;
+
         return Ok(state);
     }
     let state = if let Some(mut scope) = storage::load(&mut tx, user, model_id).await? {
@@ -160,6 +161,7 @@ pub async fn export_event(
     inspect(&mut tx, user, &mut scope).await?;
     if scope.paused {
         tx.commit().await?;
+
         return Err(invalid());
     }
     let envelope = causal_envelope::parse_causal_envelope(&wire).map_err(|_| invalid())?;
@@ -180,7 +182,7 @@ pub async fn import_event(
     db: &DbContext,
     user: &User,
     identity: &SyncIdentity,
-    peer: &PeerBinding,
+    peer: &crate::sync_peer::PeerBinding,
     bundle: &MoveBundle,
 ) -> Result<MoveImportResult, DbError> {
     validate_identity(identity)?;
@@ -207,6 +209,7 @@ pub async fn import_event(
     let previous = inspect(&mut tx, user, &mut scope).await?;
     if scope.paused {
         tx.commit().await?;
+
         return Err(invalid());
     }
     if scope.root.event != bundle.root || scope.root.entity != bundle.envelope.entity {
@@ -272,10 +275,12 @@ pub async fn resolve(
     .await?
     {
         tx.commit().await?;
+
         return Ok(state);
     }
     let Some(mut scope) = storage::load(&mut tx, user, model_id).await? else {
         tx.commit().await?;
+
         return Ok(MoveResolveResult::Stale(MoveState::Unavailable));
     };
     let state = inspect(&mut tx, user, &mut scope).await?.state(&scope);
@@ -285,10 +290,12 @@ pub async fn resolve(
     } = &state
     else {
         tx.commit().await?;
+
         return Ok(MoveResolveResult::Stale(state));
     };
     if current != token {
         tx.commit().await?;
+
         return Ok(MoveResolveResult::Stale(state));
     }
     if !choices
@@ -325,6 +332,7 @@ pub async fn resolve(
         storage::pause(&mut tx, &mut scope).await?;
         let state = graph::load(&mut tx, &scope).await?.state(&scope);
         tx.commit().await?;
+
         return Ok(MoveResolveResult::Stale(state));
     }
     let graph = graph::load(&mut tx, &scope).await?;
@@ -370,12 +378,14 @@ pub(crate) async fn try_move(
 ) -> Result<bool, DbError> {
     let Some(mut scope) = storage::load(db, user, model_id).await? else {
         storage::invalidate(db, user, model_id).await?;
+
         return Ok(false);
     };
     if scope.paused {
         if scope.current_group_id != group_id {
             storage::pause(db, &mut scope).await?;
         }
+
         return Ok(false);
     }
     let state = inspect(db, user, &mut scope).await?.state(&scope);
@@ -384,6 +394,7 @@ pub(crate) async fn try_move(
     }
     if scope.current_group_id != group_id && !journal::capacity(db, &scope, 0, 0).await? {
         storage::pause(db, &mut scope).await?;
+
         return Ok(false);
     }
     let MoveState::Ready {
@@ -401,8 +412,10 @@ pub(crate) async fn try_move(
     let target = if let Some(id) = group_id {
         let Some(target) = targets::by_id(db, user, id).await? else {
             storage::pause(db, &mut scope).await?;
+
             return Ok(false);
         };
+
         Some(target)
     } else {
         None
@@ -415,6 +428,7 @@ pub(crate) async fn try_move(
     };
     if !journal::local(db, &scope, token.frontier, dependencies, action).await? {
         storage::pause(db, &mut scope).await?;
+
         return Ok(false);
     }
     let graph = graph::load(db, &scope).await?;

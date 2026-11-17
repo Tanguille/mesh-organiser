@@ -1,14 +1,16 @@
 //! Internal opaque event relay only; this does not authenticate or enable sync.
-mod common;
 use db::{
+    causal_envelope::{self, Action, CausalEnvelope, Dot},
     causal_genesis,
     causal_group_rename::{self, NameState, ResolveResult},
     db_context::DbContext,
     group_db,
     model::user::User,
-    sync_peer, user_db,
-    user_db::SyncIdentity,
+    sync_peer,
+    user_db::{self, SyncIdentity},
 };
+
+mod common;
 
 struct Device {
     dir: tempfile::TempDir,
@@ -143,7 +145,10 @@ async fn three_device_concurrent_renames_preserve_choices_and_stale_resolution()
     let (old_token, names) = match first {
         NameState::Conflict { token, choices } => (
             token,
-            choices.into_iter().map(|x| x.name).collect::<Vec<_>>(),
+            choices
+                .into_iter()
+                .map(|choice| choice.name)
+                .collect::<Vec<_>>(),
         ),
         x => panic!("expected conflict, got {x:?}"),
     };
@@ -200,13 +205,18 @@ async fn three_device_concurrent_renames_preserve_choices_and_stale_resolution()
     let current = import_event(&a.db, &a.user, &a.identity, &ac, &cb)
         .await
         .unwrap();
-    let token = match current {
+    let token = match &current {
         NameState::Conflict { token, choices } => {
             assert_eq!(choices.len(), 3);
-            token
+            token.clone()
         }
         x => panic!("expected three-way conflict, got {x:?}"),
     };
+    let before_stale = state(&a).await;
+    assert_eq!(
+        before_stale, current,
+        "state must match the imported three-way conflict"
+    );
     assert!(matches!(
         causal_group_rename::resolve(&a.db, &a.user, &a.identity, a.group, &old_token, "alpha")
             .await
@@ -215,13 +225,8 @@ async fn three_device_concurrent_renames_preserve_choices_and_stale_resolution()
     ));
     assert_eq!(
         state(&a).await,
-        NameState::Conflict {
-            choices: match state(&a).await {
-                NameState::Conflict { choices, .. } => choices,
-                x => panic!("expected conflict: {x:?}"),
-            },
-            token: token.clone()
-        }
+        before_stale,
+        "a stale resolution must leave the three-way conflict intact"
     );
     let result =
         causal_group_rename::resolve(&a.db, &a.user, &a.identity, a.group, &token, "bravo")
@@ -247,8 +252,12 @@ async fn three_device_concurrent_renames_preserve_choices_and_stale_resolution()
             .unwrap();
     let mut parents = envelope.envelope().parents.clone();
     let mut expected = token.frontier.clone();
-    parents.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
-    expected.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
+    parents.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
+    expected.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
     assert_eq!(parents, expected);
 }
 
@@ -530,8 +539,12 @@ async fn equal_concurrent_names_keep_both_tips_and_next_edit_observes_both() {
         .unwrap();
     let mut actual = event.envelope().parents.clone();
     let mut expected = tips;
-    actual.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
-    expected.sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
+    actual.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
+    expected.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
     assert_eq!(actual, expected);
 }
 
@@ -576,7 +589,6 @@ async fn pending_remote_history_keeps_existing_local_name() {
 }
 
 async fn seed_rename_history(device: &Device, count: usize, concurrent: bool) {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot};
     let root = match state(device).await {
         NameState::Ready { token, .. } => token,
         x => panic!("expected ready: {x:?}"),
@@ -584,10 +596,10 @@ async fn seed_rename_history(device: &Device, count: usize, concurrent: bool) {
     let writer = db::random_hex_32();
     let mut parent = root.frontier[0].clone();
     let mut tx = device.db.begin().await.unwrap();
-    for n in 1..=count {
+    for index in 1..=count {
         let dot = Dot {
             writer_id: writer.clone(),
-            counter: n.to_string(),
+            counter: index.to_string(),
         };
         let event = CausalEnvelope {
             version: 2,
@@ -604,8 +616,8 @@ async fn seed_rename_history(device: &Device, count: usize, concurrent: bool) {
             },
         };
         let wire = causal_envelope::canonical_causal_envelope(&event).unwrap();
-        sqlx::query("INSERT INTO causal_events (user_id,writer_id,counter,envelope,encoding) VALUES (?,?,?,?, 'portable_v2')").bind(device.user.id).bind(&writer).bind(i64::try_from(n).unwrap()).bind(wire).execute(&mut *tx).await.unwrap();
-        sqlx::query("INSERT INTO group_rename_events(user_id,birth_id,writer_id,counter,provenance) VALUES (?,?,?,?,'local')").bind(device.user.id).bind(root.entity.birth_id.as_ref().unwrap()).bind(&writer).bind(i64::try_from(n).unwrap()).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO causal_events (user_id,writer_id,counter,envelope,encoding) VALUES (?,?,?,?, 'portable_v2')").bind(device.user.id).bind(&writer).bind(i64::try_from(index).unwrap()).bind(wire).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO group_rename_events(user_id,birth_id,writer_id,counter,provenance) VALUES (?,?,?,?,'local')").bind(device.user.id).bind(root.entity.birth_id.as_ref().unwrap()).bind(&writer).bind(i64::try_from(index).unwrap()).execute(&mut *tx).await.unwrap();
         parent = dot;
     }
     tx.commit().await.unwrap();
@@ -718,10 +730,10 @@ async fn remote_event_past_resolvable_frontier_is_rejected_without_losing_branch
     let peer = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
         .await
         .unwrap();
-    seed_rename_history(&b, db::causal_envelope::MAX_CONTEXT_ITEMS, true).await;
+    seed_rename_history(&b, causal_envelope::MAX_CONTEXT_ITEMS, true).await;
     let before = state(&b).await;
     assert!(
-        matches!(&before, NameState::Ready{token,..} if token.frontier.len()==db::causal_envelope::MAX_CONTEXT_ITEMS)
+        matches!(&before, NameState::Ready{token,..} if token.frontier.len()==causal_envelope::MAX_CONTEXT_ITEMS)
     );
     let received = import_event(&b.db, &b.user, &b.identity, &peer, &event).await;
     assert!(
@@ -744,7 +756,6 @@ async fn remote_event_past_resolvable_frontier_is_rejected_without_losing_branch
 
 #[tokio::test]
 async fn paused_scope_exposes_missing_ancestry_after_capacity_fallback() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot};
     let (a, _b, _c) = three_devices().await;
     let base = match state(&a).await {
         NameState::Ready { token, .. } => token,
@@ -757,10 +768,10 @@ async fn paused_scope_exposes_missing_ancestry_after_capacity_fallback() {
     let writer = db::random_hex_32();
     let mut parent = missing.clone();
     let mut tx = a.db.begin().await.unwrap();
-    for n in 1..=db::causal_store::MAX_OWNER_EVENTS {
+    for index in 1..=db::causal_store::MAX_OWNER_EVENTS {
         let dot = Dot {
             writer_id: writer.clone(),
-            counter: n.to_string(),
+            counter: index.to_string(),
         };
         let event = CausalEnvelope {
             version: 2,
@@ -772,8 +783,8 @@ async fn paused_scope_exposes_missing_ancestry_after_capacity_fallback() {
                 name: "unresolved".into(),
             },
         };
-        sqlx::query("INSERT INTO causal_events (user_id,writer_id,counter,envelope,encoding) VALUES (?,?,?,?,'portable_v2')").bind(a.user.id).bind(&writer).bind(i64::try_from(n).unwrap()).bind(causal_envelope::canonical_causal_envelope(&event).unwrap()).execute(&mut *tx).await.unwrap();
-        sqlx::query("INSERT INTO group_rename_events(user_id,birth_id,writer_id,counter,provenance) VALUES (?,?,?,?,'checked_transfer')").bind(a.user.id).bind(base.entity.birth_id.as_ref().unwrap()).bind(&writer).bind(i64::try_from(n).unwrap()).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO causal_events (user_id,writer_id,counter,envelope,encoding) VALUES (?,?,?,?,'portable_v2')").bind(a.user.id).bind(&writer).bind(i64::try_from(index).unwrap()).bind(causal_envelope::canonical_causal_envelope(&event).unwrap()).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO group_rename_events(user_id,birth_id,writer_id,counter,provenance) VALUES (?,?,?,?,'checked_transfer')").bind(a.user.id).bind(base.entity.birth_id.as_ref().unwrap()).bind(&writer).bind(i64::try_from(index).unwrap()).execute(&mut *tx).await.unwrap();
         parent = dot;
     }
     tx.commit().await.unwrap();
@@ -797,7 +808,6 @@ async fn paused_scope_exposes_missing_ancestry_after_capacity_fallback() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn dependency_request_at_full_receipt_quotas_writes_nothing_and_is_not_ack() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot};
     let (a, b, _c) = three_devices().await;
     group_db::edit_group(&a.db, &a.user, a.group, "parent", None, None)
         .await
@@ -832,20 +842,20 @@ async fn dependency_request_at_full_receipt_quotas_writes_nothing_and_is_not_ack
         .unwrap();
     let mut tx = b.db.begin().await.unwrap();
     let large_count = db::causal_store::MAX_OWNER_BYTES / causal_envelope::MAX_NAME_BYTES + 1;
-    for n in 1..db::causal_store::MAX_OWNER_EVENTS {
+    for index in 1..db::causal_store::MAX_OWNER_EVENTS {
         let dot = Dot {
             writer_id: writer.clone(),
-            counter: n.to_string(),
+            counter: index.to_string(),
         };
-        let edge_count = if n == db::causal_store::MAX_OWNER_EVENTS - 1 {
+        let edge_count = if index == db::causal_store::MAX_OWNER_EVENTS - 1 {
             16
         } else {
             8
         };
         let parents = (1..=edge_count)
-            .map(|k| Dot {
+            .map(|item| Dot {
                 writer_id: db::random_hex_32(),
-                counter: k.to_string(),
+                counter: item.to_string(),
             })
             .collect::<Vec<_>>();
         let event = CausalEnvelope {
@@ -855,7 +865,7 @@ async fn dependency_request_at_full_receipt_quotas_writes_nothing_and_is_not_ack
             parents: parents.clone(),
             dependencies: vec![],
             action: Action::GroupRenamed {
-                name: if n <= large_count {
+                name: if index <= large_count {
                     "x".repeat(causal_envelope::MAX_NAME_BYTES)
                 } else {
                     "x".into()
@@ -867,7 +877,7 @@ async fn dependency_request_at_full_receipt_quotas_writes_nothing_and_is_not_ack
         )
         .bind(b.user.id)
         .bind(&writer)
-        .bind(i64::try_from(n).unwrap())
+        .bind(i64::try_from(index).unwrap())
         .bind(causal_envelope::canonical_causal_envelope(&event).unwrap())
         .execute(&mut *tx)
         .await
@@ -875,12 +885,12 @@ async fn dependency_request_at_full_receipt_quotas_writes_nothing_and_is_not_ack
         sqlx::query("INSERT INTO causal_event_receipts(user_id,writer_id,counter) VALUES (?,?,?)")
             .bind(b.user.id)
             .bind(&writer)
-            .bind(i64::try_from(n).unwrap())
+            .bind(i64::try_from(index).unwrap())
             .execute(&mut *tx)
             .await
             .unwrap();
-        for p in parents {
-            sqlx::query("INSERT INTO causal_receipt_dependencies(user_id,writer_id,counter,dependency_writer_id,dependency_counter) VALUES (?,?,?,?,?)").bind(b.user.id).bind(&writer).bind(i64::try_from(n).unwrap()).bind(p.writer_id).bind(1_i64).execute(&mut *tx).await.unwrap();
+        for parent in parents {
+            sqlx::query("INSERT INTO causal_receipt_dependencies(user_id,writer_id,counter,dependency_writer_id,dependency_counter) VALUES (?,?,?,?,?)").bind(b.user.id).bind(&writer).bind(i64::try_from(index).unwrap()).bind(parent.writer_id).bind(1_i64).execute(&mut *tx).await.unwrap();
         }
     }
     tx.commit().await.unwrap();

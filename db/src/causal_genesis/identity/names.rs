@@ -1,12 +1,13 @@
 //! A name choice and its original publication cannot be separated by a crash.
-use super::{
-    Authorization, DbContext, DbError, Dot, NamePublication, choice, encode, invalid, observation,
-};
-use crate::causal_group_rename::{NameState, NameToken, ResolveResult};
+
 use sqlx::SqliteConnection;
 
+use crate::causal_group_rename::{NameState, NameToken, ResolveResult};
+
+use super::{Authorization, DbError, NamePublication, choice, invalid};
+
 pub async fn resolve_name_publication(
-    db: &DbContext,
+    db: &super::DbContext,
     auth: &Authorization,
     decision_id: &str,
     token: &NameToken,
@@ -35,21 +36,22 @@ async fn resolve_in(
     let birth: String = sqlx::query_scalar("SELECT birth_id FROM group_identity_observations WHERE user_id=? AND observation_id=? AND writer_id=? AND counter=?")
         .bind(auth.user.id).bind(decision_id).bind(writer).bind(number).fetch_optional(&mut *db).await?.ok_or_else(invalid)?;
     let (group_id, state) = current(db, auth, &birth).await?;
-    let request = encode(
+    let request = super::encode(
         &serde_json::json!({"entity":token.entity,"generation":token.generation,"revision":token.revision,"frontier":token.frontier,"name":name}),
     )?;
-    let request_id = observation::digest(&request);
+    let request_id = crate::util::sha256_hex(request.as_bytes());
     let prior: Option<(String,String,i64,String)> = sqlx::query_as("SELECT request,writer_id,counter,outbox_id FROM group_identity_name_publications WHERE user_id=? AND decision_id=? AND request_id=?")
         .bind(auth.user.id).bind(decision_id).bind(&request_id).fetch_optional(&mut *db).await?;
     if let Some((original, writer_id, counter, outbox_id)) = prior {
         if original != request {
             return Err(invalid());
         }
-        let event = Dot {
+        let event = super::Dot {
             writer_id,
             counter: counter.to_string(),
         };
         crate::sync_transport::outbox::require_retained(db, auth, &outbox_id, &event).await?;
+
         return Ok(NamePublication::Queued {
             outbox_id,
             event,
@@ -140,5 +142,6 @@ pub(super) async fn current(
     } else {
         NameState::Unavailable
     };
+
     Ok((group_id, state))
 }

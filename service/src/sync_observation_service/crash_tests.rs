@@ -1,11 +1,13 @@
 //! Crash checkpoints run in child processes; no production environment hook exists.
-use super::*;
 use std::{
+    os::unix::fs::MetadataExt,
     path::Path,
-    process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    process::{Command, Stdio},
+    sync::{Arc, Mutex, atomic::Ordering},
     time::Duration,
 };
+
+use super::*;
 
 static RESTORE_SYNC_ARMED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -35,7 +37,6 @@ fn no_payload_stages(root: &Path) -> bool {
 }
 
 pub(super) fn directory_synced(path: &Path) -> Result<(), ServiceError> {
-    use std::sync::atomic::Ordering;
     if !RESTORE_SYNC_ARMED.load(Ordering::SeqCst) {
         return Ok(());
     }
@@ -47,6 +48,7 @@ pub(super) fn directory_synced(path: &Path) -> Result<(), ServiceError> {
         std::fs::write(marker, b"synced")?;
         RESTORE_SYNC_ARMED.store(false, Ordering::SeqCst);
     }
+
     Ok(())
 }
 
@@ -56,10 +58,11 @@ pub(super) fn checkpoint(point: &str) -> Result<(), ServiceError> {
             && std::env::var_os("MESH_RESTORE_FAIL").is_some()
         {
             std::fs::write(&marker, b"attempted")?;
+
             return Err(std::io::Error::other("injected restore directory sync failure").into());
         }
         if point == "before_restore_directory_sync" {
-            RESTORE_SYNC_ARMED.store(true, std::sync::atomic::Ordering::SeqCst);
+            RESTORE_SYNC_ARMED.store(true, Ordering::SeqCst);
         }
         if point == "before_restore_unlink" && !Path::new(&marker).exists() {
             return Err(std::io::Error::other("restore unlink preceded directory sync").into());
@@ -94,6 +97,7 @@ pub(super) fn checkpoint(point: &str) -> Result<(), ServiceError> {
             std::env::var("MESH_GC_REPLACEMENT_PATH").unwrap(),
             stage.to_string_lossy().as_bytes(),
         )?;
+
         return Ok(());
     }
     if point == "before_orphan_capture" {
@@ -114,6 +118,7 @@ pub(super) fn checkpoint(point: &str) -> Result<(), ServiceError> {
                 std::env::var("MESH_GC_REPLACEMENT_PATH").unwrap(),
                 stage.to_string_lossy().as_bytes(),
             )?;
+
             return Ok(());
         }
         if let Ok(parked) = std::env::var("MESH_GC_SWAP_STAGE") {
@@ -135,12 +140,14 @@ pub(super) fn checkpoint(point: &str) -> Result<(), ServiceError> {
                 std::env::var("MESH_GC_REPLACEMENT_PATH").unwrap(),
                 stage.to_string_lossy().as_bytes(),
             )?;
+
             return Ok(());
         }
         std::fs::rename(
             std::env::var("MESH_GC_REPLACEMENT").unwrap(),
             std::env::var("MESH_GC_OWNED_PATH").unwrap(),
         )?;
+
         return Ok(());
     }
     if point == "before_final_directory_sync" {
@@ -168,7 +175,6 @@ async fn app(root: &Path) -> AppState {
 
 #[tokio::test]
 async fn sequential_finished_stages_reuse_one_certified_slot() {
-    use std::os::unix::fs::MetadataExt;
     let dir = tempfile::tempdir().unwrap();
     let state = app(dir.path()).await;
     let mut first = Stage::new(&state).await.unwrap();
@@ -821,7 +827,7 @@ async fn deleting_queue_owner_allows_only_its_certified_stage_to_be_cleaned() {
     assert_eq!(std::fs::read(unrelated).unwrap(), b"keep");
 }
 
-struct KillOnDrop(Child);
+struct KillOnDrop(std::process::Child);
 impl Drop for KillOnDrop {
     fn drop(&mut self) {
         let _ = self.0.kill();
@@ -989,7 +995,6 @@ async fn directory_sync_failure_cannot_commit_or_leave_owned_files() {
 
 #[tokio::test]
 async fn orphan_gc_preserves_replacement_file_and_identity_evidence() {
-    use std::os::unix::fs::MetadataExt;
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("checkpoint");
     let mut process = child(dir.path(), "receipt_committed", &marker);
@@ -1395,6 +1400,7 @@ fn recovery_child(root: &Path, marker: &Path, sync_marker: &Path, fail: bool) ->
     if fail {
         cmd.env("MESH_RESTORE_FAIL", "1");
     }
+
     KillOnDrop(cmd.spawn().unwrap())
 }
 

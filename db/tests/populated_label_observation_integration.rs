@@ -1,5 +1,4 @@
 //! Label snapshots are scoped observation evidence, not inferred shared identity.
-mod common;
 use db::{
     blob_db,
     causal_adoption::{self, ModelBlobBinding},
@@ -7,6 +6,8 @@ use db::{
     model::user::User,
     model_db, random_hex_32, sync_peer, user_db,
 };
+
+mod common;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -561,6 +562,7 @@ async fn label_snapshots_count_toward_combined_byte_limit() {
             );
             let after: (i64, i64, i64) = sqlx::query_as("SELECT (SELECT COUNT(*) FROM causal_genesis_bindings),(SELECT COUNT(*) FROM causal_observation_batches),(SELECT counter FROM group_causal_replica WHERE singleton=1)").fetch_one(&db).await.unwrap();
             assert_eq!(after, before, "capacity rejection must be atomic");
+
             return;
         }
         result.unwrap();
@@ -573,7 +575,6 @@ async fn label_snapshots_count_toward_combined_byte_limit() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn target_label_changes_pause_scope_without_losing_members() {
-    use db::causal_group_rename::NameState;
     for change in ["hierarchy", "assignment", "replacement"] {
         let (_ad, a) = common::test_db().await;
         let (_bd, b) = common::test_db().await;
@@ -698,7 +699,10 @@ async fn target_label_changes_pause_scope_without_losing_members() {
             .await
             .unwrap();
         assert!(
-            matches!(state.name, NameState::Paused { .. }),
+            matches!(
+                state.name,
+                db::causal_group_rename::NameState::Paused { .. }
+            ),
             "{change} must pause observed scope"
         );
         let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models WHERE model_group_id=?")

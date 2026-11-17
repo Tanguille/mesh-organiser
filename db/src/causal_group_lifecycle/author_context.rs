@@ -1,18 +1,21 @@
 //! Captured causal cuts, not reconstructed claims about historical observations.
-use super::{graph::Graph, invalid, storage::Scope};
+
+use sqlx::SqliteConnection;
+
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, EntityKind},
+    causal_envelope::{self, Action, CausalEnvelope, Dot, EntityKind},
     causal_store,
     model::user::User,
 };
-use sqlx::SqliteConnection;
+
+use super::{graph::Graph, invalid, storage::Scope};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Context {
     version: u32,
-    pub frontier: Vec<Dependency>,
+    pub frontier: Vec<causal_envelope::Dependency>,
     events: Vec<Dot>,
 }
 
@@ -137,6 +140,7 @@ pub(super) async fn validate(
             if previous.iter().any(|event| !cut.events.contains(event)) {
                 return Err(invalid());
             }
+
             validate_restore(&scopes, &cut, events, &previous, deletion)
         }
         _ => Err(invalid()),

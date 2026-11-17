@@ -1,17 +1,15 @@
 use itertools::Itertools;
-use sqlx::{QueryBuilder, Row, Sqlite};
-use strum::{EnumString, VariantNames};
+use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError, GROUPS, LABELS, MAX_PAGE_SIZE, MODELS, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
-    ensure_owned, label_db,
-    model::{Model, ModelFlags, blob::FileType, model_group::ModelGroupMeta, user::User},
+    model::{Model, ModelFlags, blob::FileType, user::User},
     push_in, set_timestamp_column,
-    util::{parse_concat_ids, random_hex_32, time_now, timestamp_or_now, validate_global_id},
+    util::{random_hex_32, time_now},
 };
 
-#[derive(Debug, PartialEq, Eq, EnumString, VariantNames)]
+#[derive(Debug, PartialEq, Eq, strum::EnumString, strum::VariantNames)]
 pub enum ModelOrderBy {
     AddedAsc,
     AddedDesc,
@@ -144,7 +142,7 @@ fn has_empty_model_filter(options: &ModelFilterOptions) -> bool {
 }
 
 fn push_model_filters(
-    query_builder: &mut QueryBuilder<Sqlite>,
+    query_builder: &mut QueryBuilder<sqlx::Sqlite>,
     user: &User,
     options: &ModelFilterOptions,
 ) {
@@ -265,10 +263,10 @@ async fn query_models(
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels_map: indexmap::IndexMap<_, _> = label_db::get_labels_min(db, user)
+    let min_labels_map: indexmap::IndexMap<_, _> = crate::label_db::get_labels_min(db, user)
         .await?
         .into_iter()
-        .map(|l| (l.id, l))
+        .map(|label| (label.id, label))
         .collect();
 
     for row in rows {
@@ -280,20 +278,20 @@ async fn query_models(
             link: row.get("model_url"),
             description: row.get("model_desc"),
             added: row.get("model_added"),
-            group: row
-                .get::<Option<i64>, _>("group_id")
-                .map(|id| ModelGroupMeta {
+            group: row.get::<Option<i64>, _>("group_id").map(|id| {
+                crate::model::model_group::ModelGroupMeta {
                     id,
                     name: row.get("group_name"),
                     created: row.get("group_created"),
                     resource_id: row.get("group_resource_id"),
                     unique_global_id: row.get("group_unique_global_id"),
                     last_modified: row.get("group_last_modified"),
-                }),
+                }
+            }),
             labels: row
                 .get::<Option<String>, _>("label_ids")
                 .map_or_else(Vec::new, |label_ids| {
-                    parse_concat_ids(&label_ids)
+                    crate::util::parse_concat_ids(&label_ids)
                         .iter()
                         .filter_map(|id| min_labels_map.get(id).cloned())
                         .collect()
@@ -412,8 +410,8 @@ pub async fn edit_model(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    validate_global_id(global_id)?;
-    let timestamp = timestamp_or_now(update_timestamp);
+    crate::util::validate_global_id(global_id)?;
+    let timestamp = crate::util::timestamp_or_now(update_timestamp);
     let flags = i64::from(flags.bits());
     let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     if let Some(target) = global_id {
@@ -448,6 +446,7 @@ pub async fn edit_model(
     )
     .execute(&mut *transaction)
     .await?;
+
     transaction.commit().await
 }
 
@@ -532,7 +531,7 @@ async fn restore(
 
     // The update holds the write lock and restored every owned trashed row among `ids`, so
     // existence alone now tells a live row from one purged under us.
-    ensure_owned(&mut *transaction, &MODELS, &ids, user).await?;
+    crate::ensure_owned(&mut *transaction, &crate::MODELS, &ids, user).await?;
     if !stamp_relations || restored.is_empty() {
         transaction.commit().await?;
 
@@ -546,7 +545,7 @@ async fn restore(
         .collect();
     set_timestamp_column(
         &mut *transaction,
-        &GROUPS,
+        &crate::GROUPS,
         "group_last_modified",
         &group_ids,
         user,
@@ -566,7 +565,7 @@ async fn restore(
         .await?;
     set_timestamp_column(
         &mut *transaction,
-        &LABELS,
+        &crate::LABELS,
         "label_last_modified",
         &label_ids,
         user,
@@ -609,7 +608,7 @@ pub async fn get_model_id_via_sha256(
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| r.model_id))
+    Ok(row.map(|record| record.model_id))
 }
 
 /// Resolve model IDs for a list of blob SHA256 hashes in one query.
@@ -654,8 +653,8 @@ pub async fn get_model_count(
     flags: Option<ModelFlags>,
 ) -> Result<usize, DbError> {
     let count = match flags {
-        Some(f) => {
-            let bits = i64::from(f.bits());
+        Some(model_flags) => {
+            let bits = i64::from(model_flags.bits());
             sqlx::query!(
                 "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND model_deleted IS NULL AND (models.model_flags & ?) = ?",
                 user.id,
@@ -694,8 +693,8 @@ pub async fn get_size_of_models(db: &DbContext, user: &User) -> Result<ModelSize
 
     Ok(ModelSizeResult {
         total_size: row.total_size.unwrap_or(0),
-        blob_sha256: row.blob_sha256.map_or(Vec::new(), |f| {
-            f.split(',').map(ToString::to_string).collect()
+        blob_sha256: row.blob_sha256.map_or(Vec::new(), |joined| {
+            joined.split(',').map(ToString::to_string).collect()
         }),
     })
 }

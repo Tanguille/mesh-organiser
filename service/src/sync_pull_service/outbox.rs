@@ -1,14 +1,14 @@
-use super::{AuthenticatedHub, PublicationOutcome, invalid};
-use crate::{AppState, ServiceError, sync_observation_service};
 use db::{
-    causal_envelope::Dot,
-    causal_genesis::GenesisBundle,
     model::user::User,
     sync_transport::{self, outbox},
     user_db::SyncIdentity,
 };
 
-impl AuthenticatedHub {
+use crate::{AppState, ServiceError, sync_observation_service};
+
+use super::{PublicationOutcome, invalid};
+
+impl super::AuthenticatedHub {
     pub async fn queue_observation(
         &self,
         state: &AppState,
@@ -30,7 +30,7 @@ impl AuthenticatedHub {
         state: &AppState,
         user: &User,
         identity: &SyncIdentity,
-        event: &Dot,
+        event: &db::causal_envelope::Dot,
     ) -> Result<String, ServiceError> {
         if !self.authorization.matches(user, identity) {
             return Err(invalid());
@@ -45,7 +45,7 @@ impl AuthenticatedHub {
         state: &AppState,
         user: &User,
         identity: &SyncIdentity,
-        bundle: &GenesisBundle,
+        bundle: &db::causal_genesis::GenesisBundle,
     ) -> Result<String, ServiceError> {
         if !self.authorization.matches(user, identity) {
             return Err(invalid());
@@ -69,6 +69,7 @@ impl AuthenticatedHub {
             // A previous commit can have outlived its HTTP caller. Cleanup is
             // recoverable, and does not require republishing acknowledged data.
             sync_observation_service::recover_transfers(state).await?;
+
             return Ok(PublicationOutcome::AlreadyPresent { sequence });
         }
         let observed =

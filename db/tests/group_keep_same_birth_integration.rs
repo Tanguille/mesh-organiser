@@ -1,15 +1,15 @@
 //! A purged group may be kept only with its exact retained birth identity.
-mod common;
 
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db::{
         self, AssignmentBatchResult, AssignmentChange, GroupLifecycleChange, GroupPrecondition,
     },
     model::user::User,
-    model_db, random_hex_32, user_db,
+    random_hex_32, user_db,
 };
+
+mod common;
 
 async fn prepare(db: &DbContext, user: &User) -> (String, String, String) {
     let group = group_db::add_empty_group(db, user, "original", None)
@@ -41,7 +41,7 @@ async fn precondition(db: &DbContext, user: &User, global: &str) -> GroupPrecond
     let head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == global)
+        .find(|head| head.group_global_id == global)
         .unwrap();
     GroupPrecondition {
         group_global_id: global.into(),
@@ -59,8 +59,10 @@ async fn new_model(
     name: &str,
     target: &str,
 ) -> (i64, AssignmentChange) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
-    let id = model_db::add_model(db, user, name, blob, None, None)
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
+    let id = db::model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
     let (global, incarnation, revision, lifecycle): (String, String, i64, i64) = sqlx::query_as("SELECT model_unique_global_id, model_incarnation, model_assignment_revision, model_lifecycle_revision FROM models WHERE model_id = ?").bind(id).fetch_one(db).await.unwrap();

@@ -1,6 +1,15 @@
 //! Internal checked copies of pristine genesis, not authenticated network sync.
 //! Edited/legacy libraries require a separate observation/adoption protocol.
 
+use crate::{
+    DbError,
+    causal_envelope::{CausalEnvelope, Dot, Entity, EntityKind},
+    db_context::DbContext,
+    model::user::User,
+    sync_peer::{validate_identity, validate_local},
+    user_db::SyncIdentity,
+};
+
 mod checks;
 pub mod identity;
 mod materialization;
@@ -8,17 +17,6 @@ pub(crate) mod observation;
 pub(crate) mod populated;
 mod storage;
 pub(crate) mod transport;
-
-use crate::{
-    DbError,
-    causal_envelope::{CausalEnvelope, Dot, Entity, EntityKind},
-    db_context::DbContext,
-    model::user::User,
-    sync_peer::{PeerBinding, validate_identity, validate_local},
-    user_db::SyncIdentity,
-};
-
-use materialization::Materialization;
 
 const MAX_MATERIALIZATION_BYTES: i64 = 2 * 1024 * 1024;
 
@@ -29,7 +27,7 @@ pub struct GenesisBundle {
     envelope: CausalEnvelope,
     wire: String,
     source_identity: SyncIdentity,
-    materialization: Materialization,
+    materialization: materialization::Materialization,
     materialization_json: String,
     capability: String,
     observation_evidence: Option<String>,
@@ -169,7 +167,7 @@ pub async fn install_pristine_genesis(
     db: &DbContext,
     user: &User,
     identity: &SyncIdentity,
-    peer: &PeerBinding,
+    peer: &crate::sync_peer::PeerBinding,
     bundle: &GenesisBundle,
     local_blob_id: Option<i64>,
 ) -> Result<GenesisInstallation, DbError> {

@@ -1,15 +1,12 @@
 //! Recreating a purged group must not silently lose its portable identity.
+use db::group_db;
+
 mod common;
-use db::{
-    group_db::{self, GroupLifecycleChange, GroupPrecondition},
-    model::user::User,
-    random_hex_32,
-};
 
 #[tokio::test]
 async fn keep_after_purge_fails_closed_until_birth_rehydration_exists() {
     let (_dir, db) = common::test_db().await;
-    let user = User::default();
+    let user = db::model::user::User::default();
     let group = group_db::add_empty_group(&db, &user, "folder", None)
         .await
         .unwrap();
@@ -19,7 +16,7 @@ async fn keep_after_purge_fails_closed_until_birth_rehydration_exists() {
         .unwrap()
         .deletions
         .into_iter()
-        .find(|d| d.group_global_id == group.unique_global_id)
+        .find(|deletion| deletion.group_global_id == group.unique_global_id)
         .unwrap()
         .operation_id;
     sqlx::query(
@@ -34,9 +31,9 @@ async fn keep_after_purge_fails_closed_until_birth_rehydration_exists() {
     let head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == group.unique_global_id)
+        .find(|head| head.group_global_id == group.unique_global_id)
         .unwrap();
-    let condition = GroupPrecondition {
+    let condition = group_db::GroupPrecondition {
         group_global_id: group.unique_global_id.clone(),
         expected_generation: head.generation,
         expected_head: head.head,
@@ -44,7 +41,7 @@ async fn keep_after_purge_fails_closed_until_birth_rehydration_exists() {
         expected_revision: None,
         expected_deleted_at: None,
     };
-    let action = GroupLifecycleChange::Keep {
+    let action = group_db::GroupLifecycleChange::Keep {
         group_global_id: group.unique_global_id.clone(),
         deletion_operation_id: deletion,
         expected_birth_id: None,
@@ -54,7 +51,7 @@ async fn keep_after_purge_fails_closed_until_birth_rehydration_exists() {
     let result = group_db::apply_group_sync_batch(
         &db,
         &user,
-        &random_hex_32(),
+        &db::random_hex_32(),
         &[],
         &[condition],
         &[action],

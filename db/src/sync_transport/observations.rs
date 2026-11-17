@@ -1,14 +1,20 @@
 //! Authenticated metadata transactions. The service verifies physical content.
-use super::{Published, auth, failure, offline};
+use sqlx::SqliteConnection;
+
 use crate::{
     DbError,
-    causal_genesis::populated::{ModelBlobBinding, ObservedPopulatedGroupBundle, transport},
+    causal_genesis::{
+        identity,
+        populated::{ModelBlobBinding, ObservedPopulatedGroupBundle, transport},
+    },
     db_context::DbContext,
     model::{blob::Blob, user::User},
     user_db::SyncIdentity,
+    util::is_lower_hex,
 };
-use sqlx::{Sqlite, SqliteConnection, Transaction};
-use std::collections::BTreeSet;
+
+use super::{Published, auth, failure, offline};
+
 pub use transport::BlobContent;
 
 pub const MAX_BLOB_BYTES: u64 = 32 * 1024 * 1024;
@@ -46,11 +52,11 @@ pub fn parse(value: &serde_json::Value) -> Result<ObservationPlan, DbError> {
         return Err(failure("unsupported"));
     }
     let descriptors = transport::descriptors(&bundle)?;
-    let mut hashes = BTreeSet::new();
+    let mut hashes = std::collections::BTreeSet::new();
     let mut total = 0_u64;
     let mut previous = None;
     for content in &contents {
-        if !auth::canonical_hex(&content.sha256, 64)
+        if !is_lower_hex(&content.sha256, 64)
             || content.hash != content.sha256[..32]
             || !matches!(
                 content.filetype.as_str(),
@@ -99,7 +105,7 @@ pub fn parse(value: &serde_json::Value) -> Result<ObservationPlan, DbError> {
     Ok(ObservationPlan {
         bundle,
         contents,
-        digest: auth::digest(&wire),
+        digest: crate::util::sha256_hex(wire.as_bytes()),
     })
 }
 async fn prior(
@@ -134,21 +140,22 @@ pub async fn inspect(
     value: serde_json::Value,
 ) -> Result<ObservationPlan, DbError> {
     let plan = parse(&value)?;
-    let mut tx = db.begin().await?;
-    let (identity, writer) = auth::authorize(&mut tx, user, account, connection, secret).await?;
-    if prior(&mut tx, user, &plan).await?.is_none() {
+    let mut transaction = db.begin().await?;
+    let (identity, writer) =
+        auth::authorize(&mut transaction, user, account, connection, secret).await?;
+    if prior(&mut transaction, user, &plan).await?.is_none() {
         let event_writer = match nonce {
             Some(nonce) => offline::derived_writer(&identity, connection, nonce)?,
             None => writer.writer_id,
         };
         author(&plan, &event_writer)?;
     }
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok(plan)
 }
 pub struct ObservationTransaction {
-    tx: Transaction<'static, Sqlite>,
+    tx: sqlx::Transaction<'static, sqlx::Sqlite>,
     user: User,
     identity: SyncIdentity,
     origin: SyncIdentity,
@@ -169,18 +176,19 @@ pub async fn begin(
     value: serde_json::Value,
 ) -> Result<ObservationTransaction, DbError> {
     let plan = parse(&value)?;
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    let (identity, writer) = auth::authorize(&mut tx, user, account, connection, secret).await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let (identity, writer) =
+        auth::authorize(&mut transaction, user, account, connection, secret).await?;
     let event_writer = match nonce {
         Some(nonce) => offline::derived_writer(&identity, connection, nonce)?,
         None => writer.writer_id.clone(),
     };
-    let prior = prior(&mut tx, user, &plan).await?;
+    let prior = prior(&mut transaction, user, &plan).await?;
     if prior.is_none() {
         author(&plan, &event_writer)?;
         if let Some(nonce) = nonce {
             offline::verify_delegation(
-                &mut tx,
+                &mut transaction,
                 user,
                 &identity,
                 &writer.writer_id,
@@ -192,7 +200,7 @@ pub async fn begin(
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM sync_transport_log WHERE user_id=?")
                 .bind(user.id)
-                .fetch_one(&mut *tx)
+                .fetch_one(&mut *transaction)
                 .await?;
         if count >= 4096 {
             return Err(failure("quota_paused"));
@@ -200,7 +208,7 @@ pub async fn begin(
     }
 
     Ok(ObservationTransaction {
-        tx,
+        tx: transaction,
         user: user.clone(),
         identity,
         origin: writer.source(),
@@ -257,6 +265,7 @@ impl ObservationTransaction {
     pub async fn commit(mut self, blobs: Vec<(String, i64)>) -> Result<Published, DbError> {
         if let Some(sequence) = self.prior {
             self.tx.commit().await?;
+
             return Ok(Published {
                 status: "already_present",
                 sequence,
@@ -276,6 +285,7 @@ impl ObservationTransaction {
                 .await?;
             let sequence = delivery.sequence.to_string();
             self.tx.commit().await?;
+
             return Ok(Published {
                 status: "already_present",
                 sequence,
@@ -370,12 +380,10 @@ impl ObservationTransaction {
     pub async fn commit_identity(
         mut self,
         decision_id: &str,
-        decision: crate::causal_genesis::identity::Decision,
+        decision: identity::Decision,
         blobs: Vec<(String, i64)>,
-        local_source: Option<&crate::causal_genesis::identity::LocalObservationStage>,
-    ) -> Result<crate::causal_genesis::identity::DecisionOutcome, DbError> {
-        use crate::causal_genesis::identity;
-
+        local_source: Option<&identity::LocalObservationStage>,
+    ) -> Result<identity::DecisionOutcome, DbError> {
         let delivery = self
             .delivery
             .as_ref()
@@ -432,20 +440,21 @@ impl ObservationTransaction {
             sqlx::query("INSERT INTO sync_observation_contents(user_id,batch_id,hash,filetype,size,sha256,blob_id) VALUES(?,?,?,?,?,?,?)")
                 .bind(self.user.id).bind(transport::batch_id(&self.plan.bundle)).bind(&content.hash).bind(&content.filetype).bind(content.size).bind(&content.sha256).bind(blob_id).execute(&mut *self.tx).await?;
         }
+
         Ok(())
     }
 }
 pub async fn path_committed(db: &DbContext, path: &str) -> Result<bool, DbError> {
     // Serialize with any commit whose caller lost its result; a read snapshot alone
     // could observe the state before an in-flight writer finishes committing.
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let committed = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM sync_owned_blob_files WHERE path=? AND blob_id IS NOT NULL)",
     )
     .bind(path)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *transaction)
     .await?;
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok(committed)
 }
@@ -478,20 +487,20 @@ pub async fn download_blob(
     sequence: i64,
     key: &str,
 ) -> Result<(BlobContent, Blob), DbError> {
-    if !auth::canonical_hex(key, 64) || sequence <= 0 {
+    if !is_lower_hex(key, 64) || sequence <= 0 {
         return Err(failure("unsupported"));
     }
-    let mut tx = db.begin().await?;
-    auth::authorize(&mut tx, user, account, connection, secret).await?;
+    let mut transaction = db.begin().await?;
+    auth::authorize(&mut transaction, user, account, connection, secret).await?;
     let row: Option<(String,String,i64,String,Option<i64>)> = sqlx::query_as("SELECT c.hash,c.filetype,c.size,c.sha256,c.blob_id FROM sync_observation_contents c JOIN sync_transport_log l ON l.user_id=c.user_id AND l.item_id=c.batch_id AND l.kind='observed_group' WHERE c.user_id=? AND l.sequence=? AND c.sha256=?")
-        .bind(user.id).bind(sequence).bind(key).fetch_optional(&mut *tx).await?;
+        .bind(user.id).bind(sequence).bind(key).fetch_optional(&mut *transaction).await?;
     let (hash, filetype, size, sha256, id) = row.ok_or_else(|| failure("forbidden"))?;
     let id = id.ok_or_else(|| failure("identity_blocked"))?;
     let blob = sqlx::query_as("SELECT * FROM blobs WHERE blob_id=?")
         .bind(id)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *transaction)
         .await?;
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok((
         BlobContent {
@@ -519,10 +528,10 @@ pub async fn reload_source(
     identity: &SyncIdentity,
     group: i64,
 ) -> Result<Option<ObservedPopulatedGroupBundle>, DbError> {
-    let mut tx = db.begin().await?;
-    crate::sync_peer::validate_local(&mut tx, user, identity).await?;
-    let value = transport::reload_source(&mut tx, user, identity, group).await?;
-    tx.commit().await?;
+    let mut transaction = db.begin().await?;
+    crate::sync_peer::validate_local(&mut transaction, user, identity).await?;
+    let value = transport::reload_source(&mut transaction, user, identity, group).await?;
+    transaction.commit().await?;
 
     Ok(value)
 }
@@ -590,23 +599,36 @@ pub async fn begin_delivery(
         return Err(failure("identity_blocked"));
     }
     author(&plan, &delivery.issuer.writer_id)?;
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let replay = delivery
-        .validate(&mut tx, "observed_group", transport::batch_id(&plan.bundle))
+        .validate(
+            &mut transaction,
+            "observed_group",
+            transport::batch_id(&plan.bundle),
+        )
         .await?;
-    let source_echo =
-        source_export(&mut tx, &delivery.authorization, &delivery.issuer, &plan).await?;
+    let source_echo = source_export(
+        &mut transaction,
+        &delivery.authorization,
+        &delivery.issuer,
+        &plan,
+    )
+    .await?;
     let historical_echo = if source_echo {
         // Originating devices retain the complete checked export digest, but do
         // not have a received-content manifest to reconstruct. Never replace
         // that stronger original proof with a partial received representation.
         true
     } else if delivery
-        .previously_applied(&mut tx, "observed_group", transport::batch_id(&plan.bundle))
+        .previously_applied(
+            &mut transaction,
+            "observed_group",
+            transport::batch_id(&plan.bundle),
+        )
         .await?
     {
         if transport::read(
-            &mut tx,
+            &mut transaction,
             &delivery.authorization.user,
             transport::batch_id(&plan.bundle),
         )
@@ -619,8 +641,9 @@ pub async fn begin_delivery(
     } else {
         false
     };
+
     Ok(ObservationTransaction {
-        tx,
+        tx: transaction,
         user: delivery.authorization.user.clone(),
         identity: delivery.authorization.identity.clone(),
         origin: delivery.authorization.issuer_origin(&delivery.issuer),
@@ -669,6 +692,7 @@ pub async fn acknowledge_delivery(
         return transaction.commit(Vec::new()).await.map(Some);
     }
     transaction.tx.rollback().await?;
+
     Ok(None)
 }
 
@@ -697,9 +721,11 @@ pub(crate) async fn record_source_export(
         if prior != plan.digest {
             return Err(failure("identity_blocked"));
         }
+
         return Ok(());
     }
     sqlx::query("INSERT INTO sync_observation_exports(user_id,batch_id,digest,server_instance_id,server_account_id,connection_id,authority_writer_id,writer_id) SELECT a.user_id,?,?,a.server_instance_id,a.server_account_id,a.connection_id,a.authority_writer_id,d.writer_id FROM sync_transport_local_authorities a JOIN local_writer_delegations d ON d.user_id=a.user_id AND d.account_id=a.local_account_id AND d.connection_id=a.connection_id AND d.server_instance_id=a.server_instance_id AND d.server_account_id=a.server_account_id WHERE a.user_id=? AND d.writer_id=?")
         .bind(transport::batch_id(bundle)).bind(plan.digest).bind(user.id).bind(writer).execute(db).await?;
+
     Ok(())
 }

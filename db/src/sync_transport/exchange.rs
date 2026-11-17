@@ -1,12 +1,15 @@
-use super::{MAX_PAGE_BYTES, MAX_PAGE_ITEMS, MAX_WIRE_ITEM_BYTES, auth, failure};
+use sqlx::SqliteConnection;
+
 use crate::{
     DbError,
     causal_envelope::{self, CausalEnvelope},
     db_context::DbContext,
     model::user::User,
     user_db::SyncIdentity,
+    util::sha256_hex,
 };
-use sqlx::SqliteConnection;
+
+use super::{auth, failure};
 
 #[derive(serde::Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
@@ -82,6 +85,7 @@ impl Item {
                 .await?;
             }
         }
+
         Ok(())
     }
     const fn kind(&self) -> &'static str {
@@ -114,6 +118,7 @@ impl Item {
                 {
                     return Err(failure("unsupported"));
                 }
+
                 Ok(event)
             })
             .collect()
@@ -167,7 +172,7 @@ fn parse_item(
     value: serde_json::Value,
 ) -> Result<(Item, Vec<CausalEnvelope>, String, String), DbError> {
     let wire = serde_json::to_string(&value).map_err(|_| failure("unsupported"))?;
-    if wire.len() > MAX_WIRE_ITEM_BYTES {
+    if wire.len() > super::MAX_WIRE_ITEM_BYTES {
         return Err(failure("too_large"));
     }
     // Omission is the historical wire format; an explicit null would be lost
@@ -181,7 +186,7 @@ fn parse_item(
     let item: Item = serde_json::from_value(value).map_err(|_| failure("unsupported"))?;
     let events = item.parse()?;
     let id = item.id(&events)?;
-    let digest = auth::digest(&wire);
+    let digest = sha256_hex(wire.as_bytes());
     Ok((item, events, id, digest))
 }
 
@@ -195,8 +200,9 @@ pub async fn publish(
     value: serde_json::Value,
 ) -> Result<Published, DbError> {
     let (item, events, id, digest) = parse_item(value)?;
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    let (identity, writer) = auth::authorize(&mut tx, user, account, connection, secret).await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let (identity, writer) =
+        auth::authorize(&mut transaction, user, account, connection, secret).await?;
     let event_writer = match writer_nonce {
         Some(nonce) => super::offline::derived_writer(&identity, connection, nonce)?,
         None => writer.writer_id.clone(),
@@ -207,13 +213,13 @@ pub async fn publish(
     .bind(user.id)
     .bind(item.kind())
     .bind(&id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut *transaction)
     .await?;
     if let Some((sequence, prior)) = prior {
         if prior != digest {
             return Err(failure("identity_blocked"));
         }
-        tx.commit().await?;
+        transaction.commit().await?;
         return Ok(Published {
             status: "already_present",
             sequence: sequence.to_string(),
@@ -229,7 +235,7 @@ pub async fn publish(
     }
     if let Some(nonce) = writer_nonce {
         super::offline::verify_delegation(
-            &mut tx,
+            &mut transaction,
             user,
             &identity,
             &writer.writer_id,
@@ -240,22 +246,22 @@ pub async fn publish(
     }
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_transport_log WHERE user_id=?")
         .bind(user.id)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *transaction)
         .await?;
     if count >= 4096 {
         return Err(failure("quota_paused"));
     }
-    item.apply(&mut tx, user, &identity, &writer.source(), events)
+    item.apply(&mut transaction, user, &identity, &writer.source(), events)
         .await?;
     let sequence: i64 = sqlx::query_scalar(
         "SELECT COALESCE(MAX(sequence),0)+1 FROM sync_transport_log WHERE user_id=?",
     )
     .bind(user.id)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *transaction)
     .await?;
     sqlx::query("INSERT INTO sync_transport_log(user_id,sequence,kind,item_id,digest,authority_writer_id,writer_id) VALUES(?,?,?,?,?,?,?)")
-        .bind(user.id).bind(sequence).bind(item.kind()).bind(&id).bind(digest).bind(&writer.writer_id).bind(&event_writer).execute(&mut *tx).await?;
-    tx.commit().await?;
+        .bind(user.id).bind(sequence).bind(item.kind()).bind(&id).bind(digest).bind(&writer.writer_id).bind(&event_writer).execute(&mut *transaction).await?;
+    transaction.commit().await?;
 
     Ok(Published {
         status: "applied",
@@ -312,23 +318,24 @@ pub async fn list(
     through: Option<i64>,
     limit: usize,
 ) -> Result<Page, DbError> {
-    if after < 0 || limit == 0 || limit > MAX_PAGE_ITEMS {
+    if after < 0 || limit == 0 || limit > super::MAX_PAGE_ITEMS {
         return Err(failure("invalid_cursor"));
     }
-    let mut tx = db.begin().await?;
-    let (identity, _) = auth::authorize(&mut tx, user, account, connection, secret).await?;
+    let mut transaction = db.begin().await?;
+    let (identity, _) =
+        auth::authorize(&mut transaction, user, account, connection, secret).await?;
     let high: i64 = sqlx::query_scalar(
         "SELECT COALESCE(MAX(sequence),0) FROM sync_transport_log WHERE user_id=?",
     )
     .bind(user.id)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *transaction)
     .await?;
     let through = through.unwrap_or(high);
     if through < after || through > high {
         return Err(failure("invalid_cursor"));
     }
     let rows:Vec<(i64,String,String,String,String,String,String)>=sqlx::query_as("SELECT l.sequence,l.kind,l.item_id,l.digest,w.connection_id,l.authority_writer_id,l.writer_id FROM sync_transport_log l JOIN sync_transport_writers w ON w.user_id=l.user_id AND w.writer_id=l.authority_writer_id WHERE l.user_id=? AND l.sequence>? AND l.sequence<=? ORDER BY l.sequence LIMIT ?")
-        .bind(user.id).bind(after).bind(through).bind(i64::try_from(limit).map_err(|_|failure("invalid_cursor"))?).fetch_all(&mut *tx).await?;
+        .bind(user.id).bind(after).bind(through).bind(i64::try_from(limit).map_err(|_|failure("invalid_cursor"))?).fetch_all(&mut *transaction).await?;
     let mut page = Page {
         server_identity: identity,
         through: through.to_string(),
@@ -338,9 +345,9 @@ pub async fn list(
     };
     let mut page_bytes = 512;
     for (sequence, kind, id, digest, connection_id, authority_writer_id, writer_id) in rows {
-        let value = item(&mut tx, user, &kind, &id).await?;
+        let value = item(&mut transaction, user, &kind, &id).await?;
         let wire = serde_json::to_string(&value).map_err(|_| failure("unsupported"))?;
-        if auth::digest(&wire) != digest {
+        if sha256_hex(wire.as_bytes()) != digest {
             return Err(failure("unsupported"));
         }
         let row = PageItem {
@@ -357,7 +364,7 @@ pub async fn list(
             .map_err(|_| failure("unsupported"))?
             .len()
             + 1;
-        if page_bytes + bytes > MAX_PAGE_BYTES {
+        if page_bytes + bytes > super::MAX_PAGE_BYTES {
             break;
         }
         page_bytes += bytes;
@@ -368,7 +375,7 @@ pub async fn list(
     if page.items.is_empty() && page.has_more {
         return Err(failure("too_large"));
     }
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok(page)
 }
@@ -388,26 +395,36 @@ pub async fn apply_delivery(
     {
         return Err(failure("identity_blocked"));
     }
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    let replay = delivery.validate(&mut tx, parsed.kind(), &id).await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let replay = delivery
+        .validate(&mut transaction, parsed.kind(), &id)
+        .await?;
     if replay {
-        tx.commit().await?;
+        transaction.commit().await?;
         return Ok(Published {
             status: "already_present",
             sequence: delivery.sequence.to_string(),
         });
     }
     let echo = if delivery
-        .previously_applied(&mut tx, parsed.kind(), &id)
+        .previously_applied(&mut transaction, parsed.kind(), &id)
         .await?
     {
-        if item(&mut tx, &delivery.authorization.user, parsed.kind(), &id).await? != value {
+        if item(
+            &mut transaction,
+            &delivery.authorization.user,
+            parsed.kind(),
+            &id,
+        )
+        .await?
+            != value
+        {
             return Err(failure("identity_blocked"));
         }
         true
     } else {
         source_echo(
-            &mut tx,
+            &mut transaction,
             &delivery.authorization,
             &delivery.issuer,
             &parsed,
@@ -420,7 +437,7 @@ pub async fn apply_delivery(
     if !echo {
         parsed
             .apply(
-                &mut tx,
+                &mut transaction,
                 &delivery.authorization.user,
                 &delivery.authorization.identity,
                 &delivery.authorization.issuer_origin(&delivery.issuer),
@@ -428,8 +445,11 @@ pub async fn apply_delivery(
             )
             .await?;
     }
-    delivery.commit(&mut tx, parsed.kind(), &id).await?;
-    tx.commit().await?;
+    delivery
+        .commit(&mut transaction, parsed.kind(), &id)
+        .await?;
+    transaction.commit().await?;
+
     Ok(Published {
         status: if echo { "already_present" } else { "applied" },
         sequence: delivery.sequence.to_string(),
@@ -491,5 +511,6 @@ async fn source_echo(
     if item(db, owner, parsed.kind(), id).await? != *value {
         return Err(failure("identity_blocked"));
     }
+
     Ok(true)
 }

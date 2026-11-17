@@ -1,4 +1,15 @@
 //! Independent paired devices publish and consume their original operations over HTTPS.
+use std::sync::{Arc, atomic::Ordering};
+
+use axum::{
+    middleware::{self, Next},
+    response::IntoResponse,
+};
+use tokio::sync::Notify;
+
+use db::causal_group_rename::NameState;
+use service::sync_pull_service::{AuthenticatedHub, HubTrust, PublicationOutcome, PullOutcome};
+
 use super::{
     pull::{TEST_CA, TlsHub},
     *,
@@ -7,9 +18,6 @@ use super::{
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Observation, rename, deletion and restoration must preserve one ordered author history.
 async fn paired_author_publishes_original_history_for_an_independent_receiver() {
-    use db::causal_group_lifecycle::GroupLifecycle;
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PublicationOutcome, PullOutcome};
     let (_hub_dir, hub, router, _) = app().await;
     let (author_dir, author) = crate::test_support::app_state().await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -115,7 +123,7 @@ async fn paired_author_publishes_original_history_for_an_independent_receiver() 
             .publish_observation(&receiver, &user, &ri, &prepared)
             .await
             .is_err(),
-        "a receiver cannot reauthor another device's prepared item"
+        "a receiver cannot reauthor another device's prepared b"
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sync_transport_log WHERE user_id=?")
@@ -176,7 +184,7 @@ async fn paired_author_publishes_original_history_for_an_independent_receiver() 
             other_client.pull_next(&other, &user, &oi).await.unwrap(),
             PullOutcome::Idle { .. }
         ),
-        "another authenticated account must not see the author's item"
+        "another authenticated account must not see the author's b"
     );
     let receiver_group: i64 = sqlx::query_scalar(
         "SELECT group_id FROM models_group WHERE group_user_id=? AND group_unique_global_id=?",
@@ -242,7 +250,7 @@ async fn paired_author_publishes_original_history_for_an_independent_receiver() 
     db::group_db::delete_group(&author.db, &user, group)
         .await
         .unwrap();
-    let GroupLifecycle::Deleted { deletions } =
+    let db::causal_group_lifecycle::GroupLifecycle::Deleted { deletions } =
         db::causal_group_lifecycle::get_state(&author.db, &user, &ai, group)
             .await
             .unwrap()
@@ -331,16 +339,6 @@ async fn paired_author_publishes_original_history_for_an_independent_receiver() 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Missing dependencies, hub rollback and acknowledgement verification share one original event.
 async fn publication_waits_for_dependencies_and_verifies_the_committed_acknowledgement() {
-    use axum::{
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PublicationOutcome};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
     let (_hub_dir, hub, router, _) = app().await;
     let (_author_dir, author) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -348,7 +346,7 @@ async fn publication_waits_for_dependencies_and_verifies_the_committed_acknowled
         .await
         .unwrap()
         .unwrap();
-    let corrupt = Arc::new(AtomicUsize::new(0));
+    let corrupt = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let state = corrupt.clone();
     let router = router.layer(middleware::from_fn(
         move |request: Request<Body>, next: Next| {
@@ -489,10 +487,6 @@ async fn publication_waits_for_dependencies_and_verifies_the_committed_acknowled
 
 #[tokio::test]
 async fn link_replacement_during_publication_cannot_return_a_false_acknowledgement() {
-    use axum::middleware::{self, Next};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use std::sync::Arc;
-    use tokio::sync::Notify;
     let (_hub_dir, hub, router, _) = app().await;
     let (_author_dir, author) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();

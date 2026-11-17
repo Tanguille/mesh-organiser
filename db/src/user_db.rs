@@ -4,7 +4,7 @@ use crate::{
     DbError,
     db_context::DbContext,
     model::user::{User, UserPermissions, hash_password},
-    random_hex_32, time_now,
+    random_hex_32,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -71,6 +71,7 @@ pub async fn get_auth_user(
             query.push("u.user_sync_token = ").push_bind(token);
         }
     }
+
     Ok(query
         .build_query_as::<AuthUserDbQuery>()
         .fetch_optional(db)
@@ -141,7 +142,7 @@ pub async fn add_user(
     email: &str,
     password: &str,
 ) -> Result<i64, DbError> {
-    let now = time_now();
+    let now = crate::time_now();
     let id = i64::from(rand::rng().random::<u32>());
     let password = hash_password(password);
 
@@ -224,7 +225,7 @@ pub async fn set_user_sync_token(
 }
 
 pub async fn clear_user_sync(db: &DbContext, user_id: i64) -> Result<(), DbError> {
-    let mut tx = db.begin().await?;
+    let mut transaction = db.begin().await?;
     let bits = i64::from(UserPermissions::OnlineAccount.bits() ^ u32::MAX);
 
     sqlx::query!(
@@ -232,18 +233,18 @@ pub async fn clear_user_sync(db: &DbContext, user_id: i64) -> Result<(), DbError
         bits,
         user_id
     )
-    .execute(&mut *tx)
+    .execute(&mut *transaction)
     .await?;
 
     sqlx::query("DELETE FROM sync_transport_local_authorities WHERE user_id=?")
         .bind(user_id)
-        .execute(&mut *tx)
+        .execute(&mut *transaction)
         .await?;
     sqlx::query("DELETE FROM causal_account_writers WHERE user_id=?")
         .bind(user_id)
-        .execute(&mut *tx)
+        .execute(&mut *transaction)
         .await?;
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok(())
 }

@@ -1,20 +1,24 @@
 //! Durable group heads make stale sync baselines distinguishable across lifecycles.
-mod common;
 
-use db::{
-    blob_db, db_context::DbContext, group_db, model::user::User, model_db, random_hex_32, user_db,
-};
+use db::{db_context::DbContext, group_db, model::user::User, model_db, random_hex_32, user_db};
+
+mod common;
 
 async fn head(db: &DbContext, user: &User, global: &str) -> (i64, i64, String) {
     let snapshot = group_db::get_group_sync_snapshot(db, user).await.unwrap();
-    let entry = snapshot.heads.iter().find(|h| h.group_global_id == global);
+    let entry = snapshot
+        .heads
+        .iter()
+        .find(|head| head.group_global_id == global);
     assert!(entry.is_some(), "missing durable head for {global}");
     let entry = entry.unwrap();
     (entry.generation, entry.head, entry.state.clone())
 }
 
 async fn add_model(db: &DbContext, user: &User) -> i64 {
-    let blob = blob_db::add_blob(db, "part", "stl", 1, None).await.unwrap();
+    let blob = db::blob_db::add_blob(db, "part", "stl", 1, None)
+        .await
+        .unwrap();
     model_db::add_model(db, user, "part", blob, None, None)
         .await
         .unwrap()

@@ -1,25 +1,23 @@
 //! One captured feed item and explicitly selected publications; no automatic account scheduler.
-use super::{
-    AuthenticatedHub, GroupIdentityChoice, NextDelivery, PendingPublications, PullOutcome, invalid,
-};
-use crate::{AppState, ServiceError};
+pub use db::sync_transport::operation_selection::OperationSelection;
 use db::{
     causal_genesis::identity, model::user::User, sync_transport::outbox, user_db::SyncIdentity,
 };
-use std::time::Duration;
+
+use crate::{AppState, ServiceError};
+
+use super::{NextDelivery, PendingPublications, PullOutcome, invalid};
 
 /// A feed boundary is independent from pending publications and unresolved conflicts.
 #[derive(Debug)]
 pub enum AdvanceOutcome {
-    IdentityRequired(GroupIdentityChoice),
+    IdentityRequired(super::GroupIdentityChoice),
     Applied { sequence: String },
     AlreadyApplied { sequence: String },
     FeedBoundary { through: String },
 }
 
-pub use db::sync_transport::operation_selection::OperationSelection;
-
-impl AuthenticatedHub {
+impl super::AuthenticatedHub {
     pub async fn select_next_operation(
         &self,
         state: &AppState,
@@ -46,7 +44,7 @@ impl AuthenticatedHub {
         identity: &SyncIdentity,
     ) -> Result<AdvanceOutcome, ServiceError> {
         tokio::time::timeout(
-            Duration::from_secs(120),
+            std::time::Duration::from_secs(120),
             self.advance(state, user, identity),
         )
         .await

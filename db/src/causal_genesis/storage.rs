@@ -1,8 +1,6 @@
 use sqlx::SqliteConnection;
 
-use crate::{
-    DbError, causal_envelope::Entity, causal_store, model::user::User, user_db::SyncIdentity,
-};
+use crate::{DbError, causal_store, model::user::User, user_db::SyncIdentity};
 
 use super::{
     GenesisBundle, counter, encode, invalid, kind,
@@ -62,7 +60,7 @@ impl Binding {
 pub(super) async fn binding(
     db: &mut SqliteConnection,
     user: &User,
-    entity: &Entity,
+    entity: &crate::causal_envelope::Entity,
 ) -> Result<Option<Binding>, DbError> {
     sqlx::query_as("SELECT global_id, writer_id, counter, local_instance_id, local_account_id, source_instance_id, source_account_id, local_id, local_guard, materialization, origin, capability, initialization_kind, observation_evidence FROM causal_genesis_bindings WHERE user_id = ? AND entity_kind = ? AND birth_id = ? AND scope = 'rename_move_genesis_v1'")
         .bind(user.id).bind(kind(entity)).bind(&entity.birth_id).fetch_optional(db).await

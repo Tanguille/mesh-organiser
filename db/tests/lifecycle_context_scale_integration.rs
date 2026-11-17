@@ -1,12 +1,13 @@
 //! Unrelated folders must not consume one operation's causal context limit.
+use db::{causal_group_lifecycle, group_db};
+
 mod common;
-use db::{causal_group_lifecycle, group_db, model::user::User, user_db};
 
 #[tokio::test]
 async fn empty_group_deletion_ignores_over_1024_unrelated_scopes() {
     let (_dir, db) = common::test_db().await;
-    let user = User::default();
-    let identity = user_db::get_sync_identity(&db, user.id)
+    let user = db::model::user::User::default();
+    let identity = db::user_db::get_sync_identity(&db, user.id)
         .await
         .unwrap()
         .unwrap();

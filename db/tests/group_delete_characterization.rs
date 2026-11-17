@@ -1,13 +1,13 @@
 //! Existing group deletion keeps live and trashed model rows and respects ownership.
 
+use db::{db_context::DbContext, group_db, model::user::User, model_db, user_db};
+
 mod common;
 
-use db::{
-    blob_db, db_context::DbContext, group_db, model::user::User, model_db, random_hex_32, user_db,
-};
-
 async fn add_model(db: &DbContext, user: &User, name: &str) -> i64 {
-    let blob_id = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+    let blob_id = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     model_db::add_model(db, user, name, blob_id, None, None)
         .await
         .unwrap()
@@ -54,7 +54,7 @@ async fn deleting_group_ungroups_live_and_trashed_models_without_deleting_rows()
 async fn deleting_another_users_group_leaves_its_models_and_group_unchanged() {
     let (_dir, db) = common::test_db().await;
     let user = User::default();
-    let other_id = user_db::add_user(&db, "other", "other@example.com", &random_hex_32())
+    let other_id = user_db::add_user(&db, "other", "other@example.com", &db::random_hex_32())
         .await
         .unwrap();
     let other = user_db::get_user_by_id(&db, other_id)

@@ -3,31 +3,21 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{get, put},
 };
-use axum_login::login_required;
 use serde::Deserialize;
 
-use db::{
-    model::{
-        share::{Share, ShareDto},
-        user::User,
-    },
-    share_db, time_now, user_db,
-};
+use db::{model::share::ShareDto, share_db};
 use service::AppState;
 
-use crate::{
-    error::ApplicationError,
-    user::{Backend, CurrentUser},
-};
+use crate::{error::ApplicationError, user::CurrentUser};
 
 /// A share resolved together with its owning user, plus the model scoping that
 /// every share endpoint must apply: a share link only grants the models listed
 /// on the share, never everything its owner has.
 pub struct ShareScope {
-    pub share: Share,
-    pub owner: User,
+    pub share: db::model::share::Share,
+    pub owner: db::model::user::User,
 }
 
 impl ShareScope {
@@ -36,7 +26,7 @@ impl ShareScope {
     pub async fn resolve(app_state: &AppState, share_id: &str) -> Result<Self, ApplicationError> {
         let share = share_db::get_share_via_id(&app_state.db, share_id).await?;
 
-        let Some(owner) = user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
+        let Some(owner) = db::user_db::get_user_by_id(&app_state.db, share.user_id).await? else {
             return Err(
                 service::ServiceError::InternalError("Share owner user not found.".into()).into(),
             );
@@ -75,11 +65,11 @@ pub fn router() -> Router<AppState> {
         "/api/v1",
         Router::new()
             .route("/shares", get(get_shares))
-            .route("/shares", post(create_share))
+            .route("/shares", axum::routing::post(create_share))
             .route("/shares/{share_id}", put(edit_share))
-            .route("/shares/{share_id}", delete(delete_share))
+            .route("/shares/{share_id}", axum::routing::delete(delete_share))
             .route("/shares/{share_id}/models", put(set_model_ids_on_share))
-            .route_layer(login_required!(Backend))
+            .route_layer(axum_login::login_required!(crate::user::Backend))
             .route("/shares/{share_id}", get(get_share)),
     )
 }
@@ -126,7 +116,7 @@ pub async fn create_share(
         share_name: params.share_name,
         user_name: user.username,
         model_ids: Vec::new(),
-        created_at: time_now(),
+        created_at: db::time_now(),
     })
     .into_response())
 }

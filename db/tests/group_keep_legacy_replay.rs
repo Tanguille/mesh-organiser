@@ -1,13 +1,10 @@
 //! A legacy Keep request did not state whether the project should be cleared.
-mod common;
 
 use std::fmt::Write;
 
-use db::{
-    group_db::{self, GroupLifecycleChange, GroupPrecondition, KeepResource},
-    model::user::User,
-    random_hex_32, resource_db,
-};
+use db::group_db;
+
+mod common;
 
 fn encode(payload: &mut String, value: Option<&str>) {
     if let Some(value) = value {
@@ -21,8 +18,8 @@ fn encode(payload: &mut String, value: Option<&str>) {
 #[allow(clippy::too_many_lines)]
 async fn legacy_keep_journal_cannot_claim_explicit_none_as_an_exact_replay() {
     let (_dir, db) = common::test_db().await;
-    let user = User::default();
-    let project = resource_db::add_resource(&db, &user, "project", None)
+    let user = db::model::user::User::default();
+    let project = db::resource_db::add_resource(&db, &user, "project", None)
         .await
         .unwrap();
     let group = group_db::add_empty_group(&db, &user, "folder", None)
@@ -45,21 +42,21 @@ async fn legacy_keep_journal_cannot_claim_explicit_none_as_an_exact_replay() {
     let info = snapshot
         .groups
         .iter()
-        .find(|g| g.global_id == group.unique_global_id)
+        .find(|item| item.global_id == group.unique_global_id)
         .unwrap();
     let head = snapshot
         .heads
         .iter()
-        .find(|h| h.group_global_id == group.unique_global_id)
+        .find(|head| head.group_global_id == group.unique_global_id)
         .unwrap();
     let deletion = snapshot
         .deletions
         .iter()
-        .find(|d| d.group_global_id == group.unique_global_id)
+        .find(|deletion| deletion.group_global_id == group.unique_global_id)
         .unwrap()
         .operation_id
         .clone();
-    let condition = GroupPrecondition {
+    let condition = group_db::GroupPrecondition {
         group_global_id: group.unique_global_id.clone(),
         expected_generation: head.generation,
         expected_head: head.head,
@@ -67,11 +64,11 @@ async fn legacy_keep_journal_cannot_claim_explicit_none_as_an_exact_replay() {
         expected_revision: Some(info.revision),
         expected_deleted_at: info.deleted_at.clone(),
     };
-    let action = GroupLifecycleChange::Keep {
+    let action = group_db::GroupLifecycleChange::Keep {
         group_global_id: group.unique_global_id.clone(),
         deletion_operation_id: deletion.clone(),
         expected_birth_id: Some(birth.clone()),
-        resource: KeepResource::None,
+        resource: group_db::KeepResource::None,
         name: "folder".into(),
     };
     // Payload format used before Keep requests explicitly specified project intent.
@@ -87,7 +84,7 @@ async fn legacy_keep_journal_cannot_claim_explicit_none_as_an_exact_replay() {
         &mut legacy,
         condition
             .expected_revision
-            .map(|v| v.to_string())
+            .map(|expected_revision| expected_revision.to_string())
             .as_deref(),
     );
     encode(&mut legacy, condition.expected_deleted_at.as_deref());
@@ -99,7 +96,7 @@ async fn legacy_keep_journal_cannot_claim_explicit_none_as_an_exact_replay() {
     encode(&mut legacy, Some("folder"));
     legacy.push('b');
     encode(&mut legacy, Some(&birth));
-    let operation = random_hex_32();
+    let operation = db::random_hex_32();
     sqlx::query(
         "INSERT INTO assignment_batch_journal (user_id, operation_id, payload) VALUES (?, ?, ?)",
     )

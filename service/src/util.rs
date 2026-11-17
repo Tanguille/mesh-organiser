@@ -472,7 +472,7 @@ mod tests {
     const EVIL_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
 
     proptest! {
-        /// Round-trip: for known zippable extensions, convert_zip_to_extension(convert_extension_to_zip(ext)) equals canonical form.
+        /// Round-trip: for known zippable extensions, `convert_zip_to_extension(convert_extension_to_zip(ext))` equals canonical form.
         #[test]
         fn prop_convert_extension_round_trip_known(ext in prop_oneof![
             Just("stl"),
@@ -486,7 +486,7 @@ mod tests {
             prop_assert_eq!(back.as_str(), ext);
         }
 
-        /// For any string, cleanse_evil output must not contain filesystem-unsafe characters.
+        /// For any string, `cleanse_evil` output must not contain filesystem-unsafe characters.
         #[test]
         fn prop_cleanse_evil_removes_evil(s in "[ -~]{0,80}") {
             let out = cleanse_evil_from_name(&s);

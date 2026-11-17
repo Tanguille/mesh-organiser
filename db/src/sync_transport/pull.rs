@@ -1,7 +1,11 @@
 //! Local authorization snapshots; only the service HTTPS client authenticates deliveries.
-use super::{auth, failure};
-use crate::{DbError, db_context::DbContext, model::user::User, user_db::SyncIdentity};
 use sqlx::SqliteConnection;
+
+use crate::{
+    DbError, db_context::DbContext, model::user::User, user_db::SyncIdentity, util::is_lower_hex,
+};
+
+use super::failure;
 
 #[derive(Clone)]
 pub struct Authorization {
@@ -76,9 +80,9 @@ impl Authorization {
         origin: &str,
         token: &str,
     ) -> Result<Self, DbError> {
-        let mut tx = db.begin().await?;
-        let result = Self::capture_in(&mut tx, user, identity, origin, token).await?;
-        tx.commit().await?;
+        let mut transaction = db.begin().await?;
+        let result = Self::capture_in(&mut transaction, user, identity, origin, token).await?;
+        transaction.commit().await?;
 
         Ok(result)
     }
@@ -92,6 +96,7 @@ impl Authorization {
         crate::sync_peer::validate_local(db, user, identity).await?;
         let row:(String,String,String,String,i64)=sqlx::query_as("SELECT a.server_instance_id,a.server_account_id,a.connection_id,a.secret,g.generation FROM sync_transport_local_authorities a JOIN users u ON u.user_id=a.user_id JOIN sync_link_generations g ON g.user_id=a.user_id WHERE a.user_id=? AND a.local_instance_id=? AND a.local_account_id=? AND u.user_sync_url=? AND u.user_sync_token=?")
             .bind(user.id).bind(&identity.instance_id).bind(&identity.account_id).bind(origin).bind(token).fetch_one(db).await?;
+
         Ok(Self {
             user: user.clone(),
             identity: identity.clone(),
@@ -113,14 +118,16 @@ impl Authorization {
         if !valid {
             return Err(failure("stale_link"));
         }
+
         Ok(())
     }
     pub async fn position(&self, db: &DbContext) -> Result<(String, i64, Option<i64>), DbError> {
-        let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-        self.validate(&mut tx).await?;
-        sqlx::query("INSERT INTO sync_pull_streams(stream_id,user_id,origin,server_instance_id,server_account_id) VALUES(?,?,?,?,?) ON CONFLICT(user_id,origin,server_instance_id,server_account_id) DO NOTHING").bind(crate::random_hex_32()).bind(self.user.id).bind(&self.origin).bind(&self.server.instance_id).bind(&self.server.account_id).execute(&mut *tx).await?;
-        let result=sqlx::query_as("SELECT stream_id,last_applied,through FROM sync_pull_streams WHERE user_id=? AND origin=? AND server_instance_id=? AND server_account_id=?").bind(self.user.id).bind(&self.origin).bind(&self.server.instance_id).bind(&self.server.account_id).fetch_one(&mut *tx).await?;
-        tx.commit().await?;
+        let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+        self.validate(&mut transaction).await?;
+        sqlx::query("INSERT INTO sync_pull_streams(stream_id,user_id,origin,server_instance_id,server_account_id) VALUES(?,?,?,?,?) ON CONFLICT(user_id,origin,server_instance_id,server_account_id) DO NOTHING").bind(crate::random_hex_32()).bind(self.user.id).bind(&self.origin).bind(&self.server.instance_id).bind(&self.server.account_id).execute(&mut *transaction).await?;
+        let result=sqlx::query_as("SELECT stream_id,last_applied,through FROM sync_pull_streams WHERE user_id=? AND origin=? AND server_instance_id=? AND server_account_id=?").bind(self.user.id).bind(&self.origin).bind(&self.server.instance_id).bind(&self.server.account_id).fetch_one(&mut *transaction).await?;
+        transaction.commit().await?;
+
         Ok(result)
     }
     pub(crate) fn issuer_origin(&self, issuer: &Issuer) -> SyncIdentity {
@@ -132,7 +139,10 @@ impl Authorization {
         ))
         .expect("string tuple serializes");
         SyncIdentity {
-            instance_id: auth::digest(&format!("mesh-pull-issuer-v1:{encoded}"))[..32].into(),
+            instance_id: crate::util::sha256_hex(
+                format!("mesh-pull-issuer-v1:{encoded}").as_bytes(),
+            )[..32]
+                .into(),
             account_id: self.server.account_id.clone(),
         }
     }
@@ -178,14 +188,14 @@ impl Delivery {
                 .checked_add(1)
                 .ok_or_else(|| failure("invalid_cursor"))?
             || self.through < self.sequence
-            || !auth::canonical_hex(&self.digest, 64)
+            || !is_lower_hex(&self.digest, 64)
             || [
                 &self.issuer.connection_id,
                 &self.issuer.authority_writer_id,
                 &self.issuer.writer_id,
             ]
             .iter()
-            .any(|v| !auth::canonical_hex(v, 32))
+            .any(|value| !is_lower_hex(value, 32))
         {
             return Err(failure("invalid_cursor"));
         }
@@ -211,14 +221,16 @@ impl Delivery {
             {
                 return Ok(true);
             }
+
             return Err(failure("identity_blocked"));
         }
         let position:Option<(i64,Option<i64>)>=sqlx::query_as("SELECT last_applied,through FROM sync_pull_streams WHERE stream_id=? AND user_id=? AND origin=? AND server_instance_id=? AND server_account_id=?").bind(&self.stream).bind(self.authorization.user.id).bind(&self.authorization.origin).bind(&self.authorization.server.instance_id).bind(&self.authorization.server.account_id).fetch_optional(db).await?;
         if position.is_none_or(|(after, through)| {
-            after != self.after || through.is_some_and(|v| v != self.through)
+            after != self.after || through.is_some_and(|value| value != self.through)
         }) {
             return Err(failure("stale_cursor"));
         }
+
         Ok(false)
     }
     /// A URL change does not erase a previously authenticated receipt. This is
@@ -245,6 +257,7 @@ impl Delivery {
             .bind(&self.stream)
             .execute(db)
             .await?;
+
         Ok(())
     }
 }

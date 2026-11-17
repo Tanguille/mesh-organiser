@@ -1,16 +1,11 @@
 use sqlx::SqliteConnection;
 
+use crate::{DbError, model::user::User};
+
 use super::{
-    checked,
     graph::Graph,
     invalid,
     storage::{self, Scope},
-};
-use crate::{
-    DbError,
-    causal_envelope::{Action, EntityKind},
-    db_context::DbContext,
-    model::user::User,
 };
 
 pub(super) async fn absence_guard(
@@ -22,7 +17,10 @@ pub(super) async fn absence_guard(
         .bind(user.id).bind(&scope.entity.birth_id).bind(scope.local_id).bind(scope.project_id).bind(&scope.project_incarnation).fetch_optional(db).await
 }
 
-pub(super) async fn purge(db: &DbContext, retention_days: u32) -> Result<u64, DbError> {
+pub(super) async fn purge(
+    db: &crate::db_context::DbContext,
+    retention_days: u32,
+) -> Result<u64, DbError> {
     let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
     let owners:Vec<i64>=sqlx::query_scalar("SELECT DISTINCT g.group_user_id FROM models_group g JOIN group_lifecycle_group_rows r ON r.user_id=g.group_user_id AND r.local_group_id=g.group_id AND r.birth_id=g.group_birth_id WHERE g.group_deleted_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-' || ? || ' days')")
         .bind(retention_days).fetch_all(&mut *tx).await?;
@@ -31,21 +29,20 @@ pub(super) async fn purge(db: &DbContext, retention_days: u32) -> Result<u64, Db
             id: owner,
             ..User::default()
         };
-        let (mut scopes, graph) = checked(&mut tx, &user).await?;
+        let (mut scopes, graph) = super::checked(&mut tx, &user).await?;
         if scopes.iter().any(|scope| scope.paused) {
             continue;
         }
-        for scope in scopes
-            .iter_mut()
-            .filter(|scope| scope.entity.kind == EntityKind::Group && !scope.purged)
-        {
+        for scope in scopes.iter_mut().filter(|scope| {
+            scope.entity.kind == crate::causal_envelope::EntityKind::Group && !scope.purged
+        }) {
             if graph.active(&scope.entity, None) {
                 continue;
             }
             certify(&mut tx, &user, scope, &graph, retention_days).await?;
         }
     }
-    let deleted=sqlx::query("DELETE FROM models_group WHERE group_deleted_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-' || ? || ' days')")
+    let deleted=sqlx::query("DELETE FROM models_group WHERE group_deleted_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-' || ? || ' days') AND (NOT EXISTS(SELECT 1 FROM group_lifecycle_group_rows r WHERE r.user_id=models_group.group_user_id AND r.local_group_id=models_group.group_id AND r.birth_id=models_group.group_birth_id) OR EXISTS(SELECT 1 FROM group_lifecycle_group_rows r WHERE r.user_id=models_group.group_user_id AND r.local_group_id=models_group.group_id AND r.birth_id=models_group.group_birth_id AND r.state='purged'))")
         .bind(retention_days).execute(&mut *tx).await?.rows_affected();
     // Retirement advances the local head. Record that exact absent incarnation;
     // future same-global reuse or an unexplained head change invalidates it.
@@ -73,7 +70,7 @@ async fn certify(
         return Ok(());
     };
     let frontier = graph.frontier(&scope.entity, None);
-    if !graph.events.iter().any(|event|event.entity==scope.entity&&frontier.contains(&event.event)&&matches!(&event.action,Action::GroupDeleted{deletion_operation_id} if deletion_operation_id==&operation)){return Ok(());}
+    if !graph.events.iter().any(|event|event.entity==scope.entity&&frontier.contains(&event.event)&&matches!(&event.action,crate::causal_envelope::Action::GroupDeleted{deletion_operation_id} if deletion_operation_id==&operation)){return Ok(());}
     let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_deletion_records WHERE user_id=? AND group_global_id=? AND group_birth_id=? AND operation_id=? AND restored_at IS NULL)")
         .bind(user.id).bind(&scope.entity.global_id).bind(&scope.entity.birth_id).bind(&operation).fetch_one(&mut *db).await?;
     if !valid {

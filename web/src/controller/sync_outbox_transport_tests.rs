@@ -1,9 +1,20 @@
 //! Selected publication records retain their exact proof and content across restarts.
+use std::{
+    fmt::Write as _,
+    sync::{Arc, Mutex},
+};
+
+use sha2::Digest;
+use tokio::sync::Notify;
+
+use service::sync_pull_service::{
+    AuthenticatedHub, HubTrust, PublicationOutcome, discard_queued_publication,
+};
+
 use super::{
     pull::{TEST_CA, TlsHub},
     *,
 };
-use std::sync::{Arc, Mutex};
 
 fn no_stage_payload(path: &std::path::Path) -> bool {
     path.is_dir()
@@ -49,7 +60,6 @@ async fn legacy_group(state: &service::AppState, user: &db::model::user::User, n
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Exact queued bytes must survive edits, restart, a lost ACK and retry.
 async fn queued_observation_survives_source_edits_restart_and_ack_retry() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PublicationOutcome, PullOutcome};
     let (_hub_dir, hub, router, _) = app().await;
     let (author_dir, author) = crate::test_support::app_state().await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -226,7 +236,7 @@ async fn queued_observation_survives_source_edits_restart_and_ack_retry() {
             .pull_next(&receiver, &user, &ri)
             .await
             .unwrap(),
-        PullOutcome::Applied {
+        service::sync_pull_service::PullOutcome::Applied {
             sequence: "1".into()
         }
     );
@@ -249,8 +259,6 @@ async fn queued_observation_survives_source_edits_restart_and_ack_retry() {
 
 #[tokio::test]
 async fn queued_operation_with_missing_parent_remains_pending_until_parent_is_published() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PublicationOutcome};
     let (_hub_dir, hub, router, _) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -343,7 +351,6 @@ async fn queued_operation_with_missing_parent_remains_pending_until_parent_is_pu
 
 #[tokio::test]
 async fn queued_item_cannot_publish_under_a_replaced_local_link_or_account() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, _) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let (_other_dir, other) = crate::test_support::app_state().await;
@@ -432,7 +439,6 @@ async fn queued_item_cannot_publish_under_a_replaced_local_link_or_account() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Source enrollment and durable queue insertion must fail as one transaction.
 async fn failed_queue_insert_leaves_no_enrollment_or_staged_files() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, _) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -509,7 +515,6 @@ async fn failed_queue_insert_leaves_no_enrollment_or_staged_files() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Re-selecting a rekeyed group must not silently return its historical publication.
 async fn rekeyed_group_cannot_select_its_old_observation_as_current() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PublicationOutcome};
     let (_hub_dir, hub, router, _) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -604,7 +609,6 @@ async fn rekeyed_group_cannot_select_its_old_observation_as_current() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Explicit discard is owner-bound and releases only certified queued storage, even after unlink.
 async fn explicit_discard_after_unlink_preserves_original_data_and_history() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, discard_queued_publication};
     let (_hub_dir, hub, router, _) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -828,9 +832,6 @@ async fn explicit_discard_after_unlink_preserves_original_data_and_history() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Two full-size logical blobs exercise the real aggregate capacity boundary.
 async fn aggregate_pending_quota_is_atomic_and_discard_releases_capacity() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, discard_queued_publication};
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write as _;
     let (_hub_dir, hub, router, _) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -861,7 +862,7 @@ async fn aggregate_pending_quota_is_atomic_and_discard_releases_capacity() {
     let mut bytes = vec![0_u8; 32 * 1024 * 1024];
     for index in 0..2 {
         bytes.fill(index);
-        let digest = Sha256::digest(&bytes)
+        let digest = sha2::Sha256::digest(&bytes)
             .iter()
             .fold(String::new(), |mut out, byte| {
                 write!(out, "{byte:02x}").unwrap();
@@ -935,12 +936,12 @@ async fn aggregate_pending_quota_is_atomic_and_discard_releases_capacity() {
             .queue_observation(&source, &user, &identity, small_group)
             .await
             .is_err(),
-        "pending logical-byte cap must reject the next item"
+        "pending logical-byte cap must reject the next b"
     );
     let after:(i64,i64,Option<String>,Option<String>)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM sync_publication_outbox),(SELECT COUNT(*) FROM causal_events),(SELECT group_birth_id FROM models_group WHERE group_id=?),(SELECT model_birth_id FROM models WHERE model_id=?)").bind(small_group).bind(small_model).fetch_one(&*source.db).await.unwrap();
     assert_eq!(
         before, after,
-        "quota rejection cannot partially enroll the second item"
+        "quota rejection cannot partially enroll the second b"
     );
     assert_eq!(entries_with_payload(&source.get_model_dir()), stages_before);
     db::user_db::clear_user_sync(&source.db, user.id)
@@ -976,9 +977,6 @@ async fn aggregate_pending_quota_is_atomic_and_discard_releases_capacity() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // A replaced stage must survive cleanup after the hub commits the queued item.
 async fn acknowledged_outbox_never_deletes_a_replacement_stage_directory() {
-    use axum::middleware::{self, Next};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use tokio::sync::Notify;
     let (_hub_dir, hub, router, _) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -989,8 +987,8 @@ async fn acknowledged_outbox_never_deletes_a_replacement_stage_directory() {
     let reached = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
     let (arrived, proceed) = (reached.clone(), release.clone());
-    let router = router.layer(middleware::from_fn(
-        move |request: Request<Body>, next: Next| {
+    let router = router.layer(axum::middleware::from_fn(
+        move |request: Request<Body>, next: axum::middleware::Next| {
             let (arrived, proceed) = (arrived.clone(), proceed.clone());
             async move {
                 let upload = request.uri().path() == "/api/v2/sync/observations"
@@ -1087,7 +1085,6 @@ async fn acknowledged_outbox_never_deletes_a_replacement_stage_directory() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // A copied lease token and valid bytes cannot certify a replaced directory.
 async fn queued_outbox_rejects_a_replaced_stage_even_with_copied_lease() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, _) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();

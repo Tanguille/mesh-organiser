@@ -1,33 +1,30 @@
 //! A group cannot receive a model after a concurrent deletion has committed.
 
-mod common;
-
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
 
-use db::{blob_db, group_db, model::user::User, model_db};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tokio::sync::Notify;
+
+use db::group_db;
+
+mod common;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn assigning_a_model_racing_group_deletion_never_hides_the_model_in_trash() {
     let (dir, db) = common::test_db().await;
-    let user = User::default();
+    let user = db::model::user::User::default();
     let source = group_db::add_empty_group(&db, &user, "source", None)
         .await
         .unwrap();
     let destination = group_db::add_empty_group(&db, &user, "destination", None)
         .await
         .unwrap();
-    let blob = blob_db::add_blob(&db, "race-model", "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, "race-model", "stl", 1, None)
         .await
         .unwrap();
-    let model = model_db::add_model(&db, &user, "model", blob, None, None)
+    let model = db::model_db::add_model(&db, &user, "model", blob, None, None)
         .await
         .unwrap();
     group_db::set_group_id_on_models(&db, &user, Some(source.id), vec![model], None)
@@ -36,9 +33,9 @@ async fn assigning_a_model_racing_group_deletion_never_hides_the_model_in_trash(
 
     let reached = Arc::new(Notify::new());
     let resume = Arc::new(Notify::new());
-    let armed = Arc::new(AtomicBool::new(false));
-    let releases = Arc::new(AtomicUsize::new(0));
-    let pool = SqlitePoolOptions::new()
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .after_release({
             let reached = Arc::clone(&reached);
@@ -69,7 +66,7 @@ async fn assigning_a_model_racing_group_deletion_never_hides_the_model_in_trash(
             }
         })
         .connect_with(
-            SqliteConnectOptions::new()
+            sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(dir.path().join("db.sqlite"))
                 .foreign_keys(true)
                 .busy_timeout(Duration::from_secs(15)),

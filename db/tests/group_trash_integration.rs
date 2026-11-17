@@ -1,17 +1,18 @@
 //! Group deletion retains an owner-scoped recovery snapshot while ungrouping its models.
 
-mod common;
-
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db::{self, GroupFilterOptions},
     model::user::User,
     model_db, random_hex_32, user_db,
 };
 
+mod common;
+
 async fn add_model(db: &DbContext, user: &User, name: &str) -> i64 {
-    let blob_id = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+    let blob_id = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     model_db::add_model(db, user, name, blob_id, None, None)
         .await
         .unwrap()

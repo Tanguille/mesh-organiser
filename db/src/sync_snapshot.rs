@@ -1,20 +1,13 @@
-use crate::{
-    DbError,
-    db_context::DbContext,
-    group_db::{GroupSyncAssignment, GroupSyncDeletion, GroupSyncGroup, GroupSyncHead},
-    model::user::User,
-    resource_db::ResourceSyncResource,
-    user_db::SyncIdentity,
-};
+use crate::{DbError, db_context::DbContext, model::user::User, user_db::SyncIdentity};
 
 #[derive(serde::Serialize)]
 pub struct FullSyncSnapshot {
     pub identity: SyncIdentity,
-    pub groups: Vec<GroupSyncGroup>,
-    pub assignments: Vec<GroupSyncAssignment>,
-    pub deletions: Vec<GroupSyncDeletion>,
-    pub heads: Vec<GroupSyncHead>,
-    pub resources: Vec<ResourceSyncResource>,
+    pub groups: Vec<crate::group_db::GroupSyncGroup>,
+    pub assignments: Vec<crate::group_db::GroupSyncAssignment>,
+    pub deletions: Vec<crate::group_db::GroupSyncDeletion>,
+    pub heads: Vec<crate::group_db::GroupSyncHead>,
+    pub resources: Vec<crate::resource_db::ResourceSyncResource>,
 }
 
 pub async fn get_full_sync_snapshot(
@@ -36,6 +29,7 @@ pub async fn get_full_sync_snapshot(
     let resources =
         crate::resource_db::get_resource_sync_snapshot_in(&mut transaction, user).await?;
     transaction.commit().await?;
+
     Ok(FullSyncSnapshot {
         identity,
         groups: groups.groups,

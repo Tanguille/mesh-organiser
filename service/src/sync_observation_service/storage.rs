@@ -1,11 +1,15 @@
 //! Certified staging and recoverable final links. No cleanup follows caller paths.
-use super::{AppState, BlobContent, ServiceError, invalid, observations};
 use std::{
     collections::BTreeMap,
     fs::File,
     io::Read,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
+
+use rustix::fs::{AtFlags, FileType, Mode, OFlags};
+
+use super::{AppState, ServiceError, invalid, observations};
 
 #[cfg(unix)]
 mod slots;
@@ -27,8 +31,6 @@ pub(super) struct PublishedFile {
 #[cfg(unix)]
 #[allow(clippy::unnecessary_wraps)] // Other platforms reject unprovable inode ownership.
 fn identity(metadata: &std::fs::Metadata) -> Result<(u64, u64), ServiceError> {
-    use std::os::unix::fs::MetadataExt;
-
     Ok((metadata.dev(), metadata.ino()))
 }
 #[cfg(not(unix))]
@@ -74,7 +76,6 @@ fn owned_child(parent: &Path, path: &Path, prefix: &str) -> bool {
 
 #[cfg(unix)]
 fn open_directory(path: &Path) -> Result<File, ServiceError> {
-    use rustix::fs::{Mode, OFlags};
     Ok(rustix::fs::open(
         path,
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
@@ -90,7 +91,6 @@ fn open_directory(_path: &Path) -> Result<File, ServiceError> {
 
 #[cfg(unix)]
 fn open_lease(directory: &File, create: bool) -> Result<File, ServiceError> {
-    use rustix::fs::{Mode, OFlags};
     let mut flags = OFlags::RDWR | OFlags::NOFOLLOW | OFlags::CLOEXEC;
     if create {
         flags |= OFlags::CREATE | OFlags::EXCL;
@@ -115,11 +115,11 @@ fn verify_directory(
         intent
             .directory_device
             .as_deref()
-            .and_then(|v| v.parse::<u64>().ok()),
+            .and_then(|directory_device| directory_device.parse::<u64>().ok()),
         intent
             .directory_inode
             .as_deref()
-            .and_then(|v| v.parse::<u64>().ok()),
+            .and_then(|directory_inode| directory_inode.parse::<u64>().ok()),
     );
     let actual = identity(&directory.metadata()?)?;
     if expected != (Some(actual.0), Some(actual.1))
@@ -135,12 +135,11 @@ fn verify_directory(
 /// intent is forgotten. Unexpected subdirectories are retained, never traversed.
 #[cfg(unix)]
 fn clear_directory(path: &Path, directory: &File) -> Result<(), ServiceError> {
-    use rustix::fs::{AtFlags, Dir};
     let expected = identity(&directory.metadata()?)?;
     if identity(&std::fs::symlink_metadata(path)?)? != expected {
         return Err(invalid("identity_blocked"));
     }
-    let entries = Dir::read_from(directory).map_err(std::io::Error::from)?;
+    let entries = rustix::fs::Dir::read_from(directory).map_err(std::io::Error::from)?;
     for entry in entries {
         let entry = entry.map_err(std::io::Error::from)?;
         let name = entry.file_name();
@@ -251,7 +250,7 @@ impl Stage {
     pub(super) async fn publish(
         &mut self,
         state: &AppState,
-        contents: &[BlobContent],
+        contents: &[super::BlobContent],
         raw: &BTreeMap<String, PathBuf>,
     ) -> Result<BTreeMap<String, PublishedFile>, ServiceError> {
         let root = root(state)?;
@@ -346,8 +345,6 @@ async fn cleanup_links(
     directory: &Path,
     handle: &File,
 ) -> Result<(), ServiceError> {
-    use rustix::fs::{AtFlags, FileType};
-
     if manifest.len() > 1024 * 1024 {
         return Err(invalid("too_large"));
     }
@@ -420,8 +417,7 @@ fn verify_path_handle(path: &Path, handle: &File) -> Result<(), ServiceError> {
 fn entry_identity(
     directory: &File,
     name: &str,
-) -> Result<Option<(rustix::fs::FileType, u64, u64)>, ServiceError> {
-    use rustix::fs::{AtFlags, FileType};
+) -> Result<Option<(FileType, u64, u64)>, ServiceError> {
     match rustix::fs::statat(directory, name, AtFlags::SYMLINK_NOFOLLOW) {
         Ok(stat) => Ok(Some((
             FileType::from_raw_mode(stat.st_mode),
@@ -473,7 +469,6 @@ fn restore_quarantine(
     name: &str,
     root_path: &Path,
 ) -> Result<(), ServiceError> {
-    use rustix::fs::AtFlags;
     // Never overwrite a newer replacement. If both differ, retain both files and
     // the durable intent for a later recovery attempt instead of losing data.
     match rustix::fs::linkat(directory, quarantine, root, name, AtFlags::empty()) {
@@ -522,6 +517,7 @@ pub(super) async fn remove_orphan(
         Ok(_) => return Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             observations::forget_orphan_path(&state.db, &orphan.path).await?;
+
             return Ok(());
         }
         Err(error) => return Err(error.into()),

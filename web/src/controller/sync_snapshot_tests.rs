@@ -1,13 +1,22 @@
 //! Sync snapshots must be authenticated, account-pinned and lossless on the wire.
+use std::sync::{Arc, atomic::Ordering};
+
 use axum::{
-    Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
-use db::{group_db, model::user::User, random_hex_32, user_db};
+use tokio::sync::Notify;
 use tower::ServiceExt;
 
-async fn fixture() -> (tempfile::TempDir, service::AppState, Router, String, User) {
+use db::{group_db, model::user::User, user_db};
+
+async fn fixture() -> (
+    tempfile::TempDir,
+    service::AppState,
+    axum::Router,
+    String,
+    User,
+) {
     let (dir, state) = crate::test_support::app_state().await;
     let password = crate::test_support::add_login_user(&state).await;
     let user = user_db::get_user_by_email(&state.db, "alice@example.com")
@@ -40,6 +49,7 @@ fn request(path: &str, cookie: Option<&str>) -> Request<Body> {
     if let Some(cookie) = cookie {
         req = req.header(header::COOKIE, cookie);
     }
+
     req.body(Body::empty()).unwrap()
 }
 
@@ -85,7 +95,7 @@ async fn snapshot_is_owner_scoped_and_counters_are_decimal_strings() {
     let foreign = group_db::add_empty_group(&state.db, &User::default(), "foreign secret", None)
         .await
         .unwrap();
-    let blob = db::blob_db::add_blob(&state.db, &random_hex_32(), "stl", 1, None)
+    let blob = db::blob_db::add_blob(&state.db, &db::random_hex_32(), "stl", 1, None)
         .await
         .unwrap();
     let model = db::model_db::add_model(&state.db, &user, "own model", blob, None, None)
@@ -155,61 +165,54 @@ async fn snapshot_is_owner_scoped_and_counters_are_decimal_strings() {
     let groups = body["groups"].as_array().unwrap();
     let group = groups
         .iter()
-        .find(|g| g["global_id"] == own.unique_global_id)
+        .find(|group| group["global_id"] == own.unique_global_id)
         .unwrap();
     assert_eq!(group["revision"], "9007199254740993");
     assert!(
         !groups
             .iter()
-            .any(|g| g["global_id"] == foreign.unique_global_id)
+            .any(|group| group["global_id"] == foreign.unique_global_id)
     );
     let heads = body["heads"].as_array().unwrap();
     let head = heads
         .iter()
-        .find(|h| h["group_global_id"] == own.unique_global_id)
+        .find(|head| head["group_global_id"] == own.unique_global_id)
         .unwrap();
     assert_eq!(head["head"], "9007199254740993");
     assert_eq!(head["generation"], "9007199254740993");
     let assignments = body["assignments"].as_array().unwrap();
     let assignment = assignments
         .iter()
-        .find(|a| a["model_global_id"] == model_global)
+        .find(|assignment| assignment["model_global_id"] == model_global)
         .unwrap();
     assert_eq!(assignment["revision"], "9007199254740993");
     assert_eq!(assignment["lifecycle_revision"], "9007199254740993");
     assert!(
         !assignments
             .iter()
-            .any(|a| a["model_global_id"] == foreign_model_global)
+            .any(|assignment| assignment["model_global_id"] == foreign_model_global)
     );
     let deletions = body["deletions"].as_array().unwrap();
     let deletion = deletions
         .iter()
-        .find(|d| d["group_global_id"] == deleted.unique_global_id)
+        .find(|deletion| deletion["group_global_id"] == deleted.unique_global_id)
         .unwrap();
     assert_eq!(deletion["revision"], "9007199254740993");
     let resources = body["resources"].as_array().unwrap();
     assert!(
         resources
             .iter()
-            .any(|r| r["global_id"] == own_resource.unique_global_id)
+            .any(|resource| resource["global_id"] == own_resource.unique_global_id)
     );
     assert!(
         !resources
             .iter()
-            .any(|r| r["global_id"] == foreign_resource.unique_global_id)
+            .any(|resource| resource["global_id"] == foreign_resource.unique_global_id)
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn snapshot_rejects_account_replacement_after_authentication() {
-    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    };
-    use tokio::sync::Notify;
-
     let (dir, state, _, cookie, user) = fixture().await;
     let hash: String = sqlx::query_scalar("SELECT user_password_hash FROM users WHERE user_id = ?")
         .bind(user.id)
@@ -218,9 +221,9 @@ async fn snapshot_rejects_account_replacement_after_authentication() {
         .unwrap();
     let reached = Arc::new(Notify::new());
     let resume = Arc::new(Notify::new());
-    let armed = Arc::new(AtomicBool::new(false));
-    let releases = Arc::new(AtomicUsize::new(0));
-    let pool = SqlitePoolOptions::new()
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .after_release({
             let (reached, resume, armed, releases) = (
@@ -247,7 +250,7 @@ async fn snapshot_rejects_account_replacement_after_authentication() {
             }
         })
         .connect_with(
-            SqliteConnectOptions::new()
+            sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(dir.path().join("db.sqlite"))
                 .foreign_keys(true),
         )

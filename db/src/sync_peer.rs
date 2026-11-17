@@ -20,6 +20,7 @@ pub async fn bind_peer(
     sqlx::query("INSERT INTO sync_peer_bindings (user_id, local_instance_id, local_account_id, remote_instance_id, remote_account_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, local_instance_id, local_account_id, remote_instance_id, remote_account_id) DO NOTHING")
         .bind(user.id).bind(&expected_local.instance_id).bind(&expected_local.account_id).bind(&remote.instance_id).bind(&remote.account_id).execute(&mut *transaction).await?;
     transaction.commit().await?;
+
     Ok(PeerBinding {
         local: expected_local.clone(),
         remote: remote.clone(),
@@ -49,6 +50,7 @@ pub async fn list_peers(
         });
     }
     transaction.commit().await?;
+
     Ok(peers)
 }
 
@@ -62,6 +64,7 @@ pub(crate) fn validate_identity(identity: &SyncIdentity) -> Result<(), DbError> 
     if !valid(&identity.instance_id) || !valid(&identity.account_id) {
         return Err(DbError::Protocol("Invalid sync peer identity".into()));
     }
+
     Ok(())
 }
 
@@ -75,5 +78,6 @@ pub(crate) async fn validate_local(
     if identity.as_ref() != Some(expected) {
         return Err(DbError::Protocol("Invalid sync peer identity".into()));
     }
+
     Ok(())
 }

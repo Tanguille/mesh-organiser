@@ -1,25 +1,29 @@
 //! Explicit group identity choices preserve independent, incomplete observations.
-pub mod model_pair;
-mod names;
-mod received_names;
-pub use names::resolve_name_publication;
-pub use received_names::{prepare_received_name, resolve_received_name};
-pub(super) mod separation;
-mod transfer;
-use super::{counter, encode, invalid, observation, populated};
+
+use sqlx::SqliteConnection;
+
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity},
+    causal_envelope::{self, CausalEnvelope, Dot, Entity},
     db_context::DbContext,
     model::user::User,
     sync_transport::{
         observations,
-        pull::{Authorization, Delivery, Issuer},
+        pull::{Authorization, Delivery},
     },
-    user_db::SyncIdentity,
 };
+
+use super::{counter, encode, invalid, observation, populated};
+
+pub mod model_pair;
+mod names;
+mod received_names;
+pub(super) mod separation;
+mod transfer;
+
+pub use names::resolve_name_publication;
+pub use received_names::{prepare_received_name, resolve_received_name};
 pub use separation::{GroupSeparationOutcome, separate};
-use sqlx::SqliteConnection;
 pub use transfer::{
     Decision, DecisionOutcome, IdentityTransfer, LocalObservationStage, prepare_transfer,
 };
@@ -79,7 +83,7 @@ struct Position {
     through: i64,
     sequence: i64,
     digest: String,
-    issuer: Issuer,
+    issuer: crate::sync_transport::pull::Issuer,
 }
 impl Position {
     fn capture(delivery: &Delivery) -> Self {
@@ -218,6 +222,7 @@ async fn prepare_impl(
             return Err(invalid());
         }
         tx.commit().await?;
+
         return Ok(GroupIdentityChoice {
             decision_id,
             local_name: snapshot.group.name,
@@ -268,7 +273,7 @@ pub(crate) struct IndependentObservation {
     pub observation_id: String,
     pub baseline: Dot,
     pub root: String,
-    pub source_identity: SyncIdentity,
+    pub source_identity: crate::user_db::SyncIdentity,
     pub materialization: String,
     pub proof: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -279,7 +284,10 @@ impl IndependentObservation {
         crate::sync_peer::validate_identity(&self.source_identity)?;
         causal_envelope::counter(&self.baseline).map_err(|_| invalid())?;
         if self.observation_id.len() != 32
-            || !self.observation_id.bytes().all(|b| b.is_ascii_hexdigit())
+            || !self
+                .observation_id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(invalid());
         }
@@ -305,6 +313,7 @@ impl IndependentObservation {
             if destination.is_some() {
                 return Err(invalid());
             }
+
             return Ok((root, name.ok_or_else(invalid)?));
         }
         let name = observation::validate(
@@ -319,6 +328,7 @@ impl IndependentObservation {
         {
             return Err(invalid());
         }
+
         Ok((root, name))
     }
     pub(crate) fn item(&self) -> serde_json::Value {
@@ -396,6 +406,7 @@ async fn pending(
     {
         return Err(invalid());
     }
+
     Ok((delivery, plan, snapshot))
 }
 
@@ -458,6 +469,7 @@ pub(crate) async fn confirm_in(
             )
             .await?;
         }
+
         return Ok(GroupIdentityOutcome {
             group_id,
             event: Dot {
@@ -471,6 +483,7 @@ pub(crate) async fn confirm_in(
     let (delivery, mut plan, snapshot) = pending(&mut *tx, auth, &row).await?;
     if snapshot.has_models() {
         let source = local_source.ok_or_else(invalid)?;
+
         return populated::enroll_identity(
             tx,
             auth,
@@ -522,8 +535,8 @@ pub(crate) async fn confirm_in(
         },
         parents: vec![],
         dependencies: vec![],
-        action: Action::LegacyObserved {
-            observation_digest: observation::digest(&proof),
+        action: causal_envelope::Action::LegacyObserved {
+            observation_digest: crate::util::sha256_hex(proof.as_bytes()),
         },
     };
     let item = IndependentObservation {

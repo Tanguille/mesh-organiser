@@ -1,24 +1,24 @@
 //! Combined group lifecycle capability. Network synchronization remains paused.
 
-mod author_context;
-mod graph;
-mod project;
-mod retention;
-mod storage;
-pub(crate) mod transport;
-
 use sqlx::SqliteConnection;
 
 use crate::{
     DbError,
     causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
     causal_genesis::GenesisBundle,
-    causal_group_rename::NameState,
+    causal_group_rename::{NameState, ResolveResult},
+    causal_model_move::{MoveResolveResult, MoveState},
     db_context::DbContext,
     model::user::User,
-    sync_peer::PeerBinding,
     user_db::SyncIdentity,
 };
+
+mod author_context;
+mod graph;
+mod project;
+mod retention;
+mod storage;
+pub(crate) mod transport;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroupLifecycle {
@@ -122,6 +122,7 @@ pub(crate) async fn project_identity_observation(
     if scopes.iter().any(|scope| scope.paused) {
         return Err(invalid());
     }
+
     project::apply(db, user, &mut scopes, &graph).await
 }
 /// Created only after checking every existing scope inside the caller's write
@@ -150,6 +151,7 @@ pub(crate) async fn prepare_identity_extension(
     {
         return Err(invalid());
     }
+
     Ok(IdentityExtensionGuard(scope.clone()))
 }
 
@@ -195,6 +197,7 @@ pub(crate) async fn validate_installed_baseline(
     }) {
         return Err(invalid());
     }
+
     Ok(())
 }
 
@@ -228,6 +231,7 @@ pub async fn export_operation(
     crate::sync_peer::validate_local(&mut tx, user, identity).await?;
     if !publication_ready(&mut tx, user).await? {
         tx.commit().await?;
+
         return Err(invalid());
     }
     let result = export_operation_in(&mut tx, user, identity, event).await?;
@@ -276,7 +280,7 @@ pub async fn import_operation(
     db: &DbContext,
     user: &User,
     identity: &SyncIdentity,
-    peer: &PeerBinding,
+    peer: &crate::sync_peer::PeerBinding,
     bundle: &OperationBundle,
 ) -> Result<OperationImportResult, DbError> {
     let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
@@ -292,6 +296,7 @@ pub async fn import_operation(
     let (mut scopes, prior) = checked(&mut tx, user).await?;
     if scopes.iter().any(|scope| scope.paused) {
         tx.commit().await?;
+
         return Err(invalid());
     }
     let focus = scopes
@@ -317,6 +322,7 @@ pub async fn import_operation(
     if !missing.is_empty() {
         let state = prior.group_state(&scopes[focus]);
         tx.commit().await?;
+
         return Ok(OperationImportResult::NeedsDependencies { missing, state });
     }
     let existing:Option<(String,i64,Option<String>)>=sqlx::query_as("SELECT focus_birth_id,event_count,author_context FROM group_lifecycle_operations WHERE user_id=? AND operation_id=?")
@@ -424,6 +430,7 @@ async fn commit_local(
         for scope in scopes {
             scope.paused = true;
         }
+
         return Ok(false);
     }
     let graph = graph::Graph::new(scopes, all)?;
@@ -481,6 +488,7 @@ pub(crate) async fn try_edit(
     }
     if rekey {
         storage::pause(db, user).await?;
+
         return Ok(false);
     }
     let (mut scopes, graph) = checked(db, user).await?;
@@ -502,6 +510,7 @@ pub(crate) async fn try_edit(
         .bind(user.id)
         .execute(db)
         .await?;
+
         return Ok(true);
     }
     let focus = scope.entity.birth_id.clone().ok_or_else(invalid)?;
@@ -556,8 +565,10 @@ pub(crate) async fn try_move(
     let target = if let Some(id) = destination {
         let Ok(target) = group(&scopes, id) else {
             storage::pause(db, user).await?;
+
             return Ok(false);
         };
+
         Some(target)
     } else {
         None
@@ -610,6 +621,7 @@ pub(crate) async fn try_move(
             .await?,
         );
     }
+
     commit_local(db, user, &mut scopes, &focus, events).await
 }
 
@@ -675,6 +687,7 @@ pub(crate) async fn try_delete(
             .await?;
         }
     }
+
     commit_local(db, user, &mut scopes, &focus, events).await
 }
 
@@ -694,7 +707,7 @@ pub(crate) async fn move_state(
     db: &mut SqliteConnection,
     user: &User,
     id: i64,
-) -> Result<Option<crate::causal_model_move::MoveState>, DbError> {
+) -> Result<Option<MoveState>, DbError> {
     if !storage::enrolled(db, user, "model", id).await? {
         return Ok(None);
     }
@@ -712,8 +725,7 @@ pub(crate) async fn resolve_name(
     id: i64,
     token: &crate::causal_group_rename::NameToken,
     name: &str,
-) -> Result<Option<crate::causal_group_rename::ResolveResult>, DbError> {
-    use crate::causal_group_rename::ResolveResult;
+) -> Result<Option<ResolveResult>, DbError> {
     if !storage::enrolled(db, user, "group", id).await? {
         return Ok(None);
     }
@@ -768,8 +780,7 @@ pub(crate) async fn resolve_move(
     id: i64,
     token: &crate::causal_model_move::MoveToken,
     destination: Option<Entity>,
-) -> Result<Option<crate::causal_model_move::MoveResolveResult>, DbError> {
-    use crate::causal_model_move::{MoveResolveResult, MoveState};
+) -> Result<Option<MoveResolveResult>, DbError> {
     if !storage::enrolled(db, user, "model", id).await? {
         return Ok(None);
     }
@@ -917,6 +928,7 @@ pub(crate) async fn try_restore(
                     .await?;
             }
         }
+
         return Ok(false);
     }
     let scope = group(&scopes, id)?;
@@ -987,6 +999,7 @@ pub(crate) async fn try_restore(
         group_parent = added.event.clone();
         events.extend([restored, added]);
     }
+
     commit_local(db, user, &mut scopes, &focus, events).await
 }
 

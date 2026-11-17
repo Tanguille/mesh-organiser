@@ -1,21 +1,22 @@
 use sqlx::SqliteConnection;
 
+use crate::{
+    DbError,
+    causal_envelope::{self, CausalEnvelope, Dot},
+    causal_store,
+};
+
 use super::{
     invalid,
     storage::{self, Scope},
-};
-use crate::{
-    DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot},
-    causal_store,
 };
 
 pub(super) async fn local(
     db: &mut SqliteConnection,
     scope: &Scope,
     parents: Vec<Dot>,
-    dependencies: Vec<Dependency>,
-    action: Action,
+    dependencies: Vec<causal_envelope::Dependency>,
+    action: causal_envelope::Action,
 ) -> Result<bool, DbError> {
     if parents.len() > causal_envelope::MAX_CONTEXT_ITEMS
         || dependencies.len() > causal_envelope::MAX_CONTEXT_ITEMS

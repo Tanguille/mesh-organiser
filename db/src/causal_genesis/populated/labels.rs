@@ -1,9 +1,14 @@
 //! Snapshot label components without turning label globals into identity proofs.
-mod storage;
-use super::super::{encode, invalid, observation};
-use crate::{DbError, causal_envelope::Entity, model::user::User, user_db::SyncIdentity};
-use sqlx::SqliteConnection;
+
 use std::collections::{BTreeMap, BTreeSet};
+
+use sqlx::SqliteConnection;
+
+use crate::{DbError, causal_envelope::Entity, model::user::User, user_db::SyncIdentity};
+
+use super::super::{encode, invalid};
+
+mod storage;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(super) struct Node {
@@ -119,6 +124,7 @@ pub(super) async fn capture(
     if encode(&result)?.len() > 2 * 1024 * 1024 {
         return Err(invalid());
     }
+
     Ok(result)
 }
 
@@ -137,6 +143,7 @@ pub(super) fn bind_models(
             .cloned()
             .ok_or_else(invalid)?;
     }
+
     Ok(Some(snapshot))
 }
 
@@ -170,12 +177,13 @@ fn components(snapshot: &Snapshot) -> Result<BTreeMap<String, String>, DbError> 
             .iter()
             .filter(|edge| selected.contains(&edge.parent))
             .collect();
-        let digest = observation::digest(&encode(&(nodes, edges))?);
+        let digest = crate::util::sha256_hex(encode(&(nodes, edges))?.as_bytes());
         for incarnation in selected {
             remaining.remove(&incarnation);
             result.insert(incarnation, digest.clone());
         }
     }
+
     Ok(result)
 }
 

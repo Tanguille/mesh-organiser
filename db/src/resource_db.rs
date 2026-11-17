@@ -1,17 +1,11 @@
-use indexmap::IndexMap;
-use std::collections::HashSet;
-
 use crate::{
     DbError, RESOURCES,
     db_context::DbContext,
-    ensure_owned,
-    group_db::{self, GroupFilterOptions, GroupOrderBy},
     model::{
-        model_group::ModelGroup,
         resource::{ResourceFlags, ResourceMeta},
         user::User,
     },
-    random_hex_32, set_timestamp_column, time_now, timestamp_or_now, validate_global_id,
+    set_timestamp_column, timestamp_or_now,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, sqlx::FromRow)]
@@ -38,7 +32,7 @@ pub(crate) async fn get_resource_sync_snapshot_in(
     .bind(user.id)
     .fetch_all(db)
     .await?;
-    let mut ids = HashSet::new();
+    let mut ids = std::collections::HashSet::new();
     if resources.iter().any(|resource| {
         resource.global_id.is_empty()
             || resource.incarnation.is_empty()
@@ -48,6 +42,7 @@ pub(crate) async fn get_resource_sync_snapshot_in(
             "Invalid or ambiguous resource sync identity".into(),
         ));
     }
+
     Ok(resources)
 }
 
@@ -62,7 +57,7 @@ pub async fn get_groups_for_resource(
     db: &DbContext,
     user: &User,
     resource_id: i64,
-) -> Result<Vec<ModelGroup>, DbError> {
+) -> Result<Vec<crate::model::model_group::ModelGroup>, DbError> {
     let rows = sqlx::query!(
         "SELECT models_group.group_id FROM models_group WHERE models_group.group_resource_id = ? AND models_group.group_user_id = ?",
         resource_id,
@@ -71,12 +66,12 @@ pub async fn get_groups_for_resource(
     .fetch_all(db)
     .await?;
 
-    let groups = group_db::get_groups(
+    let groups = crate::group_db::get_groups(
         db,
         user,
-        GroupFilterOptions {
-            group_ids: Some(rows.iter().map(|r| r.group_id).collect()),
-            order_by: Some(GroupOrderBy::NameAsc),
+        crate::group_db::GroupFilterOptions {
+            group_ids: Some(rows.iter().map(|row| row.group_id).collect()),
+            order_by: Some(crate::group_db::GroupOrderBy::NameAsc),
             ..Default::default()
         },
     )
@@ -88,7 +83,7 @@ pub async fn get_groups_for_resource(
 pub async fn get_group_id_to_resource_map(
     db: &DbContext,
     user: &User,
-) -> Result<IndexMap<i64, ResourceMeta>, DbError> {
+) -> Result<indexmap::IndexMap<i64, ResourceMeta>, DbError> {
     let rows = sqlx::query(
         "SELECT models_group.group_id, resources.*
             FROM models_group
@@ -127,8 +122,8 @@ pub async fn add_resource(
     name: &str,
     update_timestamp: Option<&str>,
 ) -> Result<ResourceMeta, DbError> {
-    let now = time_now();
-    let unique_global_id = random_hex_32();
+    let now = crate::time_now();
+    let unique_global_id = crate::random_hex_32();
     let last_modified = update_timestamp.unwrap_or(&now).to_string();
     let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let highwater: i64 = sqlx::query_scalar(
@@ -186,7 +181,7 @@ pub async fn edit_resource(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    validate_global_id(global_id)?;
+    crate::validate_global_id(global_id)?;
     let bits = i64::from(flags.bits());
     let timestamp = timestamp_or_now(update_timestamp);
 
@@ -246,7 +241,7 @@ pub async fn set_resource_on_group(
     };
 
     if let Some(resource_id) = resource_id {
-        ensure_owned(&mut *transaction, &RESOURCES, &[resource_id], user).await?;
+        crate::ensure_owned(&mut *transaction, &RESOURCES, &[resource_id], user).await?;
     }
 
     sqlx::query!(

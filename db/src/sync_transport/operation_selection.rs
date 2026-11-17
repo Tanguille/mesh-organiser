@@ -1,13 +1,10 @@
 //! Recover eligible original journal operations without making local edits depend on queue capacity.
-use super::{failure, outbox, pull::Authorization};
-use crate::{
-    DbError,
-    causal_envelope::{CausalEnvelope, Dot},
-    causal_group_lifecycle,
-    db_context::DbContext,
-    model::user::User,
-};
+
 use sqlx::SqliteConnection;
+
+use crate::{DbError, causal_envelope::Dot, causal_group_lifecycle};
+
+use super::{failure, pull::Authorization};
 
 #[derive(Debug)]
 pub enum OperationSelection {
@@ -26,9 +23,9 @@ pub enum OperationSelection {
 
 pub(crate) async fn record_local(
     db: &mut SqliteConnection,
-    user: &User,
+    user: &crate::model::user::User,
     operation: &str,
-    first: &CausalEnvelope,
+    first: &crate::causal_envelope::CausalEnvelope,
 ) -> Result<(), DbError> {
     let Some(authorization) =
         Authorization::recording_key(db, user, &first.event.writer_id).await?
@@ -71,23 +68,23 @@ pub(crate) async fn selected_in(
 }
 
 pub async fn select_next(
-    db: &DbContext,
+    db: &crate::db_context::DbContext,
     auth: &Authorization,
 ) -> Result<OperationSelection, DbError> {
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    auth.validate(&mut tx).await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    auth.validate(&mut transaction).await?;
     let row: Option<(String,String,i64)> = sqlx::query_as("SELECT operation_id,writer_id,counter FROM sync_local_operation_selections WHERE user_id=? AND authorization=? AND outbox_id IS NULL ORDER BY selection_id LIMIT 1")
-        .bind(auth.user.id).bind(auth.identity_choice_key()).fetch_optional(&mut *tx).await?;
+        .bind(auth.user.id).bind(auth.identity_choice_key()).fetch_optional(&mut *transaction).await?;
     let Some((operation_id, writer_id, counter)) = row else {
-        let result = no_eligible(&mut tx, auth).await?;
-        tx.commit().await?;
+        let result = no_eligible(&mut transaction, auth).await?;
+        transaction.commit().await?;
 
         return Ok(result);
     };
     // Ordinary edits have already committed. A full queue or failed export only
     // rolls back this selection; it cannot discard or partially rewrite the edit.
-    if !causal_group_lifecycle::publication_ready(&mut tx, &auth.user).await? {
-        tx.commit().await?;
+    if !causal_group_lifecycle::publication_ready(&mut transaction, &auth.user).await? {
+        transaction.commit().await?;
 
         return Err(failure("untracked_changes"));
     }
@@ -95,15 +92,19 @@ pub async fn select_next(
         writer_id,
         counter: counter.to_string(),
     };
-    let bundle =
-        causal_group_lifecycle::export_operation_in(&mut tx, &auth.user, &auth.identity, &event)
-            .await?;
+    let bundle = causal_group_lifecycle::export_operation_in(
+        &mut transaction,
+        &auth.user,
+        &auth.identity,
+        &event,
+    )
+    .await?;
     let item = super::encode_operation(&bundle)?;
     if item["operation_id"].as_str() != Some(operation_id.as_str()) {
         return Err(failure("identity_blocked"));
     }
-    let outbox_id = outbox::queue_in(&mut tx, auth, &event, &item).await?;
-    tx.commit().await?;
+    let outbox_id = super::outbox::queue_in(&mut transaction, auth, &event, &item).await?;
+    transaction.commit().await?;
 
     Ok(OperationSelection::Queued {
         operation_id,

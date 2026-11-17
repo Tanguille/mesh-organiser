@@ -6,6 +6,8 @@ use axum::{
 };
 use tower::ServiceExt;
 
+use db::causal_group_rename::NameState;
+
 #[path = "sync_identity_choice_tests.rs"]
 mod identity_choice;
 #[path = "sync_outbox_transport_tests.rs"]
@@ -91,7 +93,11 @@ async fn handshake_requires_real_session_and_allocates_distinct_writer_credentia
         );
     }
     for field in ["connection_id", "writer_id", "writer_secret"] {
-        assert!(responses[0][field].as_str().is_some_and(|s| !s.is_empty()));
+        assert!(
+            responses[0][field]
+                .as_str()
+                .is_some_and(|item| !item.is_empty())
+        );
         assert_ne!(
             responses[0][field], responses[1][field],
             "each connection receives its own {field}"
@@ -552,7 +558,6 @@ async fn authenticated_other_account_cannot_list_or_replay_an_owners_events() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn real_rename_projects_and_log_failure_rolls_back_before_retry() {
-    use db::causal_group_rename::NameState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let writer = registration(&router, &cookie, &source).await;
@@ -797,7 +802,6 @@ async fn copied_client_identity_does_not_impersonate_another_writer_origin() {
 
 #[tokio::test]
 async fn missing_genesis_is_requested_without_ack_or_writes_then_retry_succeeds() {
-    use db::causal_group_rename::NameState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let writer = registration(&router, &cookie, &source).await;

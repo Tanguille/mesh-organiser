@@ -1,5 +1,4 @@
 //! Trash timestamps are observed state, not invented lifecycle history.
-mod common;
 use db::{
     blob_db,
     causal_adoption::{self, ModelBlobBinding},
@@ -7,6 +6,8 @@ use db::{
     model::user::User,
     model_db, random_hex_32, resource_db, sync_peer, user_db,
 };
+
+mod common;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -154,7 +155,6 @@ async fn mixed_trashed_group_preserves_project_labels_and_exact_deletion_time() 
 
 #[tokio::test]
 async fn all_trashed_group_preserves_project_after_target_purge() {
-    use db::causal_group_rename::NameState;
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let user = User::default();
@@ -239,7 +239,10 @@ async fn all_trashed_group_preserves_project_after_target_purge() {
     let state = db::causal_group_lifecycle::get_state(&b, &user, &bi, installed.group_id)
         .await
         .unwrap();
-    assert!(matches!(state.name, NameState::Paused { .. }));
+    assert!(matches!(
+        state.name,
+        db::causal_group_rename::NameState::Paused { .. }
+    ));
     assert!(
         causal_adoption::install_observed_populated_group(
             &b, &user, &bi, &peer, &bundle, &mappings
@@ -292,7 +295,6 @@ async fn trashed_observation_rejects_restore_trash_aba_and_rolls_back_late_failu
 
 #[tokio::test]
 async fn forged_independent_move_of_observed_trashed_model_is_never_applied() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot};
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let user = User::default();
@@ -333,17 +335,17 @@ async fn forged_independent_move_of_observed_trashed_model_is_never_applied() {
     .unwrap();
     let root = &bundle.model_envelopes()[0];
     let writer = random_hex_32();
-    let dot = Dot {
+    let dot = db::causal_envelope::Dot {
         writer_id: writer.clone(),
         counter: "1".into(),
     };
-    let forged = CausalEnvelope {
+    let forged = db::causal_envelope::CausalEnvelope {
         version: 2,
         entity: root.entity.clone(),
         event: dot.clone(),
         parents: vec![root.event.clone()],
         dependencies: vec![],
-        action: Action::ModelMoved {
+        action: db::causal_envelope::Action::ModelMoved {
             from: Some(bundle.group_entity().clone()),
             to: None,
             target_lifecycle: None,
@@ -353,20 +355,26 @@ async fn forged_independent_move_of_observed_trashed_model_is_never_applied() {
     sqlx::query("INSERT INTO causal_events(user_id,writer_id,counter,envelope) VALUES (?,?,1,?)")
         .bind(user.id)
         .bind(&writer)
-        .bind(causal_envelope::canonical_causal_envelope(&forged).unwrap())
+        .bind(db::causal_envelope::canonical_causal_envelope(&forged).unwrap())
         .execute(&a)
         .await
         .unwrap();
     sqlx::query("INSERT INTO group_lifecycle_operations(user_id,operation_id,focus_birth_id,event_count) VALUES (?,?,?,1)").bind(user.id).bind(&operation).bind(bundle.group_entity().birth_id.as_ref().unwrap()).execute(&a).await.unwrap();
     sqlx::query("INSERT INTO group_lifecycle_events(user_id,operation_id,position,writer_id,counter) VALUES (?,?,0,?,1)").bind(user.id).bind(&operation).bind(&writer).execute(&a).await.unwrap();
     let before: (Option<i64>,Option<String>,i64) = sqlx::query_as("SELECT model_group_id,model_deleted,(SELECT COUNT(*) FROM causal_events) FROM models WHERE model_id=?").bind(installed.models[0].1).fetch_one(&b).await.unwrap();
-    if let Ok(op) = db::causal_group_lifecycle::export_operation(&a, &user, &ai, &dot).await {
-        assert!(
+    // Origin export already refuses the forged move (first defence); if it ever
+    // accepts, import must still reject it. Both outcomes are asserted.
+    match db::causal_group_lifecycle::export_operation(&a, &user, &ai, &dot).await {
+        Err(error) => assert!(
+            matches!(error, db::DbError::Protocol(_)),
+            "export must reject the forged move as a protocol error, got {error:?}"
+        ),
+        Ok(op) => assert!(
             db::causal_group_lifecycle::import_operation(&b, &user, &bi, &peer, &op)
                 .await
                 .is_err(),
             "forged independent move must not be admitted"
-        );
+        ),
     }
     let after: (Option<i64>,Option<String>,i64) = sqlx::query_as("SELECT model_group_id,model_deleted,(SELECT COUNT(*) FROM causal_events) FROM models WHERE model_id=?").bind(installed.models[0].1).fetch_one(&b).await.unwrap();
     assert_eq!(after, before);

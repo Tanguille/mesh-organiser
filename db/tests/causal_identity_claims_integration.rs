@@ -1,15 +1,15 @@
 //! Conflicting remote identity claims remain visible and unapplied, regardless of arrival order.
-mod common;
 use db::{
-    causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
+    causal_envelope::{Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
     causal_store::{self, IdentityStatus, ReceiveResult},
     db_context::DbContext,
     group_db,
     group_history::ReplicaPrincipal,
     model::user::User,
-    random_hex_32,
-    user_db::{self, SyncIdentity},
+    model_db, random_hex_32, user_db,
 };
+
+mod common;
 
 async fn principal(db: &DbContext, user: &User) -> ReplicaPrincipal {
     let replica_id = random_hex_32();
@@ -51,12 +51,12 @@ fn created(entity: Entity, principal: &ReplicaPrincipal, counter: i64) -> Causal
     }
 }
 fn wire(event: &CausalEnvelope) -> String {
-    causal_envelope::canonical_causal_envelope(event).unwrap()
+    db::causal_envelope::canonical_causal_envelope(event).unwrap()
 }
 async fn status(
     db: &DbContext,
     user: &User,
-    identity: &SyncIdentity,
+    identity: &user_db::SyncIdentity,
     event: &CausalEnvelope,
 ) -> IdentityStatus {
     causal_store::get_received(db, user, identity, &event.event)
@@ -139,20 +139,28 @@ async fn same_birth_different_global_ids_conflict_but_identical_claims_do_not() 
         .await
         .unwrap()
         .unwrap();
-    let a = principal(&db, &user).await;
-    let b = principal(&db, &user).await;
-    let c = principal(&db, &user).await;
+    let first_principal = principal(&db, &user).await;
+    let second = principal(&db, &user).await;
+    let third = principal(&db, &user).await;
     let global = random_hex_32();
     let birth = random_hex_32();
-    let first = created(entity(EntityKind::Group, &global, &birth), &a, 1);
-    let same = created(entity(EntityKind::Group, &global, &birth), &b, 1);
-    let other = created(entity(EntityKind::Group, &random_hex_32(), &birth), &c, 1);
+    let first = created(
+        entity(EntityKind::Group, &global, &birth),
+        &first_principal,
+        1,
+    );
+    let same = created(entity(EntityKind::Group, &global, &birth), &second, 1);
+    let other = created(
+        entity(EntityKind::Group, &random_hex_32(), &birth),
+        &third,
+        1,
+    );
     assert!(matches!(
-        causal_store::receive(&db, &user, &identity, &a, &wire(&first)).await,
+        causal_store::receive(&db, &user, &identity, &first_principal, &wire(&first)).await,
         Ok(ReceiveResult::AcceptedReady)
     ));
     assert!(matches!(
-        causal_store::receive(&db, &user, &identity, &b, &wire(&same)).await,
+        causal_store::receive(&db, &user, &identity, &second, &wire(&same)).await,
         Ok(ReceiveResult::AcceptedReady)
     ));
     assert_eq!(
@@ -160,7 +168,7 @@ async fn same_birth_different_global_ids_conflict_but_identical_claims_do_not() 
         IdentityStatus::Uncontested
     );
     assert!(matches!(
-        causal_store::receive(&db, &user, &identity, &c, &wire(&other)).await,
+        causal_store::receive(&db, &user, &identity, &third, &wire(&other)).await,
         Ok(ReceiveResult::AcceptedIdentityConflict { .. })
     ));
     for event in [&first, &same, &other] {
@@ -275,11 +283,19 @@ async fn concurrent_conflicting_claims_are_both_retained_without_first_arrival_w
         .await
         .unwrap()
         .unwrap();
-    let a = principal(&db, &user).await;
-    let b = principal(&db, &user).await;
+    let first_principal = principal(&db, &user).await;
+    let second_principal = principal(&db, &user).await;
     let global = random_hex_32();
-    let first = created(entity(EntityKind::Group, &global, &random_hex_32()), &a, 1);
-    let second = created(entity(EntityKind::Group, &global, &random_hex_32()), &b, 1);
+    let first = created(
+        entity(EntityKind::Group, &global, &random_hex_32()),
+        &first_principal,
+        1,
+    );
+    let second = created(
+        entity(EntityKind::Group, &global, &random_hex_32()),
+        &second_principal,
+        1,
+    );
     let db_a = db.clone();
     let db_b = db.clone();
     let user_a = user.clone();
@@ -289,10 +305,10 @@ async fn concurrent_conflicting_claims_are_both_retained_without_first_arrival_w
     let first_wire = wire(&first);
     let second_wire = wire(&second);
     let task_a = tokio::spawn(async move {
-        causal_store::receive(&db_a, &user_a, &identity_a, &a, &first_wire).await
+        causal_store::receive(&db_a, &user_a, &identity_a, &first_principal, &first_wire).await
     });
     let task_b = tokio::spawn(async move {
-        causal_store::receive(&db_b, &user_b, &identity_b, &b, &second_wire).await
+        causal_store::receive(&db_b, &user_b, &identity_b, &second_principal, &second_wire).await
     });
     assert!(task_a.await.unwrap().is_ok());
     assert!(task_b.await.unwrap().is_ok());
@@ -314,19 +330,23 @@ async fn conflicted_dependency_does_not_make_a_dependent_event_ready() {
         .await
         .unwrap()
         .unwrap();
-    let a = principal(&db, &user).await;
-    let b = principal(&db, &user).await;
+    let first_principal = principal(&db, &user).await;
+    let second = principal(&db, &user).await;
     let model_writer = principal(&db, &user).await;
     let global = random_hex_32();
     let group = entity(EntityKind::Group, &global, &random_hex_32());
-    let first = created(group.clone(), &a, 1);
-    let conflict = created(entity(EntityKind::Group, &global, &random_hex_32()), &b, 1);
+    let first = created(group.clone(), &first_principal, 1);
+    let conflict = created(
+        entity(EntityKind::Group, &global, &random_hex_32()),
+        &second,
+        1,
+    );
     assert!(matches!(
-        causal_store::receive(&db, &user, &identity, &a, &wire(&first)).await,
+        causal_store::receive(&db, &user, &identity, &first_principal, &wire(&first)).await,
         Ok(ReceiveResult::AcceptedReady)
     ));
     assert!(matches!(
-        causal_store::receive(&db, &user, &identity, &b, &wire(&conflict)).await,
+        causal_store::receive(&db, &user, &identity, &second, &wire(&conflict)).await,
         Ok(ReceiveResult::AcceptedIdentityConflict { .. })
     ));
     let model = entity(EntityKind::Model, &random_hex_32(), &random_hex_32());
@@ -841,7 +861,7 @@ async fn purged_legacy_model_history_does_not_prove_a_new_birth_claim() {
     let blob = db::blob_db::add_blob(&db, "known-model-history", "stl", 1, None)
         .await
         .unwrap();
-    let known = db::model_db::add_model(&db, &user, "known", blob, None, None)
+    let known = model_db::add_model(&db, &user, "known", blob, None, None)
         .await
         .unwrap();
     let (known_global, known_birth): (String, String) = sqlx::query_as(
@@ -854,7 +874,7 @@ async fn purged_legacy_model_history_does_not_prove_a_new_birth_claim() {
     group_db::set_group_id_on_models(&db, &user, Some(group.id), vec![old, known], None)
         .await
         .unwrap();
-    db::model_db::trash_models(&db, &user, &[old, known])
+    model_db::trash_models(&db, &user, &[old, known])
         .await
         .unwrap();
     sqlx::query(
@@ -865,10 +885,7 @@ async fn purged_legacy_model_history_does_not_prove_a_new_birth_claim() {
     .execute(&db)
     .await
     .unwrap();
-    assert_eq!(
-        db::model_db::purge_trashed_models(&db, 30).await.unwrap(),
-        2
-    );
+    assert_eq!(model_db::purge_trashed_models(&db, 30).await.unwrap(), 2);
     let retained: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM membership_causal_events WHERE user_id = ? AND model_global_id = ?",
     )
@@ -913,7 +930,6 @@ async fn purged_legacy_model_history_does_not_prove_a_new_birth_claim() {
 
 #[tokio::test]
 async fn rekeyed_local_creation_is_unknown_not_remote_conflict_for_group_and_model() {
-    use db::{blob_db, model::ModelFlags, model_db};
     let (_dir, db) = common::test_db().await;
     let user = User::default();
     let identity = user_db::get_sync_identity(&db, user.id)
@@ -933,7 +949,7 @@ async fn rekeyed_local_creation_is_unknown_not_remote_conflict_for_group_and_mod
     group_db::edit_group(&db, &user, group.id, "local", None, Some(&group_new))
         .await
         .unwrap();
-    let blob = blob_db::add_blob(&db, "rekey-status", "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, "rekey-status", "stl", 1, None)
         .await
         .unwrap();
     let model = model_db::add_model(&db, &user, "model", blob, None, None)
@@ -953,7 +969,7 @@ async fn rekeyed_local_creation_is_unknown_not_remote_conflict_for_group_and_mod
         "model",
         None,
         None,
-        ModelFlags::empty(),
+        db::model::ModelFlags::empty(),
         None,
         Some(&model_new),
     )

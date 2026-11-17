@@ -1,4 +1,8 @@
 //! The opt-in observation route must authenticate and verify logical blob bytes.
+use std::io::{Read, Write};
+
+use tokio::io::AsyncWriteExt;
+
 use super::*;
 
 fn no_stage_payload(path: &std::path::Path) -> bool {
@@ -84,7 +88,6 @@ async fn oversized_observation_metadata_does_not_enroll_or_leave_staging() {
 #[tokio::test]
 #[allow(clippy::too_many_lines, clippy::significant_drop_tightening)] // The staged snapshot must live through upload and retry.
 async fn compressed_blob_upload_and_download_verify_logical_content() {
-    use std::io::{Read, Write};
     const FULL_HASH: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     let (_hub_dir, hub, router, cookie) = app().await;
     let (source_dir, source) = crate::test_support::app_state().await;
@@ -385,7 +388,6 @@ fn multipart(
 #[tokio::test]
 #[allow(clippy::too_many_lines, clippy::significant_drop_tightening)] // Keep the source snapshot alive across the transfer checks.
 async fn observed_group_upload_verifies_bytes_and_installs_atomically() {
-    use tokio::io::AsyncWriteExt;
     const FULL_HASH: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     const PREFIX: &str = "ba7816bf8f01cfea414140de5dae2223";
     const OTHER_HASH: &str = "cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34";

@@ -1,14 +1,12 @@
 use std::{fmt, sync::Arc};
 
-use axum::{extract::FromRequestParts, http::StatusCode, http::request::Parts};
-use axum_login::{AuthnBackend, UserId};
-use password_auth::verify_password;
+use axum::{
+    extract::FromRequestParts,
+    http::{StatusCode, request::Parts},
+};
 use serde::Deserialize;
-use tokio::task;
 
 use db::{db_context::DbContext, model::user::User, user_db};
-
-use crate::error::ApplicationError;
 
 #[derive(Clone)]
 pub struct AuthUser(User, String, #[cfg(test)] String);
@@ -31,8 +29,9 @@ impl AuthUser {
 
 // `User`'s derived `Debug` would log the password hash, sync token and sync url.
 impl fmt::Debug for AuthUser {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("User")
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("User")
             .field("id", &self.0.id)
             .field("username", &self.0.username)
             .field("email", &self.0.email)
@@ -84,10 +83,10 @@ impl Backend {
     }
 }
 
-impl AuthnBackend for Backend {
+impl axum_login::AuthnBackend for Backend {
     type User = AuthUser;
     type Credentials = Credentials;
-    type Error = ApplicationError;
+    type Error = crate::error::ApplicationError;
 
     async fn authenticate(
         &self,
@@ -101,9 +100,13 @@ impl AuthnBackend for Backend {
                 )
                 .await?;
 
-                let user = task::spawn_blocking(|| {
+                let user = tokio::task::spawn_blocking(|| {
                     user.filter(|(user, _)| {
-                        verify_password(password_credentials.password, &user.password_hash).is_ok()
+                        password_auth::verify_password(
+                            password_credentials.password,
+                            &user.password_hash,
+                        )
+                        .is_ok()
                     })
                 })
                 .await?;
@@ -122,7 +125,10 @@ impl AuthnBackend for Backend {
         }
     }
 
-    async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
+    async fn get_user(
+        &self,
+        user_id: &axum_login::UserId<Self>,
+    ) -> Result<Option<Self::User>, Self::Error> {
         let user = user_db::get_auth_user(&self.db, user_db::AuthUserLookup::Id(*user_id)).await?;
 
         Ok(user.map(|(user, account_id)| AuthUser::new(user, &account_id)))
@@ -130,6 +136,9 @@ impl AuthnBackend for Backend {
 }
 
 pub type AuthSession = axum_login::AuthSession<Backend>;
+
+/// Session key recording that the client logged in speaking the group-deletion protocol.
+pub const SESSION_GROUP_DELETION_PROTOCOL: &str = "group_deletion_protocol";
 
 /// Extracts the domain [`User`] for the authenticated session, so handlers
 /// don't each repeat the auth-session unwrap. Rejects
@@ -193,9 +202,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use db::model::user::UserPermissions;
 
-    fn stored_user(permissions: UserPermissions, sync_url: Option<&str>) -> db::model::user::User {
+    fn stored_user(
+        permissions: db::model::user::UserPermissions,
+        sync_url: Option<&str>,
+    ) -> db::model::user::User {
         db::model::user::User {
             id: 7,
             username: "alice".to_string(),
@@ -253,8 +264,9 @@ mod tests {
 
     #[tokio::test]
     async fn current_user_extractor_preserves_identity_and_redacts_credentials() {
-        for bits in 0..=UserPermissions::all().bits() {
-            let permissions = UserPermissions::from_bits(bits).expect("bits should be known flags");
+        for bits in 0..=db::model::user::UserPermissions::all().bits() {
+            let permissions = db::model::user::UserPermissions::from_bits(bits)
+                .expect("bits should be known flags");
             let auth_user = super::AuthUser::new(
                 stored_user(permissions, Some("sync-url-secret")),
                 "account-one",
@@ -299,23 +311,37 @@ mod tests {
     #[test]
     fn session_auth_hash_tracks_account_identity_and_sync_url() {
         let with_sync_url = super::AuthUser::new(
-            stored_user(UserPermissions::Sync, Some("https://sync.example/user-7")),
+            stored_user(
+                db::model::user::UserPermissions::Sync,
+                Some("https://sync.example/user-7"),
+            ),
             "account-one",
         );
         let same_identity = super::AuthUser::new(
-            stored_user(UserPermissions::Sync, Some("https://sync.example/user-7")),
+            stored_user(
+                db::model::user::UserPermissions::Sync,
+                Some("https://sync.example/user-7"),
+            ),
             "account-one",
         );
         let other_account = super::AuthUser::new(
-            stored_user(UserPermissions::Sync, Some("https://sync.example/user-7")),
+            stored_user(
+                db::model::user::UserPermissions::Sync,
+                Some("https://sync.example/user-7"),
+            ),
             "account-two",
         );
         let changed_url = super::AuthUser::new(
-            stored_user(UserPermissions::Sync, Some("https://sync.example/changed")),
+            stored_user(
+                db::model::user::UserPermissions::Sync,
+                Some("https://sync.example/changed"),
+            ),
             "account-one",
         );
-        let without_sync_url =
-            super::AuthUser::new(stored_user(UserPermissions::Sync, None), "account-one");
+        let without_sync_url = super::AuthUser::new(
+            stored_user(db::model::user::UserPermissions::Sync, None),
+            "account-one",
+        );
         let hash = axum_login::AuthUser::session_auth_hash(&with_sync_url);
         assert_eq!(
             hash,
@@ -335,7 +361,10 @@ mod tests {
     #[test]
     fn debug_output_redacts_credentials() {
         let auth_user = super::AuthUser::new(
-            stored_user(UserPermissions::Admin, Some("sync-url-secret")),
+            stored_user(
+                db::model::user::UserPermissions::Admin,
+                Some("sync-url-secret"),
+            ),
             "account-one",
         );
 

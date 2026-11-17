@@ -1,17 +1,19 @@
 //! Test-router-only physical transfer. Authentication is rechecked at commit.
-use super::{Publish, current, cursor, response, secret};
-use crate::user::{AuthSession, CurrentSyncUser};
 use axum::{
-    body::Body,
     extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
+
 use db::sync_transport::observations;
 use service::{
     AppState, ServiceError,
     sync_observation_service::{self, IncomingObservation},
 };
+
+use crate::user::{AuthSession, CurrentSyncUser};
+
+use super::{current, response, secret};
 
 fn failure(error: ServiceError) -> Response {
     match error {
@@ -32,6 +34,7 @@ pub(super) async fn publish(
         {
             Ok(Ok(body)) => body,
             Ok(Err(error)) => return error,
+            // Dropping `incoming` clears its stage via `Stage::drop`.
             Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
         };
     if !current(&session, body.protocol).await {
@@ -90,7 +93,7 @@ pub(super) async fn publish(
     }
 }
 #[allow(clippy::result_large_err)] // Local HTTP helpers return the already-built rejection response.
-async fn metadata(multipart: &mut Multipart) -> Result<Publish, Response> {
+async fn metadata(multipart: &mut Multipart) -> Result<super::Publish, Response> {
     let mut field = match multipart.next_field().await {
         Ok(Some(field)) if field.name() == Some("request") => field,
         Ok(_) => return Err(StatusCode::CONFLICT.into_response()),
@@ -102,6 +105,8 @@ async fn metadata(multipart: &mut Multipart) -> Result<Publish, Response> {
         .await
         .map_err(|error| error.status().into_response())?
     {
+        // Only the small JSON `request` field is bounded here; blobs stream to disk and the
+        // route-level body limit (sized for MAX_BLOB_BYTES + MAX_TOTAL_BYTES) covers the rest.
         if bytes.len().saturating_add(chunk.len()) > db::sync_transport::MAX_WIRE_ITEM_BYTES {
             return Err(StatusCode::PAYLOAD_TOO_LARGE.into_response());
         }
@@ -154,7 +159,7 @@ pub(super) async fn download(
     if !current(&session, query.protocol).await {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
-    let Some(sequence) = cursor(&sequence) else {
+    let Some(sequence) = super::cursor(&sequence) else {
         return StatusCode::CONFLICT.into_response();
     };
     let (content, blob) = match observations::download_blob(
@@ -183,7 +188,7 @@ pub(super) async fn download(
             (header::CONTENT_TYPE, "application/octet-stream".to_owned()),
             (header::CONTENT_LENGTH, size.to_string()),
         ],
-        Body::from_stream(stream),
+        axum::body::Body::from_stream(stream),
     )
         .into_response()
 }

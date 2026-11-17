@@ -1,16 +1,22 @@
 //! Strict wire decoding does not authenticate its claimed source identity.
-use super::{
-    GenesisBundle, ObservedPopulatedGroupBundle, Proof, encode, invalid, labels,
-    materialization::Materialization, observation, persistence, project,
-};
+
+use std::collections::BTreeSet;
+
+use sqlx::SqliteConnection;
+
 use crate::{
     DbError,
     causal_envelope::{self, Dependency, EntityKind},
     model::user::User,
     user_db::SyncIdentity,
+    util::sha256_hex,
 };
-use sqlx::SqliteConnection;
-use std::collections::BTreeSet;
+
+use super::super::encode;
+use super::{
+    GenesisBundle, ObservedPopulatedGroupBundle, Proof, invalid, labels,
+    materialization::Materialization, persistence, project,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -104,6 +110,12 @@ fn decode_member(
         observation_evidence: Some(value.proof),
     })
 }
+fn parse_snapshot<T: serde::de::DeserializeOwned>(raw: Option<&str>) -> Result<Option<T>, DbError> {
+    raw.map(serde_json::from_str)
+        .transpose()
+        .map_err(|_| invalid())
+}
+
 pub fn decode(
     value: serde_json::Value,
 ) -> Result<(ObservedPopulatedGroupBundle, Vec<BlobContent>), DbError> {
@@ -152,25 +164,22 @@ pub fn decode(
     {
         return Err(invalid());
     }
-    let labels: Option<labels::Snapshot> = wire
-        .label_snapshot
-        .as_deref()
-        .map(serde_json::from_str)
-        .transpose()
-        .map_err(|_| invalid())?;
-    let project: Option<project::Snapshot> = wire
-        .project_snapshot
-        .as_deref()
-        .map(serde_json::from_str)
-        .transpose()
-        .map_err(|_| invalid())?;
+    let labels: Option<labels::Snapshot> = parse_snapshot(wire.label_snapshot.as_deref())?;
+    let project: Option<project::Snapshot> = parse_snapshot(wire.project_snapshot.as_deref())?;
     for member in models.iter().chain(std::iter::once(&group)) {
         let proof: Proof =
             serde_json::from_str(member.observation_evidence.as_deref().ok_or_else(invalid)?)
                 .map_err(|_| invalid())?;
-        if proof.label_snapshot_digest != wire.label_snapshot.as_deref().map(observation::digest)
+        if proof.label_snapshot_digest
+            != wire
+                .label_snapshot
+                .as_deref()
+                .map(|value| sha256_hex(value.as_bytes()))
             || proof.project_snapshot_digest
-                != wire.project_snapshot.as_deref().map(observation::digest)
+                != wire
+                    .project_snapshot
+                    .as_deref()
+                    .map(|value| sha256_hex(value.as_bytes()))
         {
             return Err(invalid());
         }
@@ -207,6 +216,7 @@ pub fn decode(
         super::identity::observation(&bundle)?.validate()?;
         super::model_identity::validate_link(&bundle)?;
     }
+
     Ok((bundle, wire.contents))
 }
 fn validate_labels(snapshot: &labels::Snapshot, models: &[GenesisBundle]) -> Result<(), DbError> {
@@ -241,6 +251,7 @@ fn validate_labels(snapshot: &labels::Snapshot, models: &[GenesisBundle]) -> Res
             return Err(invalid());
         }
     }
+
     Ok(())
 }
 pub fn descriptors(
@@ -286,6 +297,7 @@ pub async fn install(
     if bundle.identity_link.is_some() {
         return super::identity::install(db, user, identity, bundle, blobs).await;
     }
+
     persistence::install_transaction(db, user, identity, bundle, blobs).await
 }
 
@@ -334,6 +346,7 @@ pub async fn retain_installed_baseline(
             return Err(invalid());
         }
     }
+
     Ok(true)
 }
 

@@ -1,10 +1,7 @@
 //! Stale numeric selections must not target newly created models or projects.
+use db::{blob_db, group_db, model::user::User, model_db, random_hex_32, resource_db};
+
 mod common;
-use db::{
-    blob_db, group_db,
-    model::{ModelFlags, resource::ResourceFlags, user::User},
-    model_db, random_hex_32, resource_db,
-};
 
 #[tokio::test]
 async fn purged_model_id_is_not_reused_and_stale_actions_leave_replacement_unchanged() {
@@ -40,7 +37,7 @@ async fn purged_model_id_is_not_reused_and_stale_actions_leave_replacement_uncha
         "wrong",
         None,
         None,
-        ModelFlags::empty(),
+        db::model::ModelFlags::empty(),
         None,
         None,
     )
@@ -94,7 +91,7 @@ async fn deleted_resource_id_is_not_reused_and_stale_actions_cannot_touch_replac
         &user,
         old.id,
         "wrong",
-        ResourceFlags::empty(),
+        db::model::resource::ResourceFlags::empty(),
         None,
         None,
     )
@@ -244,7 +241,7 @@ async fn migration_starts_allocators_above_existing_high_ids() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_010_000)
+        .filter(|item| item.version < 20_261_113_010_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)

@@ -1,12 +1,16 @@
 //! Decoder used only after the hub authenticates the new event's writer credential.
-use super::{GenesisBundle, Materialization, checks, encode, invalid, materialization, storage};
+
 use crate::{
     DbError,
-    causal_envelope::{self, Action, EntityKind},
-    model::user::User,
+    causal_envelope::{self, EntityKind},
     user_db::SyncIdentity,
 };
-use sqlx::SqliteConnection;
+
+use super::{
+    GenesisBundle, invalid,
+    materialization::{self, Materialization},
+    storage,
+};
 
 pub fn encode_group(bundle: &GenesisBundle) -> Result<serde_json::Value, DbError> {
     if bundle.capability != "group_lifecycle_v1"
@@ -23,8 +27,8 @@ pub fn encode_group(bundle: &GenesisBundle) -> Result<serde_json::Value, DbError
 }
 
 pub async fn install_group(
-    db: &mut SqliteConnection,
-    user: &User,
+    db: &mut sqlx::SqliteConnection,
+    user: &crate::model::user::User,
     identity: &SyncIdentity,
     source: &SyncIdentity,
     wire: &str,
@@ -38,7 +42,7 @@ pub async fn install_group(
         || !envelope.parents.is_empty()
         || !envelope.dependencies.is_empty()
         || causal_envelope::canonical_causal_envelope(&envelope).map_err(|_| invalid())? != wire
-        || !matches!(&envelope.action,Action::GroupCreated{name} if name==&snapshot.name)
+        || !matches!(&envelope.action,causal_envelope::Action::GroupCreated{name} if name==&snapshot.name)
     {
         return Err(invalid());
     }
@@ -47,13 +51,13 @@ pub async fn install_group(
         envelope,
         wire: wire.into(),
         source_identity: source.clone(),
-        materialization_json: encode(&materialization)?,
+        materialization_json: super::encode(&materialization)?,
         materialization,
         capability: "group_lifecycle_v1".into(),
         observation_evidence: None,
     };
     // This is a new authenticated root. Occupied targets require a separate adoption protocol.
-    checks::empty_target(db, user, &bundle).await?;
+    super::checks::empty_target(db, user, &bundle).await?;
     storage::store_received_root(db, user, &bundle).await?;
     let (id, guard) =
         materialization::install(db, user, bundle.entity(), &bundle.materialization, None).await?;

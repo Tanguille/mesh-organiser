@@ -1,22 +1,19 @@
 //! Project assignment must remain owner-scoped and atomic across races.
-mod common;
 
-use db::{
-    blob_db, db_context::DbContext, group_db, model::user::User, model_db, random_hex_32,
-    resource_db, user_db,
-};
-use sqlx::{
-    SqlitePool,
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-};
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
+
+use sqlx::sqlite::SqliteConnectOptions;
 use tokio::sync::Notify;
+
+use db::{
+    blob_db, db_context::DbContext, group_db, model::user::User, random_hex_32, resource_db,
+    user_db,
+};
+
+mod common;
 
 async fn populated_group(db: &DbContext, user: &User) -> i64 {
     let group = group_db::add_empty_group(db, user, "group", None)
@@ -25,7 +22,7 @@ async fn populated_group(db: &DbContext, user: &User) -> i64 {
     let blob = blob_db::add_blob(db, &random_hex_32(), "stl", 1, None)
         .await
         .unwrap();
-    let model = model_db::add_model(db, user, "model", blob, None, None)
+    let model = db::model_db::add_model(db, user, "model", blob, None, None)
         .await
         .unwrap();
     group_db::set_group_id_on_models(db, user, Some(group.id), vec![model], None)
@@ -40,7 +37,7 @@ async fn pre_allocator_database() -> (tempfile::TempDir, DbContext) {
         .filename(dir.path().join("db.sqlite"))
         .create_if_missing(true)
         .foreign_keys(true);
-    let db = SqlitePool::connect_with(options).await.unwrap();
+    let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     sqlx::migrate!("./migrations").run(&db).await.unwrap();
     // Reproduce legacy project id reuse while executing the current assignment path.
     sqlx::query("DROP TRIGGER resource_monotonic_id")
@@ -68,9 +65,9 @@ async fn populated_legacy_group(db: &DbContext, user: &User) -> i64 {
 async fn controlled_pool(path: &std::path::Path) -> (DbContext, Arc<Notify>, Arc<Notify>) {
     let reached = Arc::new(Notify::new());
     let resume = Arc::new(Notify::new());
-    let armed = Arc::new(AtomicBool::new(false));
-    let releases = Arc::new(AtomicUsize::new(0));
-    let pool = SqlitePoolOptions::new()
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .after_release({
             let reached = reached.clone();

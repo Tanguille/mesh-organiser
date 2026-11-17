@@ -1,12 +1,13 @@
 use sqlx::SqliteConnection;
 
-use super::{counter, invalid};
 use crate::{
     DbError,
     causal_envelope::{self, CausalEnvelope, Entity, EntityKind},
-    causal_store::{self, IdentityStatus},
+    causal_store,
     model::user::User,
 };
+
+use super::{counter, invalid};
 
 #[derive(sqlx::FromRow)]
 struct Row {
@@ -44,6 +45,7 @@ impl Row {
             {
                 return Err(invalid());
             }
+
             return Ok((None, None, None));
         };
         if self.initialization_kind != "observation" {
@@ -61,6 +63,7 @@ impl Row {
                 proof,
                 &source,
             )?;
+
             return Ok((
                 name,
                 destination,
@@ -141,7 +144,9 @@ fn guards_equal(current: Option<&str>, expected: &str) -> Result<bool, DbError> 
 pub(super) async fn load(db: &mut SqliteConnection, user: &User) -> Result<Vec<Scope>, DbError> {
     let (count, bytes):(i64,i64)=sqlx::query_as("SELECT COUNT(*),COALESCE(SUM(length(CAST(e.envelope AS BLOB))+length(CAST(b.materialization AS BLOB))+length(CAST(b.local_guard AS BLOB))+COALESCE(length(CAST(b.observation_evidence AS BLOB)),0)),0)+COALESCE((SELECT SUM(length(CAST(manifest AS BLOB))+COALESCE(length(CAST(label_snapshot AS BLOB)),0)+COALESCE(length(CAST(project_snapshot AS BLOB)),0)) FROM causal_observation_batches WHERE user_id=?),0) FROM group_lifecycle_scopes s JOIN causal_genesis_bindings b USING(user_id,entity_kind,birth_id) JOIN causal_events e ON e.user_id=b.user_id AND e.writer_id=b.writer_id AND e.counter=b.counter WHERE s.user_id=?")
         .bind(user.id).bind(user.id).fetch_one(&mut *db).await?;
-    if count > 4096 || bytes > 16 * 1024 * 1024 {
+    if usize::try_from(count).map_err(|_| invalid())? > causal_store::MAX_OWNER_EVENTS
+        || usize::try_from(bytes).map_err(|_| invalid())? > causal_store::MAX_OWNER_BYTES
+    {
         return Err(invalid());
     }
     let rows: Vec<Row> = sqlx::query_as("SELECT s.entity_kind,s.birth_id,b.global_id,COALESCE(r.local_group_id,b.local_id) AS local_id,r.state AS materialization_state,s.guard,b.local_guard AS original_guard,b.materialization,json_extract(b.materialization,'$.deleted') AS observed_deleted,s.revision,s.paused,e.envelope AS wire,b.initialization_kind,b.observation_evidence,b.source_instance_id,b.source_account_id,p.local_resource_id AS project_id,p.local_incarnation AS project_incarnation FROM group_lifecycle_scopes s JOIN causal_genesis_bindings b USING(user_id,entity_kind,birth_id) LEFT JOIN causal_observation_batch_members bm ON bm.user_id=b.user_id AND bm.entity_kind=b.entity_kind AND bm.birth_id=b.birth_id LEFT JOIN causal_observation_batches ob ON ob.user_id=bm.user_id AND ob.batch_id=bm.batch_id LEFT JOIN observed_project_bindings p ON p.user_id=ob.user_id AND p.source_instance_id=COALESCE(ob.verified_source_instance,ob.source_instance_id) AND p.source_account_id=COALESCE(ob.verified_source_account,ob.source_account_id) AND p.source_incarnation=json_extract(ob.project_snapshot,'$.incarnation') LEFT JOIN group_lifecycle_group_rows r ON r.user_id=b.user_id AND r.birth_id=b.birth_id AND b.entity_kind='group' JOIN causal_events e ON e.user_id=b.user_id AND e.writer_id=b.writer_id AND e.counter=b.counter JOIN sync_accounts a ON a.user_id=s.user_id JOIN sync_instance i ON i.singleton=1 WHERE s.user_id=? AND b.capability='group_lifecycle_v1' AND b.local_instance_id=i.instance_id AND b.local_account_id=a.account_id AND e.encoding='portable_v2' LIMIT 4097")
@@ -214,7 +219,7 @@ pub(super) async fn load(db: &mut SqliteConnection, user: &User) -> Result<Vec<S
         let mut supported = equal
             && (scope.entity.kind != EntityKind::Group || row.materialization_state.is_some())
             && causal_store::identity_status(db, user.id, &scope.entity).await?
-                == IdentityStatus::Uncontested;
+                == causal_store::IdentityStatus::Uncontested;
         if scope.entity.kind == EntityKind::Model {
             let materialization: serde_json::Value =
                 serde_json::from_str(&row.materialization).map_err(|_| invalid())?;
@@ -264,6 +269,7 @@ async fn validate_observed_metadata(
             }
         }
     }
+
     Ok(())
 }
 
@@ -282,13 +288,21 @@ pub(super) async fn events(
 ) -> Result<Vec<CausalEnvelope>, DbError> {
     let (count, bytes, edges):(i64,i64,i64) = sqlx::query_as("SELECT COUNT(*),COALESCE(SUM(length(CAST(e.envelope AS BLOB))),0),COALESCE(SUM(json_array_length(e.envelope,'$.parents')+json_array_length(e.envelope,'$.dependencies')),0) FROM group_lifecycle_events m JOIN causal_events e USING(user_id,writer_id,counter) WHERE m.user_id=?")
         .bind(user.id).fetch_one(&mut *db).await?;
-    if count > 4096 || bytes > 16 * 1024 * 1024 || edges > 32768 {
+    let count = usize::try_from(count).map_err(|_| invalid())?;
+    let bytes = usize::try_from(bytes).map_err(|_| invalid())?;
+    let edges = usize::try_from(edges).map_err(|_| invalid())?;
+    if count > causal_store::MAX_OWNER_EVENTS
+        || bytes > causal_store::MAX_OWNER_BYTES
+        || edges > causal_store::MAX_OWNER_DEPENDENCIES
+    {
         return Err(invalid());
     }
     let (context_bytes, context_edges): (i64, i64) = sqlx::query_as("SELECT COALESCE(SUM(length(CAST(author_context AS BLOB))),0),COALESCE(SUM(json_array_length(author_context,'$.frontier')+json_array_length(author_context,'$.events')),0) FROM group_lifecycle_operations WHERE user_id=?")
         .bind(user.id).fetch_one(&mut *db).await?;
-    if bytes.saturating_add(context_bytes) > 16 * 1024 * 1024
-        || edges.saturating_add(context_edges) > 32768
+    if bytes.saturating_add(usize::try_from(context_bytes).map_err(|_| invalid())?)
+        > causal_store::MAX_OWNER_BYTES
+        || edges.saturating_add(usize::try_from(context_edges).map_err(|_| invalid())?)
+            > causal_store::MAX_OWNER_DEPENDENCIES
     {
         return Err(invalid());
     }
@@ -301,6 +315,7 @@ pub(super) async fn events(
             if causal_envelope::canonical_causal_envelope(&event).map_err(|_| invalid())? != *wire {
                 return Err(invalid());
             }
+
             Ok(event)
         })
         .collect()

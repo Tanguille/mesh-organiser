@@ -1,23 +1,17 @@
 //! A dot received through v2 cannot be reused by the legacy rename inbox.
+use db::{causal_store, group_history, random_hex_32};
+
 mod common;
-use db::{
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
-    causal_store::{self, ReceiveResult},
-    group_db,
-    group_history::{self, EventId, GroupRenameEvent, ReplicaPrincipal},
-    model::user::User,
-    random_hex_32,
-};
 
 #[tokio::test]
 async fn v2_receipt_prevents_legacy_rename_reusing_its_dot() {
     let (_dir, db) = common::test_db().await;
-    let user = User::default();
+    let user = db::model::user::User::default();
     let identity = db::user_db::get_sync_identity(&db, user.id)
         .await
         .unwrap()
         .unwrap();
-    let group = group_db::add_empty_group(&db, &user, "folder", None)
+    let group = db::group_db::add_empty_group(&db, &user, "folder", None)
         .await
         .unwrap();
     let birth: String =
@@ -33,34 +27,34 @@ async fn v2_receipt_prevents_legacy_rename_reusing_its_dot() {
         .execute(&db)
         .await
         .unwrap();
-    let principal = ReplicaPrincipal {
+    let principal = group_history::ReplicaPrincipal {
         owner_user_id: user.id,
         replica_id: writer.clone(),
     };
-    let event = CausalEnvelope {
+    let event = db::causal_envelope::CausalEnvelope {
         version: 2,
-        entity: Entity {
-            kind: EntityKind::Group,
+        entity: db::causal_envelope::Entity {
+            kind: db::causal_envelope::EntityKind::Group,
             global_id: group.unique_global_id.clone(),
             birth_id: Some(birth),
         },
-        event: Dot {
+        event: db::causal_envelope::Dot {
             writer_id: writer.clone(),
             counter: "1".into(),
         },
         parents: vec![],
         dependencies: vec![],
-        action: Action::GroupDeleted {
+        action: db::causal_envelope::Action::GroupDeleted {
             deletion_operation_id: random_hex_32(),
         },
     };
-    let wire = causal_envelope::canonical_causal_envelope(&event).unwrap();
+    let wire = db::causal_envelope::canonical_causal_envelope(&event).unwrap();
     assert!(matches!(
         causal_store::receive(&db, &user, &identity, &principal, &wire).await,
-        Ok(ReceiveResult::AcceptedReady)
+        Ok(causal_store::ReceiveResult::AcceptedReady)
     ));
-    let forged = GroupRenameEvent {
-        id: EventId {
+    let forged = group_history::GroupRenameEvent {
+        id: group_history::EventId {
             replica_id: writer,
             counter: 1,
         },

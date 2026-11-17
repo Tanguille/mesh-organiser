@@ -1,14 +1,18 @@
 //! Compatibility checks for token clients and existing sessions.
 
+use std::sync::{Arc, atomic::Ordering};
+
 use axum::{
-    Json, Router,
+    Json,
     body::Body,
     http::{Request, StatusCode, header},
     routing::post,
 };
+use axum_login::{AuthUser as _, AuthnBackend as _};
+use tokio::sync::Notify;
 use tower::ServiceExt;
 
-use crate::user::{AuthSession, Credentials, PasswordCredentials, TokenCredentials};
+use crate::user::{AuthSession, Credentials, TokenCredentials};
 
 // Recreate a session written by the former login flow, before provenance was stored.
 async fn legacy_login(mut session: AuthSession, Json(body): Json<serde_json::Value>) -> StatusCode {
@@ -26,7 +30,7 @@ async fn legacy_password_login(
     mut session: AuthSession,
     Json(body): Json<serde_json::Value>,
 ) -> StatusCode {
-    let credentials: PasswordCredentials = serde_json::from_value(body).unwrap();
+    let credentials: crate::user::PasswordCredentials = serde_json::from_value(body).unwrap();
     let user = session
         .authenticate(Credentials::Password(credentials))
         .await
@@ -36,7 +40,13 @@ async fn legacy_password_login(
     StatusCode::NO_CONTENT
 }
 
-async fn app() -> (tempfile::TempDir, service::AppState, Router, String, String) {
+async fn app() -> (
+    tempfile::TempDir,
+    service::AppState,
+    axum::Router,
+    String,
+    String,
+) {
     let (dir, state) = crate::test_support::app_state().await;
     let password = crate::test_support::add_login_user(&state).await;
     let user = db::user_db::get_user_by_email(&state.db, "alice@example.com")
@@ -65,6 +75,7 @@ fn post_json(path: &str, body: &serde_json::Value, cookie: Option<&str>) -> Requ
     if let Some(cookie) = cookie {
         request = request.header(header::COOKIE, cookie);
     }
+
     request.body(Body::from(body.to_string())).unwrap()
 }
 
@@ -174,7 +185,13 @@ async fn pre_upgrade_password_session_cannot_write() {
         &serde_json::json!({"group_name":"legacy password write"}),
         Some(&cookie(&response)),
     );
-    assert!(!router.oneshot(request).await.unwrap().status().is_success());
+    let rejected = router.oneshot(request).await.unwrap();
+    assert_eq!(rejected.status(), StatusCode::UPGRADE_REQUIRED);
+    let body = axum::body::to_bytes(rejected.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["error_type"], "upgrade_required");
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models_group WHERE group_name = ?")
         .bind("legacy password write")
         .fetch_one(&*state.db)
@@ -293,14 +310,6 @@ async fn old_sessions_cannot_access_recreated_user_with_same_id_and_sync_url() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn login_cannot_bind_old_credentials_to_replacement_account() {
-    use axum_login::{AuthUser as _, AuthnBackend as _};
-    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    };
-    use tokio::sync::Notify;
-
     let (dir, state, _, _, token) = app().await;
     let user = db::user_db::get_user_by_email(&state.db, "alice@example.com")
         .await
@@ -313,9 +322,9 @@ async fn login_cannot_bind_old_credentials_to_replacement_account() {
         .unwrap();
     let reached = Arc::new(Notify::new());
     let resume = Arc::new(Notify::new());
-    let armed = Arc::new(AtomicBool::new(false));
-    let releases = Arc::new(AtomicUsize::new(0));
-    let pool = SqlitePoolOptions::new()
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .after_release({
             let (reached, resume, armed, releases) = (
@@ -342,7 +351,7 @@ async fn login_cannot_bind_old_credentials_to_replacement_account() {
             }
         })
         .connect_with(
-            SqliteConnectOptions::new()
+            sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(dir.path().join("db.sqlite"))
                 .foreign_keys(true),
         )

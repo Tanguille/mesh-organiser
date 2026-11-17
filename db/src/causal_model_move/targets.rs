@@ -1,17 +1,18 @@
 use sqlx::SqliteConnection;
 
-use super::invalid;
 use crate::{
     DbError,
-    causal_envelope::{self, Action, Dot, Entity, EntityKind},
-    causal_store::{self, IdentityStatus},
+    causal_envelope::{self, Entity, EntityKind},
+    causal_store,
     model::user::User,
 };
+
+use super::invalid;
 
 pub(super) struct Target {
     pub id: i64,
     pub entity: Entity,
-    pub root: Dot,
+    pub root: causal_envelope::Dot,
 }
 
 pub(super) async fn by_entity(
@@ -50,10 +51,11 @@ pub(super) async fn by_id(
     };
     let root = causal_envelope::parse_causal_envelope(&wire).map_err(|_| invalid())?;
     if root.entity != entity
-        || !matches!(root.action, Action::GroupCreated { .. })
+        || !matches!(root.action, causal_envelope::Action::GroupCreated { .. })
         || !root.parents.is_empty()
         || !root.dependencies.is_empty()
-        || causal_store::identity_status(db, user.id, &entity).await? != IdentityStatus::Uncontested
+        || causal_store::identity_status(db, user.id, &entity).await?
+            != causal_store::IdentityStatus::Uncontested
     {
         return Ok(None);
     }

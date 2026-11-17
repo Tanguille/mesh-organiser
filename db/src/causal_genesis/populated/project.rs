@@ -1,7 +1,10 @@
 //! Checked project snapshot identity; matching global ids alone never permits reuse.
-use super::super::{encode, invalid, observation};
-use crate::{DbError, model::user::User, user_db::SyncIdentity};
+
 use sqlx::SqliteConnection;
+
+use crate::{DbError, model::user::User, user_db::SyncIdentity, util::sha256_hex};
+
+use super::super::{encode, invalid};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(super) struct Snapshot {
@@ -36,6 +39,7 @@ pub(super) async fn capture(
     if value.incarnation.is_empty() || value.global_id.is_empty() {
         return Err(invalid());
     }
+
     Ok(Some(value))
 }
 async fn binding(
@@ -54,7 +58,7 @@ async fn matches(
     prior: &Binding,
 ) -> Result<bool, DbError> {
     if prior.global_id != snapshot.global_id
-        || prior.snapshot_digest != observation::digest(&encode(snapshot)?)
+        || prior.snapshot_digest != sha256_hex(encode(snapshot)?.as_bytes())
     {
         return Ok(false);
     }
@@ -79,7 +83,7 @@ async fn record(
     let (incarnation,revision):(String,i64)=sqlx::query_as("SELECT r.resource_incarnation,v.revision FROM resources r JOIN resource_observation_versions v ON v.resource_id=r.resource_id WHERE r.resource_id=? AND r.resource_user_id=?")
         .bind(id).bind(user.id).fetch_one(&mut *db).await?;
     sqlx::query("INSERT INTO observed_project_bindings(user_id,source_instance_id,source_account_id,source_incarnation,global_id,local_resource_id,local_incarnation,local_revision,snapshot_digest) VALUES(?,?,?,?,?,?,?,?,?)")
-        .bind(user.id).bind(&source.instance_id).bind(&source.account_id).bind(&snapshot.incarnation).bind(&snapshot.global_id).bind(id).bind(incarnation).bind(revision).bind(observation::digest(&encode(snapshot)?)).execute(db).await?;
+        .bind(user.id).bind(&source.instance_id).bind(&source.account_id).bind(&snapshot.incarnation).bind(&snapshot.global_id).bind(id).bind(incarnation).bind(revision).bind(sha256_hex(encode(snapshot)?.as_bytes())).execute(db).await?;
     Ok(())
 }
 pub(super) async fn enroll(
@@ -95,6 +99,7 @@ pub(super) async fn enroll(
     } else {
         record(db, user, source, snapshot, snapshot.id).await?;
     }
+
     Ok(())
 }
 pub(super) async fn install(
@@ -107,6 +112,7 @@ pub(super) async fn install(
         if !matches(db, user, snapshot, &prior).await? {
             return Err(invalid());
         }
+
         return Ok(prior.local_resource_id);
     }
     let occupied:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE resource_user_id=? AND resource_unique_global_id=?) OR EXISTS(SELECT 1 FROM observed_project_bindings WHERE user_id=? AND global_id=?)")

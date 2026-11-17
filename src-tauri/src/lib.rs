@@ -1,34 +1,24 @@
 use std::{
-    fs::{self, File},
+    fs,
     io::prelude::*,
     path::PathBuf,
     sync::{Arc, Mutex},
-    thread,
 };
 
-use arboard::Clipboard;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use strum::IntoEnumIterator;
-use tauri::{
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
-    menu::{MenuBuilder, SubmenuBuilder},
-    webview::{DownloadEvent, PageLoadEvent},
-};
+use tauri::{AppHandle, Emitter, Manager, State, webview::DownloadEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use db::{
-    model::{model_group::ModelGroupMeta, user::User},
-    model_db, user_db,
-};
+use db::model_db;
 use service::{
-    AppState, Configuration, ThreemfMetadata, download_file_service, export_service,
-    import_state::ImportState, slicer_service::Slicer, threemf_service, thumbnail_service,
+    Configuration, download_file_service, export_service, slicer_service::Slicer, threemf_service,
+    thumbnail_service,
 };
 
 use crate::{
     error::ApplicationError,
-    tauri_app_state::{AccountLinkEmit, InitialState, PendingLinks, TauriAppState},
-    tauri_import_state::import_state_new_tauri,
+    tauri_app_state::{InitialState, PendingLinks, TauriAppState},
 };
 
 mod api;
@@ -87,7 +77,14 @@ async fn update_images(
     overwrite: bool,
 ) -> Result<(), ApplicationError> {
     let _lock = state.app_state.import_mutex.lock().await;
-    let import_state = &mut import_state_new_tauri(None, false, false, false, &state, &app_handle);
+    let import_state = &mut tauri_import_state::import_state_new_tauri(
+        None,
+        false,
+        false,
+        false,
+        &state,
+        &app_handle,
+    );
     thumbnail_service::generate_all_thumbnails(&state.app_state, overwrite, import_state).await?;
 
     Ok(())
@@ -176,7 +173,7 @@ async fn open_in_folder(
 async fn get_threemf_metadata(
     model_id: i64,
     state: State<'_, TauriAppState>,
-) -> Result<ThreemfMetadata, ApplicationError> {
+) -> Result<service::ThreemfMetadata, ApplicationError> {
     let model = state.require_model(model_id).await?;
 
     let metadata = threemf_service::extract_metadata(&model, &state.app_state).await?;
@@ -188,7 +185,7 @@ async fn get_threemf_metadata(
 async fn extract_threemf_models(
     model_id: i64,
     state: State<'_, TauriAppState>,
-) -> Result<ModelGroupMeta, ApplicationError> {
+) -> Result<db::model::model_group::ModelGroupMeta, ApplicationError> {
     let model = state.require_model(model_id).await?;
 
     Ok(threemf_service::extract_models_with_thumbnails(
@@ -214,6 +211,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         window.set_focus()?;
         window.navigate(url.parse().unwrap())?;
         window.set_title("Browse models")?;
+
         return Ok(());
     }
 
@@ -229,13 +227,13 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         ("Makerworld", "https://www.makerworld.com"),
     ];
 
-    let mut submenu = SubmenuBuilder::new(&app_handle, "Sites");
+    let mut submenu = tauri::menu::SubmenuBuilder::new(&app_handle, "Sites");
 
     for (name, site_url) in sites {
         submenu = submenu.text(site_url, name);
     }
 
-    let menu = MenuBuilder::new(&app_handle)
+    let menu = tauri::menu::MenuBuilder::new(&app_handle)
         .text("back", "← Back")
         .separator()
         .text("reload", "⟳ Reload")
@@ -248,10 +246,10 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
 
     menu.append(&submenu.build()?)?;
 
-    WebviewWindowBuilder::new(
+    tauri::WebviewWindowBuilder::new(
         &app_handle,
         "secondary",
-        WebviewUrl::External(url.parse().unwrap()),
+        tauri::WebviewUrl::External(url.parse().unwrap()),
     )
     .title("Browse models")
     .center()
@@ -274,7 +272,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
             }
             "copy_url" => {
                 let url = webview.url().unwrap();
-                let mut clipboard = Clipboard::new().unwrap();
+                let mut clipboard = arboard::Clipboard::new().unwrap();
                 let _ = clipboard.set_text(url.to_string());
             }
             _ => {
@@ -282,8 +280,8 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
             }
         }
     })
-    .on_navigation(move |f| {
-        let url = f.to_string();
+    .on_navigation(move |item| {
+        let url = item.to_string();
         println!("Navigated to: {url}");
 
         if let Some(deep_link) = extract_deep_link(&url) {
@@ -309,7 +307,7 @@ async fn new_window_with_url(url: &str, app_handle: AppHandle) -> Result<(), App
         true
     })
     .on_page_load(|f, e| {
-        if e.event() == PageLoadEvent::Finished {
+        if e.event() == tauri::webview::PageLoadEvent::Finished {
             let _ = f.eval(include_str!("./inject.js"));
         }
     })
@@ -385,7 +383,7 @@ fn extract_deep_link(data: &str) -> Option<String> {
     None
 }
 
-fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
+fn extract_account_link_via_deep_link(data: &str) -> Option<tauri_app_state::AccountLinkEmit> {
     // Accept both `link_account/?` and `link_account?`.
     let query = data
         .strip_prefix("meshorganiser://link_account/?")
@@ -399,7 +397,7 @@ fn extract_account_link_via_deep_link(data: &str) -> Option<AccountLinkEmit> {
 /// Entries that are not a stored blob sha256 (32 lowercase hex chars) are dropped; a link left
 /// with none is not an open-in-slicer link.
 fn extract_open_in_slicer_via_deep_link(data: &str) -> Option<Vec<String>> {
-    #[derive(Deserialize)]
+    #[derive(serde::Deserialize)]
     struct OpenInSlicerQuery {
         sha256: String,
     }
@@ -424,6 +422,7 @@ fn emit_link(app: &AppHandle, link: &str) {
     // An event emitted before the frontend listens is dropped, so hold the link until it asks.
     if app.state::<PendingLinks>().hold(link) {
         println!("Holding link until the frontend listens {link:?}");
+
         return;
     }
 
@@ -480,7 +479,7 @@ pub fn read_configuration(app_data_path: &str) -> Configuration {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(clippy::too_many_lines, clippy::large_stack_frames)]
 pub fn run() {
-    thread::spawn(move || {
+    std::thread::spawn(move || {
         let _ = export_service::remove_stale_temp_dirs();
     });
 
@@ -541,12 +540,12 @@ pub fn run() {
                         || {
                             info.payload()
                                 .downcast_ref::<String>()
-                                .map_or("Box<Any>", |s| &s[..])
+                                .map_or("Box<Any>", |item| &item[..])
                         },
-                        |s| *s,
+                        |item| *item,
                     );
 
-                    if let Ok(mut file) = File::create(loc) {
+                    if let Ok(mut file) = fs::File::create(loc) {
                         let _ =
                             writeln!(file, "Panic occurred: {error_message}\n{info}\n{info:#?}");
                     }
@@ -595,14 +594,14 @@ pub fn run() {
                     }
                 });
 
-                let user = user_db::get_user_by_id(&db, config.last_user_id)
+                let user = db::user_db::get_user_by_id(&db, config.last_user_id)
                     .await
                     .ok()
                     .flatten()
-                    .unwrap_or_else(User::default);
+                    .unwrap_or_else(db::model::user::User::default);
 
                 let state = TauriAppState {
-                    app_state: AppState {
+                    app_state: service::AppState {
                         db: Arc::new(db),
                         configuration: Mutex::new(config),
                         import_mutex: Arc::new(tokio::sync::Mutex::new(())),
@@ -623,7 +622,9 @@ pub fn run() {
                         // imported elsewhere shows up here without any. Existing thumbnails
                         // are skipped, which keeps this cheap on every launch.
                         let _lock = app_state.import_mutex.lock().await;
-                        let mut import_state = ImportState::new(None, false, false, false, user);
+                        let mut import_state = service::import_state::ImportState::new(
+                            None, false, false, false, user,
+                        );
                         if let Err(e) = thumbnail_service::generate_all_thumbnails(
                             &app_state,
                             false,

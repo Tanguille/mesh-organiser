@@ -1,21 +1,18 @@
-use sqlx::SqliteConnection;
-
-use super::{counter, graph::Graph, invalid, storage::Scope, targets};
-use crate::{DbError, model::user::User};
+use super::invalid;
 
 pub(super) async fn apply(
-    db: &mut SqliteConnection,
-    user: &User,
-    scope: &mut Scope,
-    graph: &Graph,
+    db: &mut sqlx::SqliteConnection,
+    user: &crate::model::user::User,
+    scope: &mut super::storage::Scope,
+    graph: &super::graph::Graph,
     timestamp: &str,
-) -> Result<(), DbError> {
+) -> Result<(), crate::DbError> {
     let revision = scope.revision.checked_add(1).ok_or_else(invalid)?;
     if graph.missing.is_empty() && graph.choices.len() == 1 {
         let destination = &graph.choices[0].destination;
         let target_id = if let Some(entity) = destination {
             Some(
-                targets::by_entity(db, user, entity)
+                super::targets::by_entity(db, user, entity)
                     .await?
                     .ok_or_else(invalid)?
                     .id,
@@ -51,7 +48,7 @@ pub(super) async fn apply(
             .as_ref()
             .and_then(|entity| entity.birth_id.as_deref());
         sqlx::query("INSERT INTO model_move_frontier(user_id, birth_id, writer_id, counter, target_birth_id) VALUES (?, ?, ?, ?, ?)")
-            .bind(scope.user_id).bind(&scope.birth_id).bind(&dot.writer_id).bind(counter(dot)?).bind(target).execute(&mut *db).await?;
+            .bind(scope.user_id).bind(&scope.birth_id).bind(&dot.writer_id).bind(super::counter(dot)?).bind(target).execute(&mut *db).await?;
     }
     scope.revision = revision;
 

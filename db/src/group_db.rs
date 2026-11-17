@@ -1,8 +1,8 @@
+use std::collections::HashSet;
+
 use indexmap::IndexMap;
 use itertools::Itertools;
 use sqlx::{QueryBuilder, Row, SqliteConnection};
-use std::collections::HashSet;
-use strum::EnumString;
 
 pub use crate::group_sync::{
     AssignmentBatchResult, AssignmentChange, GroupLifecycleChange, GroupPrecondition, KeepResource,
@@ -12,20 +12,18 @@ pub use crate::group_sync::{
 use crate::{
     DbError, GROUPS, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
-    ensure_owned,
     model::{
         Model, ModelFlags,
-        blob::FileType,
         model_group::{ModelGroup, ModelGroupMeta},
         resource::ResourceMeta,
         user::User,
     },
     model_db::{self, ModelFilterOptions},
     push_in, random_hex_32, set_timestamp_column, timestamp_or_now,
-    util::{time_now, validate_global_id},
+    util::time_now,
 };
 
-#[derive(Debug, PartialEq, Eq, EnumString)]
+#[derive(Debug, PartialEq, Eq, strum::EnumString)]
 pub enum GroupOrderBy {
     CreatedAsc,
     CreatedDesc,
@@ -42,7 +40,7 @@ pub struct GroupFilterOptions {
     pub order_by: Option<GroupOrderBy>,
     pub text_search: Option<String>,
     /// Keep only groups containing at least one model of these types; see `ModelFilterOptions`.
-    pub file_types: Option<Vec<FileType>>,
+    pub file_types: Option<Vec<crate::model::blob::FileType>>,
     /// 1-based page number. `Default` returns 1; values of 0 are treated as 1 by `get_groups`
     /// to keep the function panic-free even if a caller forgets to override the field.
     pub page: u32,
@@ -116,7 +114,7 @@ fn convert_model_list_to_groups(
         group.flags |= ModelFlags::from_bits_truncate(model.flags.bits());
 
         for label in &model.labels {
-            if !group.labels.iter().any(|l| l.id == label.id) {
+            if !group.labels.iter().any(|existing| existing.id == label.id) {
                 group.labels.push(label.clone());
             }
         }
@@ -239,10 +237,13 @@ pub async fn get_groups(
     if re_fetch_full_groups {
         let group_ids: Vec<i64> = groups
             .iter()
-            .filter(|f| f.meta.id >= 0)
-            .map(|f| f.meta.id)
+            .filter(|group| group.meta.id >= 0)
+            .map(|group| group.meta.id)
             .collect();
-        let fake_models: Vec<ModelGroup> = groups.into_iter().filter(|f| f.meta.id < 0).collect();
+        let fake_models: Vec<ModelGroup> = groups
+            .into_iter()
+            .filter(|group| group.meta.id < 0)
+            .collect();
 
         let models = model_db::get_all_models(
             db,
@@ -261,17 +262,21 @@ pub async fn get_groups(
     append_empty_groups(&mut groups, empty_groups);
 
     match options.order_by.unwrap_or(GroupOrderBy::CreatedDesc) {
-        GroupOrderBy::CreatedAsc => groups.sort_by(|a, b| a.meta.created.cmp(&b.meta.created)),
-        GroupOrderBy::CreatedDesc => {
-            groups.sort_by(|a, b| b.meta.created.cmp(&a.meta.created));
+        GroupOrderBy::CreatedAsc => {
+            groups.sort_by(|left, right| left.meta.created.cmp(&right.meta.created));
         }
-        GroupOrderBy::NameAsc => groups.sort_by(|a, b| a.meta.name.cmp(&b.meta.name)),
-        GroupOrderBy::NameDesc => groups.sort_by(|a, b| b.meta.name.cmp(&a.meta.name)),
+        GroupOrderBy::CreatedDesc => {
+            groups.sort_by(|left, right| right.meta.created.cmp(&left.meta.created));
+        }
+        GroupOrderBy::NameAsc => groups.sort_by(|left, right| left.meta.name.cmp(&right.meta.name)),
+        GroupOrderBy::NameDesc => {
+            groups.sort_by(|left, right| right.meta.name.cmp(&left.meta.name));
+        }
         GroupOrderBy::ModifiedAsc => {
-            groups.sort_by(|a, b| a.meta.last_modified.cmp(&b.meta.last_modified));
+            groups.sort_by(|left, right| left.meta.last_modified.cmp(&right.meta.last_modified));
         }
         GroupOrderBy::ModifiedDesc => {
-            groups.sort_by(|a, b| b.meta.last_modified.cmp(&a.meta.last_modified));
+            groups.sort_by(|left, right| right.meta.last_modified.cmp(&left.meta.last_modified));
         }
     }
 
@@ -327,6 +332,7 @@ async fn ensure_unambiguous_move(
             ));
         }
     }
+
     Ok(())
 }
 
@@ -354,7 +360,7 @@ pub async fn set_group_id_on_models(
         .collect();
 
     let target_global = if let Some(group_id) = group_id {
-        ensure_owned(&mut *transaction, &GROUPS, &[group_id], user).await?;
+        crate::ensure_owned(&mut *transaction, &GROUPS, &[group_id], user).await?;
         let active: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM models_group WHERE group_id = ? AND group_user_id = ? AND group_deleted_at IS NULL)",
         )
@@ -458,6 +464,7 @@ pub async fn set_group_id_on_models(
         &timestamp,
     )
     .await?;
+
     transaction.commit().await
 }
 
@@ -518,7 +525,7 @@ pub async fn edit_group(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    validate_global_id(global_id)?;
+    crate::util::validate_global_id(global_id)?;
     let timestamp = timestamp_or_now(update_timestamp);
     let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let existing: Option<(String, String, Option<String>)> = sqlx::query_as(
@@ -601,11 +608,12 @@ pub async fn edit_group(
         )
         .await?;
     }
+
     transaction.commit().await
 }
 
 pub async fn delete_group(db: &DbContext, user: &User, group_id: i64) -> Result<(), DbError> {
-    let mut transaction = db.begin().await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let group: Option<(String, Option<String>)> = sqlx::query_as(
         "SELECT group_unique_global_id, group_deleted_at FROM models_group WHERE group_id = ? AND group_user_id = ?",
     )
@@ -997,6 +1005,7 @@ pub async fn restore_groups(
             .execute(&mut *transaction)
             .await?;
     }
+
     transaction.commit().await
 }
 
@@ -1102,11 +1111,8 @@ pub async fn set_last_updated_on_groups(
 
 #[cfg(test)]
 mod tests {
-    use super::{ModelGroup, ModelGroupMeta, append_empty_groups};
-    use crate::model::{Model, ModelFlags, blob::Blob};
-
-    fn group(id: i64, name: &str) -> ModelGroup {
-        ModelGroup::from_meta(ModelGroupMeta {
+    fn group(id: i64, name: &str) -> super::ModelGroup {
+        super::ModelGroup::from_meta(super::ModelGroupMeta {
             id,
             name: name.into(),
             created: String::new(),
@@ -1119,10 +1125,10 @@ mod tests {
     #[test]
     fn populated_group_wins_when_empty_and_populated_reads_overlap() {
         let mut populated = group(1, "populated");
-        populated.models.push(Model {
+        populated.models.push(super::Model {
             id: 11,
             name: "part".into(),
-            blob: Blob {
+            blob: crate::model::blob::Blob {
                 id: 21,
                 sha256: "hash".into(),
                 filetype: "stl".into(),
@@ -1136,13 +1142,13 @@ mod tests {
             last_modified: String::new(),
             group: None,
             labels: Vec::new(),
-            flags: ModelFlags::empty(),
+            flags: super::ModelFlags::empty(),
             unique_global_id: String::new(),
             deleted: None,
         });
         let mut groups = vec![populated];
 
-        append_empty_groups(
+        super::append_empty_groups(
             &mut groups,
             vec![group(1, "stale empty"), group(2, "empty")],
         );

@@ -1,5 +1,5 @@
 //! Atomic local pairing state. Only the service HTTPS exchange authenticates a hub.
-use super::{WriterRegistration, failure, offline, pull::Authorization};
+
 use crate::{
     DbError,
     db_context::DbContext,
@@ -7,6 +7,8 @@ use crate::{
     sync_peer,
     user_db::SyncIdentity,
 };
+
+use super::{WriterRegistration, failure, pull::Authorization};
 
 #[derive(PartialEq, Eq, sqlx::FromRow)]
 struct Link {
@@ -34,11 +36,11 @@ impl Pairing {
         user: &User,
         identity: &SyncIdentity,
     ) -> Result<Self, DbError> {
-        let mut tx = db.begin().await?;
-        sync_peer::validate_local(&mut tx, user, identity).await?;
-        let link = link(&mut tx, user.id).await?;
+        let mut transaction = db.begin().await?;
+        sync_peer::validate_local(&mut transaction, user, identity).await?;
+        let link = link(&mut transaction, user.id).await?;
         let row: Option<(String,String,String,String,String,String,String)> = sqlx::query_as("SELECT local_instance_id,local_account_id,server_instance_id,server_account_id,connection_id,authority_writer_id,secret FROM sync_transport_local_authorities WHERE user_id=?")
-            .bind(user.id).fetch_optional(&mut *tx).await?;
+            .bind(user.id).fetch_optional(&mut *transaction).await?;
         let registration = if let Some(row) = row {
             if row.0 != identity.instance_id || row.1 != identity.account_id {
                 return Err(failure("stale_link"));
@@ -55,7 +57,7 @@ impl Pairing {
         } else {
             None
         };
-        tx.commit().await?;
+        transaction.commit().await?;
 
         Ok(Self {
             user: user.clone(),
@@ -79,9 +81,9 @@ impl Pairing {
         token: &str,
         registration: &WriterRegistration,
     ) -> Result<Authorization, DbError> {
-        let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-        sync_peer::validate_local(&mut tx, &self.user, &self.identity).await?;
-        if link(&mut tx, self.user.id).await? != self.link {
+        let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+        sync_peer::validate_local(&mut transaction, &self.user, &self.identity).await?;
+        if link(&mut transaction, self.user.id).await? != self.link {
             return Err(failure("stale_link"));
         }
         if let Some(previous) = &self.registration
@@ -100,14 +102,21 @@ impl Pairing {
         {
             let bits = i64::from(UserPermissions::OnlineAccount.bits() ^ u32::MAX);
             sqlx::query("UPDATE users SET user_sync_url=?,user_sync_token=?,user_last_sync=NULL,user_permissions=(user_permissions & ?) WHERE user_id=?")
-                .bind(origin).bind(token).bind(bits).bind(self.user.id).execute(&mut *tx).await?;
+                .bind(origin).bind(token).bind(bits).bind(self.user.id).execute(&mut *transaction).await?;
         }
         sqlx::query("INSERT INTO sync_peer_bindings(user_id,local_instance_id,local_account_id,remote_instance_id,remote_account_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING")
-            .bind(self.user.id).bind(&self.identity.instance_id).bind(&self.identity.account_id).bind(&registration.server_identity.instance_id).bind(&registration.server_identity.account_id).execute(&mut *tx).await?;
-        offline::install_authority_in(&mut tx, &self.user, &self.identity, registration).await?;
+            .bind(self.user.id).bind(&self.identity.instance_id).bind(&self.identity.account_id).bind(&registration.server_identity.instance_id).bind(&registration.server_identity.account_id).execute(&mut *transaction).await?;
+        super::offline::install_authority_in(
+            &mut transaction,
+            &self.user,
+            &self.identity,
+            registration,
+        )
+        .await?;
         let authorization =
-            Authorization::capture_in(&mut tx, &self.user, &self.identity, origin, token).await?;
-        tx.commit().await?;
+            Authorization::capture_in(&mut transaction, &self.user, &self.identity, origin, token)
+                .await?;
+        transaction.commit().await?;
 
         Ok(authorization)
     }

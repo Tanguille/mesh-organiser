@@ -1,4 +1,6 @@
 //! Real combined operations use complete manifests and preserve author identity.
+use db::{causal_group_rename::NameState, causal_model_move::MoveState};
+
 use super::*;
 
 fn canonical_context(value: &serde_json::Value) -> String {
@@ -13,13 +15,13 @@ fn canonical_context(value: &serde_json::Value) -> String {
         frontier: serde_json::from_value(value["frontier"].clone()).unwrap(),
         events: serde_json::from_value(value["events"].clone()).unwrap(),
     };
+
     serde_json::to_string(&context).unwrap()
 }
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Exercise a missing cross-entity cut followed by its real delivery.
 async fn deletion_waits_for_missing_model_frontier_then_retries() {
-    use db::causal_model_move::MoveState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let writer = registration(&router, &cookie, &source).await;
@@ -221,8 +223,6 @@ async fn deletion_waits_for_missing_model_frontier_then_retries() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Verify a late original rename after a real retention purge.
 async fn concurrent_rename_rehydrates_expired_group_through_transport() {
-    use db::causal_group_lifecycle::GroupLifecycle;
-    use db::causal_group_rename::NameState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_a_dir, a) = crate::test_support::app_state().await;
     let (_b_dir, b) = crate::test_support::app_state().await;
@@ -272,7 +272,7 @@ async fn concurrent_rename_rehydrates_expired_group_through_transport() {
     db::group_db::delete_group(&a.db, &user, group.id)
         .await
         .unwrap();
-    let GroupLifecycle::Deleted { deletions } =
+    let db::causal_group_lifecycle::GroupLifecycle::Deleted { deletions } =
         db::causal_group_lifecycle::get_state(&a.db, &user, &ai, group.id)
             .await
             .unwrap()
@@ -361,7 +361,6 @@ async fn concurrent_rename_rehydrates_expired_group_through_transport() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Preserve both real competing authors through the transport.
 async fn forged_name_resolution_cannot_choose_an_unoffered_name() {
-    use db::causal_group_rename::{NameState, ResolveResult};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_a_dir, a) = crate::test_support::app_state().await;
     let (_b_dir, b) = crate::test_support::app_state().await;
@@ -466,7 +465,7 @@ async fn forged_name_resolution_cannot_choose_an_unoffered_name() {
     else {
         panic!("expected conflict")
     };
-    let ResolveResult::Resolved(NameState::Ready { token, .. }) =
+    let db::causal_group_rename::ResolveResult::Resolved(NameState::Ready { token, .. }) =
         db::causal_group_rename::resolve(&a.db, &user, &ai, group.id, &token, "alpha")
             .await
             .unwrap()
@@ -525,7 +524,6 @@ async fn forged_name_resolution_cannot_choose_an_unoffered_name() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // One end-to-end history verifies atomic retries across the same objects.
 async fn complete_move_projects_both_membership_events_and_retries() {
-    use db::causal_model_move::MoveState;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let writer = registration(&router, &cookie, &source).await;

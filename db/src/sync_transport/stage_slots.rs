@@ -1,7 +1,10 @@
 //! Bounded physical storage reservations. Filesystem proofs are checked by service.
-use super::failure;
-use crate::{DbError, db_context::DbContext};
+
 use sqlx::SqliteConnection;
+
+use crate::{DbError, db_context::DbContext};
+
+use super::failure;
 
 pub const MAX_STAGE_SLOTS: i64 = 4096;
 
@@ -64,17 +67,17 @@ pub async fn get(db: &DbContext, path: &str) -> Result<Option<StageSlot>, DbErro
 }
 
 pub async fn reserve(db: &DbContext, slot: &StageSlot) -> Result<(), DbError> {
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let count: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sync_stage_slots)+(SELECT COUNT(*) FROM sync_transfer_intents i WHERE NOT EXISTS(SELECT 1 FROM sync_stage_slots s WHERE s.stage_path=i.stage_path))")
-        .fetch_one(&mut *tx).await?;
+        .fetch_one(&mut *transaction).await?;
     if count >= MAX_STAGE_SLOTS {
         return Err(failure("quota_paused"));
     }
     sqlx::query("INSERT INTO sync_stage_slots(stage_path,root_path,root_device,root_inode,database_path,database_device,database_inode) VALUES(?,?,?,?,?,?,?)")
         .bind(&slot.stage_path).bind(&slot.root_path).bind(&slot.root_device).bind(&slot.root_inode)
         .bind(&slot.database_path).bind(&slot.database_device).bind(&slot.database_inode)
-        .execute(&mut *tx).await?;
-    tx.commit().await?;
+        .execute(&mut *transaction).await?;
+    transaction.commit().await?;
 
     Ok(())
 }
@@ -93,26 +96,26 @@ pub async fn certify(db: &DbContext, slot: &StageSlot) -> Result<(), DbError> {
 /// Called under the permanent OS lease and an IMMEDIATE transaction. The caller
 /// fsyncs the new lease token before committing this active generation.
 pub async fn activate_in(
-    tx: &mut SqliteConnection,
+    transaction: &mut SqliteConnection,
     slot: &StageSlot,
     token: &str,
 ) -> Result<bool, DbError> {
     let current: Option<StageSlot> =
         sqlx::query_as("SELECT * FROM sync_stage_slots WHERE stage_path=?")
             .bind(&slot.stage_path)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut *transaction)
             .await?;
     if current.as_ref() != Some(slot) || slot.directory_device.is_none() {
         return Err(failure("identity_blocked"));
     }
     let occupied: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sync_transfer_intents WHERE stage_path=?) OR EXISTS(SELECT 1 FROM sync_publication_stages WHERE stage_path=?)")
-        .bind(&slot.stage_path).bind(&slot.stage_path).fetch_one(&mut *tx).await?;
+        .bind(&slot.stage_path).bind(&slot.stage_path).fetch_one(&mut *transaction).await?;
     if occupied {
         return Ok(false);
     }
     sqlx::query("INSERT INTO sync_transfer_intents(stage_path,token,directory_device,directory_inode) VALUES(?,?,?,?)")
         .bind(&slot.stage_path).bind(token).bind(&slot.directory_device).bind(&slot.directory_inode)
-        .execute(tx).await?;
+        .execute(transaction).await?;
 
     Ok(true)
 }

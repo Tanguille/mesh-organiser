@@ -1,40 +1,31 @@
-use axum::{
-    Json, Router,
-    extract::State,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::get,
-};
-use axum_login::login_required;
+use axum::{Router, extract::State, http::StatusCode, response::IntoResponse};
+
 use service::AppState;
 
-use crate::{
-    error::ApplicationError,
-    user::{Backend, CurrentSyncUser},
-};
+use crate::user::CurrentSyncUser;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/v2/sync/snapshot", get(get_snapshot))
-        .route_layer(login_required!(Backend))
+        .route("/api/v2/sync/snapshot", axum::routing::get(get_snapshot))
+        .route_layer(axum_login::login_required!(crate::user::Backend))
 }
 
 async fn get_snapshot(
     CurrentSyncUser(user, account_id): CurrentSyncUser,
     State(state): State<AppState>,
-) -> Response {
+) -> axum::response::Response {
     match db::sync_snapshot::get_full_sync_snapshot(&state.db, &user, &account_id).await {
         Ok(snapshot) => serde_json::to_value(snapshot).map_or_else(
             |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
             |mut value| {
                 decimal_integers(&mut value);
-                Json(value).into_response()
+                axum::Json(value).into_response()
             },
         ),
         Err(db::DbError::Protocol(message)) if message == "Invalid sync account identity" => {
             StatusCode::UNAUTHORIZED.into_response()
         }
-        Err(error) => ApplicationError::from(error).into_response(),
+        Err(error) => crate::error::ApplicationError::from(error).into_response(),
     }
 }
 

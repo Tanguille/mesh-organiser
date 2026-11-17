@@ -1,6 +1,8 @@
 //! Explicit separation certifies a new namespace generation without rewriting old evidence.
-use super::{Authorization, DbContext, DbError, Dot, choice, encode, invalid, pending};
-use crate::causal_genesis::{checks, materialization, populated};
+
+use crate::causal_genesis::populated;
+
+use super::{Authorization, DbError, Dot, invalid};
 
 #[derive(Debug)]
 pub struct GroupSeparationOutcome {
@@ -49,11 +51,12 @@ pub(in crate::causal_genesis) async fn unmapped_history(
     if history {
         return Err(invalid());
     }
+
     Ok(())
 }
 
 pub async fn separate(
-    db: &DbContext,
+    db: &super::DbContext,
     auth: &Authorization,
     decision_id: &str,
 ) -> Result<GroupSeparationOutcome, DbError> {
@@ -72,7 +75,7 @@ pub(super) async fn separate_in(
     blobs: &[populated::ModelBlobBinding],
     local_source: Option<&super::LocalObservationStage>,
 ) -> Result<GroupSeparationOutcome, DbError> {
-    let row = choice(&mut *tx, auth, decision_id).await?;
+    let row = super::choice(&mut *tx, auth, decision_id).await?;
     if let (Some(writer_id), Some(counter)) = (&row.writer_id, row.counter) {
         let (remote_group_id, outbox_id): (i64, Option<String>) = sqlx::query_as("SELECT remote_group_id,local_outbox_id FROM group_identity_separations WHERE decision_id=? AND user_id=?")
             .bind(decision_id).bind(auth.user.id).fetch_optional(&mut *tx).await?.ok_or_else(invalid)?;
@@ -89,6 +92,7 @@ pub(super) async fn separate_in(
             )
             .await?;
         }
+
         return Ok(GroupSeparationOutcome {
             local_group_id: row.local_group_id,
             remote_group_id,
@@ -100,7 +104,7 @@ pub(super) async fn separate_in(
             outbox_id,
         });
     }
-    let (delivery, plan, snapshot) = pending(&mut *tx, auth, &row).await?;
+    let (delivery, plan, snapshot) = super::pending(&mut *tx, auth, &row).await?;
     separate_validated(
         tx,
         auth,
@@ -146,7 +150,7 @@ pub(super) async fn separate_validated(
     let remote_generation = old.generation.checked_add(1).ok_or_else(invalid)?;
     // The retained old namespace records both departure and the new materialization.
     let remote_head = old.head.checked_add(2).ok_or_else(invalid)?;
-    let original_head = encode(&old)?;
+    let original_head = super::encode(&old)?;
     let local_global_id = crate::random_hex_32();
     let occupied: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_sync_heads WHERE user_id=? AND group_global_id=?) OR EXISTS(SELECT 1 FROM models_group WHERE group_user_id=? AND group_unique_global_id=?) OR EXISTS(SELECT 1 FROM entity_births WHERE user_id=? AND entity_kind='group' AND global_id=?) OR EXISTS(SELECT 1 FROM causal_events WHERE user_id=? AND json_extract(envelope,'$.entity.kind')='group' AND json_extract(envelope,'$.entity.global_id')=?)")
         .bind(auth.user.id).bind(&local_global_id).bind(auth.user.id).bind(&local_global_id).bind(auth.user.id).bind(&local_global_id).bind(auth.user.id).bind(&local_global_id).fetch_one(&mut *tx).await?;
@@ -187,7 +191,7 @@ pub(super) async fn separate_validated(
     let remote = plan.bundle.identity_group()?;
     let remote_entity = remote.entity().clone();
     // A new row gets the normal next generation; the old head is never removed or reset.
-    let (remote_group_id, _) = materialization::install(
+    let (remote_group_id, _) = crate::causal_genesis::materialization::install(
         &mut *tx,
         &auth.user,
         &remote_entity,
@@ -200,7 +204,7 @@ pub(super) async fn separate_validated(
     if changed != 1 {
         return Err(invalid());
     }
-    checks::uncontested(&mut *tx, &auth.user, &remote_entity).await?;
+    crate::causal_genesis::checks::uncontested(&mut *tx, &auth.user, &remote_entity).await?;
     populated::bind_existing_identity(
         &mut *tx,
         &auth.user,

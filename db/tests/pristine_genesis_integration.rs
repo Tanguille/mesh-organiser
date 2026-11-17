@@ -1,9 +1,11 @@
 //! Checked genesis is a narrow prerequisite, not existing-library or authenticated sync.
-mod common;
 use db::{
-    blob_db, causal_genesis, group_db, model::user::User, model_db, random_hex_32, sync_peer,
-    user_db,
+    blob_db, causal_genesis, group_db, label_db,
+    model::{ModelFlags, user::User},
+    model_db, random_hex_32, sync_peer, user_db,
 };
+
+mod common;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -384,7 +386,6 @@ async fn stale_account_identity_cannot_install_after_numeric_user_id_reuse() {
 
 #[tokio::test]
 async fn same_second_model_metadata_edit_and_revert_is_not_pristine() {
-    use db::model::ModelFlags;
     let (_dir, db) = common::test_db().await;
     let user = User::default();
     let identity = user_db::get_sync_identity(&db, user.id)
@@ -439,7 +440,6 @@ async fn same_second_model_metadata_edit_and_revert_is_not_pristine() {
 
 #[tokio::test]
 async fn model_label_add_remove_is_not_pristine_even_with_identical_timestamps() {
-    use db::label_db;
     let (_dir, db) = common::test_db().await;
     let user = User::default();
     let identity = user_db::get_sync_identity(&db, user.id)
@@ -477,7 +477,6 @@ async fn model_label_add_remove_is_not_pristine_even_with_identical_timestamps()
 
 #[tokio::test]
 async fn failed_model_edit_and_label_insert_leave_pristine_eligibility_intact() {
-    use db::{label_db, model::ModelFlags};
     let (_dir, db) = common::test_db().await;
     let user = User::default();
     let identity = user_db::get_sync_identity(&db, user.id)
@@ -523,7 +522,6 @@ async fn failed_model_edit_and_label_insert_leave_pristine_eligibility_intact() 
 
 #[tokio::test]
 async fn model_created_before_eligibility_migration_remains_ineligible() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.sqlite");
     let options = sqlx::sqlite::SqliteConnectOptions::new()
@@ -533,7 +531,7 @@ async fn model_created_before_eligibility_migration_remains_ineligible() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_140_000)
+        .filter(|item| item.version < 20_261_113_140_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
@@ -548,22 +546,22 @@ async fn model_created_before_eligibility_migration_remains_ineligible() {
     let birth = random_hex_32();
     let writer = random_hex_32();
     let id = sqlx::query("INSERT INTO models (model_id,model_name,model_blob_id,model_added,model_user_id,model_unique_global_id,model_last_modified,model_birth_id) VALUES (1,'old',?,'2020-01-01T00:00:00Z',?,?,'2020-01-01T00:00:00Z',?)").bind(blob).bind(user.id).bind(&global).bind(&birth).execute(&db).await.unwrap().last_insert_rowid();
-    let event = CausalEnvelope {
+    let event = db::causal_envelope::CausalEnvelope {
         version: 2,
-        entity: Entity {
-            kind: EntityKind::Model,
+        entity: db::causal_envelope::Entity {
+            kind: db::causal_envelope::EntityKind::Model,
             global_id: global,
             birth_id: Some(birth.clone()),
         },
-        event: Dot {
+        event: db::causal_envelope::Dot {
             writer_id: writer.clone(),
             counter: "1".into(),
         },
         parents: vec![],
         dependencies: vec![],
-        action: Action::ModelCreated,
+        action: db::causal_envelope::Action::ModelCreated,
     };
-    let bytes = causal_envelope::canonical_causal_envelope(&event).unwrap();
+    let bytes = db::causal_envelope::canonical_causal_envelope(&event).unwrap();
     sqlx::query("INSERT INTO causal_events (user_id,writer_id,counter,envelope) VALUES (?,?,1,?)")
         .bind(user.id)
         .bind(&writer)
@@ -615,10 +613,10 @@ async fn shared_blob_descriptor_change_invalidates_models_across_owners_and_roll
     let blob = blob_db::add_blob(&db, &hash, "stl", 123, None)
         .await
         .unwrap();
-    let a = model_db::add_model(&db, &first, "a", blob, None, None)
+    let first_model = model_db::add_model(&db, &first, "a", blob, None, None)
         .await
         .unwrap();
-    let b = model_db::add_model(&db, &other, "b", blob, None, None)
+    let second_model = model_db::add_model(&db, &other, "b", blob, None, None)
         .await
         .unwrap();
     let mut tx = db.begin().await.unwrap();
@@ -631,8 +629,8 @@ async fn shared_blob_descriptor_change_invalidates_models_across_owners_and_roll
     let flags: Vec<i64> = sqlx::query_scalar(
         "SELECT model_genesis_unchanged FROM models WHERE model_id IN (?,?) ORDER BY model_id",
     )
-    .bind(a)
-    .bind(b)
+    .bind(first_model)
+    .bind(second_model)
     .fetch_all(&db)
     .await
     .unwrap();
@@ -654,8 +652,8 @@ async fn shared_blob_descriptor_change_invalidates_models_across_owners_and_roll
     let flags: Vec<i64> = sqlx::query_scalar(
         "SELECT model_genesis_unchanged FROM models WHERE model_id IN (?,?) ORDER BY model_id",
     )
-    .bind(a)
-    .bind(b)
+    .bind(first_model)
+    .bind(second_model)
     .fetch_all(&db)
     .await
     .unwrap();
@@ -665,12 +663,12 @@ async fn shared_blob_descriptor_change_invalidates_models_across_owners_and_roll
         "descriptor ABA invalidates every owner sharing the blob"
     );
     assert!(
-        causal_genesis::enroll_pristine_model(&db, &first, &first_identity, a)
+        causal_genesis::enroll_pristine_model(&db, &first, &first_identity, first_model)
             .await
             .is_err()
     );
     assert!(
-        causal_genesis::enroll_pristine_model(&db, &other, &other_identity, b)
+        causal_genesis::enroll_pristine_model(&db, &other, &other_identity, second_model)
             .await
             .is_err()
     );

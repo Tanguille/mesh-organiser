@@ -1,12 +1,12 @@
 //! Purging a legacy model must not erase the fact that its portable birth is unknown.
-mod common;
 use db::{
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
-    causal_store::{self, IdentityStatus, ReceiveResult},
-    group_history::ReplicaPrincipal,
+    causal_envelope::{Action, CausalEnvelope, EntityKind},
+    causal_store::{self, ReceiveResult},
     model::{ModelFlags, user::User},
     model_db, random_hex_32, user_db,
 };
+
+mod common;
 
 async fn send_claim(
     db: &db::db_context::DbContext,
@@ -33,12 +33,12 @@ async fn send_claim(
     };
     let event = CausalEnvelope {
         version: 2,
-        entity: Entity {
+        entity: db::causal_envelope::Entity {
             kind,
             global_id: global.into(),
             birth_id: Some(random_hex_32()),
         },
-        event: Dot {
+        event: db::causal_envelope::Dot {
             writer_id: writer.clone(),
             counter: "1".into(),
         },
@@ -46,11 +46,11 @@ async fn send_claim(
         dependencies: vec![],
         action,
     };
-    let principal = ReplicaPrincipal {
+    let principal = db::group_history::ReplicaPrincipal {
         owner_user_id: user.id,
         replica_id: writer,
     };
-    let wire = causal_envelope::canonical_causal_envelope(&event).unwrap();
+    let wire = db::causal_envelope::canonical_causal_envelope(&event).unwrap();
     let result = causal_store::receive(db, user, &identity, &principal, &wire)
         .await
         .unwrap();
@@ -202,7 +202,10 @@ async fn never_moved_legacy_model_retains_unknown_identity_after_purge() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(stored.identity_status, IdentityStatus::Unknown);
+    assert_eq!(
+        stored.identity_status,
+        causal_store::IdentityStatus::Unknown
+    );
     let (group_result, _) = send_claim(&db, &user, &global, EntityKind::Group).await;
     assert!(matches!(group_result, ReceiveResult::AcceptedReady));
     let other_id = user_db::add_user(

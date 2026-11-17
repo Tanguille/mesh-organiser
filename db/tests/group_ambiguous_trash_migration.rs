@@ -1,10 +1,10 @@
 //! Ambiguous historical identities stay visible but cannot authorize a restore.
-mod common;
 use db::{
     group_db::{self, GroupRestoreRequest},
-    model::user::User,
     random_hex_32,
 };
+
+mod common;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -18,14 +18,14 @@ async fn ambiguous_legacy_groups_are_listed_but_cannot_be_restored() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_112_180_000)
+        .filter(|item| item.version < 20_261_112_180_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
         .run(&db)
         .await
         .unwrap();
-    let user = User::default();
+    let user = db::model::user::User::default();
     let first = common::legacy_group(&db, &user, "duplicate one").await;
     let second = common::legacy_group(&db, &user, "duplicate two").await;
     let valid = common::legacy_group(&db, &user, "valid").await;
@@ -105,6 +105,6 @@ async fn ambiguous_legacy_groups_are_listed_but_cannot_be_restored() {
             .unwrap();
     assert!(
         still_deleted.is_some(),
-        "ambiguous restore must roll back every item"
+        "ambiguous restore must roll back every b"
     );
 }

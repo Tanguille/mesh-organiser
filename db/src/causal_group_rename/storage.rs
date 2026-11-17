@@ -2,12 +2,12 @@ use sqlx::SqliteConnection;
 
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dot},
-    causal_store::{self, IdentityStatus},
+    causal_envelope::{self, Dot},
+    causal_store,
     model::user::User,
 };
 
-use super::{graph::Graph, invalid};
+use super::invalid;
 
 pub(super) struct Scope {
     pub user_id: i64,
@@ -15,7 +15,7 @@ pub(super) struct Scope {
     pub local_id: i64,
     pub generation: i64,
     pub revision: i64,
-    pub root: CausalEnvelope,
+    pub root: causal_envelope::CausalEnvelope,
     pub root_wire: String,
     pub paused: bool,
     pub current_name: String,
@@ -59,11 +59,11 @@ pub(super) async fn load(
     let root = causal_envelope::parse_causal_envelope(&row.root_wire).map_err(|_| invalid())?;
     if root.entity.global_id != row.global_id
         || root.entity.birth_id.as_deref() != Some(&row.birth_id)
-        || !matches!(root.action, Action::GroupCreated { .. })
+        || !matches!(root.action, causal_envelope::Action::GroupCreated { .. })
         || !root.parents.is_empty()
         || !root.dependencies.is_empty()
         || causal_store::identity_status(db, user.id, &root.entity).await?
-            != IdentityStatus::Uncontested
+            != causal_store::IdentityStatus::Uncontested
     {
         return Ok(None);
     }
@@ -135,7 +135,7 @@ pub(super) async fn metadata(
 pub(super) async fn project(
     db: &mut SqliteConnection,
     scope: &mut Scope,
-    graph: &Graph,
+    graph: &super::graph::Graph,
     timestamp: &str,
 ) -> Result<(), DbError> {
     let revision = scope.revision.checked_add(1).ok_or_else(invalid)?;

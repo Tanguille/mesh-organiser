@@ -1,14 +1,8 @@
-use super::super::{
-    invalid,
-    materialization::{BlobDescriptor, Materialization, ModelSnapshot},
-    observation,
-};
-use crate::{
-    DbError,
-    causal_envelope::{Entity, EntityKind, MAX_CONTEXT_ITEMS},
-    model::user::User,
-};
 use sqlx::SqliteConnection;
+
+use crate::{DbError, causal_envelope::Entity, model::user::User};
+
+use super::super::{invalid, materialization::Materialization, observation};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(in crate::causal_genesis) struct Model {
@@ -33,7 +27,7 @@ pub(in crate::causal_genesis) struct Model {
 }
 impl Model {
     pub fn materialization(&self) -> Materialization {
-        Materialization::Model(ModelSnapshot {
+        Materialization::Model(super::super::materialization::ModelSnapshot {
             deleted: self.deleted.clone(),
             name: self.name.clone(),
             link: self.link.clone(),
@@ -41,7 +35,7 @@ impl Model {
             flags: self.flags,
             added: self.added.clone(),
             last_modified: self.last_modified.clone(),
-            blob: BlobDescriptor {
+            blob: super::super::materialization::BlobDescriptor {
                 hash: self.hash.clone(),
                 filetype: self.filetype.clone(),
                 size: self.size,
@@ -50,7 +44,7 @@ impl Model {
     }
     pub fn entity(&self) -> Entity {
         Entity {
-            kind: EntityKind::Model,
+            kind: crate::causal_envelope::EntityKind::Model,
             global_id: self.global_id.clone(),
             birth_id: self.birth_id.clone(),
         }
@@ -66,7 +60,8 @@ pub(super) async fn read(
     let (count,bytes,bad):(i64,i64,bool)=sqlx::query_as("SELECT COUNT(*),COALESCE(SUM(length(CAST(model_name AS BLOB))+COALESCE(length(CAST(model_url AS BLOB)),0)+COALESCE(length(CAST(model_desc AS BLOB)),0)+COALESCE(length(CAST(model_deleted AS BLOB)),0)),0),EXISTS(SELECT 1 FROM models m WHERE m.model_group_id=? AND (m.model_user_id!=?)) FROM models WHERE model_group_id=?")
         .bind(group_id).bind(user.id).bind(group_id).fetch_one(&mut *db).await?;
     if bad
-        || usize::try_from(count).map_err(|_| invalid())? > MAX_CONTEXT_ITEMS
+        || usize::try_from(count).map_err(|_| invalid())?
+            > crate::causal_envelope::MAX_CONTEXT_ITEMS
         || bytes > 16 * 1024 * 1024
     {
         return Err(invalid());
@@ -79,6 +74,7 @@ pub(super) async fn read(
     for model in &models {
         identity(db, user, model).await?;
     }
+
     Ok((group, models))
 }
 
@@ -98,5 +94,6 @@ async fn identity(db: &mut SqliteConnection, user: &User, model: &Model) -> Resu
     if ambiguous {
         return Err(invalid());
     }
+
     Ok(())
 }

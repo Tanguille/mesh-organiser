@@ -1,12 +1,9 @@
 //! Portable birth ids identify new logical entities without inventing legacy ancestry.
-mod common;
 use db::{
-    blob_db,
-    db_context::DbContext,
-    group_db,
-    model::{ModelFlags, user::User},
-    model_db, random_hex_32, user_db,
+    blob_db, db_context::DbContext, group_db, model::user::User, model_db, random_hex_32, user_db,
 };
+
+mod common;
 
 async fn assert_schema(db: &DbContext) {
     for (table, column) in [
@@ -51,7 +48,7 @@ fn valid_birth(value: &str) {
     assert!(
         value
             .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            .all(|item| item.is_ascii_digit() || (b'a'..=b'f').contains(&item))
     );
 }
 async fn registry_global(db: &DbContext, user: i64, kind: &str, value: &str) -> Option<String> {
@@ -186,7 +183,7 @@ async fn rekey_before_history_updates_registry_and_preserves_birth() {
         "part",
         None,
         None,
-        ModelFlags::empty(),
+        db::model::ModelFlags::empty(),
         None,
         Some(&new_model),
     )

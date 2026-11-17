@@ -1,11 +1,14 @@
 //! Local-only evidence is never a portable or complete causal history.
-mod common;
 use db::{
-    blob_db, group_db,
-    group_history::{self, HistoryOrigin},
+    blob_db,
+    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
+    causal_store, group_db,
+    group_history::{self, HistoryOrigin, ReplicaPrincipal},
     model::user::User,
-    model_db,
+    model_db, random_hex_32, user_db,
 };
+
+mod common;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -163,12 +166,6 @@ async fn rejected_local_journal_write_rolls_back_real_rename_and_counter() {
 
 #[tokio::test]
 async fn portable_receipt_cannot_depend_on_local_only_history() {
-    use db::{
-        causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
-        causal_store,
-        group_history::ReplicaPrincipal,
-        random_hex_32, user_db,
-    };
     let (_dir, db) = common::test_db().await;
     let has_encoding: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM pragma_table_info('causal_events') WHERE name='encoding')",
@@ -252,7 +249,6 @@ async fn portable_receipt_cannot_depend_on_local_only_history() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn migration_preserves_legacy_local_dots_edges_nulls_and_frontiers() {
-    use db::random_hex_32;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.sqlite");
     let options = sqlx::sqlite::SqliteConnectOptions::new()
@@ -262,7 +258,7 @@ async fn migration_preserves_legacy_local_dots_edges_nulls_and_frontiers() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_120_000)
+        .filter(|item| item.version < 20_261_113_120_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
@@ -375,7 +371,6 @@ async fn migration_preserves_legacy_local_dots_edges_nulls_and_frontiers() {
 
 #[tokio::test]
 async fn duplicate_legacy_group_and_membership_dots_roll_back_migration() {
-    use db::random_hex_32;
     let dir = tempfile::tempdir().unwrap();
     let options = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(dir.path().join("db.sqlite"))
@@ -384,7 +379,7 @@ async fn duplicate_legacy_group_and_membership_dots_roll_back_migration() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_120_000)
+        .filter(|item| item.version < 20_261_113_120_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
@@ -421,7 +416,6 @@ async fn duplicate_legacy_group_and_membership_dots_roll_back_migration() {
 
 #[tokio::test]
 async fn account_deletion_cascades_local_history_and_journal_events() {
-    use db::{random_hex_32, user_db};
     let (_dir, db) = common::test_db().await;
     let id = user_db::add_user(
         &db,
@@ -466,12 +460,6 @@ async fn account_deletion_cascades_local_history_and_journal_events() {
 
 #[tokio::test]
 async fn portable_shaped_payload_cannot_bypass_local_only_discriminator() {
-    use db::{
-        causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
-        causal_store,
-        group_history::ReplicaPrincipal,
-        random_hex_32, user_db,
-    };
     let (_dir, db) = common::test_db().await;
     let user = User::default();
     let group = group_db::add_empty_group(&db, &user, "folder", None)

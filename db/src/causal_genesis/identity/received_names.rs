@@ -1,10 +1,13 @@
 //! Receiving devices need an authenticated offer, independently of the source's identity decision.
+
+use sqlx::SqliteConnection;
+
+use crate::causal_group_rename::{NameState, NameToken};
+
 use super::{
     Authorization, DbContext, DbError, Dot, Entity, NamePublication, ReceivedNameChoice, encode,
-    invalid, names, observation, populated,
+    invalid, names,
 };
-use crate::causal_group_rename::{NameState, NameToken};
-use sqlx::SqliteConnection;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -71,11 +74,11 @@ async fn evidence(
         return Err(invalid());
     }
     let item = if let Some(batch) = value.batch_id {
-        populated::transport::read(db, &auth.user, &batch).await?
+        super::populated::transport::read(db, &auth.user, &batch).await?
     } else {
         original
     };
-    if observation::digest(&encode(&item)?) != row.digest {
+    if crate::util::sha256_hex(encode(&item)?.as_bytes()) != row.digest {
         return Err(invalid());
     }
 

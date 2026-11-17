@@ -1,9 +1,9 @@
 //! Group Trash cleanup follows configured retention while keeping deletion records for offline sync.
 
-mod common;
-
-use db::{blob_db, group_db, model::user::User, model_db};
+use db::{group_db, model::user::User};
 use service::{AppState, export_service};
+
+mod common;
 
 async fn seed_deleted_group(
     app_state: &AppState,
@@ -14,10 +14,10 @@ async fn seed_deleted_group(
     let group = group_db::add_empty_group(&app_state.db, &user, name, None)
         .await
         .unwrap();
-    let blob = blob_db::add_blob(&app_state.db, name, "stl", 1, None)
+    let blob = db::blob_db::add_blob(&app_state.db, name, "stl", 1, None)
         .await
         .unwrap();
-    let model = model_db::add_model(&app_state.db, &user, name, blob, None, None)
+    let model = db::model_db::add_model(&app_state.db, &user, name, blob, None, None)
         .await
         .unwrap();
     sqlx::query("UPDATE models_group SET group_deleted_at = ? WHERE group_id = ?")

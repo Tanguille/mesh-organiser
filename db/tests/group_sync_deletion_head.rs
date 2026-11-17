@@ -1,8 +1,9 @@
 //! Snapshot heads identify the latest deletion independently of Trash retention.
-mod common;
-use db::{db_context::DbContext, group_db, model::user::User, random_hex_32, user_db};
+use db::{group_db, model::user::User, user_db};
 
-async fn last_delete(db: &DbContext, user: &User, global: &str) -> Option<String> {
+mod common;
+
+async fn last_delete(db: &db::db_context::DbContext, user: &User, global: &str) -> Option<String> {
     let snapshot = group_db::get_group_sync_snapshot(db, user).await.unwrap();
     let head = snapshot
         .heads
@@ -16,7 +17,7 @@ async fn last_delete(db: &DbContext, user: &User, global: &str) -> Option<String
 async fn latest_deletion_event_remains_visible_after_restore_and_purge() {
     let (_dir, db) = common::test_db().await;
     let owner = User::default();
-    let foreign_id = user_db::add_user(&db, "other", "other@example.test", &random_hex_32())
+    let foreign_id = user_db::add_user(&db, "other", "other@example.test", &db::random_hex_32())
         .await
         .unwrap();
     let foreign = user_db::get_user_by_id(&db, foreign_id)

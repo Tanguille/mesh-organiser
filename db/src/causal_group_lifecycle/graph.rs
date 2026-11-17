@@ -1,12 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeMap;
 
-use super::{GroupLifecycle, GroupState, invalid, storage::Scope};
 use crate::{
     DbError,
-    causal_envelope::{Action, CausalEnvelope, Dependency, Dot, Entity, MAX_CONTEXT_ITEMS},
-    causal_group_rename::{NameChoice, NameState, NameToken},
-    causal_model_move::{MoveChoice, MoveState, MoveToken},
+    causal_envelope::{Action, CausalEnvelope, Dependency, Dot, Entity},
+    causal_group_rename::{NameChoice, NameState},
+    causal_model_move::{MoveChoice, MoveState},
 };
+
+use super::{GroupLifecycle, GroupState, invalid, storage::Scope};
 
 type Key = (String, String);
 fn key(dot: &Dot) -> Key {
@@ -184,7 +185,8 @@ impl Graph {
             graph.validate(index, event, scopes)?;
         }
         for scope in scopes {
-            if graph.frontier(&scope.entity, None).len() > MAX_CONTEXT_ITEMS {
+            if graph.frontier(&scope.entity, None).len() > crate::causal_envelope::MAX_CONTEXT_ITEMS
+            {
                 return Err(invalid());
             }
         }
@@ -276,6 +278,7 @@ impl Graph {
                     scope.observed_destination = value.destination;
                     scope.observation_batch_id = value.batch_id;
                 }
+
                 Some(scope)
             })
             .collect();
@@ -304,9 +307,10 @@ impl Graph {
         scopes: &[Scope],
         focus: &Entity,
     ) -> Result<Vec<Dependency>, DbError> {
-        let mut pending: VecDeque<_> = self.frontier(focus, None).into_iter().collect();
+        let mut pending: std::collections::VecDeque<_> =
+            self.frontier(focus, None).into_iter().collect();
         let mut selected = vec![false; self.events.len()];
-        let mut models = BTreeSet::new();
+        let mut models = std::collections::BTreeSet::new();
         while let Some(dot) = pending.pop_front() {
             let index = *self.indices.get(&key(&dot)).ok_or_else(invalid)?;
             if selected[index] {
@@ -638,6 +642,7 @@ impl Graph {
         if choices.len() != 1 || choices[0].destination.is_some() {
             return Err(invalid());
         }
+
         Ok(())
     }
     fn validate_lifecycle(
@@ -693,6 +698,7 @@ impl Graph {
         {
             return Err(invalid());
         }
+
         Ok(())
     }
     pub fn restored_operation(&self, entity: &Entity, operation: &str) -> bool {
@@ -737,7 +743,7 @@ impl Graph {
         Ok(missing)
     }
     pub fn group_state(&self, scope: &Scope) -> GroupState {
-        let token = NameToken {
+        let token = crate::causal_group_rename::NameToken {
             entity: scope.entity.clone(),
             generation: scope.generation,
             revision: scope.revision,
@@ -774,7 +780,7 @@ impl Graph {
         }
     }
     pub fn move_state(&self, scope: &Scope) -> MoveState {
-        let token = MoveToken {
+        let token = crate::causal_model_move::MoveToken {
             entity: scope.entity.clone(),
             incarnation: scope.incarnation.clone(),
             revision: scope.revision,

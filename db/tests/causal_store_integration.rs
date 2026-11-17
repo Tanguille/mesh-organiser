@@ -1,13 +1,13 @@
 //! Receipt storage is not authentication, causal application, or a sync endpoint.
-mod common;
 use db::{
     causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
     causal_store::{self, ReceiveResult},
-    group_db,
     group_history::ReplicaPrincipal,
     model::user::User,
     random_hex_32, user_db,
 };
+
+mod common;
 
 async fn receive(
     db: &db::db_context::DbContext,
@@ -68,7 +68,7 @@ fn wire(event: &CausalEnvelope) -> String {
     causal_envelope::canonical_causal_envelope(event).unwrap()
 }
 async fn group_fixture(db: &db::db_context::DbContext, user: &User) -> (i64, Entity) {
-    let group = group_db::add_empty_group(db, user, "folder", None)
+    let group = db::group_db::add_empty_group(db, user, "folder", None)
         .await
         .unwrap();
     let birth: String =
@@ -268,31 +268,35 @@ async fn cycles_are_rejected_without_losing_the_prior_pending_event() {
     let (_, entity) = group_fixture(&db, &user).await;
     let first = principal(&db, &user).await;
     let second = principal(&db, &user).await;
-    let mut a = rename(&entity, &first.replica_id, 1, "a");
-    let mut b = rename(&entity, &second.replica_id, 1, "b");
-    a.parents.push(b.event.clone());
-    b.parents.push(a.event.clone());
+    let mut first_rename = rename(&entity, &first.replica_id, 1, "a");
+    let mut second_rename = rename(&entity, &second.replica_id, 1, "b");
+    first_rename.parents.push(second_rename.event.clone());
+    second_rename.parents.push(first_rename.event.clone());
     assert!(matches!(
-        receive(&db, &user, &first, &wire(&a)).await,
+        receive(&db, &user, &first, &wire(&first_rename)).await,
         Ok(ReceiveResult::AcceptedPending { .. })
     ));
-    assert!(receive(&db, &user, &second, &wire(&b)).await.is_err());
-    let retained = get_received(&db, &user, &a.event).await.unwrap();
+    assert!(
+        receive(&db, &user, &second, &wire(&second_rename))
+            .await
+            .is_err()
+    );
+    let retained = get_received(&db, &user, &first_rename.event).await.unwrap();
     assert!(retained.is_some());
     assert_eq!(
         retained.unwrap().missing,
         vec![Dependency {
             entity: entity.clone(),
-            event: b.event.clone()
+            event: second_rename.event.clone()
         }]
     );
-    b.parents.clear();
+    second_rename.parents.clear();
     assert!(matches!(
-        receive(&db, &user, &second, &wire(&b)).await,
+        receive(&db, &user, &second, &wire(&second_rename)).await,
         Ok(ReceiveResult::AcceptedReady)
     ));
     assert_eq!(
-        get_received(&db, &user, &a.event)
+        get_received(&db, &user, &first_rename.event)
             .await
             .unwrap()
             .unwrap()
@@ -447,7 +451,6 @@ async fn owner_event_quota_rejects_new_events_but_allows_replay_and_other_owners
 
 #[tokio::test]
 async fn cross_entity_dependencies_wait_and_reject_the_wrong_event_action() {
-    use db::blob_db;
     let (_dir, db) = common::test_db().await;
     let user = User::default();
     let (_, group) = group_fixture(&db, &user).await;
@@ -459,7 +462,7 @@ async fn cross_entity_dependencies_wait_and_reject_the_wrong_event_action() {
             .unwrap()
             .envelope
             .event;
-    let blob = blob_db::add_blob(&db, "cross-dependency", "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, "cross-dependency", "stl", 1, None)
         .await
         .unwrap();
     let model_id = db::model_db::add_model(&db, &user, "part", blob, None, None)
@@ -681,7 +684,7 @@ async fn owner_dependency_quota_accepts_boundary_and_rejects_next_edge() {
         let count = left.min(causal_envelope::MAX_CONTEXT_ITEMS);
         let mut event = rename(&entity, &writer.replica_id, counter, "seed");
         event.parents = (1..=count)
-            .map(|n| dot(&writer.replica_id, i64::try_from(n).unwrap()))
+            .map(|item| dot(&writer.replica_id, i64::try_from(item).unwrap()))
             .collect();
         sqlx::query(
             "INSERT INTO causal_events (user_id, writer_id, counter, envelope) VALUES (?, ?, ?, ?)",
@@ -961,7 +964,6 @@ async fn stale_account_identity_cannot_read_or_write_after_numeric_id_reuse() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn replacement_committing_before_receipt_write_rejects_stale_identity() {
-    use std::time::Duration;
     let (_dir, db) = common::test_db().await;
     let id = user_db::add_user(&db, "old", "race-old@example.test", &random_hex_32())
         .await
@@ -1000,7 +1002,7 @@ async fn replacement_committing_before_receipt_write_rejects_stale_identity() {
         .await
     });
     assert!(
-        tokio::time::timeout(Duration::from_millis(100), &mut task)
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut task)
             .await
             .is_err(),
         "write must wait for the competing transaction"

@@ -1,13 +1,12 @@
 //! Sync identities remain stable across ordinary account and database operations.
 
-mod common;
-
 use db::{
     db_context::{self, DbContext},
     model::user::User,
     random_hex_32, user_db,
 };
-use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
+
+mod common;
 
 async fn assert_identity_schema(db: &DbContext) {
     for table in ["sync_instance", "sync_accounts"] {
@@ -42,7 +41,7 @@ fn assert_random_identity(value: &str) {
     assert!(
         value
             .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            .all(|item| item.is_ascii_digit() || (b'a'..=b'f').contains(&item))
     );
 }
 
@@ -137,14 +136,14 @@ async fn changing_credentials_and_reopening_database_preserves_identities() {
 async fn upgrade_assigns_identities_to_existing_users() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.sqlite");
-    let options = SqliteConnectOptions::new()
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(&path)
         .create_if_missing(true)
         .foreign_keys(true);
-    let db = SqlitePool::connect_with(options).await.unwrap();
+    let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old_migrations = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_112_130_000)
+        .filter(|item| item.version < 20_261_112_130_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old_migrations)

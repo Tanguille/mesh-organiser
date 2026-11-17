@@ -1,13 +1,13 @@
-use super::super::{checks, counter, kind, storage};
-use super::{
-    Action, CausalEnvelope, DbContext, DbError, Dependency, Dot, Entity, EntityKind, GenesisBundle,
-    Guard, Materialization, ModelBlobBinding, ObservedPopulatedGroupBundle, PeerBinding,
-    PopulatedGroupInstallation, PopulatedGroupObservation, Proof, SyncIdentity, User, capture,
-    encode, invalid, materialization, observation, validate, validate_local,
-};
 use sqlx::SqliteConnection;
 
-use super::{labels, project};
+use crate::{causal_envelope::Dependency, sync_peer::validate_local, util::sha256_hex};
+
+use super::super::{checks, counter, encode, kind, materialization::Guard, storage};
+use super::{
+    DbContext, DbError, Entity, EntityKind, GenesisBundle, Materialization, ModelBlobBinding,
+    ObservedPopulatedGroupBundle, PopulatedGroupInstallation, PopulatedGroupObservation, Proof,
+    SyncIdentity, User, capture, invalid, labels, materialization, project,
+};
 
 async fn make_bundle(
     db: &mut SqliteConnection,
@@ -21,17 +21,17 @@ async fn make_bundle(
     let proof = encode(&proof)?;
     let (writer_id, counter) = crate::causal_clock::next(db, user.id).await?;
     let decoded: Proof = serde_json::from_str(&proof).map_err(|_| invalid())?;
-    let envelope = CausalEnvelope {
+    let envelope = super::CausalEnvelope {
         version: 2,
         entity,
-        event: Dot {
+        event: crate::causal_envelope::Dot {
             writer_id,
             counter: counter.to_string(),
         },
         parents: vec![],
         dependencies: decoded.members,
-        action: Action::LegacyObserved {
-            observation_digest: observation::digest(&proof),
+        action: crate::causal_envelope::Action::LegacyObserved {
+            observation_digest: sha256_hex(proof.as_bytes()),
         },
     };
     let wire =
@@ -68,7 +68,7 @@ fn proof(
         original,
         initial_group,
         members,
-        materialization_digest: observation::digest(&encode(value)?),
+        materialization_digest: sha256_hex(encode(value)?.as_bytes()),
         history: "unknown_before_observation".into(),
         label_snapshot_digest: label_digest,
         project_snapshot_digest: capture
@@ -77,7 +77,7 @@ fn proof(
             .map(encode)
             .transpose()?
             .as_deref()
-            .map(observation::digest),
+            .map(|value| sha256_hex(value.as_bytes())),
     })
 }
 
@@ -105,6 +105,7 @@ async fn permit_models(
             .bind(model.id).bind(user.id).bind(&capture.identity.account_id).bind(&capture.identity.instance_id).bind(&model.global_id).bind(&model.incarnation).bind(&model.birth_id).bind(&entity.birth_id).bind(capture.group_id).bind(model.epoch).bind(model.id).bind(&model.deleted).execute(&mut *db).await?;
         entities.push(entity);
     }
+
     Ok(entities)
 }
 
@@ -128,10 +129,11 @@ async fn adopt_group(
     };
     if capture.group.birth_id.is_none() {
         sqlx::query("INSERT INTO group_birth_adoption_permits(group_id,user_id,account_id,instance_id,global_id,birth_id,observation_revision,head,member_count,resource_id,resource_incarnation,resource_revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
-            .bind(capture.group_id).bind(user.id).bind(&capture.identity.account_id).bind(&capture.identity.instance_id).bind(&entity.global_id).bind(&entity.birth_id).bind(capture.group.epoch).bind(capture.group.head).bind(i64::try_from(capture.models.len()).map_err(|_|invalid())?).bind(capture.project.as_ref().map(|p|p.id)).bind(capture.project.as_ref().map(|p|&p.incarnation)).bind(capture.project.as_ref().map(|p|p.revision)).execute(&mut *db).await?;
+            .bind(capture.group_id).bind(user.id).bind(&capture.identity.account_id).bind(&capture.identity.instance_id).bind(&entity.global_id).bind(&entity.birth_id).bind(capture.group.epoch).bind(capture.group.head).bind(i64::try_from(capture.models.len()).map_err(|_|invalid())?).bind(capture.project.as_ref().map(|captured_project|captured_project.id)).bind(capture.project.as_ref().map(|captured_project|&captured_project.incarnation)).bind(capture.project.as_ref().map(|captured_project|captured_project.revision)).execute(&mut *db).await?;
         sqlx::query("UPDATE models_group SET group_birth_id=? WHERE group_id=? AND group_user_id=? AND group_birth_id IS NULL")
             .bind(&entity.birth_id).bind(capture.group_id).bind(user.id).execute(db).await?;
     }
+
     Ok(entity)
 }
 
@@ -186,6 +188,7 @@ pub(super) async fn enroll_boundary(
             transport_contents,
         )
         .await?;
+
         return Ok(bundle);
     }
     let (group, models) = capture::read(tx, user, capture.group_id).await?;
@@ -206,7 +209,9 @@ pub(super) async fn enroll_boundary(
     let group = adopt_group(tx, user, capture, selected_birth).await?;
     let labels = labels::bind_models(&capture.labels, &entities)?;
     let label_snapshot = labels.as_ref().map(encode).transpose()?;
-    let label_digest = label_snapshot.as_deref().map(observation::digest);
+    let label_digest = label_snapshot
+        .as_deref()
+        .map(|value| sha256_hex(value.as_bytes()));
     let mut models = Vec::new();
     for (model, entity) in capture.models.iter().zip(entities) {
         if model.birth_id.is_none() {
@@ -240,8 +245,9 @@ pub(super) async fn enroll_boundary(
             event: model.event().clone(),
         })
         .collect();
-    members.sort_by(|a, b| {
-        (&a.event.writer_id, &a.event.counter).cmp(&(&b.event.writer_id, &b.event.counter))
+    members.sort_by(|left, right| {
+        (&left.event.writer_id, &left.event.counter)
+            .cmp(&(&right.event.writer_id, &right.event.counter))
     });
     let evidence = proof(
         capture,
@@ -295,6 +301,7 @@ pub(super) async fn enroll_boundary(
         )
         .await?;
     }
+
     Ok(bundle)
 }
 
@@ -376,6 +383,7 @@ pub(super) async fn write_members(
         sqlx::query("INSERT INTO causal_observation_batch_members(user_id,batch_id,entity_kind,birth_id) VALUES(?,?,?,?)")
             .bind(user.id).bind(&bundle.batch_id).bind(kind(member.entity())).bind(&member.entity().birth_id).execute(&mut *db).await?;
     }
+
     Ok(())
 }
 
@@ -416,6 +424,7 @@ pub(super) async fn observed_guard(
                 .await?,
         );
     }
+
     Ok(guard)
 }
 
@@ -464,7 +473,7 @@ pub(super) async fn load_retry(
         if root.entity != reference.entity || root.event != reference.event {
             return Err(invalid());
         }
-        validate(&root, &materialization, &proof, identity)?;
+        super::validate(&root, &materialization, &proof, identity)?;
         let current = observed_guard(db, user, &reference.entity, id).await?;
         if serde_json::from_str::<serde_json::Value>(&guard).map_err(|_| invalid())?
             != serde_json::to_value(current).map_err(|_| invalid())?
@@ -506,7 +515,7 @@ pub(super) async fn install(
     db: &DbContext,
     user: &User,
     identity: &SyncIdentity,
-    peer: &PeerBinding,
+    peer: &crate::sync_peer::PeerBinding,
     bundle: &ObservedPopulatedGroupBundle,
     blobs: &[ModelBlobBinding],
 ) -> Result<PopulatedGroupInstallation, DbError> {
@@ -579,6 +588,7 @@ pub(super) async fn validate_blobs(
         materialization::validate_blob(&mut *tx, &model.materialization, Some(id)).await?;
         blob_ids.push(id);
     }
+
     Ok(blob_ids)
 }
 

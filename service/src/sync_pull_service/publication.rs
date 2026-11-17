@@ -1,19 +1,17 @@
 //! Finite original-item publication. Durable background scheduling remains gated.
-use super::{AuthenticatedHub, PublicationOutcome, cursor, invalid, json};
-use crate::{AppState, ServiceError, sync_observation_service::PreparedObservedGroup};
+use reqwest::multipart::Form;
+use tokio::io::AsyncReadExt;
+
 use db::{
-    causal_envelope::{Dependency, Dot},
-    causal_genesis::GenesisBundle,
+    causal_envelope::Dot,
     model::user::User,
     sync_transport::{self, publication::Publication},
     user_db::SyncIdentity,
 };
-use reqwest::{
-    StatusCode,
-    multipart::{Form, Part},
-};
-use tokio::io::AsyncReadExt;
-use tokio_util::io::ReaderStream;
+
+use crate::{AppState, ServiceError};
+
+use super::{PublicationOutcome, invalid, json};
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,16 +24,16 @@ struct Acknowledgment {
 #[serde(deny_unknown_fields)]
 struct Missing {
     status: String,
-    missing: Vec<Dependency>,
+    missing: Vec<db::causal_envelope::Dependency>,
 }
 
-impl AuthenticatedHub {
+impl super::AuthenticatedHub {
     pub async fn publish_observation(
         &self,
         state: &AppState,
         user: &User,
         identity: &SyncIdentity,
-        prepared: &PreparedObservedGroup,
+        prepared: &crate::sync_observation_service::PreparedObservedGroup,
     ) -> Result<PublicationOutcome, ServiceError> {
         let proof = self
             .publication(
@@ -55,8 +53,10 @@ impl AuthenticatedHub {
             if file.metadata().await?.len() != blob.size() {
                 return Err(invalid());
             }
-            let body = reqwest::Body::wrap_stream(ReaderStream::new(file.take(blob.size())));
-            let part = Part::stream_with_length(body, blob.size());
+            let body = reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(
+                file.take(blob.size()),
+            ));
+            let part = reqwest::multipart::Part::stream_with_length(body, blob.size());
             form = form.part(format!("blob.{}", blob.key()), part);
         }
         let response = self
@@ -127,7 +127,7 @@ impl AuthenticatedHub {
         state: &AppState,
         user: &User,
         identity: &SyncIdentity,
-        bundle: &GenesisBundle,
+        bundle: &db::causal_genesis::GenesisBundle,
     ) -> Result<PublicationOutcome, ServiceError> {
         let item = sync_transport::encode_genesis(bundle)?;
 
@@ -193,7 +193,7 @@ impl AuthenticatedHub {
         proof: &Publication,
         item: &serde_json::Value,
     ) -> Result<PublicationOutcome, ServiceError> {
-        if response.status() == StatusCode::CONFLICT {
+        if response.status() == reqwest::StatusCode::CONFLICT {
             let mut bytes = Vec::new();
             while let Some(chunk) = response.chunk().await? {
                 if bytes.len().saturating_add(chunk.len()) > sync_transport::MAX_WIRE_ITEM_BYTES {
@@ -209,6 +209,7 @@ impl AuthenticatedHub {
                 return Err(invalid());
             }
             sync_transport::publication::validate_link(&state.db, &self.authorization).await?;
+
             return Ok(PublicationOutcome::NeedsDependencies {
                 missing: missing.missing,
             });
@@ -220,7 +221,7 @@ impl AuthenticatedHub {
         ) {
             return Err(invalid());
         }
-        let sequence = cursor(&acknowledgment.sequence)?;
+        let sequence = super::cursor(&acknowledgment.sequence)?;
         if sequence == 0 {
             return Err(invalid());
         }

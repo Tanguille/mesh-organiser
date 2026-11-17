@@ -1,18 +1,20 @@
 //! User membership changes and group addition events share causal frontiers.
-mod common;
 
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db,
-    group_history::{self, GroupLifecycleAction, HistoryOrigin, MembershipAction},
+    group_history::{self, HistoryOrigin, MembershipAction},
     model::user::User,
-    model_db, random_hex_32, user_db,
+    user_db,
 };
 
+mod common;
+
 async fn add_model(db: &DbContext, user: &User, name: &str) -> (i64, String, String) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
-    let id = model_db::add_model(db, user, name, blob, None, None)
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
+    let id = db::model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
     let (global, incarnation) = sqlx::query_as(
@@ -41,20 +43,20 @@ async fn moves(
 async fn moves_record_model_predecessors_and_cross_entity_group_additions() {
     let (_dir, db) = common::test_db().await;
     let user = User::default();
-    let a = group_db::add_empty_group(&db, &user, "A", None)
+    let first_group = group_db::add_empty_group(&db, &user, "A", None)
         .await
         .unwrap();
-    let b = group_db::add_empty_group(&db, &user, "B", None)
+    let second_group = group_db::add_empty_group(&db, &user, "B", None)
         .await
         .unwrap();
     let (id, global, incarnation) = add_model(&db, &user, "model").await;
     let initial = moves(&db, &user, &global, &incarnation).await;
     assert!(matches!(initial.ancestry, HistoryOrigin::UnknownPreUpgrade));
     assert_eq!(initial.events, vec![]);
-    group_db::set_group_id_on_models(&db, &user, Some(a.id), vec![id, id], None)
+    group_db::set_group_id_on_models(&db, &user, Some(first_group.id), vec![id, id], None)
         .await
         .unwrap();
-    group_db::set_group_id_on_models(&db, &user, Some(a.id), vec![id], None)
+    group_db::set_group_id_on_models(&db, &user, Some(first_group.id), vec![id], None)
         .await
         .unwrap();
     let first = moves(&db, &user, &global, &incarnation).await;
@@ -63,21 +65,22 @@ async fn moves_record_model_predecessors_and_cross_entity_group_additions() {
         first.events[0].action,
         MembershipAction::Move {
             from_group_global_id: None,
-            to_group_global_id: Some(a.unique_global_id.clone())
+            to_group_global_id: Some(first_group.unique_global_id.clone())
         }
     );
     assert_eq!(first.events[0].parents, vec![]);
     assert_eq!(first.frontier, vec![first.events[0].id.clone()]);
-    let additions = group_history::get_group_member_added_history(&db, &user, &a.unique_global_id)
-        .await
-        .unwrap()
-        .unwrap();
+    let additions =
+        group_history::get_group_member_added_history(&db, &user, &first_group.unique_global_id)
+            .await
+            .unwrap()
+            .unwrap();
     assert_eq!(additions.len(), 1);
     assert_eq!(additions[0].model_global_id, global);
     assert_eq!(additions[0].model_incarnation, incarnation);
     assert_eq!(additions[0].membership_event, first.events[0].id);
 
-    group_db::set_group_id_on_models(&db, &user, Some(b.id), vec![id], None)
+    group_db::set_group_id_on_models(&db, &user, Some(second_group.id), vec![id], None)
         .await
         .unwrap();
     group_db::set_group_id_on_models(&db, &user, None, vec![id], None)
@@ -95,8 +98,8 @@ async fn moves_record_model_predecessors_and_cross_entity_group_additions() {
     assert_eq!(
         complete.events[1].action,
         MembershipAction::Move {
-            from_group_global_id: Some(a.unique_global_id.clone()),
-            to_group_global_id: Some(b.unique_global_id.clone())
+            from_group_global_id: Some(first_group.unique_global_id.clone()),
+            to_group_global_id: Some(second_group.unique_global_id.clone())
         }
     );
     assert_eq!(
@@ -106,7 +109,7 @@ async fn moves_record_model_predecessors_and_cross_entity_group_additions() {
     assert_eq!(
         complete.events[2].action,
         MembershipAction::Move {
-            from_group_global_id: Some(b.unique_global_id.clone()),
+            from_group_global_id: Some(second_group.unique_global_id.clone()),
             to_group_global_id: None
         }
     );
@@ -116,7 +119,7 @@ async fn moves_record_model_predecessors_and_cross_entity_group_additions() {
     );
     assert_eq!(complete.frontier, vec![complete.events[2].id.clone()]);
     let b_additions =
-        group_history::get_group_member_added_history(&db, &user, &b.unique_global_id)
+        group_history::get_group_member_added_history(&db, &user, &second_group.unique_global_id)
             .await
             .unwrap()
             .unwrap();
@@ -162,7 +165,7 @@ async fn group_delete_observes_prior_add_and_rename_through_shared_frontier() {
     assert_eq!(lifecycle.len(), 1);
     assert!(matches!(
         lifecycle[0].action,
-        GroupLifecycleAction::Delete { .. }
+        group_history::GroupLifecycleAction::Delete { .. }
     ));
     assert_eq!(lifecycle[0].parents, vec![rename.events[0].id.clone()]);
 }
@@ -224,7 +227,7 @@ async fn failing_group_addition_event_rolls_back_entire_multi_model_move() {
 async fn user_membership_history_is_scoped_to_the_owner() {
     let (_dir, db) = common::test_db().await;
     let user = User::default();
-    let other_id = user_db::add_user(&db, "other", "other@example.test", &random_hex_32())
+    let other_id = user_db::add_user(&db, "other", "other@example.test", &db::random_hex_32())
         .await
         .unwrap();
     let other = user_db::get_user_by_id(&db, other_id)

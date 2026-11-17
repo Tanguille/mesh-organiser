@@ -1,20 +1,15 @@
 //! Pins the service side of the trash bin: delete moves models to the trash and leaves their
 //! files alone, restore brings them back, and purging removes expired models with their files.
 
-mod common;
+use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 
 use common::add_bulk_models;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
-
 use tempfile::TempDir;
 
-use db::{blob_db, group_db, label_db, model::user::User, model_db, random_hex_32, user_db};
-use service::{AppState, export_service, import_service::import_path, import_state::ImportState};
+use db::{blob_db, group_db, label_db, model::user::User, model_db, user_db};
+use service::{AppState, export_service};
+
+mod common;
 
 const SET_DELETED_SQL: &str = "UPDATE models SET model_deleted = ? WHERE model_id = ?";
 
@@ -53,7 +48,7 @@ async fn add_other_user(app_state: &AppState) -> User {
         &app_state.db,
         "other",
         "other@example.com",
-        &random_hex_32(),
+        &db::random_hex_32(),
     )
     .await
     .unwrap();
@@ -95,11 +90,11 @@ fn timestamp(year: u16) -> String {
 }
 
 /// Imports the file at `path` for the default user and returns the ids of its models.
-async fn import_file(app_state: &AppState, path: &Path) -> Vec<i64> {
-    let import_state = import_path(
+async fn import_file(app_state: &AppState, path: &std::path::Path) -> Vec<i64> {
+    let import_state = service::import_service::import_path(
         path.to_str().unwrap(),
         app_state,
-        ImportState::new(None, false, false, false, User::default()),
+        service::import_state::ImportState::new(None, false, false, false, User::default()),
     )
     .await
     .unwrap();

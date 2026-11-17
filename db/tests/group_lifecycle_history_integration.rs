@@ -1,16 +1,17 @@
 //! Real Trash operations record their causal effects with the exact deletion event.
-mod common;
 use db::{
-    blob_db,
-    db_context::DbContext,
     group_db,
     group_history::{self, GroupLifecycleAction, HistoryOrigin, MembershipAction},
     model::user::User,
     model_db, random_hex_32, user_db,
 };
 
-async fn model(db: &DbContext, user: &User, name: &str) -> (i64, String, String) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+mod common;
+
+async fn model(db: &db::db_context::DbContext, user: &User, name: &str) -> (i64, String, String) {
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     let id = model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
@@ -226,7 +227,7 @@ async fn legacy_trash_restore_records_unknown_delete_event_without_inventing_anc
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_112_190_000)
+        .filter(|item| item.version < 20_261_112_190_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)

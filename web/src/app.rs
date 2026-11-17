@@ -2,47 +2,21 @@ use std::{
     env,
     error::Error,
     fmt::Write,
-    fs::File,
     io::{self, ErrorKind},
-    net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
-use axum::{
-    Router,
-    extract::Request,
-    http::StatusCode,
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
-    routing::any,
-};
-use axum_login::AuthManagerLayerBuilder;
-use time::{Duration, OffsetDateTime};
+use axum::{Router, http::StatusCode, response::IntoResponse, routing::any};
+use time::Duration;
 use tokio::{fs, signal};
-use tower_http::{
-    compression::CompressionLayer,
-    cors::{AllowHeaders, AllowMethods, CorsLayer},
-    services::{ServeDir, ServeFile},
-};
-use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer, cookie::Key};
+use tower_http::services::ServeDir;
+use tower_sessions::{ExpiredDeletion, Expiry, cookie::Key};
 
-use db::{db_context, model::user::User, user_db};
-use service::{
-    AppState, Configuration, export_service, import_state::ImportState, thumbnail_service,
-};
+use db::user_db;
+use service::{AppState, Configuration, export_service};
 
-use crate::{
-    controller::{
-        auth_controller, blob_controller, group_controller, label_controller, model_controller,
-        page_controller, resource_controller, share_controller, threemf_controller,
-        user_controller,
-    },
-    mcp,
-    session_store::SqliteStore,
-    user::{AuthSession, Backend},
-    web_import_state::WebImportStateEmitter,
-};
+use crate::{controller::auth_controller, session_store::SqliteStore};
 
 // Env var names live in one place so a lookup and the message naming it in an
 // error cannot drift apart.
@@ -72,7 +46,7 @@ pub fn parse_port() -> Result<u16, Box<dyn Error>> {
 
 fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn Error>> {
     if !config_path.exists() {
-        let mut config_file = File::create(config_path)?;
+        let mut config_file = std::fs::File::create(config_path)?;
         io::Write::write_all(
             &mut config_file,
             serde_json::to_string_pretty(&Configuration::default())
@@ -80,6 +54,7 @@ fn ensure_config_file_exists(config_path: &Path) -> Result<(), Box<dyn Error>> {
                 .as_bytes(),
         )?;
     }
+
     Ok(())
 }
 
@@ -110,6 +85,7 @@ async fn load_and_prepare_config(config_path: &Path) -> Result<Configuration, Bo
             })?
             .to_string();
     }
+
     Ok(configuration)
 }
 
@@ -122,8 +98,8 @@ async fn apply_local_account(app_state: &AppState) -> Result<(), Box<dyn Error>>
         let key = Key::generate();
         let key_bytes = key.master();
         let mut pass = String::new();
-        for b in key_bytes {
-            write!(pass, "{b:02X}").expect("write to String is infallible");
+        for byte in key_bytes {
+            write!(pass, "{byte:02X}").expect("write to String is infallible");
         }
 
         pass
@@ -178,16 +154,20 @@ fn spawn_thumbnail_regeneration(app_state: &AppState) {
             "Regenerating {} thumbnails...",
             if force { "all" } else { "missing" }
         );
-        let mut import_state = ImportState::new_with_emitter(
+        let mut import_state = service::import_state::ImportState::new_with_emitter(
             None,
             false,
             true,
             false,
-            User::default(),
-            Box::new(WebImportStateEmitter {}),
+            db::model::user::User::default(),
+            Box::new(crate::web_import_state::WebImportStateEmitter {}),
         );
-        if let Err(e) =
-            thumbnail_service::generate_all_thumbnails(&app_state, force, &mut import_state).await
+        if let Err(e) = service::thumbnail_service::generate_all_thumbnails(
+            &app_state,
+            force,
+            &mut import_state,
+        )
+        .await
         {
             eprintln!("Thumbnail regeneration failed: {e}");
         }
@@ -195,10 +175,10 @@ fn spawn_thumbnail_regeneration(app_state: &AppState) {
 }
 
 pub async fn update_session_middleware(
-    auth_session: AuthSession,
-    request: Request,
-    next: Next,
-) -> Response {
+    auth_session: crate::user::AuthSession,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
     let path = request.uri().path();
     if auth_session.user.is_some()
         && !matches!(
@@ -212,21 +192,26 @@ pub async fn update_session_middleware(
         && !matches!(
             auth_session
                 .session
-                .get::<u32>("group_deletion_protocol")
+                .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
                 .await,
             Ok(Some(1))
         )
     {
         return (
             StatusCode::UPGRADE_REQUIRED,
-            "Sign in again with an upgraded app",
+            // Same shape as other controller errors, so the client shows the message.
+            axum::Json(serde_json::json!({
+                "error_type": "upgrade_required",
+                "error_message": "Sign in again with an upgraded app",
+                "error_inner_message": "",
+            })),
         )
             .into_response();
     }
 
     if auth_session.user.is_some() {
         let expiry_date = auth_session.session.expiry_date();
-        let now = OffsetDateTime::now_utc();
+        let now = time::OffsetDateTime::now_utc();
         let difference = expiry_date - now;
 
         if difference < Duration::days(5) {
@@ -256,11 +241,11 @@ impl App {
         let data_dir = PathBuf::from(&configuration.data_path);
         let sqlite_path = data_dir.join("db.sqlite");
         let sqlite_backup_dir = data_dir.join("backups");
-        let db = db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
+        let db = db::db_context::setup_db(&sqlite_path, &sqlite_backup_dir).await;
 
         let app_state = AppState {
             db: Arc::new(db),
-            configuration: Mutex::new(configuration),
+            configuration: std::sync::Mutex::new(configuration),
             app_data_path: data_dir
                 .to_str()
                 .ok_or_else(|| {
@@ -309,21 +294,22 @@ impl App {
             key
         };
 
-        let session_layer = SessionManagerLayer::new(session_store)
+        let session_layer = tower_sessions::SessionManagerLayer::new(session_store)
             .with_secure(true)
             .with_expiry(Expiry::OnInactivity(Duration::days(7)))
             .with_signed(key);
 
-        let backend = Backend::new(self.state.db.clone());
-        let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
+        let backend = crate::user::Backend::new(self.state.db.clone());
+        let auth_layer = axum_login::AuthManagerLayerBuilder::new(backend, session_layer).build();
 
         // Unknown paths are client-side routes, so they get the SPA shell with a 200. Build assets
         // under `/_app` are served apart below, so a missing one stays a 404 that a CDN will not
         // cache as JS.
-        let serve_dir = ServeDir::new("www").fallback(ServeFile::new("www/index.html"));
+        let serve_dir =
+            ServeDir::new("www").fallback(tower_http::services::ServeFile::new("www/index.html"));
         let db = self.state.db.clone();
 
-        let cors_layer = CorsLayer::new()
+        let cors_layer = tower_http::cors::CorsLayer::new()
             .allow_origin([
                 "http://localhost:3000".parse().unwrap(),
                 "http://localhost:5173".parse().unwrap(),
@@ -331,8 +317,8 @@ impl App {
             // Wildcards are illegal (and panic in tower-http) together with
             // allow_credentials; mirroring the request is the permissive-but-legal
             // equivalent for credentialed CORS.
-            .allow_methods(AllowMethods::mirror_request())
-            .allow_headers(AllowHeaders::mirror_request())
+            .allow_methods(tower_http::cors::AllowMethods::mirror_request())
+            .allow_headers(tower_http::cors::AllowHeaders::mirror_request())
             .allow_credentials(true);
 
         let login_router = crate::controller::rate_limited(auth_controller::login_router());
@@ -340,7 +326,7 @@ impl App {
         // `ENABLE_MCP=true`. Merging an empty router leaves `/mcp` unrouted.
         let mcp_router =
             if env::var(ENV_ENABLE_MCP).is_ok_and(|value| value.eq_ignore_ascii_case("true")) {
-                mcp::router(self.state.clone())
+                crate::mcp::router(self.state.clone())
             } else {
                 Router::new()
             };
@@ -350,15 +336,15 @@ impl App {
         let app = Router::new()
             .merge(login_router)
             .merge(auth_controller::router())
-            .merge(blob_controller::router())
-            .merge(model_controller::router())
-            .merge(group_controller::router())
-            .merge(label_controller::router())
-            .merge(resource_controller::router())
-            .merge(user_controller::router())
-            .merge(threemf_controller::router())
-            .merge(page_controller::router())
-            .merge(share_controller::router())
+            .merge(crate::controller::blob_controller::router())
+            .merge(crate::controller::model_controller::router())
+            .merge(crate::controller::group_controller::router())
+            .merge(crate::controller::label_controller::router())
+            .merge(crate::controller::resource_controller::router())
+            .merge(crate::controller::user_controller::router())
+            .merge(crate::controller::threemf_controller::router())
+            .merge(crate::controller::page_controller::router())
+            .merge(crate::controller::share_controller::router())
             // Unknown API paths stay a 404 instead of falling through to the SPA shell below.
             .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))
             // So do discovery paths: an MCP client probing `/.well-known/oauth-*` must see that
@@ -372,9 +358,9 @@ impl App {
             // Authenticated by its own bearer-token layer, not the session login.
             .merge(mcp_router)
             .layer(cors_layer)
-            .layer(middleware::from_fn(update_session_middleware))
+            .layer(axum::middleware::from_fn(update_session_middleware))
             .layer(auth_layer)
-            .layer(CompressionLayer::new())
+            .layer(tower_http::compression::CompressionLayer::new())
             .fallback_service(serve_dir);
 
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
@@ -385,7 +371,7 @@ impl App {
         // tower_governor's default PeerIpKeyExtractor 500s every request without a peer address.
         axum::serve(
             listener,
-            app.into_make_service_with_connect_info::<SocketAddr>(),
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
         .with_graceful_shutdown(shutdown_signal())
         .await?;

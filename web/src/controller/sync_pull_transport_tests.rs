@@ -1,12 +1,34 @@
 //! Exercise the opt-in pull client over an actual authenticated TLS connection.
+use std::{
+    fmt::Write as _,
+    os::unix::fs::MetadataExt,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+};
+
+use axum::{
+    extract::State,
+    middleware::{self, Next},
+    response::IntoResponse,
+};
+use sha2::Digest;
+use tokio::sync::Notify;
+use tokio_rustls::rustls;
+
+use db::{
+    causal_group_rename::{NameState, ResolveResult},
+    causal_model_move::{MoveResolveResult, MoveState},
+};
+use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
+
 use super::*;
-use std::{net::SocketAddr, sync::Arc};
-use tokio_rustls::{TlsAcceptor, rustls};
 
 pub(super) const TEST_CA: &[u8] = include_bytes!("test_tls/ca.pem");
 
 pub(super) struct TlsHub {
-    address: SocketAddr,
+    address: std::net::SocketAddr,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -35,7 +57,7 @@ impl TlsHub {
             .with_no_client_auth()
             .with_single_cert(vec![cert], key.into())
             .unwrap();
-        let acceptor = TlsAcceptor::from(Arc::new(config));
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move {
@@ -171,8 +193,6 @@ async fn publish_observed_source_with_trash(
 
 #[tokio::test]
 async fn connection_requires_https_trusted_certificate_and_matching_hostname() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -240,7 +260,6 @@ async fn connection_requires_https_trusted_certificate_and_matching_hostname() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Keep install and restart assertions in one end-to-end scenario.
 async fn third_device_installs_observation_once_from_authenticated_hub() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, global, deleted, _) =
         publish_observed_source(&router, &cookie).await;
@@ -359,14 +378,6 @@ async fn third_device_installs_observation_once_from_authenticated_hub() {
 
 #[tokio::test]
 async fn identity_redirect_or_forgery_never_receives_device_secret() {
-    use axum::{
-        extract::State,
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use std::sync::atomic::{AtomicBool, Ordering};
-
     for redirect in [false, true] {
         let (_hub_dir, hub, router, cookie) = app().await;
         let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -437,7 +448,6 @@ async fn identity_redirect_or_forgery_never_receives_device_secret() {
 
 #[tokio::test]
 async fn occupied_receiver_identity_cannot_install_or_advance_cursor() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, global, _, _) = publish_observed_source(&router, &cookie).await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -508,13 +518,6 @@ async fn occupied_receiver_identity_cannot_install_or_advance_cursor() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Both failures and retry must share the same delivery.
 async fn corrupted_download_and_receipt_failure_leave_no_install_or_cursor() {
-    use axum::{
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
-    use std::sync::atomic::{AtomicBool, Ordering};
-
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, global, _, _) = publish_observed_source(&router, &cookie).await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -649,9 +652,6 @@ async fn replacement_hub_account_cannot_serve_inflight_download() {
 
 #[tokio::test]
 async fn concurrent_identical_delivery_is_applied_once_and_acknowledged_twice() {
-    use axum::middleware::{self, Next};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
-
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, _global, _, _) = publish_observed_source(&router, &cookie).await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -713,14 +713,14 @@ async fn concurrent_identical_delivery_is_applied_once_and_acknowledged_twice() 
     assert_eq!(
         results
             .iter()
-            .filter(|x| matches!(x, PullOutcome::Applied { .. }))
+            .filter(|result| matches!(result, PullOutcome::Applied { .. }))
             .count(),
         1
     );
     assert_eq!(
         results
             .iter()
-            .filter(|x| matches!(x, PullOutcome::AlreadyApplied { .. }))
+            .filter(|result| matches!(result, PullOutcome::AlreadyApplied { .. }))
             .count(),
         1
     );
@@ -731,13 +731,6 @@ async fn concurrent_identical_delivery_is_applied_once_and_acknowledged_twice() 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // The same authenticated page is tampered in several independent ways before a valid retry.
 async fn malformed_page_cannot_install_or_advance_cursor() {
-    use axum::{
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, _, _, _) = publish_observed_source(&router, &cookie).await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -827,8 +820,6 @@ async fn malformed_page_cannot_install_or_advance_cursor() {
 
 #[tokio::test]
 async fn source_echo_acknowledges_exact_observation_without_overwriting_later_edits() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
-    use std::sync::atomic::Ordering;
     for later_edit in [false, true] {
         let (_hub_dir, hub, router, cookie) = app().await;
         let (_source_dir, source, global, _, writer) =
@@ -904,12 +895,7 @@ async fn source_echo_acknowledges_exact_observation_without_overwriting_later_ed
     }
 }
 
-fn forge_page_issuer(router: Router) -> (Router, Arc<std::sync::atomic::AtomicBool>) {
-    use axum::{
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use std::sync::atomic::{AtomicBool, Ordering};
+fn forge_page_issuer(router: Router) -> (Router, Arc<AtomicBool>) {
     let forge = Arc::new(AtomicBool::new(true));
     let forge_page = forge.clone();
     let router = router.layer(middleware::from_fn(
@@ -936,8 +922,6 @@ fn forge_page_issuer(router: Router) -> (Router, Arc<std::sync::atomic::AtomicBo
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // One stream must preserve ordering across distinct delivery kinds and an injected failure.
 async fn shared_stream_installs_genesis_operation_and_observation_in_order() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_author_dir, author) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -1103,8 +1087,6 @@ async fn shared_stream_installs_genesis_operation_and_observation_in_order() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Both source-authored items must acknowledge without projecting over a later local change.
 async fn source_echo_of_genesis_and_operation_preserves_later_local_edit() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -1223,8 +1205,6 @@ async fn source_echo_of_genesis_and_operation_preserves_later_local_edit() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // The receiving device lacks a model root until an explicit dependency installation.
 async fn missing_model_root_blocks_the_stream_without_acknowledging_the_move() {
-    use db::causal_model_move::MoveState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -1405,9 +1385,6 @@ async fn missing_model_root_blocks_the_stream_without_acknowledging_the_move() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // The receiver must project deletion and restoration from distinct ordered receipts.
 async fn lifecycle_delete_and_restore_apply_over_the_ordered_https_stream() {
-    use db::causal_group_lifecycle::GroupLifecycle;
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source) = crate::test_support::app_state().await;
     let user = db::model::user::User::default();
@@ -1442,7 +1419,7 @@ async fn lifecycle_delete_and_restore_apply_over_the_ordered_https_stream() {
     db::group_db::delete_group(&source.db, &user, group.id)
         .await
         .unwrap();
-    let GroupLifecycle::Deleted { deletions } =
+    let db::causal_group_lifecycle::GroupLifecycle::Deleted { deletions } =
         db::causal_group_lifecycle::get_state(&source.db, &user, &identity, group.id)
             .await
             .unwrap()
@@ -1582,8 +1559,6 @@ async fn lifecycle_delete_and_restore_apply_over_the_ordered_https_stream() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Two independently authored renames must survive delivery as user-selectable choices.
 async fn concurrent_rename_choices_survive_ordered_https_pull() {
-    use db::causal_group_rename::{NameState, ResolveResult};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_a_dir, a) = crate::test_support::app_state().await;
     let (_b_dir, b) = crate::test_support::app_state().await;
@@ -1735,8 +1710,6 @@ async fn concurrent_rename_choices_survive_ordered_https_pull() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Independent authenticated stream must acknowledge exact existing proof without overwriting later edits.
 async fn installed_observation_on_new_stream_keeps_later_local_edits() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
-    use std::sync::atomic::Ordering;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, global, _, _) = publish_observed_source(&router, &cookie).await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -1895,7 +1868,7 @@ async fn installed_observation_on_new_stream_keeps_later_local_edits() {
         .unwrap();
     assert!(
         client.pull_next(&receiver, &user, &identity).await.is_err(),
-        "a damaged prior proof cannot acknowledge the item"
+        "a damaged prior proof cannot acknowledge the b"
     );
     let receipts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_pull_receipts")
         .fetch_one(&*receiver.db)
@@ -1917,7 +1890,7 @@ async fn installed_observation_on_new_stream_keeps_later_local_edits() {
         .unwrap();
     assert_eq!(
         receipts, 1,
-        "failed second receipt cannot acknowledge the item"
+        "failed second receipt cannot acknowledge the b"
     );
     sqlx::query("DROP TRIGGER fail_duplicate_receipt")
         .execute(&*receiver.db)
@@ -1945,14 +1918,7 @@ async fn installed_observation_on_new_stream_keeps_later_local_edits() {
     ));
 }
 
-fn forge_observation_page(router: Router) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
-    use axum::{
-        middleware::{self, Next},
-        response::IntoResponse,
-    };
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write as _;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+fn forge_observation_page(router: Router) -> (Router, Arc<AtomicUsize>) {
     let attack = Arc::new(AtomicUsize::new(0));
     let state = attack.clone();
     let router = router.layer(middleware::from_fn(
@@ -1962,6 +1928,7 @@ fn forge_observation_page(router: Router) -> (Router, Arc<std::sync::atomic::Ato
                 let mode = state.load(Ordering::SeqCst);
                 if mode == 6 && request.uri().path().contains("/blobs/") {
                     state.store(7, Ordering::SeqCst);
+
                     return StatusCode::GONE.into_response();
                 }
                 let page = request.uri().path() == "/api/v2/sync/items";
@@ -1988,7 +1955,7 @@ fn forge_observation_page(router: Router) -> (Router, Arc<std::sync::atomic::Ato
                             serde_json::to_string(&proof).unwrap().into();
                     }
                     let wire = serde_json::to_string(&json["items"][0]["item"]).unwrap();
-                    let digest = Sha256::digest(wire.as_bytes()).iter().fold(
+                    let digest = sha2::Sha256::digest(wire.as_bytes()).iter().fold(
                         String::new(),
                         |mut out, byte| {
                             write!(out, "{byte:02x}").unwrap();
@@ -2016,7 +1983,6 @@ fn forge_observation_page(router: Router) -> (Router, Arc<std::sync::atomic::Ato
 
 #[tokio::test]
 async fn source_observation_can_be_acknowledged_on_a_second_stream() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source, global, _, writer) = publish_observed_source(&router, &cookie).await;
     let user = db::model::user::User::default();
@@ -2111,7 +2077,6 @@ async fn source_observation_can_be_acknowledged_on_a_second_stream() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // The same expired item is replayed to an established receiver, its author and an unknown receiver.
 async fn expired_hub_blob_allows_proven_replay_but_blocks_unknown_receiver() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source, global, _, source_writer) =
         publish_observed_source(&router, &cookie).await;
@@ -2283,7 +2248,6 @@ async fn publish_group_name_operation(
     group: i64,
     writer: &db::sync_transport::WriterRegistration,
 ) {
-    use db::causal_group_rename::NameState;
     let NameState::Ready { token, .. } =
         db::causal_group_lifecycle::get_state(&source.db, user, identity, group)
             .await
@@ -2322,7 +2286,6 @@ async fn publish_model_move_operation(
     model: i64,
     writer: &db::sync_transport::WriterRegistration,
 ) {
-    use db::causal_model_move::MoveState;
     let MoveState::Ready { token, .. } =
         db::causal_model_move::get_state(&source.db, user, identity, model)
             .await
@@ -2354,8 +2317,6 @@ async fn publish_model_move_operation(
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Two offline destination branches and a later source move exercise choice freshness.
 async fn occupied_common_baseline_preserves_concurrent_model_destinations() {
-    use db::causal_model_move::{MoveResolveResult, MoveState};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source, global, _, source_writer) =
         publish_observed_source_with_trash(&router, &cookie, false).await;
@@ -2570,10 +2531,10 @@ async fn occupied_common_baseline_preserves_concurrent_model_destinations() {
     assert_eq!(std::fs::read(&file).unwrap(), b"abc");
 }
 
+#[cfg(unix)] // inode identity assertions need std::os::unix::fs::MetadataExt
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // A second authenticated hub has a separate server identity but carries the identical immutable source log.
 async fn second_authenticated_hub_reuses_only_matching_content_attestation() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, _source, global, _, _) = publish_observed_source(&router, &cookie).await;
     let (_receiver_dir, receiver) = crate::test_support::app_state().await;
@@ -2664,7 +2625,6 @@ async fn second_authenticated_hub_reuses_only_matching_content_attestation() {
     let copied_files: Vec<_> = copied_slots
         .iter()
         .filter_map(|path| {
-            use std::os::unix::fs::MetadataExt;
             std::fs::metadata(path)
                 .ok()
                 .map(|meta| (path.clone(), meta.dev(), meta.ino()))
@@ -2737,7 +2697,6 @@ async fn second_authenticated_hub_reuses_only_matching_content_attestation() {
         "the second database must allocate its own certified slot"
     );
     for (path, device, inode) in copied_files {
-        use std::os::unix::fs::MetadataExt;
         let meta = std::fs::metadata(path).unwrap();
         assert_eq!((meta.dev(), meta.ino()), (device, inode));
     }
@@ -2819,7 +2778,6 @@ async fn second_authenticated_hub_reuses_only_matching_content_attestation() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Each unsupported local change must survive a blocked first proof.
 async fn occupied_baseline_never_overwrites_unsupported_local_drift() {
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
     for mode in ["metadata", "label", "project", "trash"] {
         let (_hub_dir, hub, router, cookie) = app().await;
         let (_source_dir, source, global, _, _) =
@@ -2975,9 +2933,6 @@ async fn occupied_baseline_never_overwrites_unsupported_local_drift() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Real baseline and independently authored branches must share one checked identity.
 async fn occupied_common_baseline_keeps_independent_branches_and_stale_choices() {
-    use db::causal_group_rename::{NameState, ResolveResult};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
-    use std::sync::atomic::Ordering;
     let (_hub_dir, hub, router, cookie) = app().await;
     let (_source_dir, source, global, deleted, source_writer) =
         publish_observed_source(&router, &cookie).await;
@@ -3272,10 +3227,6 @@ async fn occupied_common_baseline_keeps_independent_branches_and_stale_choices()
 
 #[allow(clippy::too_many_lines)] // A live request barrier ties account changes to the pending download.
 async fn assert_inflight_revocation(replacement: u8) {
-    use axum::middleware::{self, Next};
-    use service::sync_pull_service::{AuthenticatedHub, HubTrust};
-    use tokio::sync::Notify;
-
     let (_hub_dir, hub, router, cookie) = app().await;
     let hub_user_id = db::user_db::get_user_by_email(&hub.db, "alice@example.com")
         .await

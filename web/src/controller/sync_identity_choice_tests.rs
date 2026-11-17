@@ -1,9 +1,31 @@
 //! User-confirmed identity matching must preserve independent legacy histories.
+use std::{
+    fmt::Write,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
+use axum::response::IntoResponse;
+use sha2::Digest;
+
+use db::{
+    causal_envelope::{Action, canonical_causal_envelope, parse_causal_envelope},
+    causal_group_lifecycle::GroupLifecycle,
+    causal_group_rename::{NameState, ResolveResult},
+    causal_model_move::MoveState,
+    causal_store::IdentityStatus,
+};
+use service::sync_pull_service::{
+    AdvanceOutcome, AuthenticatedHub, GroupIdentityDecision, HubTrust, ModelIdentityDecision,
+    NamePublication, OperationSelection, discard_queued_publication,
+};
+
 use super::{
     pull::{TEST_CA, TlsHub},
     *,
 };
-use service::sync_pull_service::{AuthenticatedHub, HubTrust};
 
 struct Fixture {
     dirs: Vec<tempfile::TempDir>,
@@ -113,32 +135,26 @@ async fn received_name_fixture(populated: bool) -> (Fixture, String) {
 #[allow(clippy::too_many_lines)] // The fixture builds authenticated peers and optionally controls the blob response.
 async fn fixture_with_download_barrier(
     populated: bool,
-    barrier: Option<(
-        std::sync::Arc<tokio::sync::Notify>,
-        std::sync::Arc<tokio::sync::Notify>,
-    )>,
+    barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     corrupt: bool,
 ) -> Fixture {
     fixture_with_counter(populated, barrier, corrupt, None, None, None).await
 }
 
 type FeedGate = (
-    std::sync::Arc<std::sync::atomic::AtomicBool>,
-    std::sync::Arc<tokio::sync::Notify>,
-    std::sync::Arc<tokio::sync::Notify>,
+    Arc<std::sync::atomic::AtomicBool>,
+    Arc<tokio::sync::Notify>,
+    Arc<tokio::sync::Notify>,
 );
 
 #[allow(clippy::too_many_lines)] // The fixture builds authenticated peers and optionally controls and counts responses.
 async fn fixture_with_counter(
     populated: bool,
-    barrier: Option<(
-        std::sync::Arc<tokio::sync::Notify>,
-        std::sync::Arc<tokio::sync::Notify>,
-    )>,
+    barrier: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     corrupt: bool,
-    counter: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+    counter: Option<Arc<AtomicUsize>>,
     feed_gate: Option<FeedGate>,
-    attack: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+    attack: Option<Arc<AtomicUsize>>,
 ) -> Fixture {
     let (hub_dir, hub, router, _) = app().await;
     let (author_dir, author) = crate::test_support::app_state().await;
@@ -171,7 +187,6 @@ async fn fixture_with_counter(
     let router = if corrupt {
         router.layer(axum::middleware::from_fn(
             |request: Request<Body>, next: axum::middleware::Next| async move {
-                use axum::response::IntoResponse;
                 if request.uri().path().contains("/blobs/") {
                     return (StatusCode::OK, "abd").into_response();
                 }
@@ -189,7 +204,7 @@ async fn fixture_with_counter(
                     if request.method() == axum::http::Method::GET
                         && request.uri().path() == "/api/v2/sync/items"
                     {
-                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        counter.fetch_add(1, Ordering::SeqCst);
                     }
                     next.run(request).await
                 }
@@ -206,7 +221,7 @@ async fn fixture_with_counter(
                     let is_feed = request.method() == axum::http::Method::GET
                         && request.uri().path() == "/api/v2/sync/items";
                     let response = next.run(request).await;
-                    if is_feed && armed.load(std::sync::atomic::Ordering::SeqCst) {
+                    if is_feed && armed.load(Ordering::SeqCst) {
                         reached.notify_one();
                         release.notified().await;
                     }
@@ -222,11 +237,10 @@ async fn fixture_with_counter(
             move |request: Request<Body>, next: axum::middleware::Next| {
                 let attack = attack.clone();
                 async move {
-                    use axum::response::IntoResponse;
                     let is_feed = request.method() == axum::http::Method::GET
                         && request.uri().path() == "/api/v2/sync/items";
                     let response = next.run(request).await;
-                    let mode = attack.load(std::sync::atomic::Ordering::SeqCst);
+                    let mode = attack.load(Ordering::SeqCst);
                     if !is_feed || mode == 0 {
                         return response;
                     }
@@ -361,8 +375,6 @@ async fn fixture_with_counter(
 
 #[tokio::test]
 async fn confirmed_empty_legacy_identity_preserves_both_names_and_unknown_roots() {
-    use db::causal_group_rename::NameState;
-
     let Fixture {
         receiver,
         user,
@@ -423,7 +435,7 @@ async fn confirmed_empty_legacy_identity_preserves_both_names_and_unknown_roots(
         "both original observations must be retained"
     );
     for root in roots {
-        let event = db::causal_envelope::parse_causal_envelope(&root).unwrap();
+        let event = parse_causal_envelope(&root).unwrap();
         assert!(
             event.parents.is_empty(),
             "neither observation invents earlier ancestry"
@@ -806,7 +818,6 @@ async fn populated_identity_name_relay_preserves_remote_child() {
 
 #[allow(clippy::too_many_lines)] // Exercise original author and recipient through the complete relay.
 async fn assert_identity_name_relay(populated: bool) {
-    use db::causal_group_rename::{NameState, ResolveResult};
     let Fixture {
         receiver,
         author,
@@ -894,7 +905,6 @@ async fn assert_identity_name_relay(populated: bool) {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // The test follows an identity choice across three independent devices.
 async fn identity_linked_name_choice_becomes_stale_after_third_device_rename() {
-    use db::causal_group_rename::{NameState, ResolveResult};
     let Fixture {
         receiver,
         user,
@@ -1076,11 +1086,8 @@ async fn separate_legacy_groups_preserves_identity_history_and_retries() {
     .fetch_one(&*receiver.db)
     .await
     .unwrap();
-    let event = db::causal_envelope::parse_causal_envelope(&wire).unwrap();
-    assert!(matches!(
-        event.action,
-        db::causal_envelope::Action::LegacyObserved { .. }
-    ));
+    let event = parse_causal_envelope(&wire).unwrap();
+    assert!(matches!(event.action, Action::LegacyObserved { .. }));
     assert!(
         event.parents.is_empty(),
         "separation must not invent creation history"
@@ -1789,8 +1796,8 @@ async fn populated_choice_rejects_legacy_scalar_child_history() {
 #[tokio::test]
 async fn populated_choice_rechecks_local_state_after_blob_download() {
     for same_group in [true, false] {
-        let reached = std::sync::Arc::new(tokio::sync::Notify::new());
-        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
         let Fixture {
             receiver,
             user,
@@ -1870,8 +1877,8 @@ async fn populated_choice_rechecks_local_state_after_blob_download() {
 #[tokio::test]
 async fn populated_choice_rechecks_child_identity_after_download() {
     for same_group in [true, false] {
-        let reached = std::sync::Arc::new(tokio::sync::Notify::new());
-        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
         let Fixture {
             receiver,
             user,
@@ -2310,8 +2317,8 @@ async fn keep_both_populated_receipt_failure_rolls_back_both_groups_and_outbox()
 
 #[tokio::test]
 async fn keep_both_populated_rechecks_local_model_after_remote_download() {
-    let reached = std::sync::Arc::new(tokio::sync::Notify::new());
-    let release = std::sync::Arc::new(tokio::sync::Notify::new());
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
     let fixture =
         fixture_with_download_barrier(true, Some((reached.clone(), release.clone())), false).await;
     let (model, path) = add_imported_local_model(&fixture).await;
@@ -2441,7 +2448,7 @@ async fn same_populated_groups_keep_disjoint_children_and_relay_independent_root
     .fetch_one(&*fixture.receiver.db)
     .await
     .unwrap();
-    let root = db::causal_envelope::parse_causal_envelope(&wire).unwrap();
+    let root = parse_causal_envelope(&wire).unwrap();
     assert!(
         root.parents.is_empty(),
         "the local observation must remain independent"
@@ -2670,8 +2677,8 @@ async fn same_populated_group_receipt_failure_rolls_back_all_and_retries() {
 
 #[tokio::test]
 async fn same_populated_group_rechecks_local_child_after_download() {
-    let reached = std::sync::Arc::new(tokio::sync::Notify::new());
-    let release = std::sync::Arc::new(tokio::sync::Notify::new());
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
     let fixture =
         fixture_with_download_barrier(true, Some((reached.clone(), release.clone())), false).await;
     let (model, path) = add_imported_local_model(&fixture).await;
@@ -2743,7 +2750,6 @@ async fn same_populated_group_rechecks_local_child_after_download() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Exercise independent rename and supplemental model through the relay.
 async fn same_populated_supplement_does_not_overwrite_sender_later_rename() {
-    use db::causal_group_rename::NameState;
     let fixture = fixture_with_remote_model(true).await;
     let (local_model, _) = add_imported_local_model(&fixture).await;
     let local_global: String =
@@ -2864,7 +2870,6 @@ async fn same_populated_supplement_does_not_overwrite_sender_later_rename() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Exercise an independent ungroup and supplemental model through the relay.
 async fn same_populated_supplement_does_not_undo_sender_later_ungroup() {
-    use db::causal_model_move::MoveState;
     let fixture = fixture_with_remote_model(true).await;
     let (local_model, _) = add_imported_local_model(&fixture).await;
     let local_global: String =
@@ -2974,7 +2979,6 @@ async fn same_populated_supplement_does_not_undo_sender_later_ungroup() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Both delivery orders must preserve the group, models and deletion evidence.
 async fn concurrent_delete_and_populated_observation_keep_group_in_both_orders() {
-    use db::causal_group_lifecycle::GroupLifecycle;
     for delete_first in [true, false] {
         let fixture = fixture_with_remote_model(true).await;
         let (local_model, _) = add_imported_local_model(&fixture).await;
@@ -3080,7 +3084,6 @@ async fn concurrent_delete_and_populated_observation_keep_group_in_both_orders()
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Verify retention, identity-reuse rejection and late rehydration together.
 async fn late_populated_observation_rehydrates_deleted_group_after_retention() {
-    use db::causal_group_lifecycle::GroupLifecycle;
     let fixture = fixture_with_remote_model(true).await;
     let (local_model, _) = add_imported_local_model(&fixture).await;
     let local_global: String =
@@ -3542,8 +3545,6 @@ async fn populated_identity_name_choice_relays_without_losing_models() {
 
 #[allow(clippy::too_many_lines)] // A selected name must queue atomically, retry without reapplying and relay to another device.
 async fn assert_identity_name_choice_queues_and_retries(populated: bool) {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     let fixture = fixture_with_remote_model(populated).await;
     if populated {
         add_imported_local_model(&fixture).await;
@@ -3793,8 +3794,6 @@ async fn empty_identity_queue_failure_rolls_back_choice_and_keeps_local_editing(
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Test a transaction failure and retry around an existing conflict.
 async fn identity_name_queue_failure_keeps_conflict_and_allows_retry() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     let fixture = fixture().await;
     let choice = fixture
         .client
@@ -3966,8 +3965,6 @@ async fn full_identity_outbox_does_not_block_ordinary_local_edits() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Verify stale, unoffered and foreign choices without changing the conflict.
 async fn identity_name_resolution_rejects_stale_unoffered_and_foreign_choices() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     let fixture = fixture().await;
     let choice = fixture
         .client
@@ -4088,7 +4085,6 @@ async fn identity_name_resolution_rejects_stale_unoffered_and_foreign_choices() 
 
 #[tokio::test]
 async fn discarded_empty_identity_choice_cannot_retry_as_queued() {
-    use service::sync_pull_service::discard_queued_publication;
     for same_group in [true, false] {
         let fixture = fixture().await;
         let choice = fixture
@@ -4178,8 +4174,6 @@ async fn discarded_empty_identity_choice_cannot_retry_as_queued() {
 
 #[tokio::test]
 async fn discarded_name_resolution_cannot_retry_as_queued() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::{NamePublication, discard_queued_publication};
     let fixture = fixture().await;
     let choice = fixture
         .client
@@ -4266,8 +4260,6 @@ async fn discarded_name_resolution_cannot_retry_as_queued() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Retry is bound to the original authorization even if the URL and token are reused.
 async fn name_resolution_retry_after_relink_cannot_reuse_old_decision_authority() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     let fixture = fixture().await;
     let choice = fixture
         .client
@@ -4371,7 +4363,6 @@ async fn name_resolution_retry_after_relink_cannot_reuse_old_decision_authority(
 
 #[tokio::test]
 async fn populated_observation_cannot_use_empty_no_stage_outbox_path() {
-    use service::sync_pull_service::discard_queued_publication;
     let fixture = fixture().await;
     let (model, path) = add_imported_local_model(&fixture).await;
     let outbox = fixture
@@ -4391,9 +4382,7 @@ async fn populated_observation_cannot_use_empty_no_stage_outbox_path() {
             .await
             .unwrap();
     let item: serde_json::Value = serde_json::from_str(&item).unwrap();
-    let root =
-        db::causal_envelope::parse_causal_envelope(item["group"]["envelope"].as_str().unwrap())
-            .unwrap();
+    let root = parse_causal_envelope(item["group"]["envelope"].as_str().unwrap()).unwrap();
     discard_queued_publication(
         &fixture.receiver,
         &fixture.user,
@@ -4441,8 +4430,6 @@ async fn populated_observation_cannot_use_empty_no_stage_outbox_path() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Two receiving devices must queue independent choices and retain both when they conflict.
 async fn received_name_offers_queue_concurrent_choices_on_original_and_third_devices() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     for populated in [false, true] {
         let fixture = fixture_with_remote_model(populated).await;
         if populated {
@@ -4641,8 +4628,6 @@ async fn received_name_offers_queue_concurrent_choices_on_original_and_third_dev
 
 #[tokio::test]
 async fn received_name_offer_rechecks_frontier_before_resolving() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     let (fixture, decision) = Box::pin(received_name_fixture(false)).await;
     let offer = fixture
         .sender
@@ -4731,8 +4716,6 @@ async fn received_name_offer_rechecks_frontier_before_resolving() {
 
 #[tokio::test]
 async fn received_name_queue_failure_rolls_back_conflict_and_retries() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::NamePublication;
     let (fixture, _) = Box::pin(received_name_fixture(false)).await;
     let offer = fixture
         .sender
@@ -4823,7 +4806,6 @@ async fn received_name_queue_failure_rolls_back_conflict_and_retries() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Reopen, exact retry, conflicting retry and discard must preserve the same receipt.
 async fn received_name_choice_retries_after_database_reopen_then_reports_discard() {
-    use service::sync_pull_service::{NamePublication, discard_queued_publication};
     let (fixture, _) = Box::pin(received_name_fixture(false)).await;
     let offer = fixture
         .sender
@@ -4855,9 +4837,9 @@ async fn received_name_choice_retries_after_database_reopen_then_reports_discard
     let db =
         db::db_context::setup_db(&author_dir.join("db.sqlite"), &author_dir.join("backups")).await;
     let reopened = service::AppState {
-        db: std::sync::Arc::new(db),
+        db: Arc::new(db),
         configuration: std::sync::Mutex::new(fixture.author.get_configuration()),
-        import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
         app_data_path: fixture.author.app_data_path.clone(),
     };
     let client = AuthenticatedHub::pair(
@@ -5084,7 +5066,6 @@ async fn received_name_offer_rejects_altered_receipt_digest() {
 
 #[tokio::test]
 async fn received_name_offer_rechecks_receipt_at_resolution() {
-    use db::causal_group_rename::NameState;
     let (fixture, _) = Box::pin(received_name_fixture(false)).await;
     let offer = fixture
         .sender
@@ -5145,7 +5126,6 @@ async fn received_name_offer_rechecks_receipt_at_resolution() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // One delivery must yield an actionable identity choice and expose its queued publication separately from feed status.
 async fn advance_one_offers_exact_identity_choice_and_separately_reports_pending_work() {
-    use service::sync_pull_service::AdvanceOutcome;
     for same_group in [true, false] {
         let fixture = fixture().await;
         let pending = fixture
@@ -5259,11 +5239,6 @@ async fn advance_one_offers_exact_identity_choice_and_separately_reports_pending
 
 #[tokio::test]
 async fn advance_one_fetches_each_delivery_only_once() {
-    use service::sync_pull_service::AdvanceOutcome;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
     for occupied in [true, false] {
         let count = Arc::new(AtomicUsize::new(0));
         let fixture =
@@ -5362,9 +5337,9 @@ async fn pending_publications_are_bounded_owner_scoped_and_survive_reopen() {
     )
     .await;
     let reopened = service::AppState {
-        db: std::sync::Arc::new(db),
+        db: Arc::new(db),
         configuration: std::sync::Mutex::new(fixture.receiver.get_configuration()),
-        import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
         app_data_path: fixture.receiver.app_data_path.clone(),
     };
     let client = AuthenticatedHub::pair(
@@ -5539,11 +5514,7 @@ async fn advance_one_never_skips_ambiguous_candidates_or_child_collisions() {
 
 #[tokio::test]
 async fn advance_one_rejects_link_changed_after_feed_response() {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    };
-    let armed = Arc::new(AtomicBool::new(false));
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let reached = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     let fixture = fixture_with_counter(
@@ -5599,10 +5570,6 @@ async fn advance_one_rejects_link_changed_after_feed_response() {
 
 #[tokio::test]
 async fn advance_one_rejects_malformed_or_altered_feed_without_advancing() {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
     let attack = Arc::new(AtomicUsize::new(0));
     let fixture = fixture_with_counter(false, None, false, None, None, Some(attack.clone())).await;
     for mode in 1..=3 {
@@ -5646,7 +5613,6 @@ async fn advance_one_rejects_malformed_or_altered_feed_without_advancing() {
 
 #[tokio::test]
 async fn advance_one_acknowledges_proven_source_echo_after_global_id_reuse() {
-    use service::sync_pull_service::AdvanceOutcome;
     let fixture = fixture_with_remote_model(true).await;
     let fresh = db::random_hex_32();
     db::group_db::edit_group(
@@ -5691,7 +5657,6 @@ async fn advance_one_acknowledges_proven_source_echo_after_global_id_reuse() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Selection must relay both original operations even when a later edit is already visible.
 async fn selected_local_operations_preserve_original_events_and_relay_in_order() {
-    use service::sync_pull_service::{AdvanceOutcome, OperationSelection};
     let fixture = fixture_with_remote_model(true).await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -5815,7 +5780,6 @@ async fn selected_local_operations_preserve_original_events_and_relay_in_order()
 
 #[tokio::test]
 async fn selector_never_requeues_explicitly_discarded_operation() {
-    use service::sync_pull_service::{OperationSelection, discard_queued_publication};
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -5886,8 +5850,6 @@ async fn selector_never_requeues_explicitly_discarded_operation() {
 
 #[tokio::test]
 async fn selector_queue_failure_keeps_local_edit_and_retries_original_event() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -5945,7 +5907,6 @@ async fn selector_queue_failure_keeps_local_edit_and_retries_original_event() {
 
 #[tokio::test]
 async fn selector_full_queue_keeps_local_edit_selectable_after_space_frees() {
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -6018,13 +5979,12 @@ async fn selector_full_queue_keeps_local_edit_selectable_after_space_frees() {
     .await
     .unwrap();
     assert!(
-        matches!(db::causal_envelope::parse_causal_envelope(&wire).unwrap().action, db::causal_envelope::Action::GroupRenamed { ref name } if name == "second")
+        matches!(parse_causal_envelope(&wire).unwrap().action, Action::GroupRenamed { ref name } if name == "second")
     );
 }
 
 #[tokio::test]
 async fn selector_never_reauthors_received_operations() {
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -6115,7 +6075,6 @@ async fn selector_never_reauthors_received_operations() {
 
 #[tokio::test]
 async fn selector_queues_complete_move_bundle_with_both_causal_events() {
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     let blob = db::blob_db::add_blob(&fixture.author.db, &db::random_hex_32(), "stl", 1, None)
         .await
@@ -6170,22 +6129,22 @@ async fn selector_queues_complete_move_bundle_with_both_causal_events() {
     );
     let events: Vec<_> = wires
         .iter()
-        .map(|wire| db::causal_envelope::parse_causal_envelope(wire.as_str().unwrap()).unwrap())
+        .map(|wire| parse_causal_envelope(wire.as_str().unwrap()).unwrap())
         .collect();
     assert!(
         events
             .iter()
-            .any(|event| matches!(event.action, db::causal_envelope::Action::ModelMoved { .. }))
+            .any(|event| matches!(event.action, Action::ModelMoved { .. }))
     );
-    assert!(events.iter().any(|event| matches!(
-        event.action,
-        db::causal_envelope::Action::GroupMemberAdded { .. }
-    )));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event.action, Action::GroupMemberAdded { .. }))
+    );
 }
 
 #[tokio::test]
 async fn selector_reports_preexisting_untracked_history_without_reauthoring_it() {
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -6237,7 +6196,6 @@ async fn selector_reports_preexisting_untracked_history_without_reauthoring_it()
 
 #[tokio::test]
 async fn selector_reports_old_link_operations_and_rejects_foreign_owner() {
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -6366,8 +6324,6 @@ async fn selector_blocks_when_untracked_model_metadata_changes_pause_scope() {
 
 #[tokio::test]
 async fn selector_recovers_unsent_original_operation_after_reopen() {
-    use db::causal_group_rename::NameState;
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture().await;
     db::group_db::edit_group(
         &fixture.author.db,
@@ -6396,9 +6352,9 @@ async fn selector_recovers_unsent_original_operation_after_reopen() {
     let db =
         db::db_context::setup_db(&directory.join("db.sqlite"), &directory.join("backups")).await;
     let reopened = service::AppState {
-        db: std::sync::Arc::new(db),
+        db: Arc::new(db),
         configuration: std::sync::Mutex::new(fixture.author.get_configuration()),
-        import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        import_mutex: Arc::new(tokio::sync::Mutex::new(())),
         app_data_path: fixture.author.app_data_path.clone(),
     };
     let client = AuthenticatedHub::pair(
@@ -6469,7 +6425,6 @@ async fn selector_recovers_unsent_original_operation_after_reopen() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Deletion and restoration must each retain their original complete causal cut.
 async fn selector_relays_delete_restore_with_original_author_context() {
-    use service::sync_pull_service::OperationSelection;
     let fixture = fixture_with_remote_model(true).await;
     db::group_db::delete_group(&fixture.author.db, &fixture.user, fixture.remote)
         .await
@@ -6670,7 +6625,6 @@ async fn ambiguous_imported_model(fixture: &Fixture) -> (i64, std::path::PathBuf
 }
 
 async fn model_group_offer(fixture: &Fixture) -> String {
-    use service::sync_pull_service::AdvanceOutcome;
     let AdvanceOutcome::IdentityRequired(choice) = fixture
         .client
         .advance_one(&fixture.receiver, &fixture.user, &fixture.receiver_identity)
@@ -6685,8 +6639,6 @@ async fn model_group_offer(fixture: &Fixture) -> String {
 
 #[tokio::test]
 async fn explicit_same_model_pair_preserves_local_row_and_remote_identity() {
-    use service::sync_pull_service::ModelIdentityDecision;
-
     let fixture = fixture_with_remote_model(true).await;
     let (local, path) = ambiguous_imported_model(&fixture).await;
     let group_decision_id = model_group_offer(&fixture).await;
@@ -6698,7 +6650,7 @@ async fn explicit_same_model_pair_preserves_local_row_and_remote_identity() {
             &fixture.receiver_identity,
             &group_decision_id,
             local,
-            service::sync_pull_service::GroupIdentityDecision::Same,
+            GroupIdentityDecision::Same,
         )
         .await
         .expect("a single ambiguous pair must be offered for explicit review");
@@ -6728,8 +6680,6 @@ async fn explicit_same_model_pair_preserves_local_row_and_remote_identity() {
 
 #[tokio::test]
 async fn explicit_separate_model_pair_preserves_both_and_is_idempotent() {
-    use service::sync_pull_service::ModelIdentityDecision;
-
     let fixture = fixture_with_remote_model(true).await;
     let (local, path) = ambiguous_imported_model(&fixture).await;
     let group_decision_id = model_group_offer(&fixture).await;
@@ -6742,7 +6692,7 @@ async fn explicit_separate_model_pair_preserves_both_and_is_idempotent() {
             &fixture.receiver_identity,
             &group_decision_id,
             local,
-            service::sync_pull_service::GroupIdentityDecision::Same,
+            GroupIdentityDecision::Same,
         )
         .await
         .unwrap();
@@ -6855,8 +6805,6 @@ async fn ambiguous_model_pair_never_implicitly_matches_or_advances_feed() {
 
 #[tokio::test]
 async fn same_model_choice_rejects_changed_bytes_without_advancing() {
-    use service::sync_pull_service::ModelIdentityDecision;
-
     let fixture = fixture_with_remote_model(true).await;
     let (local, path) = ambiguous_imported_model(&fixture).await;
     let group_decision_id = model_group_offer(&fixture).await;
@@ -6868,7 +6816,7 @@ async fn same_model_choice_rejects_changed_bytes_without_advancing() {
             &fixture.receiver_identity,
             &group_decision_id,
             local,
-            service::sync_pull_service::GroupIdentityDecision::Same,
+            GroupIdentityDecision::Same,
         )
         .await
         .unwrap();
@@ -6905,8 +6853,6 @@ async fn same_model_choice_rejects_changed_bytes_without_advancing() {
 
 #[tokio::test]
 async fn model_pair_choice_rejects_changed_local_member_after_offer() {
-    use service::sync_pull_service::ModelIdentityDecision;
-
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     let group_decision_id = model_group_offer(&fixture).await;
@@ -6918,7 +6864,7 @@ async fn model_pair_choice_rejects_changed_local_member_after_offer() {
             &fixture.receiver_identity,
             &group_decision_id,
             local,
-            service::sync_pull_service::GroupIdentityDecision::Same,
+            GroupIdentityDecision::Same,
         )
         .await
         .unwrap();
@@ -6953,8 +6899,6 @@ async fn model_pair_choice_rejects_changed_local_member_after_offer() {
 
 #[tokio::test]
 async fn model_pair_receipt_failure_rolls_back_and_choice_can_retry() {
-    use service::sync_pull_service::ModelIdentityDecision;
-
     for decision in [ModelIdentityDecision::Same, ModelIdentityDecision::Separate] {
         let fixture = fixture_with_remote_model(true).await;
         let (local, path) = ambiguous_imported_model(&fixture).await;
@@ -6967,7 +6911,7 @@ async fn model_pair_receipt_failure_rolls_back_and_choice_can_retry() {
                 &fixture.receiver_identity,
                 &group_decision_id,
                 local,
-                service::sync_pull_service::GroupIdentityDecision::Same,
+                GroupIdentityDecision::Same,
             )
             .await
             .unwrap();
@@ -7035,8 +6979,6 @@ async fn model_pair_receipt_failure_rolls_back_and_choice_can_retry() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Compare each explicit choice across author and third-device relay.
 async fn explicit_model_pair_decisions_relay_to_author_and_third_device() {
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
-
     for (group_decision, decision, expected_count, expected_groups) in [
         (
             GroupIdentityDecision::Same,
@@ -7145,7 +7087,6 @@ async fn explicit_model_pair_decisions_relay_to_author_and_third_device() {
 
 #[tokio::test]
 async fn model_pair_same_with_different_details_requires_version_choice() {
-    use service::sync_pull_service::ModelIdentityDecision;
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     sqlx::query("UPDATE models SET model_name='another version' WHERE model_id=?")
@@ -7162,7 +7103,7 @@ async fn model_pair_same_with_different_details_requires_version_choice() {
             &fixture.receiver_identity,
             &group_decision_id,
             local,
-            service::sync_pull_service::GroupIdentityDecision::Same,
+            GroupIdentityDecision::Same,
         )
         .await
         .unwrap();
@@ -7209,7 +7150,7 @@ async fn model_pair_offer_rejects_existing_unknown_tombstone() {
                 &fixture.receiver_identity,
                 &group_decision_id,
                 local,
-                service::sync_pull_service::GroupIdentityDecision::Same,
+                GroupIdentityDecision::Same,
             )
             .await
             .is_err()
@@ -7225,7 +7166,6 @@ async fn model_pair_offer_rejects_existing_unknown_tombstone() {
 
 #[tokio::test]
 async fn advance_one_asks_group_identity_before_ambiguous_model_identity() {
-    use service::sync_pull_service::AdvanceOutcome;
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     let offered = fixture
@@ -7255,7 +7195,6 @@ async fn advance_one_asks_group_identity_before_ambiguous_model_identity() {
 
 #[tokio::test]
 async fn explicit_separate_groups_keep_separate_models_and_reject_same_model() {
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     let fixture = fixture_with_remote_model(true).await;
     let (local, path) = ambiguous_imported_model(&fixture).await;
     let group_decision_id = model_group_offer(&fixture).await;
@@ -7325,11 +7264,6 @@ async fn explicit_separate_groups_keep_separate_models_and_reject_same_model() {
 
 #[tokio::test]
 async fn model_pair_uses_the_group_offer_without_refetching_feed() {
-    use service::sync_pull_service::GroupIdentityDecision;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
     let count = Arc::new(AtomicUsize::new(0));
     let fixture = fixture_with_counter(true, None, false, Some(count.clone()), None, None).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
@@ -7357,7 +7291,6 @@ async fn model_pair_uses_the_group_offer_without_refetching_feed() {
 
 #[tokio::test]
 async fn model_pair_requires_group_consent_and_rejects_opposite_retry() {
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     let offer = model_group_offer(&fixture).await;
@@ -7426,7 +7359,6 @@ async fn model_pair_requires_group_consent_and_rejects_opposite_retry() {
 
 #[tokio::test]
 async fn model_pair_rejects_aba_and_foreign_confirmation() {
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     let offer = model_group_offer(&fixture).await;
@@ -7512,7 +7444,6 @@ async fn model_pair_rejects_aba_and_foreign_confirmation() {
 
 #[tokio::test]
 async fn model_pair_cannot_confirm_after_relink() {
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     let offer = model_group_offer(&fixture).await;
@@ -7557,8 +7488,6 @@ async fn model_pair_cannot_confirm_after_relink() {
 
 #[tokio::test]
 async fn model_separation_does_not_certify_later_unknown_incarnations() {
-    use db::{causal_envelope::Dot, causal_store::IdentityStatus};
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     for delete in [false, true] {
         let fixture = fixture_with_remote_model(true).await;
         let (local, _) = ambiguous_imported_model(&fixture).await;
@@ -7588,7 +7517,7 @@ async fn model_separation_does_not_certify_later_unknown_incarnations() {
             .unwrap();
         let (writer, counter): (String, i64) = sqlx::query_as("SELECT writer_id,counter FROM causal_genesis_bindings WHERE user_id=? AND entity_kind='model' AND local_id=?")
             .bind(fixture.user.id).bind(outcome.remote_model_id).fetch_one(&*fixture.receiver.db).await.unwrap();
-        let dot = Dot {
+        let dot = db::causal_envelope::Dot {
             writer_id: writer,
             counter: counter.to_string(),
         };
@@ -7637,7 +7566,6 @@ async fn model_separation_does_not_certify_later_unknown_incarnations() {
 
 #[tokio::test]
 async fn cancel_uncommitted_group_choice_allows_a_fresh_decision() {
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     let fixture = fixture_with_remote_model(true).await;
     let (local, path) = ambiguous_imported_model(&fixture).await;
     let offer = model_group_offer(&fixture).await;
@@ -7740,8 +7668,6 @@ async fn cancel_uncommitted_group_choice_allows_a_fresh_decision() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Exercise a concurrent author move across authenticated relay.
 async fn same_model_supplement_does_not_overwrite_authors_later_move() {
-    use db::causal_model_move::MoveState;
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
     let fixture = fixture_with_remote_model(true).await;
     let (local, _) = ambiguous_imported_model(&fixture).await;
     let offer = model_group_offer(&fixture).await;
@@ -7855,12 +7781,8 @@ async fn same_model_supplement_does_not_overwrite_authors_later_move() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Construct a fully authenticated malicious batch from two valid baseline observations.
 async fn forged_cross_group_model_baseline_is_rejected_atomically() {
-    use db::causal_envelope::{Action, canonical_causal_envelope, parse_causal_envelope};
-    use service::sync_pull_service::{GroupIdentityDecision, ModelIdentityDecision};
-    use sha2::{Digest, Sha256};
     let digest = |value: &str| {
-        use std::fmt::Write;
-        Sha256::digest(value.as_bytes()).iter().fold(
+        sha2::Sha256::digest(value.as_bytes()).iter().fold(
             String::with_capacity(64),
             |mut output, byte| {
                 write!(output, "{byte:02x}").unwrap();

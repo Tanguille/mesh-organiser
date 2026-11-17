@@ -1,25 +1,27 @@
 //! Empty model groups remain usable destinations without exposing another user's groups.
 
+use common::test_db;
+
 use db::{
-    blob_db,
     db_context::DbContext,
-    group_db::{self, GroupFilterOptions, GroupOrderBy},
-    model::{blob::FileType, user::User},
-    model_db, random_hex_32, resource_db, user_db,
+    group_db::{self, GroupFilterOptions},
+    model::user::User,
+    model_db, user_db,
 };
 
 mod common;
-use common::test_db;
 
 async fn add_model(db: &DbContext, user: &User, name: &str) -> i64 {
-    let blob_id = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+    let blob_id = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     model_db::add_model(db, user, name, blob_id, None, None)
         .await
         .unwrap()
 }
 
 async fn other_user(db: &DbContext) -> User {
-    let id = user_db::add_user(db, "other", "other@example.com", &random_hex_32())
+    let id = user_db::add_user(db, "other", "other@example.com", &db::random_hex_32())
         .await
         .unwrap();
     user_db::get_user_by_id(db, id).await.unwrap().unwrap()
@@ -104,7 +106,7 @@ async fn empty_groups_take_their_sorted_place_before_pagination() {
             &db,
             &user,
             GroupFilterOptions {
-                order_by: Some(GroupOrderBy::NameAsc),
+                order_by: Some(group_db::GroupOrderBy::NameAsc),
                 page,
                 page_size: 1,
                 ..Default::default()
@@ -170,7 +172,7 @@ async fn empty_group_name_search_and_model_filters_are_respected() {
             ..Default::default()
         },
         GroupFilterOptions {
-            file_types: Some(vec![FileType::Stl]),
+            file_types: Some(vec![db::model::blob::FileType::Stl]),
             ..Default::default()
         },
     ] {
@@ -228,7 +230,7 @@ async fn empty_group_keeps_its_resource_metadata() {
     let group = group_db::add_empty_group(&db, &user, "folder", None)
         .await
         .unwrap();
-    let resource = resource_db::add_resource(&db, &user, "project", None)
+    let resource = db::resource_db::add_resource(&db, &user, "project", None)
         .await
         .unwrap();
     sqlx::query("UPDATE models_group SET group_resource_id = ? WHERE group_id = ?")
@@ -249,7 +251,10 @@ async fn empty_group_keeps_its_resource_metadata() {
     .unwrap();
     assert_eq!(groups.items.len(), 1);
     assert_eq!(
-        groups.items[0].resource.as_ref().map(|r| r.id),
+        groups.items[0]
+            .resource
+            .as_ref()
+            .map(|resource| resource.id),
         Some(resource.id)
     );
 }

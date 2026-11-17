@@ -1,9 +1,8 @@
 //! Decision-bound downloads do not hold a database transaction during network I/O.
-use super::{
-    Authorization, DbContext, DbError, Delivery, GroupIdentityOutcome, GroupSeparationOutcome,
-    choice, confirm_in, invalid, pending, populated, separation,
-};
+
 use sqlx::SqliteConnection;
+
+use super::{Authorization, DbError, choice, invalid};
 
 #[derive(Clone, Copy)]
 pub enum Decision {
@@ -13,8 +12,8 @@ pub enum Decision {
 }
 
 pub enum DecisionOutcome {
-    Same(GroupIdentityOutcome),
-    Separate(GroupSeparationOutcome),
+    Same(super::GroupIdentityOutcome),
+    Separate(super::GroupSeparationOutcome),
     ModelPair(super::model_pair::ModelIdentityOutcome),
 }
 
@@ -28,14 +27,14 @@ pub struct LocalObservationStage {
 pub enum IdentityTransfer {
     Complete(DecisionOutcome),
     Pending {
-        delivery: Box<Delivery>,
+        delivery: Box<super::Delivery>,
         item: serde_json::Value,
         local_group_id: Option<i64>,
     },
 }
 
 pub async fn prepare_transfer(
-    db: &DbContext,
+    db: &super::DbContext,
     auth: &Authorization,
     decision_id: &str,
     decision: Decision,
@@ -49,7 +48,7 @@ pub async fn prepare_transfer(
     let row = choice(&mut tx, auth, decision_id).await?;
     let (delivery, _, snapshot) = match decision {
         Decision::ModelPair(_) => super::model_pair::pending(&mut tx, auth, &row).await?,
-        _ => pending(&mut tx, auth, &row).await?,
+        _ => super::pending(&mut tx, auth, &row).await?,
     };
     let local_group_id = snapshot.has_models().then_some(row.local_group_id);
     let item = serde_json::from_str(&row.item).map_err(|_| invalid())?;
@@ -90,7 +89,7 @@ pub async fn finish_in(
     auth: &Authorization,
     decision_id: &str,
     decision: Decision,
-    blobs: &[populated::ModelBlobBinding],
+    blobs: &[super::populated::ModelBlobBinding],
     local_source: Option<&LocalObservationStage>,
 ) -> Result<DecisionOutcome, DbError> {
     match decision {
@@ -99,11 +98,13 @@ pub async fn finish_in(
                 .await
                 .map(DecisionOutcome::ModelPair)
         }
-        Decision::Same => confirm_in(db, auth, decision_id, blobs, local_source)
+        Decision::Same => super::confirm_in(db, auth, decision_id, blobs, local_source)
             .await
             .map(DecisionOutcome::Same),
-        Decision::Separate => separation::separate_in(db, auth, decision_id, blobs, local_source)
-            .await
-            .map(DecisionOutcome::Separate),
+        Decision::Separate => {
+            super::separation::separate_in(db, auth, decision_id, blobs, local_source)
+                .await
+                .map(DecisionOutcome::Separate)
+        }
     }
 }

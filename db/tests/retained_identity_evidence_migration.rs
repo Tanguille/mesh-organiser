@@ -1,10 +1,8 @@
 //! Migration attaches a portable birth only when old local evidence proves it.
 use db::{
-    blob_db,
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
-    group_db,
+    blob_db, group_db,
     model::{model_group::ModelGroupMeta, user::User},
-    model_db, random_hex_32, user_db,
+    random_hex_32,
 };
 
 // Construct evidence with the schema available before the retained-identity migration.
@@ -15,23 +13,23 @@ async fn historical_group(db: &sqlx::SqlitePool, user: &User, name: &str) -> Mod
     let timestamp = "2020-01-01T00:00:00Z";
     let id = sqlx::query("INSERT INTO models_group (group_name,group_created,group_user_id,group_last_modified,group_unique_global_id,group_birth_id) VALUES (?,?,?,?,?,?)")
         .bind(name).bind(timestamp).bind(user.id).bind(timestamp).bind(&global).bind(&birth).execute(db).await.unwrap().last_insert_rowid();
-    let event = CausalEnvelope {
+    let event = db::causal_envelope::CausalEnvelope {
         version: 2,
-        entity: Entity {
-            kind: EntityKind::Group,
+        entity: db::causal_envelope::Entity {
+            kind: db::causal_envelope::EntityKind::Group,
             global_id: global.clone(),
             birth_id: Some(birth.clone()),
         },
-        event: Dot {
+        event: db::causal_envelope::Dot {
             writer_id: writer.clone(),
             counter: "1".into(),
         },
         parents: vec![],
         dependencies: vec![],
-        action: Action::GroupCreated { name: name.into() },
+        action: db::causal_envelope::Action::GroupCreated { name: name.into() },
     };
     sqlx::query("INSERT INTO local_creation_records (user_id,entity_kind,birth_id,writer_id,counter,envelope) VALUES (?,'group',?,?,1,?)")
-        .bind(user.id).bind(&birth).bind(&writer).bind(causal_envelope::canonical_causal_envelope(&event).unwrap()).execute(db).await.unwrap();
+        .bind(user.id).bind(&birth).bind(&writer).bind(db::causal_envelope::canonical_causal_envelope(&event).unwrap()).execute(db).await.unwrap();
     sqlx::query("UPDATE entity_births SET initialization_status='created', initialization_writer_id=?, initialization_counter=1 WHERE user_id=? AND entity_kind='group' AND birth_id=?")
         .bind(&writer).bind(user.id).bind(&birth).execute(db).await.unwrap();
     ModelGroupMeta {
@@ -64,7 +62,7 @@ async fn migration_backfills_only_unambiguous_live_identity_evidence() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_113_090_000)
+        .filter(|item| item.version < 20_261_113_090_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
@@ -72,7 +70,7 @@ async fn migration_backfills_only_unambiguous_live_identity_evidence() {
         .await
         .unwrap();
     let user = User::default();
-    let foreign_id = user_db::add_user(
+    let foreign_id = db::user_db::add_user(
         &db,
         "other",
         "migration-foreign@example.test",
@@ -133,14 +131,14 @@ async fn migration_backfills_only_unambiguous_live_identity_evidence() {
         columns(&upgraded, "group_sync_heads")
             .await
             .iter()
-            .any(|c| c == "identity_birth_id"),
+            .any(|column| column == "identity_birth_id"),
         "missing durable group identity evidence"
     );
     assert!(
         columns(&upgraded, "membership_causal_events")
             .await
             .iter()
-            .any(|c| c == "model_birth_id"),
+            .any(|column| column == "model_birth_id"),
         "missing durable membership identity evidence"
     );
     let head_birth = |global: String| {
@@ -171,13 +169,13 @@ async fn new_head_and_membership_capture_birth_and_keep_it_after_purge() {
         columns(&db, "group_sync_heads")
             .await
             .iter()
-            .any(|c| c == "identity_birth_id")
+            .any(|column| column == "identity_birth_id")
     );
     assert!(
         columns(&db, "membership_causal_events")
             .await
             .iter()
-            .any(|c| c == "model_birth_id")
+            .any(|column| column == "model_birth_id")
     );
     let user = User::default();
     let group = group_db::add_empty_group(&db, &user, "known", None)
@@ -186,7 +184,7 @@ async fn new_head_and_membership_capture_birth_and_keep_it_after_purge() {
     let blob = blob_db::add_blob(&db, "new-evidence", "stl", 1, None)
         .await
         .unwrap();
-    let model = model_db::add_model(&db, &user, "known", blob, None, None)
+    let model = db::model_db::add_model(&db, &user, "known", blob, None, None)
         .await
         .unwrap();
     let group_birth: String =
@@ -237,7 +235,7 @@ async fn same_global_new_birth_is_unknown_and_failed_reuse_rolls_back() {
         columns(&db, "group_sync_heads")
             .await
             .iter()
-            .any(|c| c == "identity_birth_id")
+            .any(|column| column == "identity_birth_id")
     );
     let user = User::default();
     let original = group_db::add_empty_group(&db, &user, "old", None)

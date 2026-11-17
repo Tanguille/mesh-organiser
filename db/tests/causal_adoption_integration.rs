@@ -1,5 +1,4 @@
 //! In-process observations are scoped evidence, not authenticated synchronization.
-mod common;
 use db::{
     causal_adoption,
     causal_envelope::Action,
@@ -7,8 +6,10 @@ use db::{
     causal_group_rename::NameState,
     group_db,
     model::user::User,
-    random_hex_32, sync_peer, user_db,
+    sync_peer, user_db,
 };
+
+mod common;
 
 async fn assert_birth_permit_consumed(db: &db::db_context::DbContext, group_id: i64) {
     let permits: i64 =
@@ -208,7 +209,7 @@ async fn observation_is_owner_scoped_and_rejects_ambiguous_or_nonempty_group() {
         &db,
         "other",
         "observation-other@example.test",
-        &random_hex_32(),
+        &db::random_hex_32(),
     )
     .await
     .unwrap();
@@ -429,7 +430,6 @@ async fn edited_known_birth_is_preserved_through_observation_and_install() {
 
 #[tokio::test]
 async fn observed_root_preserves_concurrent_names_as_choices() {
-    use db::causal_group_rename::{self, ResolveResult};
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let user = User::default();
@@ -479,19 +479,19 @@ async fn observed_root_preserves_concurrent_names_as_choices() {
     let token = match result {
         OperationImportResult::Applied(state) => match state.name {
             NameState::Conflict { choices, token } => {
-                assert!(choices.iter().any(|c| c.name == "alpha"));
-                assert!(choices.iter().any(|c| c.name == "bravo"));
+                assert!(choices.iter().any(|choice| choice.name == "alpha"));
+                assert!(choices.iter().any(|choice| choice.name == "bravo"));
                 token
             }
             x => panic!("expected name conflict {x:?}"),
         },
         x @ OperationImportResult::NeedsDependencies { .. } => panic!("expected applied {x:?}"),
     };
-    let result = causal_group_rename::resolve(&a, &user, &ai, group.id, &token, "bravo")
+    let result = db::causal_group_rename::resolve(&a, &user, &ai, group.id, &token, "bravo")
         .await
         .unwrap();
     assert!(
-        matches!(result,ResolveResult::Resolved(NameState::Ready{ref name,..}) if name=="bravo")
+        matches!(result,db::causal_group_rename::ResolveResult::Resolved(NameState::Ready{ref name,..}) if name=="bravo")
     );
 }
 
@@ -633,6 +633,7 @@ async fn observation_evidence_counts_toward_combined_byte_limit() {
             );
             let after: (i64, i64, i64) = sqlx::query_as("SELECT COUNT(*), COALESCE(SUM(length(CAST(e.envelope AS BLOB))+length(CAST(b.materialization AS BLOB))+length(CAST(b.local_guard AS BLOB))+length(CAST(COALESCE(b.observation_evidence,'') AS BLOB))),0), (SELECT counter FROM group_causal_replica WHERE singleton=1) FROM causal_genesis_bindings b JOIN causal_events e USING(user_id,writer_id,counter) WHERE b.user_id=? AND b.capability='group_lifecycle_v1'").bind(user.id).fetch_one(&db).await.unwrap();
             assert_eq!(after, before);
+
             return;
         }
         result.unwrap();

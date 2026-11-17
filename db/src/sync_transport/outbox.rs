@@ -1,7 +1,9 @@
 //! Selected immutable publications, not an automatic scheduler or a second event authority.
-use super::{failure, observations, publication::Publication, pull::Authorization};
-use crate::{DbError, causal_envelope::Dot, db_context::DbContext};
 use sqlx::SqliteConnection;
+
+use crate::{DbError, causal_envelope::Dot, db_context::DbContext, util::is_lower_hex};
+
+use super::{failure, observations, publication::Publication, pull::Authorization};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,29 +35,35 @@ pub struct PendingPublications {
     pub other_link_count: usize,
 }
 
-pub async fn pending(db: &DbContext, auth: &Authorization) -> Result<PendingPublications, DbError> {
-    pending_page(db, auth, None).await
+pub async fn pending(
+    db: &DbContext,
+    authorization: &Authorization,
+) -> Result<PendingPublications, DbError> {
+    pending_page(db, authorization, None).await
 }
 
 pub async fn pending_page(
     db: &DbContext,
-    auth: &Authorization,
+    authorization: &Authorization,
     cursor: Option<&str>,
 ) -> Result<PendingPublications, DbError> {
-    let mut tx = db.begin().await?;
-    auth.validate(&mut tx).await?;
+    let mut transaction = db.begin().await?;
+    authorization.validate(&mut transaction).await?;
     // This cursor is navigation, not authority: each read validates the current
     // account/link and scopes its query independently. It contains no secret.
-    let scope = super::auth::digest(&format!(
-        "mesh-outbox-page-v1:{}:{}",
-        auth.user.id,
-        auth.identity_choice_key()
-    ));
+    let scope = crate::util::sha256_hex(
+        format!(
+            "mesh-outbox-page-v1:{}:{}",
+            authorization.user.id,
+            authorization.identity_choice_key()
+        )
+        .as_bytes(),
+    );
     let after = if let Some(cursor) = cursor {
         let (owner, after) = cursor
             .split_once(':')
             .ok_or_else(|| failure("invalid_cursor"))?;
-        if owner != scope || !super::auth::canonical_hex(after, 32) {
+        if owner != scope || !is_lower_hex(after, 32) {
             return Err(failure("invalid_cursor"));
         }
         after
@@ -66,25 +74,25 @@ pub async fn pending_page(
     // discarded. New ids before this boundary require a fresh first-page read;
     // pagination is not a frozen snapshot or a claim that all work is complete.
     let mut ids: Vec<String> = sqlx::query_scalar("SELECT outbox_id FROM sync_publication_outbox WHERE user_id=? AND local_instance_id=? AND local_account_id=? AND server_instance_id=? AND server_account_id=? AND connection_id=? AND ack_sequence IS NULL AND outbox_id>? ORDER BY outbox_id LIMIT ?")
-        .bind(auth.user.id).bind(&auth.identity.instance_id).bind(&auth.identity.account_id).bind(&auth.server.instance_id).bind(&auth.server.account_id).bind(&auth.connection)
+        .bind(authorization.user.id).bind(&authorization.identity.instance_id).bind(&authorization.identity.account_id).bind(&authorization.server.instance_id).bind(&authorization.server.account_id).bind(&authorization.connection)
         .bind(after)
-        .bind(i64::try_from(super::MAX_PAGE_ITEMS + 1).map_err(|_| failure("too_large"))?).fetch_all(&mut *tx).await?;
+        .bind(i64::try_from(super::MAX_PAGE_ITEMS + 1).map_err(|_| failure("too_large"))?).fetch_all(&mut *transaction).await?;
     // Other-link work remains visible as blocked work. Reconnecting must never
     // silently rebind an old publication or claim that this account has no queue.
     let other: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_publication_outbox WHERE user_id=? AND ack_sequence IS NULL AND NOT(local_instance_id=? AND local_account_id=? AND server_instance_id=? AND server_account_id=? AND connection_id=?)")
-        .bind(auth.user.id).bind(&auth.identity.instance_id).bind(&auth.identity.account_id).bind(&auth.server.instance_id).bind(&auth.server.account_id).bind(&auth.connection).fetch_one(&mut *tx).await?;
+        .bind(authorization.user.id).bind(&authorization.identity.instance_id).bind(&authorization.identity.account_id).bind(&authorization.server.instance_id).bind(&authorization.server.account_id).bind(&authorization.connection).fetch_one(&mut *transaction).await?;
     let has_more = ids.len() > super::MAX_PAGE_ITEMS;
     ids.truncate(super::MAX_PAGE_ITEMS);
     let next_cursor = if has_more {
         let last = ids.last().ok_or_else(|| failure("invalid_cursor"))?;
-        if !super::auth::canonical_hex(last, 32) {
+        if !is_lower_hex(last, 32) {
             return Err(failure("invalid_cursor"));
         }
         Some(format!("{scope}:{last}"))
     } else {
         None
     };
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok(PendingPublications {
         outbox_ids: ids,
@@ -121,105 +129,111 @@ fn item_identity(item: &serde_json::Value) -> Result<(&str, String), DbError> {
         _ => None,
     }
     .ok_or_else(|| failure("unsupported"))?;
+
     Ok((kind, id))
 }
 
 pub async fn queue(
     db: &DbContext,
-    auth: &Authorization,
+    authorization: &Authorization,
     event: &Dot,
     item: &serde_json::Value,
 ) -> Result<String, DbError> {
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    let id = queue_in(&mut tx, auth, event, item).await?;
-    tx.commit().await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let id = queue_in(&mut transaction, authorization, event, item).await?;
+    transaction.commit().await?;
+
     Ok(id)
 }
 
 /// Enqueue an already certified original in the domain mutation's transaction.
 pub(crate) async fn queue_in(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    authorization: &Authorization,
     event: &Dot,
     item: &serde_json::Value,
 ) -> Result<String, DbError> {
-    Ok(insert(db, auth, event, item, None).await?.0)
+    Ok(insert(db, authorization, event, item, None).await?.0)
 }
 
 pub async fn queue_observation(
     db: &DbContext,
-    auth: &Authorization,
+    authorization: &Authorization,
     group: i64,
     capture: Option<&crate::causal_adoption::PopulatedGroupObservation>,
     contents: &[observations::BlobContent],
     stage: &StageRecord,
 ) -> Result<(String, bool), DbError> {
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    auth.validate(&mut tx).await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    authorization.validate(&mut transaction).await?;
     let bundle = if let Some(capture) = capture {
         crate::causal_genesis::populated::transport::enroll_source_in(
-            &mut tx,
-            &auth.user,
-            &auth.identity,
+            &mut transaction,
+            &authorization.user,
+            &authorization.identity,
             capture,
             contents,
         )
         .await?
     } else {
         crate::causal_genesis::populated::transport::reload_source(
-            &mut tx,
-            &auth.user,
-            &auth.identity,
+            &mut transaction,
+            &authorization.user,
+            &authorization.identity,
             group,
         )
         .await?
         .ok_or_else(|| failure("identity_blocked"))?
     };
-    let result = queue_enrolled_observation_in(&mut tx, auth, &bundle, contents, stage).await?;
-    tx.commit().await?;
+    let result =
+        queue_enrolled_observation_in(&mut transaction, authorization, &bundle, contents, stage)
+            .await?;
+    transaction.commit().await?;
+
     Ok(result)
 }
 
 pub(crate) async fn queue_enrolled_observation_in(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    authorization: &Authorization,
     bundle: &crate::causal_adoption::ObservedPopulatedGroupBundle,
     contents: &[observations::BlobContent],
     stage: &StageRecord,
 ) -> Result<(String, bool), DbError> {
     let item = observations::encode(bundle, contents.to_vec())?;
 
-    insert(db, auth, bundle.group_event(), &item, Some(stage)).await
+    insert(db, authorization, bundle.group_event(), &item, Some(stage)).await
 }
 
 async fn insert(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    authorization: &Authorization,
     event: &Dot,
     item: &serde_json::Value,
     stage: Option<&StageRecord>,
 ) -> Result<(String, bool), DbError> {
-    let proof = Publication::prepare_in(db, auth, event, item).await?;
+    let proof = Publication::prepare_in(db, authorization, event, item).await?;
     let (kind, item_id) = item_identity(item)?;
     let prior: Option<(String,String,String)> = sqlx::query_as("SELECT outbox_id,digest,connection_id FROM sync_publication_outbox WHERE user_id=? AND server_instance_id=? AND server_account_id=? AND kind=? AND item_id=?")
-        .bind(auth.user.id).bind(&auth.server.instance_id).bind(&auth.server.account_id).bind(kind).bind(&item_id).fetch_optional(&mut *db).await?;
+        .bind(authorization.user.id).bind(&authorization.server.instance_id).bind(&authorization.server.account_id).bind(kind).bind(&item_id).fetch_optional(&mut *db).await?;
     if let Some((id, digest, connection)) = prior {
-        if digest != proof.digest || connection != auth.connection {
+        if digest != proof.digest || connection != authorization.connection {
             return Err(failure("identity_blocked"));
         }
         if kind == "group_operation" {
-            super::operation_selection::selected_in(db, auth, &item_id, &id).await?;
+            super::operation_selection::selected_in(db, authorization, &item_id, &id).await?;
         }
+
         return Ok((id, false));
     }
     let wire = serde_json::to_string(item).map_err(|_| failure("unsupported"))?;
-    let request = serde_json::to_string(&serde_json::json!({"protocol":1,"connection_id":auth.connection,"writer_nonce":proof.nonce,"item":item})).map_err(|_| failure("unsupported"))?;
+    let request = serde_json::to_string(&serde_json::json!({"protocol":1,"connection_id":authorization.connection,"writer_nonce":proof.nonce,"item":item})).map_err(|_| failure("unsupported"))?;
     if request.len() > super::MAX_WIRE_ITEM_BYTES {
         return Err(failure("too_large"));
     }
     let (files, logical_bytes) = validate_stage(db, kind, item, stage).await?;
     let (count, bytes, pending): (i64,i64,i64) = sqlx::query_as("SELECT COUNT(*),COALESCE(SUM(length(CAST(o.item AS BLOB))+COALESCE(length(CAST(s.files AS BLOB)),0)+512),0),COALESCE(SUM(s.logical_bytes),0) FROM sync_publication_outbox o LEFT JOIN sync_publication_stages s USING(outbox_id) WHERE o.user_id=? AND o.ack_sequence IS NULL")
-        .bind(auth.user.id).fetch_one(&mut *db).await?;
+        .bind(authorization.user.id).fetch_one(&mut *db).await?;
     if count
         >= i64::try_from(crate::causal_store::MAX_OWNER_EVENTS).map_err(|_| failure("too_large"))?
         || usize::try_from(bytes)
@@ -235,14 +249,15 @@ async fn insert(
     }
     let id = crate::random_hex_32();
     sqlx::query("INSERT INTO sync_publication_outbox(outbox_id,user_id,local_instance_id,local_account_id,server_instance_id,server_account_id,connection_id,authority_writer_id,writer_id,writer_nonce,event_counter,kind,item_id,digest,item) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(&id).bind(auth.user.id).bind(&auth.identity.instance_id).bind(&auth.identity.account_id).bind(&auth.server.instance_id).bind(&auth.server.account_id).bind(&proof.issuer.connection_id).bind(&proof.issuer.authority_writer_id).bind(&proof.issuer.writer_id).bind(&proof.nonce).bind(&event.counter).bind(kind).bind(&item_id).bind(proof.digest).bind(wire).execute(&mut *db).await?;
+        .bind(&id).bind(authorization.user.id).bind(&authorization.identity.instance_id).bind(&authorization.identity.account_id).bind(&authorization.server.instance_id).bind(&authorization.server.account_id).bind(&proof.issuer.connection_id).bind(&proof.issuer.authority_writer_id).bind(&proof.issuer.writer_id).bind(&proof.nonce).bind(&event.counter).bind(kind).bind(&item_id).bind(proof.digest).bind(wire).execute(&mut *db).await?;
     if kind == "group_operation" {
-        super::operation_selection::selected_in(db, auth, &item_id, &id).await?;
+        super::operation_selection::selected_in(db, authorization, &item_id, &id).await?;
     }
     if let Some(stage) = stage {
         sqlx::query("INSERT INTO sync_publication_stages(outbox_id,stage_path,token,files,logical_bytes) VALUES(?,?,?,?,?)")
             .bind(&id).bind(&stage.path).bind(&stage.token).bind(files).bind(i64::try_from(logical_bytes).map_err(|_| failure("too_large"))?).execute(db).await?;
     }
+
     Ok((id, stage.is_some()))
 }
 
@@ -258,6 +273,7 @@ async fn validate_stage(
         if kind == "observed_group" && !observations::parse(item)?.contents().is_empty() {
             return Err(failure("unsupported"));
         }
+
         return Ok((String::new(), 0));
     };
     if kind != "observed_group" {
@@ -277,7 +293,7 @@ async fn validate_stage(
             .name
             .parse::<usize>()
             .ok()
-            .is_none_or(|n| n.to_string() != file.name)
+            .is_none_or(|number| number.to_string() != file.name)
             || !keys.insert(&file.key)
             || !names.insert(&file.name)
             || !plan.contents().iter().any(|content| {
@@ -290,6 +306,7 @@ async fn validate_stage(
             .checked_add(file.size)
             .ok_or_else(|| failure("too_large"))?;
     }
+
     Ok((
         serde_json::to_string(&stage.files).map_err(|_| failure("unsupported"))?,
         total,
@@ -298,14 +315,15 @@ async fn validate_stage(
 
 pub async fn selected_observation(
     db: &DbContext,
-    auth: &Authorization,
+    authorization: &Authorization,
     group: i64,
 ) -> Result<Option<String>, DbError> {
-    let mut tx = db.begin().await?;
-    auth.validate(&mut tx).await?;
+    let mut transaction = db.begin().await?;
+    authorization.validate(&mut transaction).await?;
     let id = sqlx::query_scalar("SELECT o.outbox_id FROM models_group g JOIN causal_genesis_bindings b ON b.local_id=g.group_id AND b.user_id=g.group_user_id AND b.entity_kind='group' AND b.birth_id=g.group_birth_id AND b.global_id=g.group_unique_global_id JOIN causal_observation_batch_members m USING(user_id,entity_kind,birth_id) JOIN sync_publication_outbox o ON o.user_id=b.user_id AND o.kind='observed_group' AND o.item_id=m.batch_id WHERE g.group_id=? AND g.group_user_id=? AND o.local_instance_id=? AND o.local_account_id=? AND o.server_instance_id=? AND o.server_account_id=? AND o.connection_id=?")
-        .bind(group).bind(auth.user.id).bind(&auth.identity.instance_id).bind(&auth.identity.account_id).bind(&auth.server.instance_id).bind(&auth.server.account_id).bind(&auth.connection).fetch_optional(&mut *tx).await?;
-    tx.commit().await?;
+        .bind(group).bind(authorization.user.id).bind(&authorization.identity.instance_id).bind(&authorization.identity.account_id).bind(&authorization.server.instance_id).bind(&authorization.server.account_id).bind(&authorization.connection).fetch_optional(&mut *transaction).await?;
+    transaction.commit().await?;
+
     Ok(id)
 }
 
@@ -313,7 +331,7 @@ pub async fn selected_observation(
 /// after the user removed its publication. Acknowledged rows remain valid receipts.
 pub(crate) async fn require_retained(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    authorization: &Authorization,
     id: &str,
     event: &Dot,
 ) -> Result<(), DbError> {
@@ -321,33 +339,39 @@ pub(crate) async fn require_retained(
         "SELECT EXISTS(SELECT 1 FROM sync_publication_outbox WHERE outbox_id=? AND user_id=?)",
     )
     .bind(id)
-    .bind(auth.user.id)
+    .bind(authorization.user.id)
     .fetch_one(&mut *db)
     .await?;
     if !exists {
         return Err(failure("publication_discarded"));
     }
-    let queued = load_in(db, auth, id).await?;
+    let queued = load_in(db, authorization, id).await?;
     if queued.event != *event {
         return Err(failure("identity_blocked"));
     }
+
     Ok(())
 }
 
-pub async fn load(db: &DbContext, auth: &Authorization, id: &str) -> Result<Queued, DbError> {
-    let mut tx = db.begin().await?;
-    let result = load_in(&mut tx, auth, id).await?;
-    tx.commit().await?;
+pub async fn load(
+    db: &DbContext,
+    authorization: &Authorization,
+    id: &str,
+) -> Result<Queued, DbError> {
+    let mut transaction = db.begin().await?;
+    let result = load_in(&mut transaction, authorization, id).await?;
+    transaction.commit().await?;
+
     Ok(result)
 }
 async fn load_in(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    authorization: &Authorization,
     id: &str,
 ) -> Result<Queued, DbError> {
-    auth.validate(db).await?;
+    authorization.validate(db).await?;
     let (wire,writer,counter,digest,nonce,authority,ack_sequence): (Option<String>,String,String,String,String,String,Option<String>) = sqlx::query_as("SELECT item,writer_id,event_counter,digest,writer_nonce,authority_writer_id,ack_sequence FROM sync_publication_outbox WHERE outbox_id=? AND user_id=? AND local_instance_id=? AND local_account_id=? AND server_instance_id=? AND server_account_id=? AND connection_id=?")
-        .bind(id).bind(auth.user.id).bind(&auth.identity.instance_id).bind(&auth.identity.account_id).bind(&auth.server.instance_id).bind(&auth.server.account_id).bind(&auth.connection).fetch_one(&mut *db).await?;
+        .bind(id).bind(authorization.user.id).bind(&authorization.identity.instance_id).bind(&authorization.identity.account_id).bind(&authorization.server.instance_id).bind(&authorization.server.account_id).bind(&authorization.connection).fetch_one(&mut *db).await?;
     let event = Dot {
         writer_id: writer,
         counter,
@@ -357,12 +381,12 @@ async fn load_in(
             || sequence
                 .parse::<i64>()
                 .ok()
-                .is_none_or(|n| n <= 0 || n.to_string() != *sequence)
-            || !super::auth::canonical_hex(&digest, 64)
+                .is_none_or(|number| number <= 0 || number.to_string() != *sequence)
+            || !is_lower_hex(&digest, 64)
         {
             return Err(failure("identity_blocked"));
         }
-        let (original_nonce, issuer) = Publication::proof_in(db, auth, &event).await?;
+        let (original_nonce, issuer) = Publication::proof_in(db, authorization, &event).await?;
         if original_nonce != nonce || issuer.authority_writer_id != authority {
             return Err(failure("identity_blocked"));
         }
@@ -371,7 +395,7 @@ async fn load_in(
         let item =
             serde_json::from_str(wire.as_deref().ok_or_else(|| failure("identity_blocked"))?)
                 .map_err(|_| failure("unsupported"))?;
-        let proof = Publication::prepare_in(db, auth, &event, &item).await?;
+        let proof = Publication::prepare_in(db, authorization, &event, &item).await?;
         if proof.digest != digest
             || proof.nonce != nonce
             || proof.issuer.authority_writer_id != authority
@@ -395,6 +419,7 @@ async fn load_in(
             })
         })
         .transpose()?;
+
     Ok(Queued {
         id: id.into(),
         item,
@@ -406,46 +431,47 @@ async fn load_in(
 
 pub async fn acknowledge(
     db: &DbContext,
-    auth: &Authorization,
+    authorization: &Authorization,
     id: &str,
     sequence: &str,
 ) -> Result<(), DbError> {
     if sequence
         .parse::<i64>()
         .ok()
-        .is_none_or(|n| n <= 0 || n.to_string() != sequence)
+        .is_none_or(|number| number <= 0 || number.to_string() != sequence)
     {
         return Err(failure("invalid_cursor"));
     }
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    let queued = load_in(&mut tx, auth, id).await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let queued = load_in(&mut transaction, authorization, id).await?;
     if let Some(prior) = queued.ack_sequence {
         if prior != sequence {
             return Err(failure("identity_blocked"));
         }
     } else {
-        sqlx::query("UPDATE sync_publication_outbox SET ack_sequence=?,item=NULL WHERE outbox_id=? AND ack_sequence IS NULL").bind(sequence).bind(id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sync_publication_outbox SET ack_sequence=?,item=NULL WHERE outbox_id=? AND ack_sequence IS NULL").bind(sequence).bind(id).execute(&mut *transaction).await?;
         sqlx::query("DELETE FROM sync_publication_stages WHERE outbox_id=?")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(&mut *transaction)
             .await?;
     }
-    tx.commit().await?;
+    transaction.commit().await?;
+
     Ok(())
 }
 
 pub async fn stage_retained(db: &DbContext, path: &str, token: &str) -> Result<bool, DbError> {
     // A cancelled caller can release its lease while SQLite is still completing
     // COMMIT. Serialize with that writer before authorizing filesystem cleanup.
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let retained = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM sync_publication_stages WHERE stage_path=? AND token=?)",
     )
     .bind(path)
     .bind(token)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *transaction)
     .await?;
-    tx.commit().await?;
+    transaction.commit().await?;
 
     Ok(retained)
 }
@@ -474,6 +500,7 @@ async fn discard_stage_in(
     .bind(id)
     .fetch_optional(db)
     .await?;
+
     row.map(|(path, token, files)| {
         Ok(StageRecord {
             path,
@@ -490,9 +517,10 @@ pub async fn discard_stage(
     identity: &crate::user_db::SyncIdentity,
     id: &str,
 ) -> Result<Option<StageRecord>, DbError> {
-    let mut tx = db.begin().await?;
-    let result = discard_stage_in(&mut tx, user, identity, id).await?;
-    tx.commit().await?;
+    let mut transaction = db.begin().await?;
+    let result = discard_stage_in(&mut transaction, user, identity, id).await?;
+    transaction.commit().await?;
+
     Ok(result)
 }
 
@@ -504,15 +532,16 @@ pub async fn discard(
     id: &str,
     expected: Option<&StageRecord>,
 ) -> Result<(), DbError> {
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    if discard_stage_in(&mut tx, user, identity, id)
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    if discard_stage_in(&mut transaction, user, identity, id)
         .await?
         .as_ref()
         != expected
     {
         return Err(failure("identity_blocked"));
     }
-    sqlx::query("DELETE FROM sync_publication_outbox WHERE outbox_id=? AND user_id=? AND ack_sequence IS NULL").bind(id).bind(user.id).execute(&mut *tx).await?;
-    tx.commit().await?;
+    sqlx::query("DELETE FROM sync_publication_outbox WHERE outbox_id=? AND user_id=? AND ack_sequence IS NULL").bind(id).bind(user.id).execute(&mut *transaction).await?;
+    transaction.commit().await?;
+
     Ok(())
 }

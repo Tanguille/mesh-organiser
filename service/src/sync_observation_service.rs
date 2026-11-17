@@ -1,25 +1,28 @@
 //! Bounded physical-content transfer. No production sync route enables this API.
-use crate::{AppState, ServiceError, export_service};
-use db::{
-    causal_envelope::Dot,
-    model::{blob::Blob, user::User},
-    sync_transport::observations::{self, BlobContent},
-    user_db::SyncIdentity,
-};
-use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fmt::Write,
     path::{Path, PathBuf},
 };
+
+use sha2::{Digest, Sha256};
+use storage::Stage;
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
 };
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
+use db::{
+    causal_envelope::Dot,
+    model::{blob::Blob, user::User},
+    sync_transport::observations::{self, BlobContent},
+    user_db::SyncIdentity,
+};
+
+use crate::{AppState, ServiceError, export_service};
+
 mod storage;
-use storage::Stage;
 
 pub const MAX_OBSERVATION_BLOB_BYTES: u64 = observations::MAX_BLOB_BYTES;
 pub const MAX_OBSERVATION_TOTAL_BYTES: u64 = observations::MAX_TOTAL_BYTES;
@@ -190,7 +193,7 @@ pub(crate) async fn resume_queued(
             .name
             .parse::<usize>()
             .ok()
-            .is_none_or(|n| n.to_string() != file.name)
+            .is_none_or(|item| item.to_string() != file.name)
             || !names.insert(&file.name)
             || u64::try_from(content.size) != Ok(file.size)
         {
@@ -205,12 +208,12 @@ pub(crate) async fn resume_queued(
         let mut size = 0_u64;
         let mut buffer = [0_u8; 8192];
         loop {
-            let n = reader.read(&mut buffer).await?;
-            if n == 0 {
+            let bytes_read = reader.read(&mut buffer).await?;
+            if bytes_read == 0 {
                 break;
             }
-            hash.update(&buffer[..n]);
-            size += u64::try_from(n).map_err(|_| invalid("too_large"))?;
+            hash.update(&buffer[..bytes_read]);
+            size += u64::try_from(bytes_read).map_err(|_| invalid("too_large"))?;
         }
         if size != file.size || digest_hex(hash) != file.key {
             return Err(invalid("identity_blocked"));

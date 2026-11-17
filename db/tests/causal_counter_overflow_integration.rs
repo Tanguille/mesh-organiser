@@ -1,7 +1,8 @@
 //! Exhausted causal counters must fail before any domain or history state commits.
-mod common;
 
 use db::{blob_db, db_context::DbContext, group_db, model::user::User, model_db, random_hex_32};
+
+mod common;
 
 async fn exhaust(db: &DbContext) {
     sqlx::query("UPDATE group_causal_replica SET counter = ? WHERE singleton = 1")

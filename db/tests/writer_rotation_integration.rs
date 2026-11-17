@@ -1,14 +1,17 @@
 //! Writable database initialization rotates the causal writer once per open.
-mod common;
+use std::path::Path;
+
+use futures::FutureExt;
+
 use db::{
     causal_envelope::{self, EntityKind},
-    db_context::{self, DbContext},
+    db_context::DbContext,
     group_db, group_history,
     model::user::User,
     user_db,
 };
-use futures::FutureExt;
-use std::{collections::HashSet, path::Path};
+
+mod common;
 
 async fn writer(db: &DbContext) -> (String, i64) {
     sqlx::query_as("SELECT replica_id, counter FROM group_causal_replica WHERE singleton = 1")
@@ -17,7 +20,7 @@ async fn writer(db: &DbContext) -> (String, i64) {
         .unwrap()
 }
 async fn open(path: &Path, backups: &Path) -> DbContext {
-    db_context::setup_db(path, backups).await
+    db::db_context::setup_db(path, backups).await
 }
 
 #[tokio::test]
@@ -208,7 +211,7 @@ async fn shared_file_pools_allocate_unique_chained_dots_after_second_open_rotate
         .unwrap()
         .unwrap();
     assert_eq!(after.events.len(), previous.events.len() + 12);
-    let dots: HashSet<_> = after
+    let dots: std::collections::HashSet<_> = after
         .events
         .iter()
         .map(|e| (e.id.replica_id.clone(), e.id.counter))

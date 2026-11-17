@@ -1,5 +1,16 @@
 //! Experimental HTTPS-bound pull. No desktop coordinator or production route enables it.
-use crate::{AppState, ServiceError, sync_observation_service};
+use std::time::Duration;
+
+pub use coordinator::{AdvanceOutcome, OperationSelection};
+pub use identity_choice::{
+    GroupIdentityChoice, GroupIdentityOutcome, GroupSeparationOutcome, NamePublication,
+    ReceivedNameChoice,
+};
+pub use model_identity::{
+    GroupIdentityDecision, ModelIdentityChoice, ModelIdentityDecision, ModelIdentityOutcome,
+};
+
+pub use db::sync_transport::outbox::PendingPublications;
 use db::{
     model::user::User,
     sync_transport::{
@@ -8,21 +19,13 @@ use db::{
     },
     user_db::SyncIdentity,
 };
-use std::time::Duration;
+
+use crate::{AppState, ServiceError, sync_observation_service};
 mod coordinator;
 mod identity_choice;
 mod model_identity;
-pub use coordinator::{AdvanceOutcome, OperationSelection};
-pub use db::sync_transport::outbox::PendingPublications;
-pub use model_identity::{
-    GroupIdentityDecision, ModelIdentityChoice, ModelIdentityDecision, ModelIdentityOutcome,
-};
 mod outbox;
 mod publication;
-pub use identity_choice::{
-    GroupIdentityChoice, GroupIdentityOutcome, GroupSeparationOutcome, NamePublication,
-    ReceivedNameChoice,
-};
 #[derive(Debug)]
 pub enum HubTrust {
     System,
@@ -64,8 +67,9 @@ pub async fn discard_queued_publication(
     sync_observation_service::discard_queued(state, user, identity, outbox_id).await
 }
 impl std::fmt::Debug for AuthenticatedHub {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuthenticatedHub")
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthenticatedHub")
             .field("origin", &self.authorization.origin)
             .finish_non_exhaustive()
     }
@@ -74,11 +78,12 @@ fn invalid() -> ServiceError {
     db::DbError::Protocol("sync_transport:invalid_delivery".into()).into()
 }
 fn cursor(value: &str) -> Result<i64, ServiceError> {
-    let n = value.parse::<i64>().map_err(|_| invalid())?;
-    if n < 0 || n.to_string() != value {
+    let number = value.parse::<i64>().map_err(|_| invalid())?;
+    if number < 0 || number.to_string() != value {
         return Err(invalid());
     }
-    Ok(n)
+
+    Ok(number)
 }
 async fn json<T: serde::de::DeserializeOwned>(
     mut response: reqwest::Response,
@@ -316,7 +321,7 @@ impl AuthenticatedHub {
         let high = cursor(&page.through)?;
         if page.server_identity != self.authorization.server
             || high < after
-            || through.is_some_and(|v| v != high)
+            || through.is_some_and(|value| value != high)
         {
             return Err(invalid());
         }
@@ -325,6 +330,7 @@ impl AuthenticatedHub {
                 return Err(invalid());
             }
             self.authorization.position(&state.db).await?;
+
             return Ok(NextDelivery::Idle(page.through));
         }
         if page.items.len() != 1 {
@@ -402,6 +408,7 @@ impl AuthenticatedHub {
             })
             .await
             .map_err(|_| invalid())??;
+
             return Ok(outcome(result));
         }
         if let Some(acknowledgment) = self.acknowledge_captured(state, &delivery, &item).await? {

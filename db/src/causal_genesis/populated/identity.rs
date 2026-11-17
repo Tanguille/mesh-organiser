@@ -1,16 +1,13 @@
 //! Supplemental batches retain their own membership boundary and unknown ancestry.
-use super::{
-    DbError, ObservedPopulatedGroupBundle, PopulatedGroupInstallation, SyncIdentity, User, invalid,
-    persistence, transport,
-};
-use crate::causal_genesis::identity::{
-    self, GroupIdentityOutcome, IndependentObservation, LocalObservationStage,
-};
-use crate::sync_transport::{
-    observations::ObservationPlan,
-    pull::{Authorization, Delivery},
-};
+
 use sqlx::SqliteConnection;
+
+use crate::causal_genesis::identity::{self, GroupIdentityOutcome, IndependentObservation};
+
+use super::{
+    DbError, ObservedPopulatedGroupBundle, PopulatedGroupInstallation, invalid, persistence,
+    transport,
+};
 
 pub(super) fn observation(
     bundle: &ObservedPopulatedGroupBundle,
@@ -37,13 +34,13 @@ pub(super) fn observation(
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)] // Both snapshots, verified bytes, outbox and incoming receipt share this transaction.
 pub(in crate::causal_genesis) async fn enroll_identity(
     db: &mut SqliteConnection,
-    auth: &Authorization,
+    auth: &crate::sync_transport::pull::Authorization,
     decision_id: &str,
     group_id: i64,
-    delivery: Delivery,
-    mut plan: ObservationPlan,
+    delivery: crate::sync_transport::pull::Delivery,
+    mut plan: crate::sync_transport::observations::ObservationPlan,
     blobs: &[super::ModelBlobBinding],
-    source: &LocalObservationStage,
+    source: &identity::LocalObservationStage,
 ) -> Result<GroupIdentityOutcome, DbError> {
     let remote = plan.bundle.identity_group()?;
     let entity = remote.entity().clone();
@@ -109,8 +106,8 @@ pub(in crate::causal_genesis) async fn enroll_identity(
 
 pub(super) async fn install(
     db: &mut SqliteConnection,
-    user: &User,
-    identity: &SyncIdentity,
+    user: &super::User,
+    identity: &super::SyncIdentity,
     bundle: &ObservedPopulatedGroupBundle,
     blobs: &[super::ModelBlobBinding],
 ) -> Result<PopulatedGroupInstallation, DbError> {

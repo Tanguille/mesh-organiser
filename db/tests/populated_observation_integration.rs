@@ -1,14 +1,17 @@
 //! Populated observations preserve a snapshot while leaving earlier ancestry unknown.
-mod common;
 
 use db::{
     blob_db,
     causal_adoption::{self, ModelBlobBinding},
     causal_envelope::Action,
+    causal_group_lifecycle::{self, GroupLifecycle, OperationImportResult},
+    causal_group_rename::NameState,
     group_db,
     model::user::User,
     model_db, random_hex_32, sync_peer, user_db,
 };
+
+mod common;
 
 async fn assert_failed_installs_roll_back(
     db: &db::db_context::DbContext,
@@ -406,6 +409,7 @@ async fn populated_manifest_bytes_count_toward_storage_limit() {
                 result.is_err(),
                 "all previously stored manifest bytes must count toward the aggregate limit"
             );
+
             return;
         }
         result.unwrap_or_else(|error| panic!("unexpected rejection: {error:?}; core={core}, manifests={manifests}, candidate={candidate}, base={base}"));
@@ -419,8 +423,6 @@ async fn populated_manifest_bytes_count_toward_storage_limit() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn populated_observation_preserves_three_device_rename_conflict_and_concurrent_delete() {
-    use db::causal_group_lifecycle::{self, GroupLifecycle, OperationImportResult};
-    use db::causal_group_rename::{self, NameState, ResolveResult};
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let (_cd, c) = common::test_db().await;
@@ -502,17 +504,17 @@ async fn populated_observation_preserves_three_device_rename_conflict_and_concur
         .unwrap();
     let token = match state.name {
         NameState::Conflict { choices, token } => {
-            assert!(choices.iter().any(|x| x.name == "bravo"));
-            assert!(choices.iter().any(|x| x.name == "charlie"));
+            assert!(choices.iter().any(|choice| choice.name == "bravo"));
+            assert!(choices.iter().any(|choice| choice.name == "charlie"));
             token
         }
         other => panic!("expected concurrent choices: {other:?}"),
     };
     assert!(matches!(
-        causal_group_rename::resolve(&a, &user, &ai, group.id, &token, "bravo")
+        db::causal_group_rename::resolve(&a, &user, &ai, group.id, &token, "bravo")
             .await
             .unwrap(),
-        ResolveResult::Resolved(_)
+        db::causal_group_rename::ResolveResult::Resolved(_)
     ));
     group_db::delete_group(&c, &user, local_groups[1])
         .await
@@ -539,8 +541,6 @@ async fn populated_observation_preserves_three_device_rename_conflict_and_concur
 
 #[tokio::test]
 async fn observed_member_can_move_away_and_replicate_original_move() {
-    use db::causal_group_lifecycle::{self, OperationImportResult};
-    use db::causal_model_move::{self, MoveState};
     let (_ad, a) = common::test_db().await;
     let (_bd, b) = common::test_db().await;
     let user = User::default();
@@ -582,11 +582,11 @@ async fn observed_member_can_move_away_and_replicate_original_move() {
     group_db::set_group_id_on_models(&b, &user, None, vec![target_model], None)
         .await
         .unwrap();
-    let state = causal_model_move::get_state(&b, &user, &bi, target_model)
+    let state = db::causal_model_move::get_state(&b, &user, &bi, target_model)
         .await
         .unwrap();
     let dot = match state {
-        MoveState::Ready {
+        db::causal_model_move::MoveState::Ready {
             destination: None,
             token,
         } => token.frontier[0].clone(),

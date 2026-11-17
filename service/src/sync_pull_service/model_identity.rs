@@ -1,12 +1,14 @@
 //! Explicit model identity answers after a token-bound group choice.
-use super::{AuthenticatedHub, invalid};
-use crate::{AppState, ServiceError};
-use db::causal_genesis::identity::{self, Decision, DecisionOutcome};
-use db::{model::user::User, user_db::SyncIdentity};
 pub use identity::model_pair::{
     GroupIdentityDecision, ModelIdentityChoice, ModelIdentityDecision, ModelIdentityOutcome,
 };
-impl AuthenticatedHub {
+
+use db::{causal_genesis::identity, model::user::User, user_db::SyncIdentity};
+
+use crate::{AppState, ServiceError};
+
+use super::invalid;
+impl super::AuthenticatedHub {
     pub async fn cancel_group_identity_choice(
         &self,
         state: &AppState,
@@ -62,11 +64,11 @@ impl AuthenticatedHub {
                 user,
                 identity,
                 decision_id,
-                Decision::ModelPair(decision),
+                identity::Decision::ModelPair(decision),
             )
             .await?
         {
-            DecisionOutcome::ModelPair(result) => Ok(result),
+            identity::DecisionOutcome::ModelPair(result) => Ok(result),
             _ => Err(invalid()),
         }
     }

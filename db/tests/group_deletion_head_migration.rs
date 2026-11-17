@@ -1,6 +1,7 @@
 //! Historical deletion heads survive recovery-snapshot expiration.
+use db::random_hex_32;
+
 mod common;
-use db::{model::user::User, random_hex_32};
 
 #[tokio::test]
 async fn migration_backfills_unresolved_deletion_for_a_purged_group() {
@@ -13,14 +14,14 @@ async fn migration_backfills_unresolved_deletion_for_a_purged_group() {
     let db = sqlx::SqlitePool::connect_with(options).await.unwrap();
     let old = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|m| m.version < 20_261_112_180_000)
+        .filter(|item| item.version < 20_261_112_180_000)
         .cloned()
         .collect();
     sqlx::migrate::Migrator::with_migrations(old)
         .run(&db)
         .await
         .unwrap();
-    let user = User::default();
+    let user = db::model::user::User::default();
     let group = common::legacy_group(&db, &user, "old").await;
     let old_id = random_hex_32();
     let current_id = random_hex_32();

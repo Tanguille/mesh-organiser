@@ -1,9 +1,10 @@
 //! Verify a locally archived original before the service sends it over authenticated HTTPS.
+use crate::{DbError, causal_envelope::Dot, db_context::DbContext};
+
 use super::{
-    auth, exchange, failure, observations,
+    failure,
     pull::{Authorization, Issuer},
 };
-use crate::{DbError, causal_envelope::Dot, db_context::DbContext};
 
 pub struct Publication {
     pub nonce: String,
@@ -18,9 +19,9 @@ impl Publication {
         event: &Dot,
         value: &serde_json::Value,
     ) -> Result<Self, DbError> {
-        let mut tx = db.begin().await?;
-        let result = Self::prepare_in(&mut tx, authorization, event, value).await?;
-        tx.commit().await?;
+        let mut transaction = db.begin().await?;
+        let result = Self::prepare_in(&mut transaction, authorization, event, value).await?;
+        transaction.commit().await?;
 
         Ok(result)
     }
@@ -34,9 +35,9 @@ impl Publication {
         let (nonce, issuer) = Self::proof_in(db, authorization, event).await?;
         let original =
             if value.get("kind").and_then(serde_json::Value::as_str) == Some("observed_group") {
-                observations::verify_publication(db, authorization, &issuer, value).await?
+                super::observations::verify_publication(db, authorization, &issuer, value).await?
             } else {
-                exchange::verify_publication(db, authorization, &issuer, value).await?
+                super::exchange::verify_publication(db, authorization, &issuer, value).await?
             };
         if !original {
             return Err(failure("unverified_author"));
@@ -46,7 +47,7 @@ impl Publication {
         Ok(Self {
             nonce,
             issuer,
-            digest: auth::digest(&wire),
+            digest: crate::util::sha256_hex(wire.as_bytes()),
         })
     }
     pub(super) async fn proof_in(
@@ -62,15 +63,16 @@ impl Publication {
             authority_writer_id,
             writer_id: event.writer_id.clone(),
         };
+
         Ok((nonce, issuer))
     }
 }
 
 /// Recheck after the network wait without creating a pull stream or acknowledging history.
 pub async fn validate_link(db: &DbContext, authorization: &Authorization) -> Result<(), DbError> {
-    let mut tx = db.begin().await?;
-    authorization.validate(&mut tx).await?;
-    tx.commit().await?;
+    let mut transaction = db.begin().await?;
+    authorization.validate(&mut transaction).await?;
+    transaction.commit().await?;
 
     Ok(())
 }

@@ -1,12 +1,21 @@
 //! A full snapshot binds every owner-scoped component to one database read view.
-mod common;
-use db::{
-    blob_db, group_db, model::user::User, model_db, random_hex_32, resource_db, sync_snapshot,
-    user_db,
+use std::{
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
 };
 
+use tokio::sync::Notify;
+
+use db::{
+    group_db, model::user::User, model_db, random_hex_32, resource_db, sync_snapshot, user_db,
+};
+
+mod common;
+
 async fn model(db: &db::db_context::DbContext, user: &User, name: &str) -> (i64, String) {
-    let blob = blob_db::add_blob(db, name, "stl", 1, None).await.unwrap();
+    let blob = db::blob_db::add_blob(db, name, "stl", 1, None)
+        .await
+        .unwrap();
     let id = model_db::add_model(db, user, name, blob, None, None)
         .await
         .unwrap();
@@ -71,7 +80,7 @@ async fn full_snapshot_binds_owner_identity_and_all_owned_state() {
     let active = full
         .groups
         .iter()
-        .find(|g| g.global_id == group.unique_global_id)
+        .find(|item| item.global_id == group.unique_global_id)
         .unwrap();
     assert_eq!(active.name, "owner group");
     assert!(active.birth_id.is_some());
@@ -82,31 +91,31 @@ async fn full_snapshot_binds_owner_identity_and_all_owned_state() {
     let deleted = full
         .groups
         .iter()
-        .find(|g| g.global_id == removed.unique_global_id)
+        .find(|group| group.global_id == removed.unique_global_id)
         .unwrap();
     assert!(deleted.deleted_at.is_some());
     assert!(
         full.deletions
             .iter()
-            .any(|d| d.group_global_id == removed.unique_global_id)
+            .any(|deletion| deletion.group_global_id == removed.unique_global_id)
     );
     assert!(
         full.heads
             .iter()
-            .any(|h| h.group_global_id == removed.unique_global_id)
+            .any(|head| head.group_global_id == removed.unique_global_id)
     );
     assert!(
         !full
             .groups
             .iter()
-            .any(|g| g.global_id == foreign.unique_global_id)
+            .any(|group| group.global_id == foreign.unique_global_id)
     );
     assert_eq!(full.assignments.len(), 2);
     for (global, is_trashed) in [(&live_global, false), (&trash_global, true)] {
         let item = full
             .assignments
             .iter()
-            .find(|m| &m.model_global_id == global)
+            .find(|assignment| &assignment.model_global_id == global)
             .unwrap();
         assert!(item.model_birth_id.is_some());
         assert_eq!(item.deleted_at.is_some(), is_trashed);
@@ -122,7 +131,7 @@ async fn full_snapshot_binds_owner_identity_and_all_owned_state() {
         !full
             .assignments
             .iter()
-            .any(|m| m.model_global_id == foreign_global)
+            .any(|assignment| assignment.model_global_id == foreign_global)
     );
     assert_eq!(full.resources.len(), 1);
     assert_eq!(full.resources[0].global_id, project.unique_global_id);
@@ -130,7 +139,7 @@ async fn full_snapshot_binds_owner_identity_and_all_owned_state() {
         !full
             .resources
             .iter()
-            .any(|p| p.global_id == foreign_project.unique_global_id)
+            .any(|resource| resource.global_id == foreign_project.unique_global_id)
     );
 }
 
@@ -246,15 +255,6 @@ async fn duplicate_identities_and_cross_owner_relationships_fail_closed() {
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::too_many_lines)]
 async fn concurrent_group_assignment_and_project_changes_do_not_mix_read_views() {
-    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-    use std::{
-        sync::{
-            Arc,
-            atomic::{AtomicBool, AtomicUsize, Ordering},
-        },
-        time::Duration,
-    };
-    use tokio::sync::Notify;
     let (dir, db) = common::test_db().await;
     let user = User::default();
     let account = user_db::get_sync_identity(&db, user.id)
@@ -273,9 +273,9 @@ async fn concurrent_group_assignment_and_project_changes_do_not_mix_read_views()
     let new_project_global = random_hex_32();
     let reached = Arc::new(Notify::new());
     let resume = Arc::new(Notify::new());
-    let armed = Arc::new(AtomicBool::new(false));
-    let releases = Arc::new(AtomicUsize::new(0));
-    let pool = SqlitePoolOptions::new()
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let releases = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .after_release({
             let reached = Arc::clone(&reached);
@@ -298,7 +298,7 @@ async fn concurrent_group_assignment_and_project_changes_do_not_mix_read_views()
             }
         })
         .connect_with(
-            SqliteConnectOptions::new()
+            sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(dir.path().join("db.sqlite"))
                 .foreign_keys(true)
                 .busy_timeout(Duration::from_secs(15)),
@@ -329,12 +329,12 @@ async fn concurrent_group_assignment_and_project_changes_do_not_mix_read_views()
     let folder = full
         .groups
         .iter()
-        .find(|g| g.global_id == group.unique_global_id)
+        .find(|item| item.global_id == group.unique_global_id)
         .unwrap();
     let assignment = full
         .assignments
         .iter()
-        .find(|m| m.model_global_id == model_global)
+        .find(|assignment| assignment.model_global_id == model_global)
         .unwrap();
     let resource = full.resources.first().unwrap();
     match folder.name.as_str() {
@@ -381,7 +381,7 @@ async fn snapshot_preserves_explicitly_unknown_legacy_births() {
     assert_eq!(
         full.groups
             .iter()
-            .find(|g| g.global_id == legacy_group.unique_global_id)
+            .find(|group| group.global_id == legacy_group.unique_global_id)
             .unwrap()
             .birth_id,
         None
@@ -389,7 +389,7 @@ async fn snapshot_preserves_explicitly_unknown_legacy_births() {
     assert_eq!(
         full.assignments
             .iter()
-            .find(|m| m.model_global_id == global)
+            .find(|assignment| assignment.model_global_id == global)
             .unwrap()
             .model_birth_id,
         None

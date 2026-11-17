@@ -1,3 +1,7 @@
+use std::collections::HashSet;
+
+use crate::util::is_blob_sha256;
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityKind {
@@ -196,6 +200,7 @@ pub fn canonical_causal_envelope(value: &CausalEnvelope) -> Result<String, Envel
     if encoded.len() > MAX_ENVELOPE_BYTES {
         return Err(EnvelopeError);
     }
+
     Ok(encoded)
 }
 
@@ -216,15 +221,16 @@ fn validate_entity(entity: &Entity, allow_unknown_birth: bool) -> Result<(), Env
         || entity
             .birth_id
             .as_ref()
-            .map_or(!allow_unknown_birth, |id| !crate::util::is_blob_sha256(id))
+            .map_or(!allow_unknown_birth, |id| !is_blob_sha256(id))
     {
         return Err(EnvelopeError);
     }
+
     Ok(())
 }
 
 pub(crate) fn counter(dot: &Dot) -> Result<i64, EnvelopeError> {
-    if !crate::util::is_blob_sha256(&dot.writer_id)
+    if !is_blob_sha256(&dot.writer_id)
         || dot.counter.starts_with('0')
         || !dot.counter.bytes().all(|byte| byte.is_ascii_digit())
     {
@@ -238,16 +244,16 @@ pub(crate) fn counter(dot: &Dot) -> Result<i64, EnvelopeError> {
 }
 
 fn sort_context(value: &mut CausalEnvelope) {
-    value
-        .parents
-        .sort_by(|a, b| (&a.writer_id, &a.counter).cmp(&(&b.writer_id, &b.counter)));
-    value.dependencies.sort_by(|a, b| {
-        (&a.event.writer_id, &a.event.counter).cmp(&(&b.event.writer_id, &b.event.counter))
+    value.parents.sort_by(|left, right| {
+        (&left.writer_id, &left.counter).cmp(&(&right.writer_id, &right.counter))
+    });
+    value.dependencies.sort_by(|left, right| {
+        (&left.event.writer_id, &left.event.counter)
+            .cmp(&(&right.event.writer_id, &right.event.counter))
     });
 }
 
 fn validate(value: &CausalEnvelope) -> Result<(), EnvelopeError> {
-    use std::collections::HashSet;
     if value.version != 2
         || value.parents.len() > MAX_CONTEXT_ITEMS
         || value.dependencies.len() > MAX_CONTEXT_ITEMS
@@ -284,6 +290,7 @@ fn validate(value: &CausalEnvelope) -> Result<(), EnvelopeError> {
             return Err(EnvelopeError);
         }
     }
+
     validate_action(value)
 }
 
@@ -318,9 +325,7 @@ fn validate_action(value: &CausalEnvelope) -> Result<(), EnvelopeError> {
         Action::GroupDeleted {
             deletion_operation_id,
         } => {
-            if value.entity.kind != EntityKind::Group
-                || !crate::util::is_blob_sha256(deletion_operation_id)
-            {
+            if value.entity.kind != EntityKind::Group || !is_blob_sha256(deletion_operation_id) {
                 return Err(EnvelopeError);
             }
         }
@@ -388,6 +393,7 @@ fn validate_action(value: &CausalEnvelope) -> Result<(), EnvelopeError> {
             }
         }
     }
+
     Ok(())
 }
 

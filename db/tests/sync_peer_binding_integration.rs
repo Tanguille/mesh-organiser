@@ -1,5 +1,4 @@
 //! Peer bindings pin caller-supplied identities; they do not authenticate remote peers.
-mod common;
 
 use db::{
     db_context::DbContext,
@@ -7,6 +6,8 @@ use db::{
     random_hex_32, sync_peer,
     user_db::{self, SyncIdentity},
 };
+
+mod common;
 
 async fn identity(db: &DbContext, user: &User) -> SyncIdentity {
     user_db::get_sync_identity(db, user.id)
@@ -65,7 +66,10 @@ async fn repeated_binding_is_idempotent_and_distinct_pairs_are_isolated() {
     let peers = sync_peer::list_peers(&db, &owner, &local).await.unwrap();
     assert_eq!(peers.len(), 3);
     for expected in [&first, &second, &third] {
-        assert_eq!(peers.iter().filter(|p| &p.remote == expected).count(), 1);
+        assert_eq!(
+            peers.iter().filter(|peer| &peer.remote == expected).count(),
+            1
+        );
     }
     let other_peers = sync_peer::list_peers(&db, &other, &other_local)
         .await
@@ -207,8 +211,8 @@ async fn concurrent_binds_are_idempotent_without_losing_distinct_pairs() {
     c.unwrap();
     let peers = sync_peer::list_peers(&db, &owner, &local).await.unwrap();
     assert_eq!(peers.len(), 2);
-    assert!(peers.iter().any(|p| p.remote == first));
-    assert!(peers.iter().any(|p| p.remote == second));
+    assert!(peers.iter().any(|peer| peer.remote == first));
+    assert!(peers.iter().any(|peer| peer.remote == second));
 }
 
 #[tokio::test]

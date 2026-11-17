@@ -3,21 +3,15 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{delete, get, post},
 };
 use axum_extra::extract::Query;
-use axum_login::login_required;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use db::{group_db, group_db::GroupFilterOptions, model::blob::FileType};
+use db::group_db::{self, GroupFilterOptions};
 use service::AppState;
 
-use crate::{
-    controller::{ModelIdsParams, share_controller::ShareScope},
-    error::ApplicationError,
-    query_bounds,
-    user::{Backend, CurrentUser},
-};
+use crate::{controller::ModelIdsParams, error::ApplicationError, query_bounds, user::CurrentUser};
 
 pub fn router() -> Router<AppState> {
     Router::new().nest(
@@ -29,10 +23,10 @@ pub fn router() -> Router<AppState> {
             .route("/groups/trash", get(get_trashed_groups))
             .route("/groups/restore", post(restore_groups))
             .route("/groups/detach_models", delete(remove_models_from_group))
-            .route("/groups/{group_id}", put(edit_group))
+            .route("/groups/{group_id}", axum::routing::put(edit_group))
             .route("/groups/{group_id}", delete(delete_group))
             .route("/groups/{group_id}/models", post(add_models_to_group))
-            .route_layer(login_required!(Backend))
+            .route_layer(axum_login::login_required!(crate::user::Backend))
             .route("/shares/{share_id}/groups", get(get_share_groups)),
     )
 }
@@ -73,7 +67,7 @@ pub struct GetGroupParams {
     pub order_by: Option<String>,
     pub text_search: Option<String>,
     #[serde(default)]
-    pub file_types: Vec<FileType>,
+    pub file_types: Vec<db::model::blob::FileType>,
     pub page: u32,
     pub page_size: u32,
     pub include_ungrouped_models: Option<bool>,
@@ -142,7 +136,8 @@ pub async fn get_share_groups(
     State(app_state): State<AppState>,
     Query(params): Query<GetGroupParams>,
 ) -> Result<Response, ApplicationError> {
-    let scope = ShareScope::resolve(&app_state, &share_id).await?;
+    let scope =
+        crate::controller::share_controller::ShareScope::resolve(&app_state, &share_id).await?;
 
     if let Err(e) = query_bounds::validate_list_query_bounds(
         params.paginated_bounds(),
@@ -181,7 +176,7 @@ pub struct GetGroupCountParams {
     pub include_ungrouped_models: Option<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(serde::Serialize)]
 pub struct GetGroupCountResponse {
     pub count: usize,
 }

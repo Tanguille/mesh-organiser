@@ -1,14 +1,14 @@
 //! Received rename history stays owner-scoped and never mutates applied domain state.
-mod common;
 
 use db::{
-    blob_db,
     db_context::DbContext,
     group_db,
     group_history::{self, EventId, GroupRenameEvent, IngestResult, ReplicaPrincipal},
     model::user::User,
-    model_db, random_hex_32, user_db,
+    random_hex_32, user_db,
 };
+
+mod common;
 
 async fn trust(db: &DbContext, user: &User, replica: &str) -> ReplicaPrincipal {
     sqlx::query("INSERT INTO causal_replica_owners (user_id, replica_id) VALUES (?, ?)")
@@ -261,10 +261,10 @@ async fn membership_dot_cannot_be_reused_for_a_group_rename() {
     let group = group_db::add_empty_group(&db, &user, "group", None)
         .await
         .unwrap();
-    let blob = blob_db::add_blob(&db, "model", "stl", 1, None)
+    let blob = db::blob_db::add_blob(&db, "model", "stl", 1, None)
         .await
         .unwrap();
-    let id = model_db::add_model(&db, &user, "model", blob, None, None)
+    let id = db::model_db::add_model(&db, &user, "model", blob, None, None)
         .await
         .unwrap();
     group_db::set_group_id_on_models(&db, &user, Some(group.id), vec![id], None)
@@ -369,22 +369,22 @@ async fn parent_order_is_canonical_but_changed_dependencies_are_rejected() {
 async fn pending_events_do_not_allow_cycles_or_wrong_group_parents() {
     let (_dir, db) = common::test_db().await;
     let user = User::default();
-    let a = group_db::add_empty_group(&db, &user, "A", None)
+    let first = group_db::add_empty_group(&db, &user, "A", None)
         .await
         .unwrap();
-    let b = group_db::add_empty_group(&db, &user, "B", None)
+    let second = group_db::add_empty_group(&db, &user, "B", None)
         .await
         .unwrap();
     let replica = random_hex_32();
     let principal = trust(&db, &user, &replica).await;
-    let other = make_event(&replica, 1, &b.unique_global_id, "other", vec![]);
+    let other = make_event(&replica, 1, &second.unique_global_id, "other", vec![]);
     group_history::ingest_group_rename(&db, &principal, &other)
         .await
         .unwrap();
     let invalid = make_event(
         &replica,
         2,
-        &a.unique_global_id,
+        &first.unique_global_id,
         "invalid",
         vec![other.id.clone()],
     );
@@ -399,7 +399,7 @@ async fn pending_events_do_not_allow_cycles_or_wrong_group_parents() {
         replica_id: second_replica.clone(),
         counter: 4,
     };
-    let earlier = make_event(&replica, 3, &a.unique_global_id, "earlier", vec![later]);
+    let earlier = make_event(&replica, 3, &first.unique_global_id, "earlier", vec![later]);
     assert!(matches!(
         group_history::ingest_group_rename(&db, &principal, &earlier)
             .await
@@ -409,7 +409,7 @@ async fn pending_events_do_not_allow_cycles_or_wrong_group_parents() {
     let cycle = make_event(
         &second_replica,
         4,
-        &a.unique_global_id,
+        &first.unique_global_id,
         "cycle",
         vec![earlier.id.clone()],
     );
@@ -418,7 +418,7 @@ async fn pending_events_do_not_allow_cycles_or_wrong_group_parents() {
             .await
             .is_err()
     );
-    let received = group_history::get_received_group_renames(&db, &user, &a.unique_global_id)
+    let received = group_history::get_received_group_renames(&db, &user, &first.unique_global_id)
         .await
         .unwrap();
     assert_eq!(received.len(), 1);
@@ -682,19 +682,19 @@ async fn transitive_dependencies_remain_pending_until_root_arrives() {
 async fn wrong_group_pending_reference_cannot_block_a_valid_parent() {
     let (_dir, db) = common::test_db().await;
     let user = User::default();
-    let a = group_db::add_empty_group(&db, &user, "A", None)
+    let first = group_db::add_empty_group(&db, &user, "A", None)
         .await
         .unwrap();
-    let b = group_db::add_empty_group(&db, &user, "B", None)
+    let second = group_db::add_empty_group(&db, &user, "B", None)
         .await
         .unwrap();
     let replica = random_hex_32();
     let principal = trust(&db, &user, &replica).await;
-    let parent = make_event(&replica, 1, &b.unique_global_id, "wrong group", vec![]);
+    let parent = make_event(&replica, 1, &second.unique_global_id, "wrong group", vec![]);
     let child = make_event(
         &replica,
         2,
-        &a.unique_global_id,
+        &first.unique_global_id,
         "waiting",
         vec![parent.id.clone()],
     );
@@ -710,7 +710,7 @@ async fn wrong_group_pending_reference_cannot_block_a_valid_parent() {
             .unwrap(),
         IngestResult::AcceptedReady
     ));
-    let pending = group_history::get_received_group_renames(&db, &user, &a.unique_global_id)
+    let pending = group_history::get_received_group_renames(&db, &user, &first.unique_global_id)
         .await
         .unwrap();
     assert_eq!(pending.len(), 1);
@@ -728,21 +728,27 @@ async fn another_owners_pending_reference_cannot_block_a_valid_parent() {
         .await
         .unwrap()
         .unwrap();
-    let a = group_db::add_empty_group(&db, &user, "A", None)
+    let first = group_db::add_empty_group(&db, &user, "A", None)
         .await
         .unwrap();
-    let b = group_db::add_empty_group(&db, &other, "B", None)
+    let second = group_db::add_empty_group(&db, &other, "B", None)
         .await
         .unwrap();
     let own_replica = random_hex_32();
     let other_replica = random_hex_32();
     let own = trust(&db, &user, &own_replica).await;
     let foreign = trust(&db, &other, &other_replica).await;
-    let parent = make_event(&other_replica, 1, &b.unique_global_id, "foreign", vec![]);
+    let parent = make_event(
+        &other_replica,
+        1,
+        &second.unique_global_id,
+        "foreign",
+        vec![],
+    );
     let child = make_event(
         &own_replica,
         1,
-        &a.unique_global_id,
+        &first.unique_global_id,
         "waiting",
         vec![parent.id.clone()],
     );
@@ -758,7 +764,7 @@ async fn another_owners_pending_reference_cannot_block_a_valid_parent() {
             .unwrap(),
         IngestResult::AcceptedReady
     ));
-    let pending = group_history::get_received_group_renames(&db, &user, &a.unique_global_id)
+    let pending = group_history::get_received_group_renames(&db, &user, &first.unique_global_id)
         .await
         .unwrap();
     assert_eq!(pending.len(), 1);

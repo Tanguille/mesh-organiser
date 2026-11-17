@@ -1,8 +1,8 @@
-use std::{collections::HashMap, fmt::Write};
+use std::{collections::HashMap, fmt::Write as _};
 
 use sqlx::SqliteConnection;
 
-use crate::{DbError, db_context::DbContext, model::user::User, time_now};
+use crate::{DbError, db_context::DbContext, model::user::User};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AssignmentChange {
@@ -118,32 +118,34 @@ pub async fn apply_group_sync_batch(
     // writes remain an incomplete-history boundary until the authenticated reducer
     // applies events atomically; minting local user actions here would invent authorship.
     let mut changes: Vec<_> = changes.iter().collect();
-    changes.sort_by(|a, b| a.model_global_id.cmp(&b.model_global_id));
+    changes.sort_by(|left, right| left.model_global_id.cmp(&right.model_global_id));
     let mut groups: Vec<_> = groups.iter().collect();
-    groups.sort_by(|a, b| a.group_global_id.cmp(&b.group_global_id));
+    groups.sort_by(|left, right| left.group_global_id.cmp(&right.group_global_id));
     let mut lifecycle: Vec<_> = lifecycle.iter().collect();
     lifecycle.sort_by_key(|action| action.group_id());
     validate_batch_shape(operation_id, &changes, &groups, &lifecycle)?;
     let payload = canonical_payload(&changes, &groups, &lifecycle, retention_days);
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
     let prior: Option<String> = sqlx::query_scalar(
         "SELECT payload FROM assignment_batch_journal WHERE user_id = ? AND operation_id = ?",
     )
     .bind(user.id)
     .bind(operation_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut *transaction)
     .await?;
     if let Some(prior) = prior {
         if prior != payload {
             return Err(invalid_batch());
         }
-        tx.commit().await?;
+        transaction.commit().await?;
+
         return Ok(AssignmentBatchResult::AlreadyApplied);
     }
-    let mut group_states = validate_groups(&mut tx, user, &groups).await?;
-    let updates = validate_assignments(&mut tx, user, &changes, &group_states, &lifecycle).await?;
+    let mut group_states = validate_groups(&mut transaction, user, &groups).await?;
+    let updates =
+        validate_assignments(&mut transaction, user, &changes, &group_states, &lifecycle).await?;
     validate_lifecycle(
-        &mut tx,
+        &mut transaction,
         user,
         &changes,
         &group_states,
@@ -151,7 +153,7 @@ pub async fn apply_group_sync_batch(
         retention_days,
     )
     .await?;
-    apply_lifecycle(&mut tx, user, &mut group_states, &lifecycle).await?;
+    apply_lifecycle(&mut transaction, user, &mut group_states, &lifecycle).await?;
     for (id, target) in updates {
         let target_id = match target {
             Some(global) => Some(
@@ -168,7 +170,7 @@ pub async fn apply_group_sync_batch(
         .bind(target_id)
         .bind(id)
         .bind(user.id)
-        .execute(&mut *tx)
+        .execute(&mut *transaction)
         .await?;
     }
     for action in &lifecycle {
@@ -181,7 +183,7 @@ pub async fn apply_group_sync_batch(
                 .0
                 .ok_or_else(invalid_batch)?;
             let has_models: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM models WHERE model_user_id = ? AND model_group_id = ?)")
-                .bind(user.id).bind(group_id).fetch_one(&mut *tx).await?;
+                .bind(user.id).bind(group_id).fetch_one(&mut *transaction).await?;
             if !has_models {
                 return Err(invalid_batch());
             }
@@ -197,7 +199,7 @@ pub async fn apply_group_sync_batch(
                 .0
                 .ok_or_else(invalid_batch)?;
             sqlx::query("INSERT INTO group_deletion_records (user_id, group_global_id, operation_id, deleted_at, group_revision, group_birth_id) SELECT ?, ?, ?, group_deleted_at, group_revision, group_birth_id FROM models_group WHERE group_id = ? AND group_user_id = ?")
-                .bind(user.id).bind(group_global_id).bind(deletion_operation_id).bind(id).bind(user.id).execute(&mut *tx).await?;
+                .bind(user.id).bind(group_global_id).bind(deletion_operation_id).bind(id).bind(user.id).execute(&mut *transaction).await?;
         }
     }
     sqlx::query(
@@ -206,9 +208,9 @@ pub async fn apply_group_sync_batch(
     .bind(user.id)
     .bind(operation_id)
     .bind(payload)
-    .execute(&mut *tx)
+    .execute(&mut *transaction)
     .await?;
-    tx.commit().await?;
+    transaction.commit().await?;
     Ok(AssignmentBatchResult::Applied)
 }
 
@@ -242,6 +244,7 @@ async fn validate_groups<'a>(
         }
         result.insert(group.group_global_id.as_str(), (*id, state.clone()));
     }
+
     Ok(result)
 }
 
@@ -299,6 +302,7 @@ async fn validate_assignments<'a>(
             updates.push((*id, change.target_group_global_id.as_deref()));
         }
     }
+
     Ok(updates)
 }
 
@@ -392,6 +396,7 @@ async fn validate_lifecycle(
             }
         }
     }
+
     Ok(())
 }
 
@@ -405,7 +410,7 @@ async fn apply_lifecycle(
         let (id, state) = groups
             .get_mut(action.group_id())
             .ok_or_else(invalid_batch)?;
-        let now = time_now();
+        let now = crate::time_now();
         match action {
             GroupLifecycleChange::Delete {
                 deletion_operation_id,
@@ -469,6 +474,7 @@ async fn apply_lifecycle(
             }
         }
     }
+
     Ok(())
 }
 
@@ -494,6 +500,7 @@ async fn resolve_keep_resource(
             if incarnation != expected_incarnation {
                 return Err(invalid_batch());
             }
+
             Ok(Some(*id))
         }
     }
@@ -527,6 +534,7 @@ fn validate_batch_shape(
     {
         return Err(invalid_batch());
     }
+
     Ok(())
 }
 
@@ -603,6 +611,7 @@ fn canonical_payload(
             }
         }
     }
+
     payload
 }
 

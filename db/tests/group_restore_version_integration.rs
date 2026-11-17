@@ -1,15 +1,15 @@
 //! A stale Trash selection must not restore a later deletion of the same group.
-mod common;
 use db::{
-    db_context::DbContext,
     group_db::{self, GroupRestoreRequest},
     model::user::User,
     random_hex_32, user_db,
 };
 
-async fn request(db: &DbContext, user: &User, id: i64) -> GroupRestoreRequest {
+mod common;
+
+async fn request(db: &db::db_context::DbContext, user: &User, id: i64) -> GroupRestoreRequest {
     let items = group_db::get_trashed_groups(db, user, 30).await.unwrap();
-    let item = items.iter().find(|g| g.id == id);
+    let item = items.iter().find(|item| item.id == id);
     assert!(item.is_some(), "group {id} must remain recoverable");
     let item = item.unwrap();
     GroupRestoreRequest {

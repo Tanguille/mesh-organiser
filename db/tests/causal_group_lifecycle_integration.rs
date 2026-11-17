@@ -1,21 +1,23 @@
 //! Explicit combined-capability tests; these do not enable network sync.
-mod common;
 use db::{
-    blob_db, causal_genesis,
+    blob_db,
+    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
+    causal_genesis,
     causal_group_lifecycle::{self, GroupLifecycle, OperationImportResult},
-    causal_group_rename::NameState,
-    db_context::DbContext,
-    group_db,
+    causal_group_rename::{self, NameState, ResolveResult},
+    causal_model_move::{self, MoveState},
+    causal_store, group_db,
     model::user::User,
     model_db, random_hex_32, sync_peer, user_db,
-    user_db::SyncIdentity,
 };
+
+mod common;
 
 struct Device {
     _dir: tempfile::TempDir,
-    db: DbContext,
+    db: db::db_context::DbContext,
     user: User,
-    identity: SyncIdentity,
+    identity: user_db::SyncIdentity,
     group: i64,
     model: i64,
 }
@@ -100,13 +102,13 @@ async fn devices() -> (Device, Device, Device) {
         },
     )
 }
-async fn state(d: &Device) -> causal_group_lifecycle::GroupState {
-    causal_group_lifecycle::get_state(&d.db, &d.user, &d.identity, d.group)
+async fn state(device: &Device) -> causal_group_lifecycle::GroupState {
+    causal_group_lifecycle::get_state(&device.db, &device.user, &device.identity, device.group)
         .await
         .unwrap()
 }
-async fn latest(d: &Device) -> db::causal_envelope::Dot {
-    match state(d).await.name {
+async fn latest(device: &Device) -> Dot {
+    match state(device).await.name {
         NameState::Ready { token, .. } => token.frontier[0].clone(),
         x => panic!("expected ready name frontier: {x:?}"),
     }
@@ -141,15 +143,18 @@ async fn transfer(
 #[tokio::test]
 #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 async fn concurrent_delete_and_rename_keep_group_model_and_durable_deletion() {
-    use db::causal_envelope::Action;
     let (a, b, c) = devices().await;
-    let h = group_db::add_empty_group(&a.db, &a.user, "destination", None)
+    let destination_group = group_db::add_empty_group(&a.db, &a.user, "destination", None)
         .await
         .unwrap();
-    let h_genesis =
-        causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, h.id)
-            .await
-            .unwrap();
+    let h_genesis = causal_group_lifecycle::enroll_pristine_group(
+        &a.db,
+        &a.user,
+        &a.identity,
+        destination_group.id,
+    )
+    .await
+    .unwrap();
     let ba = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
         .await
         .unwrap();
@@ -220,35 +225,42 @@ async fn concurrent_delete_and_rename_keep_group_model_and_durable_deletion() {
     transfer(&b, &a, &deletion).await;
     transfer(&c, &a, &deletion).await;
     transfer(&c, &b, &rename).await;
-    for d in [&a, &b, &c] {
-        let observed = state(d).await;
+    for device in [&a, &b, &c] {
+        let observed = state(device).await;
         assert!(matches!(observed.lifecycle, GroupLifecycle::Active));
         assert!(matches!(observed.name,NameState::Ready{ref name,..} if name=="renamed"));
-        let row:(String,Option<String>,Option<i64>)=sqlx::query_as("SELECT g.group_name,g.group_deleted_at,m.model_group_id FROM models_group g JOIN models m ON m.model_id=? WHERE g.group_id=?").bind(d.model).bind(d.group).fetch_one(&d.db).await.unwrap();
-        assert_eq!(row, ("renamed".into(), None, Some(d.group)));
+        let row:(String,Option<String>,Option<i64>)=sqlx::query_as("SELECT g.group_name,g.group_deleted_at,m.model_group_id FROM models_group g JOIN models m ON m.model_id=? WHERE g.group_id=?").bind(device.model).bind(device.group).fetch_one(&device.db).await.unwrap();
+        assert_eq!(row, ("renamed".into(), None, Some(device.group)));
         assert!(
-            !group_db::get_trashed_groups(&d.db, &d.user, 30)
+            !group_db::get_trashed_groups(&device.db, &device.user, 30)
                 .await
                 .unwrap()
                 .iter()
-                .any(|g| g.id == d.group)
+                .any(|item| item.id == device.group)
         );
         let deleted: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM group_deletion_records WHERE user_id=? AND group_global_id=?",
         )
-        .bind(d.user.id)
+        .bind(device.user.id)
         .bind(&observed.entity.global_id)
-        .fetch_one(&d.db)
+        .fetch_one(&device.db)
         .await
         .unwrap();
         assert!(deleted > 0, "losing deletion evidence must remain durable");
     }
-    group_db::set_group_id_on_models(&a.db, &a.user, Some(h.id), vec![a.model], None)
-        .await
-        .unwrap();
-    let h_state = causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    group_db::set_group_id_on_models(
+        &a.db,
+        &a.user,
+        Some(destination_group.id),
+        vec![a.model],
+        None,
+    )
+    .await
+    .unwrap();
+    let h_state =
+        causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, destination_group.id)
+            .await
+            .unwrap();
     let h_dot = match h_state.name {
         NameState::Ready { token, .. } => token.frontier[0].clone(),
         x => panic!("expected destination frontier: {x:?}"),
@@ -258,7 +270,7 @@ async fn concurrent_delete_and_rename_keep_group_model_and_durable_deletion() {
         .unwrap();
     transfer(&b, &a, &moved).await;
     transfer(&c, &a, &moved).await;
-    for (d, target) in [(&a, h.id), (&b, bh), (&c, ch)] {
+    for (d, target) in [(&a, destination_group.id), (&b, bh), (&c, ch)] {
         let destination: Option<i64> =
             sqlx::query_scalar("SELECT model_group_id FROM models WHERE model_id=?")
                 .bind(d.model)
@@ -355,7 +367,7 @@ async fn concurrent_delete_and_new_membership_keep_group_and_added_model() {
                 .await
                 .unwrap()
                 .iter()
-                .any(|g| g.id == device.group)
+                .any(|item| item.id == device.group)
         );
     }
 }
@@ -403,7 +415,7 @@ async fn missing_group_parent_requests_dependency_without_ack_then_retry_and_rel
     );
     let result = result.unwrap();
     assert!(
-        matches!(result,OperationImportResult::NeedsDependencies{ref missing,ref state} if missing.iter().any(|d|d.event==parent_dot) && *state==before)
+        matches!(result,OperationImportResult::NeedsDependencies{ref missing,ref state} if missing.iter().any(|dependency|dependency.event==parent_dot) && *state==before)
     );
     let present: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM causal_events WHERE writer_id=? AND counter=?)",
@@ -469,9 +481,9 @@ async fn manual_trash_restore_relays_exact_deletion_and_reattaches_former_member
             .unwrap();
     transfer(&b, &a, &deleted).await;
     transfer(&c, &a, &deleted).await;
-    for d in [&a, &b, &c] {
+    for device in [&a, &b, &c] {
         assert!(matches!(
-            state(d).await.lifecycle,
+            state(device).await.lifecycle,
             GroupLifecycle::Deleted { .. }
         ));
     }
@@ -485,15 +497,18 @@ async fn manual_trash_restore_relays_exact_deletion_and_reattaches_former_member
             .unwrap();
     transfer(&a, &b, &restore).await;
     transfer(&c, &b, &restore).await;
-    for d in [&a, &b, &c] {
-        assert!(matches!(state(d).await.lifecycle, GroupLifecycle::Active));
+    for device in [&a, &b, &c] {
+        assert!(matches!(
+            state(device).await.lifecycle,
+            GroupLifecycle::Active
+        ));
         let destination: Option<i64> =
             sqlx::query_scalar("SELECT model_group_id FROM models WHERE model_id=?")
-                .bind(d.model)
-                .fetch_one(&d.db)
+                .bind(device.model)
+                .fetch_one(&device.db)
                 .await
                 .unwrap();
-        assert_eq!(destination, Some(d.group));
+        assert_eq!(destination, Some(device.group));
     }
     let before:(i64,i64)=sqlx::query_as("SELECT (SELECT counter FROM group_causal_replica WHERE singleton=1),(SELECT COUNT(*) FROM group_lifecycle_events)").fetch_one(&b.db).await.unwrap();
     let retry = group_db::restore_groups(&b.db, &b.user, std::slice::from_ref(&request), 30).await;
@@ -518,12 +533,17 @@ async fn manual_trash_restore_relays_exact_deletion_and_reattaches_former_member
 #[allow(clippy::many_single_char_names)]
 async fn restoring_group_does_not_reattach_a_model_independently_moved_after_delete() {
     let (a, b, c) = devices().await;
-    let h = group_db::add_empty_group(&a.db, &a.user, "destination", None)
+    let destination_group = group_db::add_empty_group(&a.db, &a.user, "destination", None)
         .await
         .unwrap();
-    let genesis = causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    let genesis = causal_group_lifecycle::enroll_pristine_group(
+        &a.db,
+        &a.user,
+        &a.identity,
+        destination_group.id,
+    )
+    .await
+    .unwrap();
     let ba = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
         .await
         .unwrap();
@@ -558,12 +578,19 @@ async fn restoring_group_does_not_reattach_a_model_independently_moved_after_del
             .unwrap();
     transfer(&b, &a, &deleted).await;
     transfer(&c, &a, &deleted).await;
-    group_db::set_group_id_on_models(&a.db, &a.user, Some(h.id), vec![a.model], None)
-        .await
-        .unwrap();
-    let h_state = causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    group_db::set_group_id_on_models(
+        &a.db,
+        &a.user,
+        Some(destination_group.id),
+        vec![a.model],
+        None,
+    )
+    .await
+    .unwrap();
+    let h_state =
+        causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, destination_group.id)
+            .await
+            .unwrap();
     let dot = match h_state.name {
         NameState::Ready { token, .. } => token.frontier[0].clone(),
         x => panic!("expected destination frontier: {x:?}"),
@@ -585,7 +612,7 @@ async fn restoring_group_does_not_reattach_a_model_independently_moved_after_del
             .unwrap();
     transfer(&a, &b, &restored).await;
     transfer(&c, &b, &restored).await;
-    for (d, target) in [(&a, h.id), (&b, bh), (&c, ch)] {
+    for (d, target) in [(&a, destination_group.id), (&b, bh), (&c, ch)] {
         assert!(matches!(state(d).await.lifecycle, GroupLifecycle::Active));
         let current: Option<i64> =
             sqlx::query_scalar("SELECT model_group_id FROM models WHERE model_id=?")
@@ -631,31 +658,30 @@ async fn delete_observing_prior_rename_and_add_stays_deleted() {
             .unwrap();
     transfer(&b, &a, &deletion).await;
     transfer(&c, &a, &deletion).await;
-    for d in [&a, &b, &c] {
+    for device in [&a, &b, &c] {
         assert!(matches!(
-            state(d).await.lifecycle,
+            state(device).await.lifecycle,
             GroupLifecycle::Deleted { .. }
         ));
         let current: Option<i64> =
             sqlx::query_scalar("SELECT model_group_id FROM models WHERE model_id=?")
-                .bind(d.model)
-                .fetch_one(&d.db)
+                .bind(device.model)
+                .fetch_one(&device.db)
                 .await
                 .unwrap();
         assert_eq!(current, None);
         assert!(
-            group_db::get_trashed_groups(&d.db, &d.user, 30)
+            group_db::get_trashed_groups(&device.db, &device.user, 30)
                 .await
                 .unwrap()
                 .iter()
-                .any(|g| g.id == d.group)
+                .any(|item| item.id == device.group)
         );
     }
 }
 
 #[tokio::test]
 async fn combined_capacity_exhaustion_keeps_local_rename_usable_and_retains_history() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot};
     let (a, _b, _c) = devices().await;
     let original = state(&a).await;
     let root = match &original.name {
@@ -667,11 +693,11 @@ async fn combined_capacity_exhaustion_keeps_local_rename_usable_and_retains_hist
     let operation = random_hex_32();
     let mut parent = root;
     let mut tx = a.db.begin().await.unwrap();
-    sqlx::query("INSERT INTO group_lifecycle_operations(user_id,operation_id,focus_birth_id,event_count) VALUES (?,?,?,?)").bind(a.user.id).bind(&operation).bind(birth).bind(i64::try_from(db::causal_store::MAX_OWNER_EVENTS).unwrap()).execute(&mut *tx).await.unwrap();
-    for n in 1..=db::causal_store::MAX_OWNER_EVENTS {
+    sqlx::query("INSERT INTO group_lifecycle_operations(user_id,operation_id,focus_birth_id,event_count) VALUES (?,?,?,?)").bind(a.user.id).bind(&operation).bind(birth).bind(i64::try_from(causal_store::MAX_OWNER_EVENTS).unwrap()).execute(&mut *tx).await.unwrap();
+    for index in 1..=causal_store::MAX_OWNER_EVENTS {
         let dot = Dot {
             writer_id: writer.clone(),
-            counter: n.to_string(),
+            counter: index.to_string(),
         };
         let event = CausalEnvelope {
             version: 2,
@@ -688,12 +714,12 @@ async fn combined_capacity_exhaustion_keeps_local_rename_usable_and_retains_hist
         )
         .bind(a.user.id)
         .bind(&writer)
-        .bind(i64::try_from(n).unwrap())
+        .bind(i64::try_from(index).unwrap())
         .bind(causal_envelope::canonical_causal_envelope(&event).unwrap())
         .execute(&mut *tx)
         .await
         .unwrap();
-        sqlx::query("INSERT INTO group_lifecycle_events(user_id,operation_id,position,writer_id,counter) VALUES (?,?,?,?,?)").bind(a.user.id).bind(&operation).bind(i64::try_from(n-1).unwrap()).bind(&writer).bind(i64::try_from(n).unwrap()).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO group_lifecycle_events(user_id,operation_id,position,writer_id,counter) VALUES (?,?,?,?,?)").bind(a.user.id).bind(&operation).bind(i64::try_from(index-1).unwrap()).bind(&writer).bind(i64::try_from(index).unwrap()).execute(&mut *tx).await.unwrap();
         parent = dot;
     }
     tx.commit().await.unwrap();
@@ -718,7 +744,7 @@ async fn combined_capacity_exhaustion_keeps_local_rename_usable_and_retains_hist
             .unwrap();
     assert_eq!(
         usize::try_from(remaining).unwrap(),
-        db::causal_store::MAX_OWNER_EVENTS
+        causal_store::MAX_OWNER_EVENTS
     );
     assert!(
         matches!(state(&a).await.name, NameState::Paused { .. }),
@@ -767,14 +793,18 @@ async fn combined_rename_and_move_honor_supplied_timestamps() {
 
 #[tokio::test]
 async fn resolving_offered_ungrouped_choice_preserves_delete_dependencies() {
-    use db::causal_model_move::{self, MoveResolveResult, MoveState};
     let (a, b, _c) = devices().await;
-    let h = group_db::add_empty_group(&a.db, &a.user, "destination", None)
+    let destination_group = group_db::add_empty_group(&a.db, &a.user, "destination", None)
         .await
         .unwrap();
-    let genesis = causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    let genesis = causal_group_lifecycle::enroll_pristine_group(
+        &a.db,
+        &a.user,
+        &a.identity,
+        destination_group.id,
+    )
+    .await
+    .unwrap();
     let peer = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
         .await
         .unwrap();
@@ -800,9 +830,15 @@ async fn resolving_offered_ungrouped_choice_preserves_delete_dependencies() {
     group_db::delete_group(&a.db, &a.user, a.group)
         .await
         .unwrap();
-    group_db::set_group_id_on_models(&a.db, &a.user, Some(h.id), vec![a.model], None)
-        .await
-        .unwrap();
+    group_db::set_group_id_on_models(
+        &a.db,
+        &a.user,
+        Some(destination_group.id),
+        vec![a.model],
+        None,
+    )
+    .await
+    .unwrap();
     group_db::set_group_id_on_models(&b.db, &b.user, None, vec![b.model], None)
         .await
         .unwrap();
@@ -822,7 +858,7 @@ async fn resolving_offered_ungrouped_choice_preserves_delete_dependencies() {
         .unwrap();
     let token = match current {
         MoveState::Conflict { token, choices } => {
-            assert!(choices.iter().any(|c| c.destination.is_none()));
+            assert!(choices.iter().any(|choice| choice.destination.is_none()));
             token
         }
         x => panic!("expected detach versus independent move conflict: {x:?}"),
@@ -832,10 +868,12 @@ async fn resolving_offered_ungrouped_choice_preserves_delete_dependencies() {
     assert!(
         matches!(
             result,
-            Ok(MoveResolveResult::Resolved(MoveState::Ready {
-                destination: None,
-                ..
-            }))
+            Ok(causal_model_move::MoveResolveResult::Resolved(
+                MoveState::Ready {
+                    destination: None,
+                    ..
+                }
+            ))
         ),
         "offered ungrouped resolution must preserve deletion dependencies: {result:?}"
     );
@@ -844,15 +882,14 @@ async fn resolving_offered_ungrouped_choice_preserves_delete_dependencies() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn deleting_visible_nonfrontier_group_detaches_cached_assignment_and_retains_choices() {
-    use db::causal_model_move::{self, MoveState};
     let (a, b, c) = devices().await;
     let mut ids = Vec::new();
     for name in ["destination H", "destination J"] {
-        let g = group_db::add_empty_group(&a.db, &a.user, name, None)
+        let group = group_db::add_empty_group(&a.db, &a.user, name, None)
             .await
             .unwrap();
         let genesis =
-            causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, g.id)
+            causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, group.id)
                 .await
                 .unwrap();
         let ba = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
@@ -883,7 +920,7 @@ async fn deleting_visible_nonfrontier_group_detaches_cached_assignment_and_retai
         .await
         .unwrap()
         .local_id;
-        ids.push((g.id, bg, cg));
+        ids.push((group.id, bg, cg));
     }
     group_db::set_group_id_on_models(&b.db, &b.user, Some(b.group), vec![b.model], None)
         .await
@@ -959,7 +996,6 @@ async fn deleting_visible_nonfrontier_group_detaches_cached_assignment_and_retai
 
 #[tokio::test]
 async fn combined_name_choice_rejects_stale_frontier_after_third_branch() {
-    use db::causal_group_rename::{self, ResolveResult};
     let (a, b, c) = devices().await;
     group_db::edit_group(&a.db, &a.user, a.group, "alpha", None, None)
         .await
@@ -1015,7 +1051,6 @@ async fn combined_name_choice_rejects_stale_frontier_after_third_branch() {
 
 #[tokio::test]
 async fn generic_receipt_reads_moves_targeting_rename_and_member_added_lifecycle() {
-    use db::{causal_envelope::Action, causal_store};
     let (a, b, _c) = devices().await;
     group_db::edit_group(&a.db, &a.user, a.group, "renamed", None, None)
         .await
@@ -1100,11 +1135,6 @@ async fn generic_receipt_reads_moves_targeting_rename_and_member_added_lifecycle
 
 #[tokio::test]
 async fn generic_receipt_rejects_delete_as_active_move_target() {
-    use db::{
-        causal_envelope::{self, Action, CausalEnvelope, Dependency, Dot, Entity, EntityKind},
-        causal_store,
-        group_history::ReplicaPrincipal,
-    };
     let (a, b, _c) = devices().await;
     group_db::delete_group(&a.db, &a.user, a.group)
         .await
@@ -1132,7 +1162,7 @@ async fn generic_receipt_rejects_delete_as_active_move_target() {
         .execute(&b.db)
         .await
         .unwrap();
-    let principal = ReplicaPrincipal {
+    let principal = db::group_history::ReplicaPrincipal {
         owner_user_id: b.user.id,
         replica_id: writer.clone(),
     };
@@ -1148,7 +1178,7 @@ async fn generic_receipt_rejects_delete_as_active_move_target() {
             counter: "1".into(),
         },
         parents: vec![],
-        dependencies: vec![Dependency {
+        dependencies: vec![causal_envelope::Dependency {
             entity: deleted.entity.clone(),
             event: deleted.event.clone(),
         }],
@@ -1171,7 +1201,6 @@ async fn generic_receipt_rejects_delete_as_active_move_target() {
 
 #[tokio::test]
 async fn combined_enrollment_limit_rejects_extra_scope_without_blocking_existing_edits() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind};
     let (a, _b, _c) = devices().await;
     let extra = group_db::add_empty_group(&a.db, &a.user, "extra", None)
         .await
@@ -1185,7 +1214,7 @@ async fn combined_enrollment_limit_rejects_extra_scope_without_blocking_existing
             .unwrap();
     let writer = random_hex_32();
     let mut tx = a.db.begin().await.unwrap();
-    for n in 0..(i64::try_from(db::causal_store::MAX_OWNER_EVENTS).unwrap() - count) {
+    for index in 0..(i64::try_from(causal_store::MAX_OWNER_EVENTS).unwrap() - count) {
         let global = random_hex_32();
         let birth = random_hex_32();
         let id=sqlx::query("INSERT INTO models_group(group_name,group_created,group_user_id,group_last_modified,group_unique_global_id,group_birth_id) VALUES ('original','2020-01-01T00:00:00Z',?,'2020-01-01T00:00:00Z',?,?)").bind(a.user.id).bind(&global).bind(&birth).execute(&mut *tx).await.unwrap().last_insert_rowid();
@@ -1198,7 +1227,7 @@ async fn combined_enrollment_limit_rejects_extra_scope_without_blocking_existing
             },
             event: Dot {
                 writer_id: writer.clone(),
-                counter: (n + 1).to_string(),
+                counter: (index + 1).to_string(),
             },
             parents: vec![],
             dependencies: vec![],
@@ -1211,13 +1240,13 @@ async fn combined_enrollment_limit_rejects_extra_scope_without_blocking_existing
         )
         .bind(a.user.id)
         .bind(&writer)
-        .bind(n + 1)
+        .bind(index + 1)
         .bind(causal_envelope::canonical_causal_envelope(&event).unwrap())
         .execute(&mut *tx)
         .await
         .unwrap();
         let guard:String=sqlx::query_scalar("SELECT json_object('kind','group','generation',h.generation,'head',h.head,'revision',g.group_revision) FROM models_group g JOIN group_sync_heads h ON h.user_id=g.group_user_id AND h.group_global_id=g.group_unique_global_id WHERE g.group_id=?").bind(id).fetch_one(&mut *tx).await.unwrap();
-        sqlx::query("INSERT INTO causal_genesis_bindings(user_id,entity_kind,global_id,birth_id,writer_id,counter,local_instance_id,local_account_id,source_instance_id,source_account_id,local_id,local_guard,materialization,origin,capability) VALUES (?,'group',?,?,?,?,?,?,?,?,?,?,?,'local','group_lifecycle_v1')").bind(a.user.id).bind(&global).bind(&birth).bind(&writer).bind(n+1).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(id).bind(guard).bind(&materialization).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO causal_genesis_bindings(user_id,entity_kind,global_id,birth_id,writer_id,counter,local_instance_id,local_account_id,source_instance_id,source_account_id,local_id,local_guard,materialization,origin,capability) VALUES (?,'group',?,?,?,?,?,?,?,?,?,?,?,'local','group_lifecycle_v1')").bind(a.user.id).bind(&global).bind(&birth).bind(&writer).bind(index+1).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(id).bind(guard).bind(&materialization).execute(&mut *tx).await.unwrap();
     }
     tx.commit().await.unwrap();
     let before: i64 =
@@ -1228,7 +1257,7 @@ async fn combined_enrollment_limit_rejects_extra_scope_without_blocking_existing
             .unwrap();
     assert_eq!(
         usize::try_from(before).unwrap(),
-        db::causal_store::MAX_OWNER_EVENTS
+        causal_store::MAX_OWNER_EVENTS
     );
     let extra_result =
         causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, extra.id).await;
@@ -1252,7 +1281,6 @@ async fn combined_enrollment_limit_rejects_extra_scope_without_blocking_existing
 
 #[tokio::test]
 async fn combined_enrollment_byte_limit_rejects_extra_scope_without_writes() {
-    use db::causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind};
     let (a, _b, _c) = devices().await;
     let name = "x".repeat(causal_envelope::MAX_NAME_BYTES);
     let extra = group_db::add_empty_group(&a.db, &a.user, &name, None)
@@ -1261,8 +1289,8 @@ async fn combined_enrollment_byte_limit_rejects_extra_scope_without_writes() {
     let materialization=serde_json::json!({"kind":"group","name":name,"created":"2020-01-01T00:00:00Z","last_modified":"2020-01-01T00:00:00Z"}).to_string();
     let writer = random_hex_32();
     let mut tx = a.db.begin().await.unwrap();
-    let scopes = (db::causal_store::MAX_OWNER_BYTES / (2 * causal_envelope::MAX_NAME_BYTES)) - 1;
-    for n in 0..scopes {
+    let scopes = (causal_store::MAX_OWNER_BYTES / (2 * causal_envelope::MAX_NAME_BYTES)) - 1;
+    for index in 0..scopes {
         let global = random_hex_32();
         let birth = random_hex_32();
         let id=sqlx::query("INSERT INTO models_group(group_name,group_created,group_user_id,group_last_modified,group_unique_global_id,group_birth_id) VALUES (?,'2020-01-01T00:00:00Z',?,'2020-01-01T00:00:00Z',?,?)").bind(&name).bind(a.user.id).bind(&global).bind(&birth).execute(&mut *tx).await.unwrap().last_insert_rowid();
@@ -1275,7 +1303,7 @@ async fn combined_enrollment_byte_limit_rejects_extra_scope_without_writes() {
             },
             event: Dot {
                 writer_id: writer.clone(),
-                counter: (n + 1).to_string(),
+                counter: (index + 1).to_string(),
             },
             parents: vec![],
             dependencies: vec![],
@@ -1286,17 +1314,17 @@ async fn combined_enrollment_byte_limit_rejects_extra_scope_without_writes() {
         )
         .bind(a.user.id)
         .bind(&writer)
-        .bind(i64::try_from(n + 1).unwrap())
+        .bind(i64::try_from(index + 1).unwrap())
         .bind(causal_envelope::canonical_causal_envelope(&event).unwrap())
         .execute(&mut *tx)
         .await
         .unwrap();
         let guard:String=sqlx::query_scalar("SELECT json_object('kind','group','generation',h.generation,'head',h.head,'revision',g.group_revision) FROM models_group g JOIN group_sync_heads h ON h.user_id=g.group_user_id AND h.group_global_id=g.group_unique_global_id WHERE g.group_id=?").bind(id).fetch_one(&mut *tx).await.unwrap();
-        sqlx::query("INSERT INTO causal_genesis_bindings(user_id,entity_kind,global_id,birth_id,writer_id,counter,local_instance_id,local_account_id,source_instance_id,source_account_id,local_id,local_guard,materialization,origin,capability) VALUES (?,'group',?,?,?,?,?,?,?,?,?,?,?,'local','group_lifecycle_v1')").bind(a.user.id).bind(&global).bind(&birth).bind(&writer).bind(i64::try_from(n+1).unwrap()).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(id).bind(guard).bind(&materialization).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO causal_genesis_bindings(user_id,entity_kind,global_id,birth_id,writer_id,counter,local_instance_id,local_account_id,source_instance_id,source_account_id,local_id,local_guard,materialization,origin,capability) VALUES (?,'group',?,?,?,?,?,?,?,?,?,?,?,'local','group_lifecycle_v1')").bind(a.user.id).bind(&global).bind(&birth).bind(&writer).bind(i64::try_from(index+1).unwrap()).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(&a.identity.instance_id).bind(&a.identity.account_id).bind(id).bind(guard).bind(&materialization).execute(&mut *tx).await.unwrap();
     }
     tx.commit().await.unwrap();
     let before:(i64,i64)=sqlx::query_as("SELECT COUNT(*),COALESCE(SUM(length(CAST(e.envelope AS BLOB))+length(CAST(b.materialization AS BLOB))+length(CAST(b.local_guard AS BLOB))),0) FROM causal_genesis_bindings b JOIN causal_events e USING(user_id,writer_id,counter) WHERE b.user_id=? AND b.capability='group_lifecycle_v1'").bind(a.user.id).fetch_one(&a.db).await.unwrap();
-    assert!(usize::try_from(before.1).unwrap() < db::causal_store::MAX_OWNER_BYTES);
+    assert!(usize::try_from(before.1).unwrap() < causal_store::MAX_OWNER_BYTES);
     let result =
         causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, extra.id).await;
     assert!(
@@ -1419,7 +1447,7 @@ async fn expired_deleted_group_is_rehydrated_for_offline_concurrent_rename() {
             .await
             .unwrap()
             .iter()
-            .any(|x| x.group_global_id == original.global_id)
+            .any(|item| item.group_global_id == original.global_id)
     );
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM group_deletion_records WHERE user_id=? AND group_global_id=?",
@@ -1488,21 +1516,27 @@ async fn expired_deleted_group_is_rehydrated_for_offline_concurrent_add() {
             .await
             .unwrap()
             .iter()
-            .any(|x| x.group_global_id == original.global_id)
+            .any(|item| item.group_global_id == original.global_id)
     );
 }
 
 #[tokio::test]
-#[allow(clippy::many_single_char_names)]
+// One scenario across three devices; splitting it would hide the ordering under test.
+#[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 async fn expired_group_keep_does_not_reclaim_member_independently_moved_elsewhere() {
     let (a, b, c) = devices().await;
     let original = state(&a).await.entity;
-    let h = group_db::add_empty_group(&a.db, &a.user, "destination", None)
+    let destination_group = group_db::add_empty_group(&a.db, &a.user, "destination", None)
         .await
         .unwrap();
-    let genesis = causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    let genesis = causal_group_lifecycle::enroll_pristine_group(
+        &a.db,
+        &a.user,
+        &a.identity,
+        destination_group.id,
+    )
+    .await
+    .unwrap();
     let ba = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
         .await
         .unwrap();
@@ -1535,12 +1569,19 @@ async fn expired_group_keep_does_not_reclaim_member_independently_moved_elsewher
         causal_group_lifecycle::export_operation(&a.db, &a.user, &a.identity, &latest(&a).await)
             .await
             .unwrap();
-    group_db::set_group_id_on_models(&a.db, &a.user, Some(h.id), vec![a.model], None)
-        .await
-        .unwrap();
-    let destination_state = causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    group_db::set_group_id_on_models(
+        &a.db,
+        &a.user,
+        Some(destination_group.id),
+        vec![a.model],
+        None,
+    )
+    .await
+    .unwrap();
+    let destination_state =
+        causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, destination_group.id)
+            .await
+            .unwrap();
     let dot = match destination_state.name {
         NameState::Ready { token, .. } => token.frontier[0].clone(),
         x => panic!("expected destination frontier {x:?}"),
@@ -1572,7 +1613,7 @@ async fn expired_group_keep_does_not_reclaim_member_independently_moved_elsewher
         matches!(result, Ok(OperationImportResult::Applied(_))),
         "offline keep must apply after purge: {result:?}"
     );
-    for (d, target) in [(&a, h.id), (&b, bh), (&c, ch)] {
+    for (d, target) in [(&a, destination_group.id), (&b, bh), (&c, ch)] {
         let current: Option<i64> =
             sqlx::query_scalar("SELECT model_group_id FROM models WHERE model_id=?")
                 .bind(d.model)
@@ -1627,7 +1668,6 @@ async fn failed_rehydration_rolls_back_import_and_retains_purged_certificate() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn repeated_purge_keep_preserves_birth_invalidates_old_token_and_retries_genesis() {
-    use db::causal_group_rename::{self, ResolveResult};
     let (a, b, c) = devices().await;
     let entity = state(&a).await.entity;
     let genesis =
@@ -1830,16 +1870,22 @@ async fn purged_group_keep_rejects_replaced_account_with_reused_numeric_id() {
 }
 
 #[tokio::test]
-#[allow(clippy::many_single_char_names)]
+// One scenario across three devices; splitting it would hide the ordering under test.
+#[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 async fn expired_group_keep_preserves_move_made_after_purge() {
     let (a, b, c) = devices().await;
     let original = state(&a).await.entity;
-    let h = group_db::add_empty_group(&a.db, &a.user, "destination", None)
+    let destination_group = group_db::add_empty_group(&a.db, &a.user, "destination", None)
         .await
         .unwrap();
-    let genesis = causal_group_lifecycle::enroll_pristine_group(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    let genesis = causal_group_lifecycle::enroll_pristine_group(
+        &a.db,
+        &a.user,
+        &a.identity,
+        destination_group.id,
+    )
+    .await
+    .unwrap();
     let ba = sync_peer::bind_peer(&b.db, &b.user, &b.identity, &a.identity)
         .await
         .unwrap();
@@ -1881,12 +1927,19 @@ async fn expired_group_keep_preserves_move_made_after_purge() {
             .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     assert_eq!(group_db::purge_trashed_groups(&a.db, 0).await.unwrap(), 1);
-    group_db::set_group_id_on_models(&a.db, &a.user, Some(h.id), vec![a.model], None)
-        .await
-        .unwrap();
-    let destination_state = causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, h.id)
-        .await
-        .unwrap();
+    group_db::set_group_id_on_models(
+        &a.db,
+        &a.user,
+        Some(destination_group.id),
+        vec![a.model],
+        None,
+    )
+    .await
+    .unwrap();
+    let destination_state =
+        causal_group_lifecycle::get_state(&a.db, &a.user, &a.identity, destination_group.id)
+            .await
+            .unwrap();
     let dot = match destination_state.name {
         NameState::Ready { token, .. } => token.frontier[0].clone(),
         x => panic!("expected destination frontier {x:?}"),
@@ -1909,7 +1962,7 @@ async fn expired_group_keep_preserves_move_made_after_purge() {
         matches!(result, Ok(OperationImportResult::Applied(_))),
         "offline keep must apply after purge: {result:?}"
     );
-    for (d, target) in [(&a, h.id), (&b, bh), (&c, ch)] {
+    for (d, target) in [(&a, destination_group.id), (&b, bh), (&c, ch)] {
         let current: Option<i64> =
             sqlx::query_scalar("SELECT model_group_id FROM models WHERE model_id=?")
                 .bind(d.model)

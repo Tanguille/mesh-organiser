@@ -1,21 +1,20 @@
 //! In-process snapshots establish a new observed boundary, never past ancestry.
-use std::fmt::Write;
 
-use sha2::{Digest, Sha256};
 use sqlx::SqliteConnection;
 
-use super::{
-    GenesisBundle, encode, invalid,
-    materialization::{self, GroupSnapshot, Materialization},
-    storage,
-};
 use crate::{
     DbError,
-    causal_envelope::{self, Action, CausalEnvelope, Dot, Entity, EntityKind},
+    causal_envelope::{self, Action, CausalEnvelope, Entity, EntityKind},
     db_context::DbContext,
     model::user::User,
     sync_peer::validate_local,
     user_db::SyncIdentity,
+    util::sha256_hex,
+};
+
+use super::{
+    GenesisBundle, encode, invalid,
+    materialization::{self, GroupSnapshot, Materialization},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -53,16 +52,6 @@ pub struct GroupObservation {
     pub(super) group_id: i64,
     pub(super) snapshot: Snapshot,
     pub(super) observation_id: String,
-}
-
-pub(super) fn digest(value: &str) -> String {
-    Sha256::digest(value.as_bytes())
-        .iter()
-        .fold(String::with_capacity(64), |mut output, byte| {
-            let _ = write!(output, "{byte:02x}");
-
-            output
-        })
 }
 
 pub(super) async fn snapshot(
@@ -139,7 +128,7 @@ pub(super) fn evidence(
         source_account_id: observation.identity.account_id.clone(),
         source_group_id: observation.group_id,
         snapshot: observation.snapshot.clone(),
-        materialization_digest: digest(&json),
+        materialization_digest: sha256_hex(json.as_bytes()),
         history: "unknown_before_observation".into(),
     };
 
@@ -155,7 +144,7 @@ pub fn validate(
 ) -> Result<String, DbError> {
     let evidence: Evidence = serde_json::from_str(proof).map_err(|_| invalid())?;
     let snapshot: GroupSnapshot = serde_json::from_str(materialization).map_err(|_| invalid())?;
-    if !matches!(&root.action,Action::LegacyObserved{observation_digest} if *observation_digest==digest(proof))
+    if !matches!(&root.action,Action::LegacyObserved{observation_digest} if *observation_digest==sha256_hex(proof.as_bytes()))
         || root.entity.kind != EntityKind::Group
         || root.entity.birth_id.is_none()
         || !root.parents.is_empty()
@@ -169,7 +158,7 @@ pub fn validate(
             .birth_id
             .as_ref()
             .is_some_and(|birth| Some(birth) != root.entity.birth_id.as_ref())
-        || evidence.materialization_digest != digest(materialization)
+        || evidence.materialization_digest != sha256_hex(materialization.as_bytes())
         || snapshot.name != evidence.snapshot.name
         || snapshot.created != evidence.snapshot.created
         || snapshot.last_modified != evidence.snapshot.last_modified
@@ -192,6 +181,7 @@ async fn validate_retry(
     if !unchanged {
         return Err(invalid());
     }
+
     super::checks::uncontested(db, user, entity).await
 }
 
@@ -253,14 +243,14 @@ pub async fn enroll(
     let envelope = CausalEnvelope {
         version: 2,
         entity,
-        event: Dot {
+        event: causal_envelope::Dot {
             writer_id,
             counter: counter.to_string(),
         },
         parents: vec![],
         dependencies: vec![],
         action: Action::LegacyObserved {
-            observation_digest: digest(&proof),
+            observation_digest: sha256_hex(proof.as_bytes()),
         },
     };
     let wire = causal_envelope::canonical_causal_envelope(&envelope).map_err(|_| invalid())?;
@@ -280,7 +270,7 @@ pub async fn enroll(
         capability: "group_lifecycle_v1".into(),
         observation_evidence: Some(proof),
     };
-    storage::write_binding(
+    super::storage::write_binding(
         &mut tx,
         user,
         identity,

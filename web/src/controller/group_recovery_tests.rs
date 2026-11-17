@@ -1,17 +1,23 @@
 //! Authentication and owner isolation for group Trash routes.
 
 use axum::{
-    Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
-use db::{group_db, model::user::User, user_db};
 use tower::ServiceExt;
 
-async fn app() -> (tempfile::TempDir, service::AppState, Router, String, User) {
+use db::{group_db, model::user::User};
+
+async fn app() -> (
+    tempfile::TempDir,
+    service::AppState,
+    axum::Router,
+    String,
+    User,
+) {
     let (dir, state) = crate::test_support::app_state().await;
     let password = crate::test_support::add_login_user(&state).await;
-    let alice = user_db::get_user_by_email(&state.db, "alice@example.com")
+    let alice = db::user_db::get_user_by_email(&state.db, "alice@example.com")
         .await
         .unwrap()
         .unwrap();
@@ -44,6 +50,7 @@ fn request(method: &str, path: &str, cookie: Option<&str>, body: &str) -> Reques
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
+
     builder.body(Body::from(body.to_owned())).unwrap()
 }
 
