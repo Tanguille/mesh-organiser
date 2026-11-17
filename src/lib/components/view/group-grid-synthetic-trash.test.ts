@@ -154,3 +154,23 @@ it("does not offer trash or handle Delete in read-only mode", async () => {
   expect(screen.queryByRole("menuitem", { name: /move to trash/i })).toBeNull();
   expect(deleteModels).not.toHaveBeenCalled();
 });
+
+it("keeps a real group card when its last model is trashed but drops an ungrouped card", async () => {
+  const { first, real } = await setup();
+  await fireEvent.click(real);
+  await fireEvent.click(
+    await screen.findByRole("button", { name: /move to trash/i }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("heading", { name: "Part 3" })).toBeNull(),
+  );
+  expect(screen.queryByRole("option", { name: /Card 3/ })).not.toBeNull();
+
+  await fireEvent.click(first);
+  await fireEvent.click(
+    await screen.findByRole("button", { name: /move to trash/i }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Card 1/ })).toBeNull(),
+  );
+});

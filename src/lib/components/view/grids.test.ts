@@ -367,11 +367,12 @@ it("keeps a newly selected group when another group's model deletion completes",
   second.scrollIntoView = vi.fn();
   await fireEvent.click(second);
   finishDelete();
-  await waitFor(() =>
-    expect(
-      screen.queryByRole("option", { name: /Calibration parts/ }),
-    ).toBeNull(),
-  );
+  await deleteModels.mock.results[0].value;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The real group stays (now empty); only the selection must survive.
+  expect(
+    screen.queryByRole("option", { name: /Calibration parts/ }),
+  ).not.toBeNull();
   expect(
     screen
       .getByRole("option", { name: /Other parts/ })

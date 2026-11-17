@@ -34,7 +34,6 @@ pub(super) async fn publish(
         {
             Ok(Ok(body)) => body,
             Ok(Err(error)) => return error,
-            // Dropping `incoming` clears its stage via `Stage::drop`.
             Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
         };
     if !current(&session, body.protocol).await {
@@ -61,6 +60,7 @@ pub(super) async fn publish(
         Err(error) => return failure(error),
     };
     if let Err(error) = receive(&mut multipart, &mut incoming).await {
+        // Including an idle timeout: returning drops `incoming`, which clears its stage via `Stage::drop`.
         return error;
     }
     // Losing the HTTP future cannot cancel the file/DB commit sequence. Exact retries

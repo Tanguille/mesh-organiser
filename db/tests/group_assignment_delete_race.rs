@@ -105,7 +105,10 @@ async fn assigning_a_model_racing_group_deletion_never_hides_the_model_in_trash(
             assert_eq!(current, Some(source.id), "a rejected move must preserve its source");
         }
         result = &mut assignment => {
-            // A serialized assignment may finish first. The later deletion
+            // set_group_id_on_models runs in one BEGIN IMMEDIATE transaction, so the pool is not
+            // released mid-assignment and the hook above never pauses (verified: this arm is the
+            // outcome today). The pause arm only guards a future multi-statement implementation.
+            // A serialized assignment finishes first. The later deletion
             // then detaches the model rather than hiding it in the group.
             result.unwrap().unwrap();
             group_db::delete_group(&db, &user, destination.id).await.unwrap();

@@ -91,3 +91,51 @@ it("keeps unloaded models out of bulk actions after a failed first page", async 
   await fireEvent.click(retry);
   await waitFor(() => expect(screen.getByText("2 models")).toBeTruthy());
 });
+
+it("keeps paging when only the bulk prefetch fails", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const container = getContainer();
+  container.addSingleton(IGroupApi, {});
+  container.addSingleton(IModelApi, {});
+  container.addSingleton(ILabelApi, {});
+  container.addSingleton(IBlobApi, {
+    getBlobThumbnailUrl: vi.fn().mockResolvedValue(""),
+  });
+  container.addSingleton(ISlicerApi, {
+    availableSlicers: vi.fn().mockResolvedValue([]),
+  });
+  const timestamp = "2026-10-24T12:00:00Z";
+  const models = [1, 2].map((id) =>
+    createModelInstance(
+      id,
+      `Part ${id}`,
+      createBlobInstance(id, `hash-${id}`, "stl", 1024, timestamp),
+      null,
+      null,
+      timestamp,
+      timestamp,
+      null,
+      [],
+      [],
+      `model-${id}`,
+    ),
+  );
+  const stream = {
+    setSearchText: vi.fn(),
+    setOrderBy: vi.fn(),
+    setFileTypes: vi.fn(),
+    fetch: vi.fn().mockResolvedValue([]),
+    getAll: vi.fn().mockRejectedValue(new Error("bulk timeout")),
+  };
+  stream.fetch.mockResolvedValueOnce([models[0]]);
+  render(ModelGrid, {
+    modelStream: stream as IModelStreamManager,
+    default_show_multiselect_all: true,
+  });
+
+  await waitFor(() => expect(stream.getAll).toHaveBeenCalled());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(
+    screen.queryByRole("button", { name: /failed to load models.*retry/i }),
+  ).toBeNull();
+});

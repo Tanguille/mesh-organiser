@@ -123,7 +123,7 @@ async fn paired_author_publishes_original_history_for_an_independent_receiver() 
             .publish_observation(&receiver, &user, &ri, &prepared)
             .await
             .is_err(),
-        "a receiver cannot reauthor another device's prepared b"
+        "a receiver cannot reauthor another device's prepared item"
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sync_transport_log WHERE user_id=?")
@@ -184,7 +184,7 @@ async fn paired_author_publishes_original_history_for_an_independent_receiver() 
             other_client.pull_next(&other, &user, &oi).await.unwrap(),
             PullOutcome::Idle { .. }
         ),
-        "another authenticated account must not see the author's b"
+        "another authenticated account must not see the author's item"
     );
     let receiver_group: i64 = sqlx::query_scalar(
         "SELECT group_id FROM models_group WHERE group_user_id=? AND group_unique_global_id=?",

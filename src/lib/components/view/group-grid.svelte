@@ -269,7 +269,8 @@
         group.models = group.models.filter((model) => !ids.has(model.id));
         updateGroupSummary(group);
       }
-      return !affected || group.models.length > 0;
+      // Trashing models leaves a real group in place; only synthetic cards go.
+      return group.meta.id >= 0 || !affected || group.models.length > 0;
     });
     splitViewSelectedModels = splitViewSelectedModels.filter(
       (model) => !ids.has(model.id),

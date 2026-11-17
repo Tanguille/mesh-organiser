@@ -105,6 +105,6 @@ async fn ambiguous_legacy_groups_are_listed_but_cannot_be_restored() {
             .unwrap();
     assert!(
         still_deleted.is_some(),
-        "ambiguous restore must roll back every b"
+        "ambiguous restore must roll back every item"
     );
 }

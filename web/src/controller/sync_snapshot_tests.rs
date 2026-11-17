@@ -24,7 +24,10 @@ async fn fixture() -> (
         .unwrap()
         .unwrap();
     let router = crate::test_support::with_session(
-        crate::controller::auth_controller::login_router().merge(super::router()),
+        // The share router is mounted so the share-path 404 is a real routing result.
+        crate::controller::auth_controller::login_router()
+            .merge(super::router())
+            .merge(crate::controller::share_controller::router()),
         state.clone(),
     )
     .await;

@@ -1,12 +1,14 @@
 //! Exercise the opt-in pull client over an actual authenticated TLS connection.
 use std::{
     fmt::Write as _,
-    os::unix::fs::MetadataExt,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 use axum::{
     extract::State,
@@ -1868,7 +1870,7 @@ async fn installed_observation_on_new_stream_keeps_later_local_edits() {
         .unwrap();
     assert!(
         client.pull_next(&receiver, &user, &identity).await.is_err(),
-        "a damaged prior proof cannot acknowledge the b"
+        "a damaged prior proof cannot acknowledge the item"
     );
     let receipts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_pull_receipts")
         .fetch_one(&*receiver.db)
@@ -1890,7 +1892,7 @@ async fn installed_observation_on_new_stream_keeps_later_local_edits() {
         .unwrap();
     assert_eq!(
         receipts, 1,
-        "failed second receipt cannot acknowledge the b"
+        "failed second receipt cannot acknowledge the item"
     );
     sqlx::query("DROP TRIGGER fail_duplicate_receipt")
         .execute(&*receiver.db)

@@ -40,6 +40,26 @@ async fn legacy_password_login(
     StatusCode::NO_CONTENT
 }
 
+// A session whose protocol flag cannot be read back as a number, i.e. a session-store read error.
+async fn unreadable_protocol_login(
+    mut session: AuthSession,
+    Json(body): Json<serde_json::Value>,
+) -> StatusCode {
+    let credentials: TokenCredentials = serde_json::from_value(body).unwrap();
+    let user = session
+        .authenticate(Credentials::Token(credentials))
+        .await
+        .unwrap()
+        .unwrap();
+    session.login(&user).await.unwrap();
+    session
+        .session
+        .insert(crate::user::SESSION_GROUP_DELETION_PROTOCOL, "unreadable")
+        .await
+        .unwrap();
+    StatusCode::NO_CONTENT
+}
+
 async fn app() -> (
     tempfile::TempDir,
     service::AppState,
@@ -65,7 +85,11 @@ async fn app() -> (
             )),
         )
         .route("/test/legacy-login", post(legacy_login))
-        .route("/test/legacy-password-login", post(legacy_password_login));
+        .route("/test/legacy-password-login", post(legacy_password_login))
+        .route(
+            "/test/unreadable-protocol-login",
+            post(unreadable_protocol_login),
+        );
     let router = crate::test_support::with_session(router, state.clone()).await;
     (dir, state, router, password, token)
 }
@@ -230,6 +254,30 @@ async fn pre_upgrade_authenticated_session_cannot_write() {
         .await
         .unwrap();
     assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn unreadable_session_protocol_is_a_server_error_not_an_upgrade_demand() {
+    let (_dir, _state, router, _, token) = app().await;
+    let response = router
+        .clone()
+        .oneshot(post_json(
+            "/test/unreadable-protocol-login",
+            &serde_json::json!({"token": token, "group_deletion_protocol": 1}),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let request = post_json(
+        "/api/v1/groups",
+        &serde_json::json!({"group_name": "unreadable protocol write"}),
+        Some(&cookie(&response)),
+    );
+    assert_eq!(
+        router.oneshot(request).await.unwrap().status(),
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
 }
 
 #[tokio::test]

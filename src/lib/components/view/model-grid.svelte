@@ -125,10 +125,9 @@
         allModelsLoaded = true;
       }
     } catch (error) {
-      if (generation === loadGeneration) {
-        loadFailed = true;
-        console.error("Failed to load models:", error);
-      }
+      // Not loadFailed: that flag means the page stream failed, and paging still works.
+      if (generation === loadGeneration)
+        console.error("Failed to load all models:", error);
     }
   }
 

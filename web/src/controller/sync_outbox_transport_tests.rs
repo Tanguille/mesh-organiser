@@ -936,12 +936,12 @@ async fn aggregate_pending_quota_is_atomic_and_discard_releases_capacity() {
             .queue_observation(&source, &user, &identity, small_group)
             .await
             .is_err(),
-        "pending logical-byte cap must reject the next b"
+        "pending logical-byte cap must reject the next item"
     );
     let after:(i64,i64,Option<String>,Option<String>)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM sync_publication_outbox),(SELECT COUNT(*) FROM causal_events),(SELECT group_birth_id FROM models_group WHERE group_id=?),(SELECT model_birth_id FROM models WHERE model_id=?)").bind(small_group).bind(small_model).fetch_one(&*source.db).await.unwrap();
     assert_eq!(
         before, after,
-        "quota rejection cannot partially enroll the second b"
+        "quota rejection cannot partially enroll the second item"
     );
     assert_eq!(entries_with_payload(&source.get_model_dir()), stages_before);
     db::user_db::clear_user_sync(&source.db, user.id)

@@ -189,24 +189,28 @@ pub async fn update_session_middleware(
             path,
             "/api/v1/login/password" | "/api/v1/login/token" | "/api/v1/logout"
         )
-        && !matches!(
-            auth_session
-                .session
-                .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
-                .await,
-            Ok(Some(1))
-        )
     {
-        return (
-            StatusCode::UPGRADE_REQUIRED,
-            // Same shape as other controller errors, so the client shows the message.
-            axum::Json(serde_json::json!({
-                "error_type": "upgrade_required",
-                "error_message": "Sign in again with an upgraded app",
-                "error_inner_message": "",
-            })),
-        )
-            .into_response();
+        // A failed read is a server fault, not evidence of a pre-protocol client.
+        match auth_session
+            .session
+            .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
+            .await
+        {
+            Ok(Some(1)) => {}
+            Ok(_) => {
+                return (
+                    StatusCode::UPGRADE_REQUIRED,
+                    // Same shape as other controller errors, so the client shows the message.
+                    axum::Json(serde_json::json!({
+                        "error_type": "upgrade_required",
+                        "error_message": "Sign in again with an upgraded app",
+                        "error_inner_message": "",
+                    })),
+                )
+                    .into_response();
+            }
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
     }
 
     if auth_session.user.is_some() {

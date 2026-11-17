@@ -501,6 +501,9 @@ async fn late_rename_keeps_purged_group_and_original_project_incarnation() {
     let operation = causal_group_lifecycle::export_operation(&b, &user, &bi, &dot)
         .await
         .unwrap();
+    // Not backdated via SQL: updating group_deleted_at fires the revise_group_metadata and
+    // invalidate_group_name_domain triggers, which voids the deletion record purge certifies.
+    // The clock must really advance past the stored whole-second deletion time.
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     assert_eq!(group_db::purge_trashed_groups(&a, 0).await.unwrap(), 1);
     let peer_a = sync_peer::bind_peer(&a, &user, &ai, &bi).await.unwrap();

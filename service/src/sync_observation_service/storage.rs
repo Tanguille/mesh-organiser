@@ -3,9 +3,11 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::Read,
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 use rustix::fs::{AtFlags, FileType, Mode, OFlags};
 
