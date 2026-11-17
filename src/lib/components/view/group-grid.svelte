@@ -106,8 +106,8 @@
   let busyLoadingNext = $state.raw<boolean>(false);
   let loadFailed = $state(false);
   let initialLoadComplete = $state(false);
-  let hasFileTypeFilter = $state(false);
   let fileTypes = $state<FileType[]>([]);
+  const hasFileTypeFilter = $derived(fileTypes.length > 0);
   let searchInput = $state.raw<{ clearSearch: () => void } | undefined>();
   let searchText = $state<string | null>(null);
   let loadGeneration = 0;
@@ -154,7 +154,6 @@
 
   function clearFilters() {
     fileTypes = [];
-    hasFileTypeFilter = false;
     props.groupStream.setFileTypes([]);
     searchInput?.clearSearch();
   }
@@ -411,7 +410,6 @@
           bind:value={fileTypes}
           onchange={(x) => {
             props.groupStream.setFileTypes(x);
-            hasFileTypeFilter = x.length > 0;
             resetGroupSet();
           }}
         />

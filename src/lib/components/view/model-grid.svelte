@@ -43,8 +43,8 @@
   let initialLoadComplete = $state(false);
   let searchText = $state<string | null>(null);
   let loadGeneration = 0;
-  let hasFileTypeFilter = $state(false);
   let fileTypes = $state<FileType[]>([]);
+  const hasFileTypeFilter = $derived(fileTypes.length > 0);
   let searchInput = $state.raw<{ clearSearch: () => void } | undefined>();
   let removedIds = new Set<number>();
   let trashing = false;
@@ -144,7 +144,6 @@
 
   function clearFilters() {
     fileTypes = [];
-    hasFileTypeFilter = false;
     props.modelStream.setFileTypes([]);
     searchInput?.clearSearch();
   }
@@ -154,10 +153,6 @@
       convertOrderOptionModelsToEnum(configuration.order_option_models),
     );
   });
-
-  function onDeleteSelected(models: Model[]) {
-    onDelete(models);
-  }
 
   function onGroupDeleteSelected(models: Model[]) {
     if (!props.onRemoveGroupDelete) {
@@ -256,7 +251,6 @@
           bind:value={fileTypes}
           onchange={async (x) => {
             props.modelStream.setFileTypes(x);
-            hasFileTypeFilter = x.length > 0;
             selected = [];
             allModels = [];
             const reset = resetModelSet();
@@ -336,7 +330,7 @@
       {#if selected.length >= 2}
         <MultiModelEdit
           models={selected}
-          onDelete={onDeleteSelected}
+          {onDelete}
           onGroupDelete={onGroupDeleteSelected}
           {onModelsMoved}
         />
@@ -345,7 +339,7 @@
           initialEditMode={props.initialEditMode}
           model={selected[0]}
           {renameRequested}
-          onDelete={onDeleteSelected}
+          {onDelete}
           {onModelsMoved}
           onGroupDelete={onGroupDeleteSelected}
         />
@@ -353,14 +347,14 @@
         <ModelEdit
           initialEditMode={props.initialEditMode}
           model={loadedModels[0]}
-          onDelete={onDeleteSelected}
+          {onDelete}
           {onModelsMoved}
           onGroupDelete={onGroupDeleteSelected}
         />
       {:else if props.default_show_multiselect_all}
         <MultiModelEdit
           models={allModelsWithFallback}
-          onDelete={onDeleteSelected}
+          {onDelete}
           onGroupDelete={onGroupDeleteSelected}
           {onModelsMoved}
         />

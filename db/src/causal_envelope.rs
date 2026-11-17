@@ -211,19 +211,12 @@ where
     <Option<T> as serde::Deserialize>::deserialize(deserializer)
 }
 
-fn valid_hex(value: &str) -> bool {
-    value.len() == 32
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
 fn validate_entity(entity: &Entity, allow_unknown_birth: bool) -> Result<(), EnvelopeError> {
     if entity.global_id.len() != 32
         || entity
             .birth_id
             .as_ref()
-            .map_or(!allow_unknown_birth, |id| !valid_hex(id))
+            .map_or(!allow_unknown_birth, |id| !crate::util::is_blob_sha256(id))
     {
         return Err(EnvelopeError);
     }
@@ -231,7 +224,7 @@ fn validate_entity(entity: &Entity, allow_unknown_birth: bool) -> Result<(), Env
 }
 
 pub(crate) fn counter(dot: &Dot) -> Result<i64, EnvelopeError> {
-    if !valid_hex(&dot.writer_id)
+    if !crate::util::is_blob_sha256(&dot.writer_id)
         || dot.counter.starts_with('0')
         || !dot.counter.bytes().all(|byte| byte.is_ascii_digit())
     {
@@ -325,7 +318,9 @@ fn validate_action(value: &CausalEnvelope) -> Result<(), EnvelopeError> {
         Action::GroupDeleted {
             deletion_operation_id,
         } => {
-            if value.entity.kind != EntityKind::Group || !valid_hex(deletion_operation_id) {
+            if value.entity.kind != EntityKind::Group
+                || !crate::util::is_blob_sha256(deletion_operation_id)
+            {
                 return Err(EnvelopeError);
             }
         }

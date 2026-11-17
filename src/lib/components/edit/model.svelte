@@ -9,6 +9,7 @@
   import ListCheck from "@lucide/svelte/icons/list-check";
 
   import { goto } from "$app/navigation";
+  import { trashModels } from "#lib/components/view/trash-models";
   import { resolve } from "#lib/paths";
   import { getContainer } from "#lib/api/dependency_injection";
   import { IGroupApi, type GroupMeta } from "#lib/api/shared/group_api";
@@ -166,18 +167,10 @@
     const affected = $state.snapshot(model);
     deleting = true;
     try {
-      await modelApi.deleteModels([affected]);
-      deletedId = affected.id;
-      props.onDelete?.([affected]);
-      toast.success(`Moved '${affected.name}' to trash`, {
-        action: { label: "View trash", onClick: () => goto(resolve("/trash")) },
+      await trashModels([affected], (trashed) => {
+        deletedId = affected.id;
+        props.onDelete?.(trashed);
       });
-      updateSidebarState().catch((error) =>
-        console.error("Failed to refresh sidebar:", error),
-      );
-    } catch (error) {
-      console.error("Failed to move model to trash:", error);
-      toast.error("Could not move model to trash. Try again.");
     } finally {
       deleting = false;
     }

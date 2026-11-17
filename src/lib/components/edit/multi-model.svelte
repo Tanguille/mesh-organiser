@@ -13,6 +13,7 @@
   import { countWriter, uniqueById } from "#lib/utils";
 
   import { goto } from "$app/navigation";
+  import { trashModels } from "#lib/components/view/trash-models";
   import { resolve } from "#lib/paths";
 
   import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
@@ -172,17 +173,9 @@
     const affected_models = $state.snapshot(models);
     deleting = true;
     try {
-      await modelApi.deleteModels(affected_models);
-      props.onDelete?.(affected_models);
-      toast.success(`Moved ${countWriter("model", affected_models)} to trash`, {
-        action: { label: "View trash", onClick: () => goto(resolve("/trash")) },
-      });
-      updateSidebarState().catch((error) =>
-        console.error("Failed to refresh sidebar:", error),
+      await trashModels(affected_models, (trashed) =>
+        props.onDelete?.(trashed),
       );
-    } catch (error) {
-      console.error("Failed to move models to trash:", error);
-      toast.error("Could not move models to trash. Try again.");
     } finally {
       deleting = false;
     }
