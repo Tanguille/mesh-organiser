@@ -1498,29 +1498,31 @@ async fn download_capacity_child() {
         size: 3,
         sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
     };
+    // More unread downloads than the staging capacity (at most 4): none may pin a slot.
     let mut held = Vec::new();
-    for _ in 0..5 {
-        match prepare_download(&state, &content, &blob).await {
-            Ok(download) => held.push(tokio_util::io::ReaderStream::new(download)),
-            Err(_) => break,
-        }
+    for _ in 0..6 {
+        held.push(
+            prepare_download(&state, &content, &blob)
+                .await
+                .expect("an unread download must not hold staging capacity"),
+        );
     }
-    assert!(
-        !held.is_empty(),
-        "at least one verified download must be allowed"
-    );
-    assert!(held.len() <= 4, "unconsumed downloads must be bounded");
-    drop(held.pop());
-    let next = prepare_download(&state, &content, &blob)
-        .await
-        .expect("dropping a response must release capacity");
-    drop(next);
-    drop(held);
-    recover_transfers(&state).await.unwrap();
+    // Starting another staging operation still works while all downloads are unread.
+    let _permit = staging_permit(&state).expect("staging capacity must stay free");
     assert!(
         no_payload_stages(&state.get_model_dir()),
-        "dropped response stages must be cleaned"
+        "verified download stages must be removed before streaming"
     );
+    for mut download in held {
+        let mut bytes = Vec::new();
+        AsyncReadExt::read_to_end(&mut download, &mut bytes)
+            .await
+            .unwrap();
+        assert_eq!(
+            bytes, b"abc",
+            "bytes must stay readable after stage removal"
+        );
+    }
     std::fs::write(
         std::env::var("MESH_DOWNLOAD_TEST_MARKER").unwrap(),
         b"passed",
@@ -1529,7 +1531,7 @@ async fn download_capacity_child() {
 }
 
 #[tokio::test]
-async fn unconsumed_downloads_have_bounded_releasable_capacity() {
+async fn unconsumed_downloads_do_not_hold_staging_capacity() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("download-checked");
     let mut process = KillOnDrop(

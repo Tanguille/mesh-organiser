@@ -1013,19 +1013,6 @@ pub async fn purge_trashed_groups(db: &DbContext, retention_days: u32) -> Result
     crate::causal_group_lifecycle::purge_expired(db, retention_days).await
 }
 
-pub async fn delete_dead_groups(db: &DbContext) -> Result<(), DbError> {
-    // No user filter needed: a group without models is dead regardless of owner. Trashed models
-    // still count, so restoring one brings its group back.
-    sqlx::query!(
-        "DELETE FROM models_group
-         WHERE group_id NOT IN (SELECT DISTINCT model_group_id FROM models WHERE model_group_id IS NOT NULL)"
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
-}
-
 pub async fn get_group_count(
     db: &DbContext,
     user: &User,

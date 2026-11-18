@@ -43,7 +43,9 @@ hyper-util = { version = "0.1", features = ["tokio", "service"] }
 sha2 = { workspace = true }
 tokio-rustls = "0.26"
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "test-util"] }
 # `util` adds `ServiceExt::oneshot`, to call the MCP router without binding a port.
 tower = { workspace = true, features = ["util"] }
 zip = { workspace = true }
+# Test-only TLS fixtures (see sync_pull_transport_tests.rs); aws_lc_rs matches the rustls provider the tests install, so no ring.
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }

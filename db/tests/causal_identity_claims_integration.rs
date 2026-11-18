@@ -745,7 +745,14 @@ async fn removed_empty_legacy_group_head_keeps_later_birth_claim_unknown() {
             .fetch_one(&db)
             .await
             .unwrap();
-    group_db::delete_dead_groups(&db).await.unwrap();
+    // Simulates the legacy removal of every group that has no models.
+    sqlx::query(
+        "DELETE FROM models_group
+         WHERE group_id NOT IN (SELECT DISTINCT model_group_id FROM models WHERE model_group_id IS NOT NULL)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
     let state: String = sqlx::query_scalar(
         "SELECT state FROM group_sync_heads WHERE user_id = ? AND group_global_id = ?",
     )

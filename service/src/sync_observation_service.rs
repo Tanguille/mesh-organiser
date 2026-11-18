@@ -830,8 +830,6 @@ async fn install_target(
 pub struct VerifiedDownload {
     file: File,
     pub size: u64,
-    _directory: Stage,
-    _permit: tokio::sync::OwnedSemaphorePermit,
 }
 impl AsyncRead for VerifiedDownload {
     fn poll_read(
@@ -847,7 +845,10 @@ pub async fn prepare_download(
     content: &BlobContent,
     blob: &Blob,
 ) -> Result<VerifiedDownload, ServiceError> {
-    let permit = staging_permit(state)?;
+    // The permit and stage only cover verification. The client-paced stream must not
+    // pin them: the open descriptor outlives the directory removal on unix (and std
+    // opens with FILE_SHARE_DELETE on Windows).
+    let _permit = staging_permit(state)?;
     let _lock = state.import_mutex.lock().await;
     let directory = stage(state).await?;
     verify_existing(state, blob, content, directory.path()).await?;
@@ -856,8 +857,6 @@ pub async fn prepare_download(
     Ok(VerifiedDownload {
         file,
         size: u64::try_from(content.size).map_err(|_| invalid("identity_blocked"))?,
-        _directory: directory,
-        _permit: permit,
     })
 }
 

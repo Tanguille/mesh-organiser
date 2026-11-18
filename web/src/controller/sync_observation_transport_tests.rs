@@ -386,6 +386,123 @@ fn multipart(
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines, clippy::significant_drop_tightening)] // Keep the source snapshot alive across the transfer.
+async fn trickling_upload_is_cut_off_by_the_total_receive_deadline() {
+    const FULL_HASH: &str = "c4a700f85b7e9e5cdbdc51170409ee2ad48bebe2f2f0957a067937531a0a3c42";
+    // Large enough that the trickled tail still contains many separate data chunks.
+    const CONTENT: [u8; 2000] = [b'a'; 2000];
+    const PREFIX: &str = "c4a700f85b7e9e5cdbdc51170409ee2a";
+    let (_hub_dir, hub, router, cookie) = app().await;
+    let (source_dir, source) = crate::test_support::app_state().await;
+    let user = db::model::user::User::default();
+    let identity = db::user_db::get_sync_identity(&source.db, user.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let writer = registration(&router, &cookie, &source).await;
+    db::sync_peer::bind_peer(&source.db, &user, &identity, &writer.server_identity)
+        .await
+        .unwrap();
+    db::sync_transport::install_authority(&source.db, &user, &identity, &writer)
+        .await
+        .unwrap();
+    let group = sqlx::query("INSERT INTO models_group(group_name,group_created,group_user_id,group_last_modified,group_unique_global_id) VALUES('trickle','2020-01-01T00:00:00Z',?,'2020-01-01T00:00:00Z',?)").bind(user.id).bind(db::random_hex_32()).execute(&*source.db).await.unwrap().last_insert_rowid();
+    let path = source_dir.path().join("trickle.stl");
+    std::fs::write(&path, CONTENT).unwrap();
+    let blob = db::blob_db::add_blob(
+        &source.db,
+        PREFIX,
+        "stl",
+        2000,
+        Some(path.to_string_lossy().into_owned()),
+    )
+    .await
+    .unwrap();
+    let model = db::model_db::add_model(&source.db, &user, "part", blob, None, None)
+        .await
+        .unwrap();
+    db::group_db::set_group_id_on_models(&source.db, &user, Some(group), vec![model], None)
+        .await
+        .unwrap();
+    let prepared =
+        service::sync_observation_service::prepare_observed_group(&source, &user, &identity, group)
+            .await
+            .unwrap();
+    let proof =
+        db::sync_transport::writer_proof(&source.db, &user, &identity, prepared.group_event())
+            .await
+            .unwrap();
+    let payload = serde_json::json!({"protocol":1,"connection_id":proof.connection_id,"writer_nonce":proof.writer_nonce,"item":prepared.item()});
+    let complete = multipart(
+        &payload,
+        &[(FULL_HASH, &CONTENT[..])],
+        Some(&cookie),
+        Some(&writer.writer_secret),
+    );
+    let (parts, body) = complete.into_parts();
+    let bytes = to_bytes(body, 1024 * 1024).await.unwrap();
+    let (mut sender, receiver) = tokio::io::duplex(8192);
+    let trickled = Request::from_parts(
+        parts,
+        Body::from_stream(tokio_util::io::ReaderStream::new(receiver)),
+    );
+    let before_files = entries(&hub.get_model_dir());
+    let inflight = tokio::spawn(router.clone().oneshot(trickled));
+    let tail = bytes.len() - 300;
+    sender.write_all(&bytes[..tail]).await.unwrap();
+    // Paused only after setup so real sqlite/axum work above is not racing virtual time.
+    tokio::time::pause();
+    // Virtual time jumps whenever the runtime is idle, including while the handler waits on
+    // sqlite, so only start trickling once the receiver has created its stage. Millisecond
+    // steps keep the virtual time spent here negligible.
+    let mut polls = 0;
+    while !entries(&hub.get_model_dir())
+        .iter()
+        .any(|name| name.starts_with(".sync-stage-"))
+    {
+        polls += 1;
+        assert!(
+            polls < 10_000,
+            "receiver must start staging the partial stream"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    // Every data chunk arrives within the idle timeout, so only the total deadline (idle
+    // allowance plus a rounded-down second for 2000 declared bytes) can cut this off early.
+    let started = tokio::time::Instant::now();
+    for byte in &bytes[tail..] {
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+        if sender.write_all(&[*byte]).await.is_err() {
+            break;
+        }
+    }
+    let elapsed = started.elapsed();
+    drop(sender);
+    let result = inflight.await.unwrap().unwrap();
+    assert_eq!(
+        result.status(),
+        StatusCode::REQUEST_TIMEOUT,
+        "a trickling upload must hit the total receive deadline"
+    );
+    // Without a total deadline the idle timeout only fires after the whole trickled tail
+    // (hundreds of 20s gaps) because every data chunk resets it, and the status is the same 408.
+    assert!(
+        elapsed < std::time::Duration::from_secs(60),
+        "the cut-off must come from the total deadline, not the idle timeout: {elapsed:?}"
+    );
+    // Virtual time must not run against sqlx's pool acquire timeout.
+    tokio::time::resume();
+    service::sync_observation_service::recover_transfers(&hub)
+        .await
+        .unwrap();
+    assert_eq!(
+        entries(&hub.get_model_dir()),
+        before_files,
+        "a timed-out upload must clean its stage"
+    );
+}
+
+#[tokio::test]
 #[allow(clippy::too_many_lines, clippy::significant_drop_tightening)] // Keep the source snapshot alive across the transfer checks.
 async fn observed_group_upload_verifies_bytes_and_installs_atomically() {
     const FULL_HASH: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";

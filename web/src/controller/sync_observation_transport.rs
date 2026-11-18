@@ -54,14 +54,17 @@ pub(super) async fn publish(
         Ok(plan) => plan,
         Err(error) => return response::<serde_json::Value>(Err(error)),
     };
+    let deadline = receive_deadline(plan.contents());
     // Client-paced reads must never hold the ordinary import/GC lock.
     let mut incoming = match IncomingObservation::new(&state, &plan).await {
         Ok(value) => value,
         Err(error) => return failure(error),
     };
-    if let Err(error) = receive(&mut multipart, &mut incoming).await {
-        // Including an idle timeout: returning drops `incoming`, which clears its stage via `Stage::drop`.
-        return error;
+    // Any timeout or error returns here, dropping `incoming`, which clears its stage via `Stage::drop`.
+    match tokio::time::timeout(deadline, receive(&mut multipart, &mut incoming)).await {
+        Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
+        Ok(Err(error)) => return error,
+        Ok(Ok(())) => {}
     }
     // Losing the HTTP future cannot cancel the file/DB commit sequence. Exact retries
     // recover an ACK after a disconnect, without creating another group or file.
@@ -112,6 +115,22 @@ async fn metadata(multipart: &mut Multipart) -> Result<super::Publish, Response>
 /// off on a slow link, while a stalled peer still releases its staging permit.
 const RECEIVE_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Slow-link floor for the total receive deadline. The idle timeout alone lets a peer that
+/// trickles one chunk per interval hold a staging slot indefinitely.
+const RECEIVE_MIN_BYTES_PER_SECOND: u64 = 16 * 1024;
+
+/// Total deadline for one upload: the idle allowance plus the time the declared bytes take at
+/// the slow-link floor. Scales with the plan instead of a fixed cap.
+fn receive_deadline(contents: &[observations::BlobContent]) -> std::time::Duration {
+    let declared_bytes = contents.iter().fold(0_u64, |total, content| {
+        total.saturating_add(u64::try_from(content.size).unwrap_or(0))
+    });
+
+    RECEIVE_IDLE_TIMEOUT.saturating_add(std::time::Duration::from_secs(
+        declared_bytes / RECEIVE_MIN_BYTES_PER_SECOND,
+    ))
+}
+
 #[allow(clippy::result_large_err)] // Local HTTP helpers return the already-built rejection response.
 async fn idle<T>(
     step: impl Future<Output = Result<T, axum::extract::multipart::MultipartError>>,
@@ -147,7 +166,6 @@ pub(super) struct Download {
     protocol: u32,
     connection_id: String,
 }
-#[allow(clippy::significant_drop_tightening)] // The response stream owns the verified snapshot and its staging permit.
 pub(super) async fn download(
     CurrentSyncUser(user, account): CurrentSyncUser,
     session: AuthSession,
