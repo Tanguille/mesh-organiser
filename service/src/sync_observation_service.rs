@@ -872,9 +872,9 @@ pub async fn prepare_download(
     blob: &Blob,
 ) -> Result<VerifiedDownload, ServiceError> {
     // The staging permit and stage only cover verification. The client-paced stream holds a
-    // download permit instead, and keeps the file open after the stage directory is removed
-    // (the open descriptor outlives the directory on unix; std opens with FILE_SHARE_DELETE on
-    // Windows).
+    // download permit instead and keeps the open descriptor alive after the stage directory
+    // is removed; the unlinked file stays readable while the descriptor lives (staging is
+    // unix-only: `Stage::new` rejects other platforms).
     let download_permit = download_permit(state)?;
     let _staging_permit = staging_permit(state)?;
     let _lock = state.import_mutex.lock().await;
