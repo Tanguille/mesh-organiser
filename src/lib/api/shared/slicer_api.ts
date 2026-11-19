@@ -8,11 +8,20 @@ export interface SlicerEntry {
   installed: boolean;
 }
 
+/** Response from `POST /api/v1/slicer/slice` (remote / web server). */
+export interface SliceServerResponse {
+  success: boolean;
+  /** Model id of the registered slice output. */
+  outputModelId: number;
+  message?: string | null;
+}
+
 export const ISlicerApi = Symbol("ISlicerApi");
 
 export interface ISlicerApi {
   openInSlicer(models: Model[]): Promise<void>;
   availableSlicers(): Promise<SlicerEntry[]>;
+  sliceOnServer?(modelId: number): Promise<SliceServerResponse>;
 }
 
 function slicerNameToDeepLink(slicerName: string): string | null {

@@ -27,7 +27,7 @@ strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 threemf = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["process", "rt-multi-thread", "time"] }
 tokio-util = { workspace = true, features = ["io"] }
 percent-encoding = { workspace = true }
 vek = { workspace = true }
