@@ -3,16 +3,16 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::post,
 };
 
-use db::user_db;
 use service::AppState;
 
-use crate::{
-    error::ApplicationError,
-    user::{AuthSession, Credentials, CurrentUser, PasswordCredentials, TokenCredentials},
-};
+use crate::user::{AuthSession, Credentials, CurrentUser};
+
+#[cfg(test)]
+#[path = "auth_protocol_tests.rs"]
+mod auth_protocol_tests;
 
 /// The credential checks, which the caller rate-limits against guessing.
 pub fn login_router() -> Router<AppState> {
@@ -30,7 +30,7 @@ pub fn router() -> Router<AppState> {
     Router::new().nest(
         "/api/v1",
         Router::new()
-            .route("/users/me", get(me))
+            .route("/users/me", axum::routing::get(me))
             .route("/logout", post(logout)),
     )
 }
@@ -38,8 +38,8 @@ pub fn router() -> Router<AppState> {
 pub async fn me(
     CurrentUser(user): CurrentUser,
     State(app_state): State<AppState>,
-) -> Result<Response, ApplicationError> {
-    let Some(user) = user_db::get_user_by_id(&app_state.db, user.id).await? else {
+) -> Result<Response, crate::error::ApplicationError> {
+    let Some(user) = db::user_db::get_user_by_id(&app_state.db, user.id).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
 
@@ -48,8 +48,15 @@ pub async fn me(
 
 pub async fn password(
     auth_session: AuthSession,
-    Json(credentials): Json<PasswordCredentials>,
+    Json(credentials): Json<crate::user::PasswordCredentials>,
 ) -> Response {
+    if credentials.group_deletion_protocol != Some(1) {
+        return (
+            StatusCode::UPGRADE_REQUIRED,
+            "Upgrade the app to continue syncing",
+        )
+            .into_response();
+    }
     login_inner(
         auth_session,
         Credentials::Password(credentials),
@@ -60,8 +67,16 @@ pub async fn password(
 
 pub async fn token(
     auth_session: AuthSession,
-    Json(credentials): Json<TokenCredentials>,
+    Json(credentials): Json<crate::user::TokenCredentials>,
 ) -> Response {
+    if credentials.group_deletion_protocol != Some(1) {
+        return (
+            StatusCode::UPGRADE_REQUIRED,
+            "Upgrade the app to continue syncing",
+        )
+            .into_response();
+    }
+
     login_inner(
         auth_session,
         Credentials::Token(credentials),
@@ -84,6 +99,15 @@ async fn login_inner(
     };
 
     if auth_session.login(&user).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+
+    if auth_session
+        .session
+        .insert(crate::user::SESSION_GROUP_DELETION_PROTOCOL, 1_u32)
+        .await
+        .is_err()
+    {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 

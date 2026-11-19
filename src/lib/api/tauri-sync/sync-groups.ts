@@ -28,7 +28,9 @@ async function finalizeSingleGroupUpload(
   const relatedModels = remoteCounterparts(group.models, remoteModelsById);
   const newGroup = await remoteApi.addGroup(group.meta.name);
   group.meta.id = newGroup.id;
-  await remoteApi.addModelsToGroup(group.meta, relatedModels);
+  if (relatedModels.length > 0) {
+    await remoteApi.addModelsToGroup(group.meta, relatedModels);
+  }
   await remoteApi.editGroup(group.meta, true, true);
   globalSyncState.processedItems += 1;
 }
@@ -62,8 +64,12 @@ async function finalizeSyncToRemote(
 
   const relatedModels = remoteCounterparts(localGroup.models, remoteModelsById);
 
-  await remoteApi.removeModelsFromGroup(remoteGroup.models);
-  await remoteApi.addModelsToGroup(remoteGroup.meta, relatedModels);
+  if (remoteGroup.models.length > 0) {
+    await remoteApi.removeModelsFromGroup(remoteGroup.models);
+  }
+  if (relatedModels.length > 0) {
+    await remoteApi.addModelsToGroup(remoteGroup.meta, relatedModels);
+  }
   localGroup.meta.id = remoteGroup.meta.id;
   await remoteApi.editGroup(
     localGroup.meta,
@@ -110,6 +116,20 @@ export async function syncGroups(
     withMetaSyncFields(localGroups),
     withMetaSyncFields(serverGroups),
     lastSynced,
+  );
+
+  // shortcut: unmatched empty-group deletions need durable tombstones; preserve them until sync records deletion history.
+  syncState.toUpload.push(
+    ...syncState.toDeleteLocal.filter((group) => group.models.length === 0),
+  );
+  syncState.toDeleteLocal = syncState.toDeleteLocal.filter(
+    (group) => group.models.length > 0,
+  );
+  syncState.toDownload.push(
+    ...syncState.toDeleteServer.filter((group) => group.models.length === 0),
+  );
+  syncState.toDeleteServer = syncState.toDeleteServer.filter(
+    (group) => group.models.length > 0,
   );
 
   await applySyncResult(syncState, {

@@ -1,13 +1,9 @@
-use std::{fs, path::Path, time::Duration};
+use std::{fs, path::Path};
 
 use sha2::{Digest, Sha384};
-use sqlx::{
-    self, Pool, Sqlite,
-    migrate::{MigrateDatabase, Migrator},
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-};
+use sqlx::{Sqlite, migrate::MigrateDatabase};
 
-pub type DbContext = Pool<Sqlite>;
+pub type DbContext = sqlx::Pool<Sqlite>;
 
 /// Opens or creates a `SQLite` database, backs it up, and applies the embedded migrations.
 ///
@@ -29,11 +25,11 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
             .expect("failed to create database");
     }
 
-    let connection_option = SqliteConnectOptions::new()
+    let connection_option = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(sqlite_path)
-        .busy_timeout(Duration::from_secs(15));
+        .busy_timeout(std::time::Duration::from_secs(15));
 
-    let db = SqlitePoolOptions::new()
+    let db = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(connection_option)
         .await
@@ -66,6 +62,34 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
             .expect("Failed to vacuum database after migrations");
     }
 
+    // A reopened backup must not issue events under its former writer counter.
+    let mut transaction = db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .expect("failed to start writer rotation");
+    sqlx::query("INSERT OR IGNORE INTO local_causal_writers (replica_id) SELECT replica_id FROM group_causal_replica WHERE singleton = 1")
+        .execute(&mut *transaction)
+        .await
+        .expect("failed to preserve causal writer");
+    // A missing singleton row is tolerated: the register below then inserts nothing, and the
+    // library must still open rather than abort startup.
+    sqlx::query("UPDATE group_causal_replica SET replica_id = ?, counter = 0 WHERE singleton = 1")
+        .bind(crate::random_hex_32())
+        .execute(&mut *transaction)
+        .await
+        .expect("failed to rotate causal writer");
+    sqlx::query("INSERT INTO local_causal_writers (replica_id) SELECT replica_id FROM group_causal_replica WHERE singleton = 1")
+        .execute(&mut *transaction)
+        .await
+        .expect("failed to register causal writer");
+    crate::sync_transport::rotate_all(&mut transaction)
+        .await
+        .expect("failed to rotate account writers");
+    transaction
+        .commit()
+        .await
+        .expect("failed to commit writer rotation");
+
     db
 }
 
@@ -76,7 +100,7 @@ pub async fn setup_db(sqlite_path: &Path, sqlite_backup_dir: &Path) -> DbContext
 /// LF one disagree about byte-identical SQL — and the database can be shared
 /// between platforms through a network data path. Checksums matching neither
 /// variant are left alone, so a genuinely modified migration still fails.
-async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
+async fn repair_line_ending_checksums(db: &DbContext, migrator: &sqlx::migrate::Migrator) {
     let applied: Vec<(i64, Vec<u8>)> =
         match sqlx::query_as("SELECT version, checksum FROM _sqlx_migrations")
             .fetch_all(db)
@@ -88,7 +112,10 @@ async fn repair_line_ending_checksums(db: &DbContext, migrator: &Migrator) {
         };
 
     for migration in migrator.iter() {
-        let Some((_, stored)) = applied.iter().find(|(v, _)| *v == migration.version) else {
+        let Some((_, stored)) = applied
+            .iter()
+            .find(|(version, _)| *version == migration.version)
+        else {
             continue;
         };
 
@@ -144,7 +171,7 @@ async fn get_db_migration_count(db: &DbContext) -> usize {
         .fetch_one(db)
         .await
     {
-        Ok(r) => r,
+        Ok(row) => row,
         Err(_) => return 0,
     };
 
@@ -174,13 +201,21 @@ async fn backup_db(db: &DbContext, sqlite_path: &Path, sqlite_backup_dir: &Path)
     let mut backups: Vec<_> = fs::read_dir(sqlite_backup_dir)
         .expect("Failed to read backup directory")
         .filter_map(|entry| {
-            entry
-                .ok()
-                .filter(|e| e.path().extension().is_some_and(|ext| ext == "sqlite"))
+            entry.ok().filter(|dir_entry| {
+                dir_entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "sqlite")
+            })
         })
         .collect();
 
-    backups.sort_by_key(|entry| entry.metadata().and_then(|m| m.modified()).unwrap());
+    backups.sort_by_key(|entry| {
+        entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .unwrap()
+    });
     while backups.len() > 5 {
         let oldest = backups.remove(0);
         fs::remove_file(oldest.path()).expect("Failed to remove old backup");
@@ -189,15 +224,11 @@ async fn backup_db(db: &DbContext, sqlite_path: &Path, sqlite_backup_dir: &Path)
 
 #[cfg(test)]
 mod tests {
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    use super::dedupe_models_before_blob_migration;
-
     /// A pre-migration-6 `models` table with duplicated hashes keeps only the oldest row
     /// per hash; a database past migration 6 (no `model_sha256` column) is left alone.
     #[tokio::test]
     async fn dedupe_keeps_oldest_row_per_hash() {
-        let db = SqlitePoolOptions::new()
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
             .connect("sqlite::memory:")
             .await
             .unwrap();
@@ -210,18 +241,40 @@ mod tests {
             .await
             .unwrap();
 
-        dedupe_models_before_blob_migration(&db, 6).await.unwrap();
+        super::dedupe_models_before_blob_migration(&db, 6)
+            .await
+            .unwrap();
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM models")
             .fetch_one(&db)
             .await
             .unwrap();
         assert_eq!(count, 5, "must not touch databases past migration 6");
 
-        dedupe_models_before_blob_migration(&db, 5).await.unwrap();
+        super::dedupe_models_before_blob_migration(&db, 5)
+            .await
+            .unwrap();
         let ids: Vec<(i64,)> = sqlx::query_as("SELECT model_id FROM models ORDER BY model_id")
             .fetch_all(&db)
             .await
             .unwrap();
         assert_eq!(ids, vec![(1,), (3,), (5,)]);
+    }
+
+    /// A database whose causal writer singleton row is gone must still open.
+    #[tokio::test]
+    async fn setup_db_opens_without_causal_writer_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("db.sqlite");
+        let backup_dir = dir.path().join("backups");
+
+        let db = super::setup_db(&db_path, &backup_dir).await;
+        sqlx::query("DELETE FROM group_causal_replica")
+            .execute(&db)
+            .await
+            .unwrap();
+        db.close().await;
+
+        let db = super::setup_db(&db_path, &backup_dir).await;
+        db.close().await;
     }
 }

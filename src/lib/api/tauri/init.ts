@@ -261,6 +261,7 @@ async function loginWeb(
   try {
     await requestApi.request<void>("/login/token", HttpMethod.POST, {
       token: token,
+      group_deletion_protocol: 1,
     });
 
     const userApi = new WebUserApi(requestApi);

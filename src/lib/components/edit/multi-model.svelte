@@ -9,9 +9,11 @@
   import { CheckboxWithLabel } from "#lib/components/ui/checkbox/index.js";
   import { Label } from "#lib/components/ui/label";
   import LabelSelect from "#lib/components/view/label-select.svelte";
+  import GroupSelect from "#lib/components/view/group-select.svelte";
   import { countWriter, uniqueById } from "#lib/utils";
 
   import { goto } from "$app/navigation";
+  import { trashModels } from "#lib/components/view/trash-models";
   import { resolve } from "#lib/paths";
 
   import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
@@ -25,8 +27,6 @@
   import { ILabelApi, type LabelMeta } from "#lib/api/shared/label_api";
   import { IModelApi, type Model } from "#lib/api/shared/model_api";
   import { sidebarState, updateSidebarState } from "#lib/sidebar_data.svelte";
-  import Boxes from "@lucide/svelte/icons/boxes";
-  import Component from "@lucide/svelte/icons/component";
   import Group from "@lucide/svelte/icons/group";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Ungroup from "@lucide/svelte/icons/ungroup";
@@ -39,20 +39,19 @@
   const props: {
     models: Model[];
     class?: ClassValue;
-    onDelete?: () => void;
-    onGroupDelete?: () => void;
+    onDelete?: (models: Model[]) => void;
+    onGroupDelete?: (models: Model[]) => void;
+    onModelsMoved?: (models: Model[], group: GroupMeta) => void;
   } = $props();
 
   // This alias follows props.models; handlers capture the current array before
   // awaiting because the selection can change while a request is in flight.
   const models = $derived(props.models);
+  let deleting = $state(false);
   const printed = $derived(models.every((x) => x.flags.printed));
   const favorited = $derived(models.every((x) => x.flags.favorite));
   const allModelGroups = $derived(
     uniqueById(models.map((x) => x.group).filter((g) => !!g)),
-  );
-  const availableGroups = $derived(
-    allModelGroups.filter((g) => !models.every((x) => x.group?.id === g.id)),
   );
 
   let availableLabels = $derived(sidebarState.labels.map((l) => l.meta));
@@ -131,25 +130,6 @@
     await updateSidebarState();
   }
 
-  async function onAddModelsToGroup(group: GroupMeta) {
-    const affected_models = models;
-
-    await groupApi.addModelsToGroup(group, $state.snapshot(affected_models));
-    await updateSidebarState();
-
-    toast.success(
-      `Added ${countWriter("model", affected_models)} to group '${group.name}'`,
-      {
-        action: {
-          label: "Go to group",
-          onClick: () => {
-            goto(resolve("/group/" + group.id));
-          },
-        },
-      },
-    );
-  }
-
   async function updateLabels(labels: LabelMeta[]) {
     const added_label = labels.find(
       (x) => !appliedLabels.some((l) => l.id === x.id),
@@ -181,28 +161,24 @@
   }
 
   async function onRemoveGroup() {
-    const affected_models = models;
+    const affected_models = $state.snapshot(models);
     await groupApi.removeModelsFromGroup(affected_models);
+    props.onGroupDelete?.(affected_models);
     await updateSidebarState();
     toast.success(`Ungrouped ${countWriter("model", affected_models)}`);
-    props.onGroupDelete?.();
   }
 
   async function onDelete() {
-    const affected_models = models;
-
-    let promise = modelApi.deleteModels(affected_models);
-
-    toast.promise(promise, {
-      loading: `Moving ${countWriter("model", affected_models)} to trash...`,
-      success: (_) => {
-        return `Moved ${countWriter("model", affected_models)} to trash`;
-      },
-    });
-
-    await promise;
-    await updateSidebarState();
-    props.onDelete?.();
+    if (deleting) return;
+    const affected_models = $state.snapshot(models);
+    deleting = true;
+    try {
+      await trashModels(affected_models, (trashed) =>
+        props.onDelete?.(trashed),
+      );
+    } finally {
+      deleting = false;
+    }
   }
 </script>
 
@@ -219,19 +195,29 @@
           class="h-full w-9"
           variant="ghost"
           onclick={() => createShare(models, shareApi)}
+          aria-label="Share models"
         >
           <Share2 />
         </Button>
       {/if}
       {#if !configurationMeta.applicationReadOnly}
+        <Button
+          variant="ghost"
+          class="h-full w-9"
+          aria-label="Move to trash"
+          disabled={deleting}
+          onclick={onDelete}
+        >
+          <Trash2 />
+        </Button>
         <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
+          <DropdownMenu.Trigger aria-label="Model actions">
             <div class="{buttonVariants({ variant: 'ghost' })} h-full w-9">
               <Ellipsis />
             </div>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content side="right" align="start">
-            <DropdownMenu.Item onclick={onDelete}>
+            <DropdownMenu.Item onclick={onDelete} disabled={deleting}>
               <Trash2 /> Move selected models to trash
             </DropdownMenu.Item>
           </DropdownMenu.Content>
@@ -268,26 +254,7 @@
               ><Ungroup /> Remove from group</Button
             >
           </div>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger
-              disabled={availableGroups.length <= 0}
-              class="{buttonVariants({ variant: 'default' })} grow"
-            >
-              <Component /> Add selected to group
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              side="bottom"
-              align="start"
-              class="w-(--bits-dropdown-menu-anchor-width)"
-            >
-              {#each availableGroups as group (group.id)}
-                <DropdownMenu.Item onclick={() => onAddModelsToGroup(group)}>
-                  <Boxes class="mr-2" />
-                  {group.name}
-                </DropdownMenu.Item>
-              {/each}
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+          <GroupSelect {models} onModelsMoved={props.onModelsMoved} />
         </div>
         <div class="flex flex-col gap-4">
           <Label>Properties</Label>

@@ -18,7 +18,7 @@ image = { workspace = true, features = ["jpeg", "png"] }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true, features = ["rustls"] }
+reqwest = { workspace = true, features = ["rustls", "cookies", "json", "query", "multipart", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -48,3 +48,6 @@ zip = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true }

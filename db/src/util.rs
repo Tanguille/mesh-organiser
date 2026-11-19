@@ -1,4 +1,7 @@
+use std::fmt::Write as _;
+
 use rand::RngExt;
+use sha2::{Digest as _, Sha256};
 
 use crate::DbError;
 
@@ -13,14 +16,33 @@ pub fn u128_to_hex_32(value: u128) -> String {
     format!("{value:032x}")
 }
 
+/// Full SHA-256 digest of `bytes` as 64 lowercase hex chars.
+#[must_use]
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .fold(String::with_capacity(64), |mut output, byte| {
+            let _ = write!(output, "{byte:02x}");
+
+            output
+        })
+}
+
+/// Whether `value` is exactly `length` bytes of lowercase hex. Byte-wise on purpose: any
+/// non-ASCII byte fails the check, so a multi-byte char can never pass for hex digits.
+#[must_use]
+pub fn is_lower_hex(value: &str, length: usize) -> bool {
+    value.len() == length
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 /// Whether `value` has the shape of a stored blob sha256: 32 lowercase hex chars, as
 /// [`u128_to_hex_32`] writes them (only the first 128 bits of the hash have ever been kept).
 #[must_use]
 pub fn is_blob_sha256(value: &str) -> bool {
-    value.len() == 32
-        && value
-            .chars()
-            .all(|char| char.is_ascii_digit() || ('a'..='f').contains(&char))
+    is_lower_hex(value, 32)
 }
 
 #[must_use]
@@ -71,6 +93,15 @@ mod tests {
     #[test]
     fn u128_to_hex_32_pads_leading_zeros() {
         assert_eq!(super::u128_to_hex_32(1), format!("{}1", "0".repeat(31)));
+    }
+
+    #[test]
+    fn sha256_hex_matches_known_digest() {
+        // FIPS 180-2 test vector for "abc".
+        assert_eq!(
+            super::sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

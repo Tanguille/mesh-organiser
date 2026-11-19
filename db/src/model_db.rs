@@ -1,17 +1,15 @@
 use itertools::Itertools;
-use sqlx::{QueryBuilder, Row, Sqlite};
-use strum::{EnumString, VariantNames};
+use sqlx::{QueryBuilder, Row};
 
 use crate::{
-    DbError, GROUPS, LABELS, MAX_PAGE_SIZE, MODELS, PaginatedResponse,
+    DbError, MAX_PAGE_SIZE, PaginatedResponse,
     db_context::DbContext,
-    ensure_owned, label_db,
-    model::{Model, ModelFlags, blob::FileType, model_group::ModelGroupMeta, user::User},
+    model::{Model, ModelFlags, blob::FileType, user::User},
     push_in, set_timestamp_column,
-    util::{parse_concat_ids, random_hex_32, time_now, timestamp_or_now, validate_global_id},
+    util::{random_hex_32, time_now},
 };
 
-#[derive(Debug, PartialEq, Eq, EnumString, VariantNames)]
+#[derive(Debug, PartialEq, Eq, strum::EnumString, strum::VariantNames)]
 pub enum ModelOrderBy {
     AddedAsc,
     AddedDesc,
@@ -144,7 +142,7 @@ fn has_empty_model_filter(options: &ModelFilterOptions) -> bool {
 }
 
 fn push_model_filters(
-    query_builder: &mut QueryBuilder<Sqlite>,
+    query_builder: &mut QueryBuilder<sqlx::Sqlite>,
     user: &User,
     options: &ModelFilterOptions,
 ) {
@@ -265,10 +263,10 @@ async fn query_models(
     let rows = query.fetch_all(db).await?;
     let mut models = Vec::with_capacity(rows.len());
 
-    let min_labels_map: indexmap::IndexMap<_, _> = label_db::get_labels_min(db, user)
+    let min_labels_map: indexmap::IndexMap<_, _> = crate::label_db::get_labels_min(db, user)
         .await?
         .into_iter()
-        .map(|l| (l.id, l))
+        .map(|label| (label.id, label))
         .collect();
 
     for row in rows {
@@ -280,20 +278,20 @@ async fn query_models(
             link: row.get("model_url"),
             description: row.get("model_desc"),
             added: row.get("model_added"),
-            group: row
-                .get::<Option<i64>, _>("group_id")
-                .map(|id| ModelGroupMeta {
+            group: row.get::<Option<i64>, _>("group_id").map(|id| {
+                crate::model::model_group::ModelGroupMeta {
                     id,
                     name: row.get("group_name"),
                     created: row.get("group_created"),
                     resource_id: row.get("group_resource_id"),
                     unique_global_id: row.get("group_unique_global_id"),
                     last_modified: row.get("group_last_modified"),
-                }),
+                }
+            }),
             labels: row
                 .get::<Option<String>, _>("label_ids")
                 .map_or_else(Vec::new, |label_ids| {
-                    parse_concat_ids(&label_ids)
+                    crate::util::parse_concat_ids(&label_ids)
                         .iter()
                         .filter_map(|id| min_labels_map.get(id).cloned())
                         .collect()
@@ -359,22 +357,45 @@ pub async fn add_model(
     let now = time_now();
     let timestamp = update_timestamp.unwrap_or(&now);
     let hex = random_hex_32();
+    let birth_id = random_hex_32();
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    let highwater: i64 =
+        sqlx::query_scalar("SELECT highwater FROM object_id_highwater WHERE object_kind = 'model'")
+            .fetch_one(&mut *transaction)
+            .await?;
+    let model_id = highwater
+        .checked_add(1)
+        .ok_or_else(|| DbError::Protocol("Model id space exhausted".into()))?;
 
-    let result = sqlx::query!(
-        "INSERT INTO models (model_name, model_blob_id, model_added, model_url, model_user_id, model_unique_global_id, model_last_modified)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-        name,
-        blob_id,
-        now,
-        link,
-        user.id,
-        hex,
-        timestamp,
+    sqlx::query(
+        "INSERT INTO models (model_id, model_name, model_blob_id, model_added, model_url, model_user_id, model_unique_global_id, model_last_modified, model_birth_id, model_genesis_unchanged)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
     )
-    .execute(db)
+    .bind(model_id)
+    .bind(name)
+    .bind(blob_id)
+    .bind(&now)
+    .bind(link)
+    .bind(user.id)
+    .bind(&hex)
+    .bind(timestamp)
+    .bind(&birth_id)
+    .execute(&mut *transaction)
     .await?;
+    crate::causal_envelope::record_local_creation(
+        &mut transaction,
+        user,
+        crate::causal_envelope::Entity {
+            kind: crate::causal_envelope::EntityKind::Model,
+            global_id: hex,
+            birth_id: Some(birth_id),
+        },
+        crate::causal_envelope::Action::ModelCreated,
+    )
+    .await?;
+    transaction.commit().await?;
 
-    Ok(result.last_insert_rowid())
+    Ok(model_id)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -389,9 +410,29 @@ pub async fn edit_model(
     update_timestamp: Option<&str>,
     global_id: Option<&str>,
 ) -> Result<(), DbError> {
-    validate_global_id(global_id)?;
-    let timestamp = timestamp_or_now(update_timestamp);
+    crate::util::validate_global_id(global_id)?;
+    let timestamp = crate::util::timestamp_or_now(update_timestamp);
     let flags = i64::from(flags.bits());
+    let mut transaction = db.begin_with("BEGIN IMMEDIATE").await?;
+    if let Some(target) = global_id {
+        let existing: Option<(String, String, Option<String>)> = sqlx::query_as("SELECT model_unique_global_id, model_incarnation, model_birth_id FROM models WHERE model_id = ? AND model_user_id = ?")
+            .bind(id).bind(user.id).fetch_optional(&mut *transaction).await?;
+        if let Some((current, incarnation, birth_id)) = existing
+            && current != target
+        {
+            let duplicate: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM models WHERE model_user_id = ? AND model_unique_global_id = ? AND model_id != ?)")
+                .bind(user.id).bind(target).bind(id).fetch_one(&mut *transaction).await?;
+            let conflicting_birth: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM entity_births WHERE user_id = ? AND entity_kind = 'model' AND global_id = ? AND birth_id IS NOT ?)")
+                .bind(user.id).bind(target).bind(birth_id).fetch_one(&mut *transaction).await?;
+            let history_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM membership_causal_events WHERE user_id = ? AND (model_incarnation = ? OR model_global_id = ?))")
+                .bind(user.id).bind(incarnation).bind(target).fetch_one(&mut *transaction).await?;
+            if duplicate || conflicting_birth || history_exists {
+                return Err(DbError::Protocol(
+                    "Cannot change a model identity with causal history".into(),
+                ));
+            }
+        }
+    }
     sqlx::query!(
         "UPDATE models SET model_name = ?, model_url = ?, model_desc = ?, model_flags = ?, model_last_modified = ?, model_unique_global_id = COALESCE(?, model_unique_global_id) WHERE model_id = ? AND model_user_id = ?",
         name,
@@ -403,10 +444,10 @@ pub async fn edit_model(
         id,
         user.id
     )
-    .execute(db)
+    .execute(&mut *transaction)
     .await?;
 
-    Ok(())
+    transaction.commit().await
 }
 
 /// Moves the user's live models among `ids` to the trash.
@@ -490,7 +531,7 @@ async fn restore(
 
     // The update holds the write lock and restored every owned trashed row among `ids`, so
     // existence alone now tells a live row from one purged under us.
-    ensure_owned(&mut *transaction, &MODELS, &ids, user).await?;
+    crate::ensure_owned(&mut *transaction, &crate::MODELS, &ids, user).await?;
     if !stamp_relations || restored.is_empty() {
         transaction.commit().await?;
 
@@ -504,7 +545,7 @@ async fn restore(
         .collect();
     set_timestamp_column(
         &mut *transaction,
-        &GROUPS,
+        &crate::GROUPS,
         "group_last_modified",
         &group_ids,
         user,
@@ -524,7 +565,7 @@ async fn restore(
         .await?;
     set_timestamp_column(
         &mut *transaction,
-        &LABELS,
+        &crate::LABELS,
         "label_last_modified",
         &label_ids,
         user,
@@ -567,7 +608,7 @@ pub async fn get_model_id_via_sha256(
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| r.model_id))
+    Ok(row.map(|record| record.model_id))
 }
 
 /// Resolve model IDs for a list of blob SHA256 hashes in one query.
@@ -612,8 +653,8 @@ pub async fn get_model_count(
     flags: Option<ModelFlags>,
 ) -> Result<usize, DbError> {
     let count = match flags {
-        Some(f) => {
-            let bits = i64::from(f.bits());
+        Some(model_flags) => {
+            let bits = i64::from(model_flags.bits());
             sqlx::query!(
                 "SELECT COUNT(*) as count FROM models WHERE model_user_id = ? AND model_deleted IS NULL AND (models.model_flags & ?) = ?",
                 user.id,
@@ -652,8 +693,8 @@ pub async fn get_size_of_models(db: &DbContext, user: &User) -> Result<ModelSize
 
     Ok(ModelSizeResult {
         total_size: row.total_size.unwrap_or(0),
-        blob_sha256: row.blob_sha256.map_or(Vec::new(), |f| {
-            f.split(',').map(ToString::to_string).collect()
+        blob_sha256: row.blob_sha256.map_or(Vec::new(), |joined| {
+            joined.split(',').map(ToString::to_string).collect()
         }),
     })
 }

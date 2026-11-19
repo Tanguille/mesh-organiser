@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type DeletedGroup,
   type Group,
   type GroupFilter,
   type GroupMeta,
+  type GroupRestoreRequest,
   type IGroupApi,
 } from "../shared/group_api";
 import { type Model } from "../shared/model_api";
@@ -15,6 +17,36 @@ import {
 import { dateToString } from "#lib/utils";
 
 export class GroupApi implements IGroupApi {
+  async getTrashedGroups(): Promise<DeletedGroup[]> {
+    const groups = await invoke<
+      {
+        id: number;
+        name: string;
+        deleted: string;
+        group_global_id: string;
+        deletion_operation_id: string | null;
+      }[]
+    >("get_trashed_groups");
+
+    return groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      deleted: new Date(group.deleted),
+      groupGlobalId: group.group_global_id,
+      deletionOperationId: group.deletion_operation_id,
+    }));
+  }
+
+  async restoreGroups(groups: GroupRestoreRequest[]): Promise<void> {
+    await invoke("restore_groups", {
+      groups: groups.map((group) => ({
+        id: group.id,
+        group_global_id: group.groupGlobalId,
+        deletion_operation_id: group.deletionOperationId,
+      })),
+    });
+  }
+
   async getGroups(
     filter: GroupFilter,
     page: number,

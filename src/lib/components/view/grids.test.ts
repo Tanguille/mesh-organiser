@@ -11,6 +11,7 @@ import { getContainer, resetContainer } from "#lib/api/dependency_injection";
 import { IBlobApi, createBlobInstance } from "#lib/api/shared/blob_api";
 import {
   IModelApi,
+  PredefinedModelStreamManager,
   createModelInstance,
   type IModelStreamManager,
 } from "#lib/api/shared/model_api";
@@ -50,6 +51,9 @@ const media = vi.hoisted(() => {
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 vi.mock("$app/paths", () => ({ resolve: (path: string) => path }));
 vi.mock("$app/state", () => ({ page: { url: new URL("http://localhost/") } }));
+vi.mock("#lib/components/view/three-d-canvas.svelte", () => ({
+  default: () => {},
+}));
 
 afterEach(() => {
   // Unmount first: a still-mounted grid re-renders on the configuration reset
@@ -185,6 +189,286 @@ function groupStreamWithModels() {
 
   return stream;
 }
+
+it("clears the selected model when search hides it", async () => {
+  const { models } = calibrationParts();
+  const stream = emptyStream();
+  stream.fetch.mockResolvedValueOnce(models).mockResolvedValueOnce([models[1]]);
+  stream.getAll.mockResolvedValue(models);
+  render(ModelGrid, { modelStream: stream as IModelStreamManager });
+
+  const first = await screen.findByRole("option", { name: /Part 1/ });
+  first.scrollIntoView = vi.fn();
+  await fireEvent.click(first);
+  expect(first.getAttribute("aria-selected")).toBe("true");
+
+  await fireEvent.input(screen.getByPlaceholderText("Search"), {
+    target: { value: "Part 2" },
+  });
+  await waitFor(() =>
+    expect(stream.setSearchText).toHaveBeenCalledWith("Part 2"),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull(),
+  );
+  expect(screen.queryByRole("heading", { name: "Part 1" })).toBeNull();
+});
+
+it("removes the model whose deletion completed, preserving a newer selection", async () => {
+  const { models } = calibrationParts();
+  let finishDelete!: () => void;
+  const deleteModels = vi.fn(
+    () => new Promise<void>((resolve) => (finishDelete = resolve)),
+  );
+  getContainer().addSingleton(IModelApi, { deleteModels });
+  const stream = emptyStream();
+  stream.fetch.mockResolvedValueOnce(models);
+  stream.getAll.mockResolvedValue(models);
+  const { container } = render(ModelGrid, {
+    modelStream: stream as IModelStreamManager,
+    initialEditMode: true,
+  });
+
+  const first = await screen.findByRole("option", { name: /Part 1/ });
+  first.scrollIntoView = vi.fn();
+  await fireEvent.click(first);
+  const menuButton = container
+    .querySelector(".lucide-ellipsis")!
+    .closest("button")!;
+  await fireEvent.click(menuButton);
+  await fireEvent.click(await screen.findByText("Move to trash"));
+  expect(deleteModels).toHaveBeenCalledWith([models[0]]);
+
+  const second = screen.getByRole("option", { name: /Part 2/ });
+  second.scrollIntoView = vi.fn();
+  await fireEvent.click(second);
+  finishDelete();
+
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull(),
+  );
+  expect(
+    screen
+      .getByRole("option", { name: /Part 2/ })
+      .getAttribute("aria-selected"),
+  ).toBe("true");
+});
+
+it("does not reload a deleted model when a predefined stream is recreated from its source", async () => {
+  const { models } = calibrationParts();
+  getContainer().addSingleton(IModelApi, {
+    deleteModels: vi.fn().mockResolvedValue(undefined),
+  });
+  const { container, rerender } = render(ModelGrid, {
+    modelStream: new PredefinedModelStreamManager(models),
+    initialEditMode: true,
+  });
+  const first = await screen.findByRole("option", { name: /Part 1/ });
+  first.scrollIntoView = vi.fn();
+  await fireEvent.click(first);
+  await fireEvent.click(
+    container.querySelector(".lucide-ellipsis")!.closest("button")!,
+  );
+  await fireEvent.click(await screen.findByText("Move to trash"));
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull(),
+  );
+
+  const recreated = new PredefinedModelStreamManager(models);
+  const fetch = vi.spyOn(recreated, "fetch");
+  await rerender({ modelStream: recreated });
+  await waitFor(() => expect(fetch).toHaveBeenCalled());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(screen.queryByRole("option", { name: /Part 2/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull();
+});
+
+it("does not reload a deleted model from a predefined stream after searching", async () => {
+  const { models } = calibrationParts();
+  getContainer().addSingleton(IModelApi, {
+    deleteModels: vi.fn().mockResolvedValue(undefined),
+  });
+  const stream = new PredefinedModelStreamManager(models);
+  const { container } = render(ModelGrid, {
+    modelStream: stream,
+    initialEditMode: true,
+  });
+
+  const first = await screen.findByRole("option", { name: /Part 1/ });
+  first.scrollIntoView = vi.fn();
+  await fireEvent.click(first);
+  await fireEvent.click(
+    container.querySelector(".lucide-ellipsis")!.closest("button")!,
+  );
+  await fireEvent.click(await screen.findByText("Move to trash"));
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull(),
+  );
+
+  await fireEvent.input(screen.getByPlaceholderText("Search"), {
+    target: { value: "Part 1" },
+  });
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Part 2/ })).toBeNull(),
+  );
+  expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull();
+});
+
+it("keeps a newly selected group when another group's model deletion completes", async () => {
+  const { meta, models } = calibrationParts();
+  let finishDelete!: () => void;
+  const deleteModels = vi.fn(
+    () => new Promise<void>((resolve) => (finishDelete = resolve)),
+  );
+  getContainer().addSingleton(IModelApi, { deleteModels });
+  const otherMeta = createGroupMetaInstance(
+    8,
+    "Other parts",
+    "2026-10-24T12:00:00Z",
+    "2026-10-24T12:00:00Z",
+    "group-8",
+  );
+  const otherModel = createModelInstance(
+    3,
+    "Part 3",
+    createBlobInstance(3, "hash-3", "stl.zip", 1024, "2026-10-24T12:00:00Z"),
+    null,
+    null,
+    "2026-10-24T12:00:00Z",
+    "2026-10-24T12:00:00Z",
+    otherMeta,
+    [],
+    [],
+    "model-3",
+  );
+  const stream = emptyStream();
+  stream.fetch.mockResolvedValueOnce([
+    createGroupInstance(meta, models, [], null, []),
+    createGroupInstance(otherMeta, [otherModel], [], null, []),
+  ]);
+  const { container } = render(GroupGrid, {
+    groupStream: stream as IGroupStreamManager,
+  });
+
+  const first = await screen.findByRole("option", {
+    name: /Calibration parts/,
+  });
+  first.scrollIntoView = vi.fn();
+  await fireEvent.click(first);
+  await fireEvent.click(
+    container.querySelector(".lucide-ellipsis")!.closest("button")!,
+  );
+  await fireEvent.click(
+    await screen.findByText("Move selected models to trash"),
+  );
+  expect(deleteModels).toHaveBeenCalledWith(models);
+
+  const second = screen.getByRole("option", { name: /Other parts/ });
+  second.scrollIntoView = vi.fn();
+  await fireEvent.click(second);
+  finishDelete();
+  await deleteModels.mock.results[0].value;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The real group stays (now empty); only the selection must survive.
+  expect(
+    screen.queryByRole("option", { name: /Calibration parts/ }),
+  ).not.toBeNull();
+  expect(
+    screen
+      .getByRole("option", { name: /Other parts/ })
+      .getAttribute("aria-selected"),
+  ).toBe("true");
+});
+
+it("does not restore stale bulk models when an earlier getAll resolves after search", async () => {
+  const { models } = calibrationParts();
+  let finishInitial!: (result: typeof models) => void;
+  const stream = emptyStream();
+  stream.fetch.mockResolvedValueOnce(models).mockResolvedValueOnce([]);
+  stream.getAll
+    .mockImplementationOnce(
+      () => new Promise((resolve) => (finishInitial = resolve)),
+    )
+    .mockResolvedValueOnce([]);
+  render(ModelGrid, {
+    modelStream: stream as IModelStreamManager,
+    default_show_multiselect_all: true,
+  });
+  await waitFor(() => expect(stream.getAll).toHaveBeenCalledTimes(1));
+
+  await fireEvent.input(screen.getByPlaceholderText("Search"), {
+    target: { value: "unmatched" },
+  });
+  await waitFor(() => expect(stream.getAll).toHaveBeenCalledTimes(2));
+  finishInitial(models);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  await waitFor(() =>
+    expect(screen.queryByText("No models to display")).toBeTruthy(),
+  );
+  expect(screen.queryByText("2 models")).toBeNull();
+});
+
+it("does not report an empty group when an unloaded model remains", async () => {
+  const { models } = calibrationParts();
+  getContainer().addSingleton(IModelApi, {
+    deleteModels: vi.fn().mockResolvedValue(undefined),
+  });
+  const stream = emptyStream();
+  stream.fetch.mockResolvedValueOnce([models[0]]);
+  stream.getAll.mockResolvedValue(models);
+  const onEmpty = vi.fn();
+  const { container } = render(ModelGrid, {
+    modelStream: stream as IModelStreamManager,
+    initialEditMode: true,
+    onEmpty,
+  });
+  await screen.findByRole("option", { name: /Part 1/ });
+  await waitFor(() => expect(stream.getAll).toHaveBeenCalled());
+  await fireEvent.click(
+    container.querySelector(".lucide-ellipsis")!.closest("button")!,
+  );
+  await fireEvent.click(await screen.findByText("Move to trash"));
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: /Part 1/ })).toBeNull(),
+  );
+  expect(onEmpty).not.toHaveBeenCalled();
+});
+
+it("can load a new search after a failed model fetch", async () => {
+  const { models } = calibrationParts();
+  const stream = emptyStream();
+  stream.fetch.mockRejectedValueOnce(new Error("temporary failure"));
+  stream.fetch.mockResolvedValueOnce([models[1]]);
+  render(ModelGrid, { modelStream: stream as IModelStreamManager });
+
+  await waitFor(() => expect(stream.fetch).toHaveBeenCalledTimes(1));
+  await fireEvent.input(screen.getByPlaceholderText("Search"), {
+    target: { value: "Part 2" },
+  });
+
+  expect(await screen.findByRole("option", { name: /Part 2/ })).toBeTruthy();
+  expect(stream.fetch).toHaveBeenCalledTimes(2);
+});
+
+it("can load a new search after a failed group fetch", async () => {
+  const { meta, models } = calibrationParts();
+  const group = createGroupInstance(meta, models, [], null, []);
+  const stream = emptyStream();
+  stream.fetch.mockRejectedValueOnce(new Error("temporary failure"));
+  stream.fetch.mockResolvedValueOnce([group]);
+  render(GroupGrid, { groupStream: stream as IGroupStreamManager });
+
+  await waitFor(() => expect(stream.fetch).toHaveBeenCalledTimes(1));
+  await fireEvent.input(screen.getByPlaceholderText("Search"), {
+    target: { value: "Calibration" },
+  });
+
+  expect(
+    await screen.findByRole("option", { name: /Calibration parts/ }),
+  ).toBeTruthy();
+  expect(stream.fetch).toHaveBeenCalledTimes(2);
+});
 
 describe.each([
   { checkboxes: false, rowChildren: 1 },

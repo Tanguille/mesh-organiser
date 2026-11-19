@@ -106,7 +106,7 @@ pub async fn add_login_user(app_state: &service::AppState) -> String {
 
 /// A password login for alice@example.com.
 pub fn login_request(password: &str) -> axum::http::Request<axum::body::Body> {
-    let body = serde_json::json!({ "email": "alice@example.com", "password": password });
+    let body = serde_json::json!({ "email": "alice@example.com", "password": password, "group_deletion_protocol": 1 });
 
     axum::http::Request::post("/api/v1/login/password")
         .header(axum::http::header::CONTENT_TYPE, "application/json")

@@ -10,7 +10,7 @@ import {
 import DragSelectedModels from "./drag-selected-models.svelte";
 
 const children = createRawSnippet(() => ({
-  render: () => "<span>Part</span>",
+  render: () => '<span role="option" aria-selected="true">Part</span>',
 }));
 
 describe("DragSelectedModels", () => {
@@ -23,7 +23,7 @@ describe("DragSelectedModels", () => {
       children,
       models: [{ id: 1 }] as unknown as Model[],
     });
-    const area = container.firstElementChild!;
+    const area = container.querySelector('[role="option"]')!;
 
     await fireEvent.mouseDown(area, { button: 0, clientX: 100, clientY: 100 });
     await fireEvent.mouseMove(area, { clientX: 120, clientY: 80 });

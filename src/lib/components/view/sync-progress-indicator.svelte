@@ -9,6 +9,7 @@
   import { ISyncApi } from "#lib/api/shared/sync_api";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { onDestroy } from "svelte";
+  import { toast } from "svelte-sonner";
 
   function updateLastSync(): string {
     if (!currentUser.lastSync) {
@@ -60,7 +61,13 @@
   async function onSyncClick() {
     const syncApi = getContainer().optional<ISyncApi>(ISyncApi);
     if (syncApi) {
-      await syncApi.syncData();
+      try {
+        await syncApi.syncData();
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Sync failed. Try again.",
+        );
+      }
     }
   }
 

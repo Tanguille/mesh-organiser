@@ -1,29 +1,21 @@
 use std::{
-    collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
     time::Duration,
 };
 
-use async_zip::{
-    Compression, ZipEntryBuilder, tokio::read::seek::ZipFileReader, tokio::write::ZipFileWriter,
-};
+use async_zip::{Compression, ZipEntryBuilder};
 use itertools::Itertools;
-use serde::Serialize;
-use tokio::{
-    fs::File,
-    io::{AsyncRead, BufReader},
-};
+use tokio::{fs::File, io::AsyncRead};
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use db::{
-    blob_db, group_db,
+    group_db,
     model::{Model, blob::Blob, user::User},
     model_db::{self, ModelFilterOptions},
 };
 
 use crate::{
-    ASYNC_MULT,
     service_error::ServiceError,
     util::{self, cleanse_evil_from_name, convert_zip_to_extension},
 };
@@ -102,7 +94,10 @@ pub async fn open_blob_content_reader(
     if blob.to_file_type().is_zipped() {
         // Owning the reader lets into_entry return a streaming entry reader,
         // so callers never buffer the whole decompressed file in memory.
-        let zip = ZipFileReader::with_tokio(BufReader::new(file)).await?;
+        let zip = async_zip::tokio::read::seek::ZipFileReader::with_tokio(
+            tokio::io::BufReader::new(file),
+        )
+        .await?;
         let entry_reader = zip.into_entry(0).await?;
         Ok(Box::new(entry_reader.compat()) as Box<dyn AsyncRead + Unpin + Send>)
     } else {
@@ -126,7 +121,7 @@ pub async fn export_to_temp_folder(
         serde_json::to_writer_pretty(metadata_file, &models)?;
     }
 
-    let max = configuration.core_parallelism * ASYNC_MULT;
+    let max = configuration.core_parallelism * crate::ASYNC_MULT;
 
     let results = util::run_bounded(models, max, |model| {
         let temp_dir = temp_dir.clone();
@@ -147,7 +142,7 @@ const METADATA_FILE_NAME: &str = "metadata.json";
 fn name_collection_of_models(models: &[Model]) -> String {
     let set: Vec<i64> = models
         .iter()
-        .map(|m| m.group.as_ref().map_or(-1, |g| g.id))
+        .map(|model| model.group.as_ref().map_or(-1, |item| item.id))
         .unique()
         .collect();
 
@@ -157,7 +152,7 @@ fn name_collection_of_models(models: &[Model]) -> String {
 
     cleanse_evil_from_name(&format!(
         "{}{}",
-        models.iter().take(5).map(|m| &m.name).join("+"),
+        models.iter().take(5).map(|item| &item.name).join("+"),
         if models.len() > 5 {
             format!("+{} more...", models.len() - 5)
         } else {
@@ -183,7 +178,7 @@ pub async fn export_zip_to_temp_folder(
     let filepath = temp_dir.join(filename);
 
     let mut file = File::create(&filepath).await?;
-    let mut writer = ZipFileWriter::with_tokio(&mut file);
+    let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(&mut file);
 
     if configuration.export_metadata {
         let builder = ZipEntryBuilder::new(METADATA_FILE_NAME.into(), Compression::Deflate);
@@ -267,7 +262,7 @@ pub async fn get_path_from_model(
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct ModelDiskSpaceUsage {
     pub size_uncompressed: u64,
     pub size_compressed: u64,
@@ -290,7 +285,10 @@ pub async fn get_model_disk_space_usage(
 fn get_size_of_blobs(blob_sha256s: &[String], app_state: &AppState) -> Result<u64, ServiceError> {
     let base_dir = app_state.get_model_dir();
     let mut total_size: u64 = 0;
-    let hashset = blob_sha256s.iter().cloned().collect::<HashSet<String>>();
+    let hashset = blob_sha256s
+        .iter()
+        .cloned()
+        .collect::<std::collections::HashSet<String>>();
 
     for path in base_dir.read_dir()? {
         let Ok(path) = path else { continue };
@@ -339,7 +337,10 @@ pub async fn delete_models(
         )));
     }
 
-    let model_ids = models.into_iter().map(|m| m.id).collect::<Vec<i64>>();
+    let model_ids = models
+        .into_iter()
+        .map(|model| model.id)
+        .collect::<Vec<i64>>();
 
     model_db::trash_models(&app_state.db, user, &model_ids).await?;
 
@@ -372,7 +373,10 @@ pub async fn restore_models(
         )));
     }
 
-    let model_ids = models.into_iter().map(|m| m.id).collect::<Vec<i64>>();
+    let model_ids = models
+        .into_iter()
+        .map(|model| model.id)
+        .collect::<Vec<i64>>();
 
     model_db::restore_models(&app_state.db, user, &model_ids).await?;
 
@@ -403,27 +407,28 @@ pub async fn purge_expired_trash(app_state: &AppState) -> Result<(), ServiceErro
     let retention_days = app_state.get_configuration().trash_retention_days;
     // Even a zero-row purge must retry blobs left by a deferred or failed sweep.
     model_db::purge_trashed_models(&app_state.db, retention_days).await?;
+    group_db::purge_trashed_groups(&app_state.db, retention_days).await?;
 
-    // The blob sweep takes the import lock. Empty groups are swept only at startup:
-    // REST create-then-add, sync and MCP can leave one empty without holding the import lock.
+    // The blob sweep takes the import lock; empty groups remain valid destinations.
     delete_dead_blobs(app_state).await
 }
 
-/// Expires model rows before sweeping orphaned groups and files at startup.
-/// Expiry errors are logged so startup and the remaining cleanup can still proceed.
+/// Expires model rows before sweeping orphaned files at startup.
+///
+/// Expiry errors are logged so startup and the remaining cleanup can still proceed; unlike
+/// `purge_expired_trash`, a failed purge here is not fatal and is retried by the next periodic sweep.
 pub async fn cleanup_library_on_startup(app_state: &AppState) -> Result<(), ServiceError> {
     let retention_days = app_state.get_configuration().trash_retention_days;
     if let Err(e) = model_db::purge_trashed_models(&app_state.db, retention_days).await {
         eprintln!("Purging expired trash failed: {e}");
     }
 
-    // Sweep groups before waiting for a long-running import or thumbnail regeneration;
-    // otherwise groups created during that wait could be deleted later in the session.
-    let group_cleanup = group_db::delete_dead_groups(&app_state.db).await;
-    let blob_cleanup = delete_dead_blobs(app_state).await;
-    group_cleanup?;
+    if let Err(e) = group_db::purge_trashed_groups(&app_state.db, retention_days).await {
+        eprintln!("Purging expired group trash failed: {e}");
+    }
 
-    blob_cleanup
+    // Empty groups are valid destinations and must survive startup.
+    delete_dead_blobs(app_state).await
 }
 
 /// Removes on-disk files for blobs that are no longer referenced.
@@ -439,7 +444,7 @@ pub async fn delete_dead_blobs(app_state: &AppState) -> Result<(), ServiceError>
 pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(), ServiceError> {
     // An import inserts its blob row before the model that references it; the caller's import
     // lock keeps this sweep from deleting that blob in between.
-    let blobs = blob_db::get_and_delete_dead_blobs(&app_state.db).await?;
+    let blobs = db::blob_db::get_and_delete_dead_blobs(&app_state.db).await?;
 
     for blob in blobs {
         let model_path = get_model_path_for_blob(&blob, app_state);
@@ -458,35 +463,24 @@ pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(),
             eprintln!("Failed to remove dead blob image file: {e}");
         }
     }
+    // An unreconcilable sync stage must not abort the ordinary dead-blob sweep.
+    if let Err(e) = crate::sync_observation_service::remove_owned_orphans(app_state).await {
+        eprintln!("Owned blob orphan cleanup failed: {e}");
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use async_zip::{Compression, ZipEntryBuilder, tokio::write::ZipFileWriter};
-    use db::{
-        db_context,
-        model::{Model, ModelFlags, blob::Blob},
-    };
-    use fake::rand::SeedableRng;
-    use fake::rand::rngs::StdRng;
-    use fake::{Fake, Faker};
-    use tempfile::tempdir;
-    use tokio::fs::File;
-
-    use crate::{app_state::AppState, configuration::Configuration};
-
-    use super::{ensure_unique_file, get_bytes_from_blob, get_path_from_model};
 
     /// Returns a deterministic 32-character hex string (sha256-like) for tests.
     fn fake_sha256_hex() -> String {
         const SEED: [u8; 32] = [1; 32];
-        let mut rng = StdRng::from_seed(SEED);
+        let mut rng = <fake::rand::rngs::StdRng as fake::rand::SeedableRng>::from_seed(SEED);
         (0..16).fold(String::with_capacity(32), |mut s, _| {
-            use std::fmt::Write;
-            let _ = write!(s, "{:02x}", Faker.fake_with_rng::<u8, _>(&mut rng));
+            let byte = <fake::Faker as fake::Fake>::fake_with_rng::<u8, _>(&fake::Faker, &mut rng);
+            let _ = std::fmt::Write::write_fmt(&mut s, format_args!("{byte:02x}"));
             s
         })
     }
@@ -506,43 +500,43 @@ mod tests {
 
     #[test]
     fn ensure_unique_file_returns_path_when_no_existing_file() {
-        let dir = tempdir().unwrap();
-        let path = ensure_unique_file(dir.path(), "model.stl");
+        let dir = tempfile::tempdir().unwrap();
+        let path = super::ensure_unique_file(dir.path(), "model.stl");
         assert_eq!(path.file_name().unwrap(), "model.stl");
         assert!(!path.exists());
     }
 
     #[test]
     fn ensure_unique_file_adds_suffix_when_file_exists() {
-        let dir = tempdir().unwrap();
-        let first = ensure_unique_file(dir.path(), "model.stl");
+        let dir = tempfile::tempdir().unwrap();
+        let first = super::ensure_unique_file(dir.path(), "model.stl");
         std::fs::File::create(&first).unwrap();
-        let second = ensure_unique_file(dir.path(), "model.stl");
+        let second = super::ensure_unique_file(dir.path(), "model.stl");
         assert_eq!(second.file_name().unwrap(), "model_1.stl");
         assert!(!second.exists());
     }
 
     #[test]
     fn ensure_unique_file_skips_all_taken_suffixes() {
-        let dir = tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         for taken in ["model.stl", "model_1.stl", "model_2.stl"] {
             std::fs::File::create(dir.path().join(taken)).unwrap();
         }
 
-        let path = ensure_unique_file(dir.path(), "model.stl");
+        let path = super::ensure_unique_file(dir.path(), "model.stl");
 
         assert_eq!(path.file_name().unwrap(), "model_3.stl");
     }
 
     #[test]
     fn ensure_unique_file_without_extension_appends_counter() {
-        let dir = tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
 
-        let first = ensure_unique_file(dir.path(), "foo");
+        let first = super::ensure_unique_file(dir.path(), "foo");
         std::fs::File::create(&first).unwrap();
-        let second = ensure_unique_file(dir.path(), "foo");
+        let second = super::ensure_unique_file(dir.path(), "foo");
         std::fs::File::create(&second).unwrap();
-        let third = ensure_unique_file(dir.path(), "foo");
+        let third = super::ensure_unique_file(dir.path(), "foo");
 
         assert_eq!(first.file_name().unwrap(), "foo");
         assert_eq!(second.file_name().unwrap(), "foo_1");
@@ -551,35 +545,35 @@ mod tests {
 
     #[test]
     fn ensure_unique_file_splits_on_last_dot() {
-        let dir = tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
 
-        let first = ensure_unique_file(dir.path(), "a.b.stl");
+        let first = super::ensure_unique_file(dir.path(), "a.b.stl");
         std::fs::File::create(&first).unwrap();
-        let second = ensure_unique_file(dir.path(), "a.b.stl");
+        let second = super::ensure_unique_file(dir.path(), "a.b.stl");
 
         assert_eq!(first.file_name().unwrap(), "a.b.stl");
         assert_eq!(second.file_name().unwrap(), "a.b_1.stl");
     }
 
     /// Builds an `AppState` with a temp data dir and real DB; model dir is `data_path/models`.
-    async fn app_state_with_temp_model_dir() -> (tempfile::TempDir, AppState) {
-        let dir = tempdir().unwrap();
+    async fn app_state_with_temp_model_dir() -> (tempfile::TempDir, crate::app_state::AppState) {
+        let dir = tempfile::tempdir().unwrap();
         let data_path = dir.path().join("data");
         std::fs::create_dir_all(&data_path).unwrap();
         let db_path = data_path.join("db.sqlite");
         let backup_dir = data_path.join("backup");
         std::fs::create_dir_all(&backup_dir).unwrap();
 
-        let db = db_context::setup_db(&db_path, &backup_dir).await;
-        let config = Configuration {
+        let db = db::db_context::setup_db(&db_path, &backup_dir).await;
+        let config = crate::configuration::Configuration {
             data_path: data_path.to_string_lossy().to_string(),
             ..Default::default()
         };
 
-        let app_state = AppState {
-            db: Arc::new(db),
-            configuration: Mutex::new(config),
-            import_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        let app_state = crate::app_state::AppState {
+            db: std::sync::Arc::new(db),
+            configuration: std::sync::Mutex::new(config),
+            import_mutex: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             app_data_path: data_path.to_string_lossy().to_string(),
         };
 
@@ -597,7 +591,7 @@ mod tests {
         let path = model_dir.join(format!("{sha256}.{filetype}"));
         std::fs::write(&path, content).unwrap();
 
-        let blob = Blob {
+        let blob = db::model::blob::Blob {
             id: 0,
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
@@ -606,7 +600,7 @@ mod tests {
             disk_path: None,
         };
 
-        let bytes = get_bytes_from_blob(&blob, &app_state).await.unwrap();
+        let bytes = super::get_bytes_from_blob(&blob, &app_state).await.unwrap();
         assert_eq!(bytes.as_slice(), content);
     }
 
@@ -620,16 +614,17 @@ mod tests {
         let entry_content = b"zipped stl content";
         let zip_path = model_dir.join(format!("{sha256}.{filetype}"));
 
-        let mut file = File::create(&zip_path).await.unwrap();
-        let mut writer = ZipFileWriter::with_tokio(&mut file);
-        let builder = ZipEntryBuilder::new("model.stl".into(), Compression::Deflate);
+        let mut file = tokio::fs::File::create(&zip_path).await.unwrap();
+        let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(&mut file);
+        let builder =
+            async_zip::ZipEntryBuilder::new("model.stl".into(), async_zip::Compression::Deflate);
         writer
             .write_entry_whole(builder, entry_content)
             .await
             .unwrap();
         crate::util::finish_zip(writer).await.unwrap();
 
-        let blob = Blob {
+        let blob = db::model::blob::Blob {
             id: 0,
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
@@ -638,7 +633,7 @@ mod tests {
             disk_path: None,
         };
 
-        let bytes = get_bytes_from_blob(&blob, &app_state).await.unwrap();
+        let bytes = super::get_bytes_from_blob(&blob, &app_state).await.unwrap();
         assert_eq!(bytes.as_slice(), entry_content);
     }
 
@@ -653,7 +648,7 @@ mod tests {
         let path = model_dir.join(format!("{sha256}.{filetype}"));
         std::fs::write(&path, content).unwrap();
 
-        let blob = Blob {
+        let blob = db::model::blob::Blob {
             id: 1,
             sha256: sha256.clone(),
             filetype: filetype.to_string(),
@@ -662,7 +657,7 @@ mod tests {
             disk_path: None,
         };
 
-        let model = Model {
+        let model = db::model::Model {
             id: 1,
             name: "TestModel".to_string(),
             blob,
@@ -672,13 +667,13 @@ mod tests {
             last_modified: String::default(),
             group: None,
             labels: Vec::new(),
-            flags: ModelFlags::empty(),
+            flags: db::model::ModelFlags::empty(),
             unique_global_id: String::default(),
             deleted: None,
         };
 
-        let temp_dir = tempdir().unwrap();
-        let dst = get_path_from_model(temp_dir.path(), &model, &app_state, false)
+        let temp_dir = tempfile::tempdir().unwrap();
+        let dst = super::get_path_from_model(temp_dir.path(), &model, &app_state, false)
             .await
             .unwrap();
 

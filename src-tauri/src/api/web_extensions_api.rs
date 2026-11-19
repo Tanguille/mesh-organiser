@@ -116,7 +116,8 @@ async fn login(token: &str, base_url: &str) -> Result<reqwest::Client, Applicati
 
     let url = format!("{base_url}/api/v1/login/token");
 
-    let body = serde_json::to_vec(&serde_json::json!({ "token": token }))?;
+    let body =
+        serde_json::to_vec(&serde_json::json!({ "token": token, "group_deletion_protocol": 1 }))?;
     let response = client
         .post(&url)
         .header(CONTENT_TYPE, "application/json")

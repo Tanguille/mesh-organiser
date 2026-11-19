@@ -6,6 +6,7 @@
   import type { Group } from "#lib/api/shared/group_api";
   import { configuration } from "#lib/configuration.svelte";
   import { representativeModel } from "#lib/utils";
+  import Folder from "@lucide/svelte/icons/folder";
 
   const props: { group: Group; class?: ClassValue } = $props();
 </script>
@@ -13,7 +14,9 @@
 <div
   class="{props.class} flex min-w-0 flex-row gap-3 overflow-hidden rounded-lg border p-1 px-3"
 >
-  {#if configuration.only_show_single_image_in_groups}
+  {#if props.group.models.length === 0}
+    <Folder class="aspect-square h-full text-muted-foreground" />
+  {:else if configuration.only_show_single_image_in_groups}
     <ModelImg
       model={representativeModel(props.group.models)}
       class="aspect-square h-full"

@@ -15,7 +15,11 @@ import {
   resolveLabels,
 } from "./mock_data";
 
-const trashedModels = new Map<number, Model>();
+export const trashedModels = new Map<number, Model>();
+
+export function groupHasTrashedModels(group: { id: number }): boolean {
+  return [...trashedModels.values()].some((model) => model.group === group);
+}
 
 export class DemoModelApi implements IModelApi {
   private filterByFlags(models: Model[], flags: ModelFlags | null): Model[] {

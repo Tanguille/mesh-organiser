@@ -8,6 +8,7 @@
   import { Badge } from "#lib/components/ui/badge/index.js";
   import FlagBadges from "#lib/components/view/flag-badges.svelte";
   import type { Group } from "#lib/api/shared/group_api";
+  import Folder from "@lucide/svelte/icons/folder";
 
   const props: { group: Group; class?: ClassValue } = $props();
 </script>
@@ -15,14 +16,17 @@
 <Card class={props.class}>
   <CardHeader class="p-4">
     <h2
-      class="w-100 overflow-hidden text-center font-bold text-ellipsis whitespace-nowrap"
+      class="w-full min-w-0 truncate text-center font-bold"
+      title={props.group.meta.name}
     >
       {props.group.meta.name}
     </h2>
   </CardHeader>
   <CardContent class="relative p-4">
     <div class="aspect-square w-full">
-      {#if configuration.only_show_single_image_in_groups}
+      {#if props.group.models.length === 0}
+        <Folder class="h-full w-full p-6 text-muted-foreground" />
+      {:else if configuration.only_show_single_image_in_groups}
         <ModelImg
           model={representativeModel(props.group.models)}
           class="h-full w-full"

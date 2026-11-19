@@ -214,6 +214,7 @@ export interface IModelStreamManager {
   setFileTypes(fileTypes: FileType[]): void;
   fetch(): Promise<Model[]>;
   getAll(): Promise<Model[]>;
+  removeModels?(models: Model[]): void;
 }
 
 export class PredefinedModelStreamManager implements IModelStreamManager {
@@ -285,6 +286,22 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
     }
 
     return [...this.sortedFiltered];
+  }
+
+  removeModels(models: Model[]): void {
+    const ids = new Set(models.map((model) => model.id));
+    if (this.sortedFiltered) {
+      const removedBeforeIndex = this.sortedFiltered
+        .slice(0, this.fetchIndex)
+        .filter((model) => ids.has(model.id)).length;
+      this.fetchIndex -= removedBeforeIndex;
+      this.sortedFiltered = this.sortedFiltered.filter(
+        (model) => !ids.has(model.id),
+      );
+    }
+    for (let index = this.models.length - 1; index >= 0; index--) {
+      if (ids.has(this.models[index].id)) this.models.splice(index, 1);
+    }
   }
 }
 

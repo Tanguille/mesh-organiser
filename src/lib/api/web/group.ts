@@ -1,8 +1,10 @@
 import { dateToString } from "#lib/utils";
 import {
+  type DeletedGroup,
   type Group,
   type GroupFilter,
   type GroupMeta,
+  type GroupRestoreRequest,
   type IGroupApi,
 } from "../shared/group_api";
 import type { Model } from "../shared/model_api";
@@ -21,6 +23,36 @@ export class WebGroupApi implements IGroupApi {
 
   constructor(requestApi: IServerRequestApi) {
     this.requestApi = requestApi;
+  }
+
+  async getTrashedGroups(): Promise<DeletedGroup[]> {
+    const groups = await this.requestApi.request<
+      {
+        id: number;
+        name: string;
+        deleted: string;
+        group_global_id: string;
+        deletion_operation_id: string | null;
+      }[]
+    >("/groups/trash", HttpMethod.GET);
+
+    return groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      deleted: new Date(group.deleted),
+      groupGlobalId: group.group_global_id,
+      deletionOperationId: group.deletion_operation_id,
+    }));
+  }
+
+  async restoreGroups(groups: GroupRestoreRequest[]): Promise<void> {
+    await this.requestApi.request<void>("/groups/restore", HttpMethod.POST, {
+      groups: groups.map((group) => ({
+        id: group.id,
+        group_global_id: group.groupGlobalId,
+        deletion_operation_id: group.deletionOperationId,
+      })),
+    });
   }
 
   async getGroups(

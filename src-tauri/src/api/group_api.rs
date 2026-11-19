@@ -2,13 +2,7 @@ use std::str::FromStr;
 
 use tauri::State;
 
-use db::{
-    group_db::{self, GroupOrderBy},
-    model::{
-        blob::FileType,
-        model_group::{ModelGroup, ModelGroupMeta},
-    },
-};
+use db::group_db;
 
 use crate::{error::ApplicationError, tauri_app_state::TauriAppState};
 
@@ -23,9 +17,9 @@ pub async fn get_groups(
     page: u32,
     page_size: u32,
     include_ungrouped_models: Option<bool>,
-    file_types: Option<Vec<FileType>>,
+    file_types: Option<Vec<db::model::blob::FileType>>,
     state: State<'_, TauriAppState>,
-) -> Result<Vec<ModelGroup>, ApplicationError> {
+) -> Result<Vec<db::model::model_group::ModelGroup>, ApplicationError> {
     let groups = group_db::get_groups(
         &state.app_state.db,
         &state.get_current_user(),
@@ -34,7 +28,7 @@ pub async fn get_groups(
             group_ids,
             label_ids,
             order_by: order_by
-                .map(|s| GroupOrderBy::from_str(&s))
+                .map(|order_by| group_db::GroupOrderBy::from_str(&order_by))
                 .transpose()
                 .map_err(|_| service::ServiceError::InternalError(
                     "Invalid order_by value. Valid values are: CreatedAsc, CreatedDesc, NameAsc, NameDesc, ModifiedAsc, ModifiedDesc".to_string()
@@ -64,10 +58,40 @@ pub async fn ungroup(
 }
 
 #[tauri::command]
+pub async fn get_trashed_groups(
+    state: State<'_, TauriAppState>,
+) -> Result<Vec<group_db::DeletedGroup>, ApplicationError> {
+    let retention_days = state.app_state.get_configuration().trash_retention_days;
+    Ok(group_db::get_trashed_groups(
+        &state.app_state.db,
+        &state.get_current_user(),
+        retention_days,
+    )
+    .await?)
+}
+
+#[tauri::command]
+pub async fn restore_groups(
+    groups: Vec<group_db::GroupRestoreRequest>,
+    state: State<'_, TauriAppState>,
+) -> Result<(), ApplicationError> {
+    let retention_days = state.app_state.get_configuration().trash_retention_days;
+    group_db::restore_groups(
+        &state.app_state.db,
+        &state.get_current_user(),
+        &groups,
+        retention_days,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn add_group(
     group_name: &str,
     state: State<'_, TauriAppState>,
-) -> Result<ModelGroupMeta, ApplicationError> {
+) -> Result<db::model::model_group::ModelGroupMeta, ApplicationError> {
     Ok(group_db::add_empty_group(
         &state.app_state.db,
         &state.get_current_user(),
