@@ -26,22 +26,22 @@ mod storage;
 
 pub const MAX_OBSERVATION_BLOB_BYTES: u64 = observations::MAX_BLOB_BYTES;
 pub const MAX_OBSERVATION_TOTAL_BYTES: u64 = observations::MAX_TOTAL_BYTES;
-/// Bound untrusted staging independently from the ordinary import lock. The
-/// permit is retained through detached finalization, even when the client leaves.
-fn staging_permit(state: &AppState) -> Result<tokio::sync::OwnedSemaphorePermit, ServiceError> {
-    type Slots = std::sync::Mutex<BTreeMap<PathBuf, std::sync::Weak<tokio::sync::Semaphore>>>;
-    static DIRECTORIES: std::sync::LazyLock<Slots> =
-        std::sync::LazyLock::new(|| std::sync::Mutex::new(BTreeMap::new()));
+type Slots = std::sync::Mutex<BTreeMap<PathBuf, std::sync::Weak<tokio::sync::Semaphore>>>;
+
+/// One semaphore per model directory in `directories`, created on first use with `capacity`
+/// permits and dropped once no permit or holder remains.
+fn directory_permit(
+    state: &AppState,
+    directories: &Slots,
+    capacity: usize,
+) -> Result<tokio::sync::OwnedSemaphorePermit, ServiceError> {
     let path = std::fs::canonicalize(state.get_model_dir())?;
-    let mut directories = DIRECTORIES.lock().map_err(|_| invalid("quota_paused"))?;
+    let mut directories = directories.lock().map_err(|_| invalid("quota_paused"))?;
     directories.retain(|_, slots| slots.strong_count() > 0);
     let slots = directories
         .get(&path)
         .and_then(std::sync::Weak::upgrade)
         .unwrap_or_else(|| {
-            let capacity = std::thread::available_parallelism()
-                .map_or(1, std::num::NonZeroUsize::get)
-                .clamp(2, 4);
             let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(capacity));
             directories.insert(path, std::sync::Arc::downgrade(&slots));
             slots
@@ -50,6 +50,31 @@ fn staging_permit(state: &AppState) -> Result<tokio::sync::OwnedSemaphorePermit,
     slots
         .try_acquire_owned()
         .map_err(|_| invalid("quota_paused"))
+}
+
+fn staging_capacity() -> usize {
+    std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .clamp(2, 4)
+}
+
+/// Bound untrusted staging independently from the ordinary import lock. The
+/// permit is retained through detached finalization, even when the client leaves.
+fn staging_permit(state: &AppState) -> Result<tokio::sync::OwnedSemaphorePermit, ServiceError> {
+    static DIRECTORIES: std::sync::LazyLock<Slots> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(BTreeMap::new()));
+
+    directory_permit(state, &DIRECTORIES, staging_capacity())
+}
+
+/// Bound unread downloads separately from staging: each one keeps a verified private copy of
+/// its blob open for as long as the client paces the stream, but a stalled reader must only
+/// use up download slots, never the staging slots uploads need.
+fn download_permit(state: &AppState) -> Result<tokio::sync::OwnedSemaphorePermit, ServiceError> {
+    static DIRECTORIES: std::sync::LazyLock<Slots> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(BTreeMap::new()));
+
+    directory_permit(state, &DIRECTORIES, staging_capacity() * 2)
 }
 fn invalid(reason: &str) -> ServiceError {
     db::DbError::Protocol(format!("sync_transport:{reason}")).into()
@@ -830,6 +855,7 @@ async fn install_target(
 pub struct VerifiedDownload {
     file: File,
     pub size: u64,
+    _permit: tokio::sync::OwnedSemaphorePermit,
 }
 impl AsyncRead for VerifiedDownload {
     fn poll_read(
@@ -845,10 +871,12 @@ pub async fn prepare_download(
     content: &BlobContent,
     blob: &Blob,
 ) -> Result<VerifiedDownload, ServiceError> {
-    // The permit and stage only cover verification. The client-paced stream must not
-    // pin them: the open descriptor outlives the directory removal on unix (and std
-    // opens with FILE_SHARE_DELETE on Windows).
-    let _permit = staging_permit(state)?;
+    // The staging permit and stage only cover verification. The client-paced stream holds a
+    // download permit instead, and keeps the file open after the stage directory is removed
+    // (the open descriptor outlives the directory on unix; std opens with FILE_SHARE_DELETE on
+    // Windows).
+    let download_permit = download_permit(state)?;
+    let _staging_permit = staging_permit(state)?;
     let _lock = state.import_mutex.lock().await;
     let directory = stage(state).await?;
     verify_existing(state, blob, content, directory.path()).await?;
@@ -857,6 +885,7 @@ pub async fn prepare_download(
     Ok(VerifiedDownload {
         file,
         size: u64::try_from(content.size).map_err(|_| invalid("identity_blocked"))?,
+        _permit: download_permit,
     })
 }
 

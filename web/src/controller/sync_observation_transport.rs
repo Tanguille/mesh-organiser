@@ -166,6 +166,7 @@ pub(super) struct Download {
     protocol: u32,
     connection_id: String,
 }
+#[allow(clippy::significant_drop_tightening)] // The response stream owns the verified snapshot and its download permit.
 pub(super) async fn download(
     CurrentSyncUser(user, account): CurrentSyncUser,
     session: AuthSession,
