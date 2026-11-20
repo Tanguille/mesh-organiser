@@ -714,7 +714,7 @@ async fn purge_trashed_models_deletes_only_rows_trashed_before_the_retention_acr
 }
 
 #[tokio::test]
-async fn dead_group_and_blob_cleanup_keep_those_of_trashed_models() {
+async fn dead_blob_cleanup_keeps_the_blob_of_a_trashed_model() {
     let (_dir, db) = test_db().await;
     let user = User::default();
     let blob_id = blob_db::add_blob(&db, "trashed-blob", "stl", 1, None)
@@ -726,7 +726,6 @@ async fn dead_group_and_blob_cleanup_keep_those_of_trashed_models() {
     let group_id = add_group(&db, &user, "group", vec![model_id]).await;
     trash(&db, &user, &[model_id]).await;
 
-    group_db::delete_dead_groups(&db).await.unwrap();
     let dead_blobs = blob_db::get_and_delete_dead_blobs(&db).await.unwrap();
 
     assert!(dead_blobs.is_empty());

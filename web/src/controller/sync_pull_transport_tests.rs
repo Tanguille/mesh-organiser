@@ -27,7 +27,51 @@ use service::sync_pull_service::{AuthenticatedHub, HubTrust, PullOutcome};
 
 use super::*;
 
-pub(super) const TEST_CA: &[u8] = include_bytes!("test_tls/ca.pem");
+/// A throwaway CA plus a `localhost` leaf signed by it, generated once per
+/// test process so no private key is committed.
+struct TestTls {
+    ca_pem: Vec<u8>,
+    leaf_der: Vec<u8>,
+    leaf_key_der: Vec<u8>,
+}
+
+fn test_tls() -> &'static TestTls {
+    static TEST_TLS: std::sync::OnceLock<TestTls> = std::sync::OnceLock::new();
+
+    TEST_TLS.get_or_init(|| {
+        // Wide window: not-before in the past (clock skew) and not-after far ahead so CI
+        // never races expiry.
+        let validity = |params: &mut rcgen::CertificateParams| {
+            params.not_before = rcgen::date_time_ymd(2020, 1, 1);
+            params.not_after = rcgen::date_time_ymd(2100, 1, 1);
+        };
+
+        let mut ca_params = rcgen::CertificateParams::new(Vec::new()).unwrap();
+        ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        ca_params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, "mesh-organiser test CA");
+        validity(&mut ca_params);
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let ca = ca_params.self_signed(&ca_key).unwrap();
+
+        let mut leaf_params = rcgen::CertificateParams::new(vec!["localhost".to_owned()]).unwrap();
+        validity(&mut leaf_params);
+        let leaf_key = rcgen::KeyPair::generate().unwrap();
+        let issuer = rcgen::Issuer::new(ca_params, ca_key);
+        let leaf = leaf_params.signed_by(&leaf_key, &issuer).unwrap();
+
+        TestTls {
+            ca_pem: ca.pem().into_bytes(),
+            leaf_der: leaf.der().to_vec(),
+            leaf_key_der: leaf_key.serialize_der(),
+        }
+    })
+}
+
+/// PEM of the generated test CA, for `HubTrust::AdditionalCaPem`.
+pub(super) static TEST_CA: std::sync::LazyLock<Vec<u8>> =
+    std::sync::LazyLock::new(|| test_tls().ca_pem.clone());
 
 pub(super) struct TlsHub {
     address: std::net::SocketAddr,
@@ -49,12 +93,9 @@ impl TlsHub {
         // fix rustls recommends; the `aws-lc-rs` provider matches the rest of
         // the app (reqwest / tokio-rustls).
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-        let cert = rustls::pki_types::CertificateDer::from(
-            include_bytes!("test_tls/localhost.der").to_vec(),
-        );
-        let key = rustls::pki_types::PrivatePkcs8KeyDer::from(
-            include_bytes!("test_tls/localhost-key.der").to_vec(),
-        );
+        let tls = test_tls();
+        let cert = rustls::pki_types::CertificateDer::from(tls.leaf_der.clone());
+        let key = rustls::pki_types::PrivatePkcs8KeyDer::from(tls.leaf_key_der.clone());
         let config = rustls::ServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(vec![cert], key.into())

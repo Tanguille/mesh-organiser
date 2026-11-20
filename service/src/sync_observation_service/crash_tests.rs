@@ -1470,6 +1470,7 @@ async fn committed_quarantine_retains_intent_until_restore_is_durable() {
 }
 
 #[tokio::test]
+#[allow(clippy::significant_drop_tightening)] // The unread downloads are held deliberately, to fill the download capacity.
 async fn download_capacity_child() {
     let Ok(root) = std::env::var("MESH_DOWNLOAD_TEST_ROOT") else {
         return;
@@ -1498,29 +1499,39 @@ async fn download_capacity_child() {
         size: 3,
         sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
     };
+    // Unread downloads use up download slots only: more than the staging capacity fit, and
+    // staging stays free while they are open.
+    let capacity = staging_capacity() * 2;
     let mut held = Vec::new();
-    for _ in 0..5 {
-        match prepare_download(&state, &content, &blob).await {
-            Ok(download) => held.push(tokio_util::io::ReaderStream::new(download)),
-            Err(_) => break,
-        }
+    for _ in 0..capacity {
+        held.push(
+            prepare_download(&state, &content, &blob)
+                .await
+                .expect("an unread download must not hold staging capacity"),
+        );
     }
+    let _permit = staging_permit(&state).expect("staging capacity must stay free");
     assert!(
-        !held.is_empty(),
-        "at least one verified download must be allowed"
+        prepare_download(&state, &content, &blob).await.is_err(),
+        "unread downloads must stay bounded by the download capacity"
     );
-    assert!(held.len() <= 4, "unconsumed downloads must be bounded");
-    drop(held.pop());
-    let next = prepare_download(&state, &content, &blob)
-        .await
-        .expect("dropping a response must release capacity");
-    drop(next);
-    drop(held);
-    recover_transfers(&state).await.unwrap();
     assert!(
         no_payload_stages(&state.get_model_dir()),
-        "dropped response stages must be cleaned"
+        "verified download stages must be removed before streaming"
     );
+    for mut download in held {
+        let mut bytes = Vec::new();
+        AsyncReadExt::read_to_end(&mut download, &mut bytes)
+            .await
+            .unwrap();
+        assert_eq!(
+            bytes, b"abc",
+            "bytes must stay readable after stage removal"
+        );
+    }
+    prepare_download(&state, &content, &blob)
+        .await
+        .expect("finished downloads must return their download slots");
     std::fs::write(
         std::env::var("MESH_DOWNLOAD_TEST_MARKER").unwrap(),
         b"passed",
@@ -1529,7 +1540,7 @@ async fn download_capacity_child() {
 }
 
 #[tokio::test]
-async fn unconsumed_downloads_have_bounded_releasable_capacity() {
+async fn unconsumed_downloads_do_not_hold_staging_capacity() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("download-checked");
     let mut process = KillOnDrop(
