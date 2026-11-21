@@ -88,8 +88,8 @@ tokio-util = "0.7.19"
 tower = "0.5.3"
 tower_governor = "0.8.0"
 tower-http = "0.7.1"
-tower-sessions = { version = "0.14.0", default-features = false }
-tower-sessions-core = { version = "0.14.0", default-features = false }
+tower-sessions = { version = "0.15.0", default-features = false }
+tower-sessions-core = { version = "0.15.0", default-features = false }
 tracing-subscriber = "0.3.23"
 percent-encoding = "2.3.2"
 winreg = "0.56.0"

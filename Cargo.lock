@@ -78,7 +78,7 @@ dependencies = [
  "objc2-foundation",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
  "x11rb",
 ]
 
@@ -471,7 +471,7 @@ dependencies = [
  "tower-cookies",
  "tower-layer",
  "tower-service",
- "tower-sessions 0.15.0",
+ "tower-sessions",
  "tracing",
  "urlencoding",
 ]
@@ -1568,7 +1568,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1799,7 +1799,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3272,7 +3272,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
 dependencies = [
  "scopeguard",
- "serde",
 ]
 
 [[package]]
@@ -3475,7 +3474,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3639,7 +3638,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4515,7 +4514,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4966,7 +4965,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5025,7 +5024,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5578,7 +5577,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6504,7 +6503,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6923,23 +6922,6 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
 name = "tower-sessions"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a05911f23e8fae446005fe9b7b97e66d95b6db589dc1c4d59f6a2d4d4927d3"
-dependencies = [
- "async-trait",
- "http",
- "time",
- "tokio",
- "tower-cookies",
- "tower-layer",
- "tower-service",
- "tower-sessions-core 0.14.0",
- "tracing",
-]
-
-[[package]]
-name = "tower-sessions"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "518dca34b74a17cadfcee06e616a09d2bd0c3984eff1769e1e76d58df978fc78"
@@ -6951,27 +6933,7 @@ dependencies = [
  "tower-cookies",
  "tower-layer",
  "tower-service",
- "tower-sessions-core 0.15.0",
- "tracing",
-]
-
-[[package]]
-name = "tower-sessions-core"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce8cce604865576b7751b7a6bc3058f754569a60d689328bb74c52b1d87e355b"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "futures",
- "http",
- "parking_lot",
- "rand 0.8.8",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "time",
- "tokio",
+ "tower-sessions-core",
  "tracing",
 ]
 
@@ -6982,6 +6944,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "568531ec3dfcf3ffe493de1958ae5662a0284ac5d767476ecdb6a34ff8c6b06c"
 dependencies = [
  "async-trait",
+ "axum-core",
  "base64 0.22.1",
  "futures",
  "http",
@@ -7112,7 +7075,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7451,8 +7414,8 @@ dependencies = [
  "tokio-util",
  "tower",
  "tower-http 0.7.1",
- "tower-sessions 0.14.0",
- "tower-sessions-core 0.14.0",
+ "tower-sessions",
+ "tower-sessions-core",
  "tower_governor",
  "tracing-subscriber",
  "zip",
@@ -7620,7 +7583,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7641,7 +7604,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "raw-window-handle",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "windows-version",
 ]
 
@@ -8041,7 +8004,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8387,7 +8350,7 @@ dependencies = [
  "sha1",
  "time",
  "typed-path",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "zeroize",
  "zopfli",
  "zstd",
