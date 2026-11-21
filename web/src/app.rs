@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use axum::{Router, http::StatusCode, response::IntoResponse, routing::any};
+use axum::{Router, http::StatusCode, routing::any};
 use time::Duration;
 use tokio::{fs, signal};
 use tower_http::services::ServeDir;
@@ -180,39 +180,6 @@ pub async fn update_session_middleware(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let path = request.uri().path();
-    if auth_session.user().await.is_some()
-        && !matches!(
-            *request.method(),
-            axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
-        )
-        && !matches!(
-            path,
-            "/api/v1/login/password" | "/api/v1/login/token" | "/api/v1/logout"
-        )
-    {
-        // A failed read is a server fault, not evidence of a pre-protocol client.
-        match session
-            .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
-            .await
-        {
-            Ok(Some(1)) => {}
-            Ok(_) => {
-                return (
-                    StatusCode::UPGRADE_REQUIRED,
-                    // Same shape as other controller errors, so the client shows the message.
-                    axum::Json(serde_json::json!({
-                        "error_type": "upgrade_required",
-                        "error_message": "Sign in again with an upgraded app",
-                        "error_inner_message": "",
-                    })),
-                )
-                    .into_response();
-            }
-            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        }
-    }
-
     if auth_session.user().await.is_some() {
         let expiry_date = session.expiry_date();
         let now = time::OffsetDateTime::now_utc();

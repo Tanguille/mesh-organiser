@@ -159,7 +159,7 @@ async fn authenticated_client(
     let client = builder.build()?;
     let response = client
         .post(format!("{origin}/api/v1/login/token"))
-        .json(&serde_json::json!({"token":login_token,"group_deletion_protocol":1}))
+        .json(&serde_json::json!({"token":login_token}))
         .send()
         .await?;
     if response.status() != reqwest::StatusCode::NO_CONTENT {

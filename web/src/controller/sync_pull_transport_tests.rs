@@ -2692,7 +2692,7 @@ async fn second_authenticated_hub_reuses_only_matching_content_attestation() {
         .clone()
         .oneshot(post(
             "/api/v1/login/token",
-            &serde_json::json!({"token":token,"group_deletion_protocol":1}),
+            &serde_json::json!({"token":token}),
             None,
             None,
         ))

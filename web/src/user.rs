@@ -63,13 +63,11 @@ pub enum Credentials {
 pub struct PasswordCredentials {
     pub email: String,
     pub password: String,
-    pub group_deletion_protocol: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TokenCredentials {
     pub token: String,
-    pub group_deletion_protocol: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,9 +134,6 @@ impl axum_login::AuthnBackend for Backend {
 }
 
 pub type AuthSession = axum_login::AuthSession<Backend>;
-
-/// Session key recording that the client logged in speaking the group-deletion protocol.
-pub const SESSION_GROUP_DELETION_PROTOCOL: &str = "group_deletion_protocol";
 
 /// Extracts the domain [`User`] for the authenticated session, so handlers
 /// don't each repeat the auth-session unwrap. Rejects

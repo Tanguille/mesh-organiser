@@ -721,7 +721,8 @@ async fn observed_group_upload_verifies_bytes_and_installs_atomically() {
     db::user_db::add_user(&hub.db, "bob", "observation-bob@example.test", &password)
         .await
         .unwrap();
-    let credentials = serde_json::json!({"email":"observation-bob@example.test","password":password,"group_deletion_protocol":1});
+    let credentials =
+        serde_json::json!({"email":"observation-bob@example.test","password":password});
     let login = router
         .clone()
         .oneshot(post("/api/v1/login/password", &credentials, None, None))
