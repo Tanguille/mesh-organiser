@@ -176,11 +176,12 @@ fn spawn_thumbnail_regeneration(app_state: &AppState) {
 
 pub async fn update_session_middleware(
     auth_session: crate::user::AuthSession,
+    session: tower_sessions::Session,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     let path = request.uri().path();
-    if auth_session.user.is_some()
+    if auth_session.user().await.is_some()
         && !matches!(
             *request.method(),
             axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
@@ -191,8 +192,7 @@ pub async fn update_session_middleware(
         )
     {
         // A failed read is a server fault, not evidence of a pre-protocol client.
-        match auth_session
-            .session
+        match session
             .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
             .await
         {
@@ -213,15 +213,13 @@ pub async fn update_session_middleware(
         }
     }
 
-    if auth_session.user.is_some() {
-        let expiry_date = auth_session.session.expiry_date();
+    if auth_session.user().await.is_some() {
+        let expiry_date = session.expiry_date();
         let now = time::OffsetDateTime::now_utc();
         let difference = expiry_date - now;
 
         if difference < Duration::days(5) {
-            auth_session
-                .session
-                .set_expiry(Some(Expiry::OnInactivity(Duration::days(7))));
+            session.set_expiry(Some(Expiry::OnInactivity(Duration::days(7))));
         }
     }
 

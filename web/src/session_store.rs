@@ -1,4 +1,4 @@
-//! `SQLite` session store for `tower-sessions` 0.14.
+//! `SQLite` session store for `tower-sessions` 0.15.
 //!
 //! Replaces `tower-sessions-sqlx-store`, which pins sqlx 0.8. Table name, columns and
 //! msgpack encoding match that crate exactly, so persisted sessions stay loadable.

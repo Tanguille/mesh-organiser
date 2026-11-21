@@ -15,7 +15,7 @@ use tower::ServiceExt;
 use crate::user::{AuthSession, Credentials, TokenCredentials};
 
 // Recreate a session written by the former login flow, before provenance was stored.
-async fn legacy_login(mut session: AuthSession, Json(body): Json<serde_json::Value>) -> StatusCode {
+async fn legacy_login(session: AuthSession, Json(body): Json<serde_json::Value>) -> StatusCode {
     let credentials: TokenCredentials = serde_json::from_value(body).unwrap();
     let user = session
         .authenticate(Credentials::Token(credentials))
@@ -27,7 +27,7 @@ async fn legacy_login(mut session: AuthSession, Json(body): Json<serde_json::Val
 }
 
 async fn legacy_password_login(
-    mut session: AuthSession,
+    session: AuthSession,
     Json(body): Json<serde_json::Value>,
 ) -> StatusCode {
     let credentials: crate::user::PasswordCredentials = serde_json::from_value(body).unwrap();
@@ -42,18 +42,18 @@ async fn legacy_password_login(
 
 // A session whose protocol flag cannot be read back as a number, i.e. a session-store read error.
 async fn unreadable_protocol_login(
-    mut session: AuthSession,
+    auth_session: AuthSession,
+    session: tower_sessions::Session,
     Json(body): Json<serde_json::Value>,
 ) -> StatusCode {
     let credentials: TokenCredentials = serde_json::from_value(body).unwrap();
-    let user = session
+    let user = auth_session
         .authenticate(Credentials::Token(credentials))
         .await
         .unwrap()
         .unwrap();
-    session.login(&user).await.unwrap();
+    auth_session.login(&user).await.unwrap();
     session
-        .session
         .insert(crate::user::SESSION_GROUP_DELETION_PROTOCOL, "unreadable")
         .await
         .unwrap();

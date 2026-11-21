@@ -161,7 +161,8 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let auth_session = AuthSession::from_request_parts(parts, state).await?;
         auth_session
-            .user
+            .user()
+            .await
             .map(|user| {
                 Self(
                     User {
@@ -187,7 +188,8 @@ where
         let auth_session = AuthSession::from_request_parts(parts, state).await?;
 
         auth_session
-            .user
+            .user()
+            .await
             .map(|user| {
                 Self(User {
                     password_hash: String::new(),
@@ -220,18 +222,25 @@ mod tests {
         }
     }
 
-    // AuthSession has private metadata, so middleware supplies the fixture without database I/O.
+    // AuthSession has private metadata, so the fixture goes through `login` on the in-memory store.
+    // One connection so every query sees the same in-memory database.
     async fn current_user_response(user: Option<super::AuthUser>) -> axum::response::Response {
-        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
         let store = crate::session_store::SqliteStore::new(pool.clone());
+        store.migrate().await.unwrap();
         let layer = axum_login::AuthManagerLayerBuilder::new(
             super::Backend::new(std::sync::Arc::new(pool)),
             tower_sessions::SessionManagerLayer::new(store),
         )
         .build();
-        let handler = move |mut auth_session: super::AuthSession,
-                            request: axum::extract::Request| async move {
-            auth_session.user = user;
+        let handler = move |auth_session: super::AuthSession, request: axum::extract::Request| async move {
+            if let Some(ref user) = user {
+                auth_session.login(user).await.unwrap();
+            }
             let (mut parts, _) = request.into_parts();
             parts.extensions.insert(auth_session);
             let extracted =
