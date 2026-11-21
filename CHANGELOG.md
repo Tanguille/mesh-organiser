@@ -1,5 +1,45 @@
 # Changelog
 
+## [5.1.0](https://github.com/Tanguille/mesh-organiser/compare/v5.0.4...v5.1.0) (2026-11-21)
+
+
+### Features
+
+* improve model organization workflows ([#620](https://github.com/Tanguille/mesh-organiser/issues/620)) ([3a1b1ce](https://github.com/Tanguille/mesh-organiser/commit/3a1b1ce40fe19adfc851cbd9f4be9139283576bb))
+
+
+### Dependencies
+
+* **cargo:** Update Rust crate axum-login (0.18.0 ➔ 0.19.0) ([#646](https://github.com/Tanguille/mesh-organiser/issues/646)) ([bbb2d10](https://github.com/Tanguille/mesh-organiser/commit/bbb2d1042d652a10ab2e53a5b23e0907e880ad85))
+* **cargo:** Update Rust crate cadrum (0.9.1 ➔ 0.9.2) ([#643](https://github.com/Tanguille/mesh-organiser/issues/643)) ([dbe9edd](https://github.com/Tanguille/mesh-organiser/commit/dbe9edd26c0c3d04ee2831e022cf08893b5bc6c5))
+* **cargo:** Update Rust crate hyper (1.11.1 ➔ 1.12.0) ([#639](https://github.com/Tanguille/mesh-organiser/issues/639)) ([7385480](https://github.com/Tanguille/mesh-organiser/commit/7385480b2c43bfdd727326b1c4784e5a40df88dd))
+* **cargo:** Update Rust crate hyper-util (0.1.20 ➔ 0.1.21) ([#636](https://github.com/Tanguille/mesh-organiser/issues/636)) ([ead29a9](https://github.com/Tanguille/mesh-organiser/commit/ead29a9da65a88e4a4f8eba2907250cc6385befe))
+* **cargo:** Update Rust crate libsqlite3-sys (0.30.1 ➔ 0.40.0) ([#640](https://github.com/Tanguille/mesh-organiser/issues/640)) ([50c8f0c](https://github.com/Tanguille/mesh-organiser/commit/50c8f0c462e3111fea374f225022535442e3d815))
+* **cargo:** Update Rust crate rand (0.10.3 ➔ 0.10.4) ([#615](https://github.com/Tanguille/mesh-organiser/issues/615)) ([3ca5b68](https://github.com/Tanguille/mesh-organiser/commit/3ca5b681abb0b1d7e1ce5a235483f27226cb5db5))
+* **cargo:** Update Rust crate regex (1.13.1 ➔ 1.13.2) ([#630](https://github.com/Tanguille/mesh-organiser/issues/630)) ([a2c0807](https://github.com/Tanguille/mesh-organiser/commit/a2c08075c795c5e4ed61d3289a8ccced628b41e4))
+* **cargo:** Update Rust crate rmcp (3.10.0 ➔ 3.11.0) ([#621](https://github.com/Tanguille/mesh-organiser/issues/621)) ([0d7db19](https://github.com/Tanguille/mesh-organiser/commit/0d7db196e701b5bd4bc006a68f1de1133440acc3))
+* **cargo:** Update Rust crate rustix (1.1.5 ➔ 1.1.6) ([#637](https://github.com/Tanguille/mesh-organiser/issues/637)) ([18ec6f3](https://github.com/Tanguille/mesh-organiser/commit/18ec6f391a239e7c5ac33f8af2f329cc084114fa))
+* **cargo:** Update Rust crate sqlx (0.9.0 ➔ 0.9.1) ([#629](https://github.com/Tanguille/mesh-organiser/issues/629)) ([b979bcc](https://github.com/Tanguille/mesh-organiser/commit/b979bcc0527d72cad5e04c5a1b2ffe06e375ab94))
+* **cargo:** Update Rust crate tokio-rustls (0.26.5 ➔ 0.26.6) ([#638](https://github.com/Tanguille/mesh-organiser/issues/638)) ([ff513dd](https://github.com/Tanguille/mesh-organiser/commit/ff513dd25021b273dfd617e53926eb458cf0084e))
+* **cargo:** Update Rust crate zip (9.6.0 ➔ 9.6.1) ([#623](https://github.com/Tanguille/mesh-organiser/issues/623)) ([e8aafdd](https://github.com/Tanguille/mesh-organiser/commit/e8aafdd2b2a07c20c94521006515c59187bdce03))
+* **cargo:** Update Rust crate zip (9.6.1 ➔ 9.7.3) ([#624](https://github.com/Tanguille/mesh-organiser/issues/624)) ([c0077c6](https://github.com/Tanguille/mesh-organiser/commit/c0077c6c7d567fefa36f77c3c8a2afd89967179f))
+* **cargo:** Update Rust crate zip (9.7.3 ➔ 9.8.1) ([#641](https://github.com/Tanguille/mesh-organiser/issues/641)) ([78c5871](https://github.com/Tanguille/mesh-organiser/commit/78c587197a2079045f9af024f5b62c9567cb7553))
+* **npm:** Update dependency @lucide/svelte (1.73.0 ➔ 1.75.0) ([#625](https://github.com/Tanguille/mesh-organiser/issues/625)) ([debe516](https://github.com/Tanguille/mesh-organiser/commit/debe516fe3bc89626befb0607cf090aad24cd202))
+* **npm:** Update dependency @lucide/svelte (1.75.0 ➔ 1.76.0) ([#644](https://github.com/Tanguille/mesh-organiser/issues/644)) ([05b104c](https://github.com/Tanguille/mesh-organiser/commit/05b104c5b6c1798b55287886edf3ee50e51cb59e))
+* **npm:** Update dependency @lucide/svelte (1.76.0 ➔ 1.77.0) ([#647](https://github.com/Tanguille/mesh-organiser/issues/647)) ([d769292](https://github.com/Tanguille/mesh-organiser/commit/d7692926dbf59322e26c1b6380fa6aabb5db6d3f))
+* **npm:** Update dependency @sveltejs/kit (3.2.0 ➔ 3.2.1) ([#626](https://github.com/Tanguille/mesh-organiser/issues/626)) ([e425f61](https://github.com/Tanguille/mesh-organiser/commit/e425f6144f86cd42970f2c4c8ff778519922a7da))
+* **npm:** Update dependency @sveltejs/kit (3.2.1 ➔ 3.3.1) ([#627](https://github.com/Tanguille/mesh-organiser/issues/627)) ([810ebb1](https://github.com/Tanguille/mesh-organiser/commit/810ebb1ca0edb4a2201de3f35924695781c97b8b))
+* **npm:** Update dependency @sveltejs/kit (3.3.1 ➔ 3.4.0) ([#642](https://github.com/Tanguille/mesh-organiser/issues/642)) ([20c683b](https://github.com/Tanguille/mesh-organiser/commit/20c683b0ebabb8dbceeb7e487df2990d69f4b8e9))
+* **npm:** Update dependency oxfmt (0.78.0 ➔ 0.79.0) ([#618](https://github.com/Tanguille/mesh-organiser/issues/618)) ([399a157](https://github.com/Tanguille/mesh-organiser/commit/399a157b92ff5f101701aca29ed6e03855ab0062))
+* **npm:** Update dependency oxlint (1.93.0 ➔ 1.94.0) ([#619](https://github.com/Tanguille/mesh-organiser/issues/619)) ([1560abc](https://github.com/Tanguille/mesh-organiser/commit/1560abcd2944e331f1245e9d0bf7564df5019ca0))
+* **npm:** Update dependency svelte (5.57.3 ➔ 5.58.0) ([#631](https://github.com/Tanguille/mesh-organiser/issues/631)) ([4b25909](https://github.com/Tanguille/mesh-organiser/commit/4b25909d92e8f615084d58b5ce46bfdb6493f2db))
+* **npm:** Update dependency svelte (5.58.0 ➔ 5.58.1) ([#648](https://github.com/Tanguille/mesh-organiser/issues/648)) ([7c8c938](https://github.com/Tanguille/mesh-organiser/commit/7c8c93890c9b0d21b4a1b8fe901faca6e34905be))
+* **npm:** Update dependency tailwind-merge (3.7.0 ➔ 3.7.1) ([#645](https://github.com/Tanguille/mesh-organiser/issues/645)) ([543b0e1](https://github.com/Tanguille/mesh-organiser/commit/543b0e1a4970f13ee8428fa068f4fa3922132071))
+* **npm:** Update dependency vitest (5.1.0 ➔ 5.1.1) ([#632](https://github.com/Tanguille/mesh-organiser/issues/632)) ([39d1e04](https://github.com/Tanguille/mesh-organiser/commit/39d1e04556548442eb3b6e194ccce3817fd6f8d0))
+* **tauri:** Update dependency @tauri-apps/cli (2.12.5 ➔ 2.12.6) ([#634](https://github.com/Tanguille/mesh-organiser/issues/634)) ([2600911](https://github.com/Tanguille/mesh-organiser/commit/26009118490ead89e12c2064ab12889bf2d030ec))
+* **tauri:** Update tauri ([#596](https://github.com/Tanguille/mesh-organiser/issues/596)) ([1203cc8](https://github.com/Tanguille/mesh-organiser/commit/1203cc8e22fef698c3575b8f25071b255cf71b4c))
+* **tauri:** Update tauri ([#633](https://github.com/Tanguille/mesh-organiser/issues/633)) ([229a5bf](https://github.com/Tanguille/mesh-organiser/commit/229a5bf4a4694bc2f3028d29550b2436ed6ecd57))
+
 ## [5.0.4](https://github.com/Tanguille/mesh-organiser/compare/v5.0.3...v5.0.4) (2026-11-15)
 
 
