@@ -9,7 +9,7 @@ use axum::{
 
 use service::AppState;
 
-use crate::user::{AuthSession, CurrentSyncUser};
+use crate::user::CurrentSyncUser;
 #[path = "sync_observation_transport.rs"]
 mod observation;
 
@@ -35,7 +35,7 @@ struct IdentityQuery {
 }
 async fn identity(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: AuthSession,
+    session: tower_sessions::Session,
     State(state): State<AppState>,
     Query(query): Query<IdentityQuery>,
 ) -> Response {
@@ -72,11 +72,10 @@ struct List {
     through: Option<String>,
     limit: usize,
 }
-async fn current(session: &AuthSession, protocol: u32) -> bool {
+async fn current(session: &tower_sessions::Session, protocol: u32) -> bool {
     protocol == 1
         && matches!(
             session
-                .session
                 .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
                 .await,
             Ok(Some(1))
@@ -121,7 +120,7 @@ fn response<T: serde::Serialize>(result: Result<T, db::DbError>) -> Response {
 }
 async fn handshake(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: AuthSession,
+    session: tower_sessions::Session,
     State(state): State<AppState>,
     Json(body): Json<Handshake>,
 ) -> Response {
@@ -135,7 +134,7 @@ async fn handshake(
 }
 async fn publish(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: AuthSession,
+    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(body): Json<Publish>,
@@ -168,7 +167,7 @@ fn cursor(value: &str) -> Option<i64> {
 }
 async fn list(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: AuthSession,
+    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(body): Query<List>,

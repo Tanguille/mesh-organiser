@@ -11,7 +11,7 @@ use service::{
     sync_observation_service::{self, IncomingObservation},
 };
 
-use crate::user::{AuthSession, CurrentSyncUser};
+use crate::user::CurrentSyncUser;
 
 use super::{current, response, secret};
 
@@ -23,7 +23,7 @@ fn failure(error: ServiceError) -> Response {
 }
 pub(super) async fn publish(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: AuthSession,
+    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     mut multipart: Multipart,
@@ -169,7 +169,7 @@ pub(super) struct Download {
 #[allow(clippy::significant_drop_tightening)] // The response stream owns the verified snapshot and its download permit.
 pub(super) async fn download(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: AuthSession,
+    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((sequence, key)): Path<(String, String)>,
