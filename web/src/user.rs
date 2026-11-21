@@ -223,9 +223,15 @@ mod tests {
     }
 
     // AuthSession has private metadata, so the fixture goes through `login` on the in-memory store.
+    // One connection so every query sees the same in-memory database.
     async fn current_user_response(user: Option<super::AuthUser>) -> axum::response::Response {
-        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
         let store = crate::session_store::SqliteStore::new(pool.clone());
+        store.migrate().await.unwrap();
         let layer = axum_login::AuthManagerLayerBuilder::new(
             super::Backend::new(std::sync::Arc::new(pool)),
             tower_sessions::SessionManagerLayer::new(store),
