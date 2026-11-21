@@ -15,8 +15,10 @@ use tower::ServiceExt;
 use crate::user::{AuthSession, Credentials, TokenCredentials};
 
 // Recreate a session written by the former login flow, before provenance was stored.
-async fn legacy_login(session: AuthSession, Json(body): Json<serde_json::Value>) -> StatusCode {
-    let credentials: TokenCredentials = serde_json::from_value(body).unwrap();
+async fn legacy_login(
+    session: AuthSession,
+    Json(credentials): Json<TokenCredentials>,
+) -> StatusCode {
     let user = session
         .authenticate(Credentials::Token(credentials))
         .await
@@ -28,9 +30,8 @@ async fn legacy_login(session: AuthSession, Json(body): Json<serde_json::Value>)
 
 async fn legacy_password_login(
     session: AuthSession,
-    Json(body): Json<serde_json::Value>,
+    Json(credentials): Json<crate::user::PasswordCredentials>,
 ) -> StatusCode {
-    let credentials: crate::user::PasswordCredentials = serde_json::from_value(body).unwrap();
     let user = session
         .authenticate(Credentials::Password(credentials))
         .await
@@ -44,9 +45,8 @@ async fn legacy_password_login(
 async fn unreadable_protocol_login(
     auth_session: AuthSession,
     session: tower_sessions::Session,
-    Json(body): Json<serde_json::Value>,
+    Json(credentials): Json<TokenCredentials>,
 ) -> StatusCode {
-    let credentials: TokenCredentials = serde_json::from_value(body).unwrap();
     let user = auth_session
         .authenticate(Credentials::Token(credentials))
         .await
