@@ -13,7 +13,7 @@ use service::{
 
 use crate::user::CurrentSyncUser;
 
-use super::{current, response, secret};
+use super::{response, secret};
 
 fn failure(error: ServiceError) -> Response {
     match error {
@@ -23,7 +23,6 @@ fn failure(error: ServiceError) -> Response {
 }
 pub(super) async fn publish(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     mut multipart: Multipart,
@@ -36,7 +35,7 @@ pub(super) async fn publish(
             Ok(Err(error)) => return error,
             Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
         };
-    if !current(&session, body.protocol).await {
+    if body.protocol != 1 {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
     let credential = secret(&headers).to_owned();
@@ -169,13 +168,12 @@ pub(super) struct Download {
 #[allow(clippy::significant_drop_tightening)] // The response stream owns the verified snapshot and its download permit.
 pub(super) async fn download(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((sequence, key)): Path<(String, String)>,
     Query(query): Query<Download>,
 ) -> Response {
-    if !current(&session, query.protocol).await {
+    if query.protocol != 1 {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
     let Some(sequence) = super::cursor(&sequence) else {

@@ -35,11 +35,10 @@ struct IdentityQuery {
 }
 async fn identity(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: tower_sessions::Session,
     State(state): State<AppState>,
     Query(query): Query<IdentityQuery>,
 ) -> Response {
-    if !current(&session, query.protocol).await {
+    if query.protocol != 1 {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
     match db::user_db::get_sync_identity(&state.db, user.id).await {
@@ -71,15 +70,6 @@ struct List {
     after: String,
     through: Option<String>,
     limit: usize,
-}
-async fn current(session: &tower_sessions::Session, protocol: u32) -> bool {
-    protocol == 1
-        && matches!(
-            session
-                .get::<u32>(crate::user::SESSION_GROUP_DELETION_PROTOCOL)
-                .await,
-            Ok(Some(1))
-        )
 }
 fn secret(headers: &HeaderMap) -> &str {
     headers
@@ -120,11 +110,10 @@ fn response<T: serde::Serialize>(result: Result<T, db::DbError>) -> Response {
 }
 async fn handshake(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: tower_sessions::Session,
     State(state): State<AppState>,
     Json(body): Json<Handshake>,
 ) -> Response {
-    if !current(&session, body.protocol).await {
+    if body.protocol != 1 {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
     response(
@@ -134,12 +123,11 @@ async fn handshake(
 }
 async fn publish(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(body): Json<Publish>,
 ) -> Response {
-    if !current(&session, body.protocol).await {
+    if body.protocol != 1 {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
     response(
@@ -167,12 +155,11 @@ fn cursor(value: &str) -> Option<i64> {
 }
 async fn list(
     CurrentSyncUser(user, account): CurrentSyncUser,
-    session: tower_sessions::Session,
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(body): Query<List>,
 ) -> Response {
-    if !current(&session, body.protocol).await {
+    if body.protocol != 1 {
         return StatusCode::UPGRADE_REQUIRED.into_response();
     }
     let Some(after) = cursor(&body.after) else {

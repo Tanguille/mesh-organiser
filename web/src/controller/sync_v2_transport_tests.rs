@@ -124,24 +124,6 @@ async fn handshake_requires_real_session_and_allocates_distinct_writer_credentia
     assert_eq!(responses[0]["writer_secret"].as_str().unwrap().len(), 64);
 }
 
-#[tokio::test]
-async fn old_password_client_must_upgrade_before_obtaining_a_session() {
-    let (_dir, state) = crate::test_support::app_state().await;
-    let password = crate::test_support::add_login_user(&state).await;
-    let router = crate::test_support::with_session(
-        crate::controller::auth_controller::login_router().merge(super::router()),
-        state,
-    )
-    .await;
-    let request = serde_json::json!({"email":"alice@example.com","password":password});
-    let response = router
-        .oneshot(post("/api/v1/login/password", &request, None, None))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
-    assert!(!response.headers().contains_key(header::SET_COOKIE));
-}
-
 async fn registration(
     router: &Router,
     cookie: &str,
@@ -508,7 +490,7 @@ async fn authenticated_other_account_cannot_list_or_replay_an_owners_events() {
     db::user_db::add_user(&hub.db, "bob", "bob-transport@example.test", &password)
         .await
         .unwrap();
-    let credentials = serde_json::json!({"email":"bob-transport@example.test","password":password,"group_deletion_protocol":1});
+    let credentials = serde_json::json!({"email":"bob-transport@example.test","password":password});
     let login = router
         .clone()
         .oneshot(post("/api/v1/login/password", &credentials, None, None))
@@ -1080,7 +1062,7 @@ async fn account_deletion_cascades_transport_state_and_reused_id_rejects_old_wri
     let replacement_password = db::random_hex_32();
     let password_hash = db::model::user::hash_password(&replacement_password);
     sqlx::query("INSERT INTO users (user_id,user_name,user_email,user_password_hash,user_created_at) VALUES (?,'replacement','replacement-transport@example.test',?,'2020-01-01T00:00:00Z')").bind(owner.id).bind(password_hash).execute(&*hub.db).await.unwrap();
-    let credentials = serde_json::json!({"email":"replacement-transport@example.test","password":replacement_password,"group_deletion_protocol":1});
+    let credentials = serde_json::json!({"email":"replacement-transport@example.test","password":replacement_password});
     let login = router
         .clone()
         .oneshot(post("/api/v1/login/password", &credentials, None, None))

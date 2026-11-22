@@ -1,64 +1,16 @@
-//! Compatibility checks for token clients and existing sessions.
+//! Session checks for logins against recreated accounts.
 
 use std::sync::{Arc, atomic::Ordering};
 
 use axum::{
-    Json,
     body::Body,
     http::{Request, StatusCode, header},
-    routing::post,
 };
 use axum_login::{AuthUser as _, AuthnBackend as _};
 use tokio::sync::Notify;
 use tower::ServiceExt;
 
-use crate::user::{AuthSession, Credentials, TokenCredentials};
-
-// Recreate a session written by the former login flow, before provenance was stored.
-async fn legacy_login(
-    session: AuthSession,
-    Json(credentials): Json<TokenCredentials>,
-) -> StatusCode {
-    let user = session
-        .authenticate(Credentials::Token(credentials))
-        .await
-        .unwrap()
-        .unwrap();
-    session.login(&user).await.unwrap();
-    StatusCode::NO_CONTENT
-}
-
-async fn legacy_password_login(
-    session: AuthSession,
-    Json(credentials): Json<crate::user::PasswordCredentials>,
-) -> StatusCode {
-    let user = session
-        .authenticate(Credentials::Password(credentials))
-        .await
-        .unwrap()
-        .unwrap();
-    session.login(&user).await.unwrap();
-    StatusCode::NO_CONTENT
-}
-
-// A session whose protocol flag cannot be read back as a number, i.e. a session-store read error.
-async fn unreadable_protocol_login(
-    auth_session: AuthSession,
-    session: tower_sessions::Session,
-    Json(credentials): Json<TokenCredentials>,
-) -> StatusCode {
-    let user = auth_session
-        .authenticate(Credentials::Token(credentials))
-        .await
-        .unwrap()
-        .unwrap();
-    auth_session.login(&user).await.unwrap();
-    session
-        .insert(crate::user::SESSION_GROUP_DELETION_PROTOCOL, "unreadable")
-        .await
-        .unwrap();
-    StatusCode::NO_CONTENT
-}
+use crate::user::{Credentials, TokenCredentials};
 
 async fn app() -> (
     tempfile::TempDir,
@@ -77,19 +29,11 @@ async fn app() -> (
     db::user_db::set_user_sync_token(&state.db, user.id, &token, "https://example.test", false)
         .await
         .unwrap();
-    let router = super::login_router()
-        .merge(super::router())
-        .merge(
-            crate::controller::group_controller::router().layer(axum::middleware::from_fn(
-                crate::app::update_session_middleware,
-            )),
-        )
-        .route("/test/legacy-login", post(legacy_login))
-        .route("/test/legacy-password-login", post(legacy_password_login))
-        .route(
-            "/test/unreadable-protocol-login",
-            post(unreadable_protocol_login),
-        );
+    let router = super::login_router().merge(super::router()).merge(
+        crate::controller::group_controller::router().layer(axum::middleware::from_fn(
+            crate::app::update_session_middleware,
+        )),
+    );
     let router = crate::test_support::with_session(router, state.clone()).await;
     (dir, state, router, password, token)
 }
@@ -114,179 +58,12 @@ fn cookie(response: &axum::response::Response) -> String {
 }
 
 #[tokio::test]
-async fn token_login_requires_supported_group_deletion_protocol() {
-    let (_dir, _state, router, _, token) = app().await;
-    for body in [
-        serde_json::json!({"token": token}),
-        serde_json::json!({"token": token, "group_deletion_protocol": 2}),
-    ] {
-        let response = router
-            .clone()
-            .oneshot(post_json("/api/v1/login/token", &body, None))
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        assert!(
-            String::from_utf8_lossy(&body)
-                .to_lowercase()
-                .contains("upgrade")
-        );
-    }
-}
-
-#[tokio::test]
-async fn password_login_requires_supported_group_deletion_protocol() {
-    let (_dir, _state, router, password, _) = app().await;
-    for body in [
-        serde_json::json!({"email": "alice@example.com", "password": password}),
-        serde_json::json!({"email": "alice@example.com", "password": password, "group_deletion_protocol": 2}),
-    ] {
-        let response = router
-            .clone()
-            .oneshot(post_json("/api/v1/login/password", &body, None))
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        assert!(
-            String::from_utf8_lossy(&body)
-                .to_lowercase()
-                .contains("upgrade")
-        );
-    }
-}
-
-#[tokio::test]
-async fn current_token_and_password_sessions_can_read_and_write() {
-    let (_dir, _state, router, password, token) = app().await;
-    for login in [
-        post_json(
-            "/api/v1/login/token",
-            &serde_json::json!({"token": token, "group_deletion_protocol": 1}),
-            None,
-        ),
-        post_json(
-            "/api/v1/login/password",
-            &serde_json::json!({"email":"alice@example.com", "password":password, "group_deletion_protocol":1}),
-            None,
-        ),
-    ] {
-        let response = router.clone().oneshot(login).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let cookie = cookie(&response);
-        let request = Request::get("/api/v1/users/me")
-            .header(header::COOKIE, &cookie)
-            .body(Body::empty())
-            .unwrap();
-        assert_eq!(
-            router.clone().oneshot(request).await.unwrap().status(),
-            StatusCode::OK
-        );
-        let request = post_json(
-            "/api/v1/groups",
-            &serde_json::json!({"group_name": "allowed"}),
-            Some(&cookie),
-        );
-        assert_eq!(
-            router.clone().oneshot(request).await.unwrap().status(),
-            StatusCode::OK
-        );
-    }
-}
-
-#[tokio::test]
-async fn pre_upgrade_password_session_cannot_write() {
-    let (_dir, state, router, password, _) = app().await;
-    let response = router.clone().oneshot(post_json("/test/legacy-password-login", &serde_json::json!({"email":"alice@example.com", "password":password, "group_deletion_protocol":1}), None)).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let request = post_json(
-        "/api/v1/groups",
-        &serde_json::json!({"group_name":"legacy password write"}),
-        Some(&cookie(&response)),
-    );
-    let rejected = router.oneshot(request).await.unwrap();
-    assert_eq!(rejected.status(), StatusCode::UPGRADE_REQUIRED);
-    let body = axum::body::to_bytes(rejected.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["error_type"], "upgrade_required");
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models_group WHERE group_name = ?")
-        .bind("legacy password write")
-        .fetch_one(&*state.db)
-        .await
-        .unwrap();
-    assert_eq!(count, 0);
-}
-
-#[tokio::test]
-async fn pre_upgrade_authenticated_session_cannot_write() {
-    let (_dir, state, router, _, token) = app().await;
-    let response = router
-        .clone()
-        .oneshot(post_json(
-            "/test/legacy-login",
-            &serde_json::json!({"token": token, "group_deletion_protocol": 1}),
-            None,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let cookie = cookie(&response);
-    let request = post_json(
-        "/api/v1/groups",
-        &serde_json::json!({"group_name": "must not be created"}),
-        Some(&cookie),
-    );
-    let response = router.oneshot(request).await.unwrap();
-    assert!(
-        !response.status().is_success(),
-        "an old session must not write"
-    );
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM models_group WHERE group_name = ?")
-        .bind("must not be created")
-        .fetch_one(&*state.db)
-        .await
-        .unwrap();
-    assert_eq!(count, 0);
-}
-
-#[tokio::test]
-async fn unreadable_session_protocol_is_a_server_error_not_an_upgrade_demand() {
-    let (_dir, _state, router, _, token) = app().await;
-    let response = router
-        .clone()
-        .oneshot(post_json(
-            "/test/unreadable-protocol-login",
-            &serde_json::json!({"token": token, "group_deletion_protocol": 1}),
-            None,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let request = post_json(
-        "/api/v1/groups",
-        &serde_json::json!({"group_name": "unreadable protocol write"}),
-        Some(&cookie(&response)),
-    );
-    assert_eq!(
-        router.oneshot(request).await.unwrap().status(),
-        StatusCode::INTERNAL_SERVER_ERROR
-    );
-}
-
-#[tokio::test]
 async fn old_sessions_cannot_access_recreated_user_with_same_id_and_sync_url() {
     let (_dir, state, router, password, _) = app().await;
     let login = || {
         post_json(
             "/api/v1/login/password",
-            &serde_json::json!({"email":"alice@example.com", "password":password, "group_deletion_protocol":1}),
+            &serde_json::json!({"email":"alice@example.com", "password":password}),
             None,
         )
     };
@@ -412,10 +189,7 @@ async fn login_cannot_bind_old_credentials_to_replacement_account() {
     let login_backend = backend.clone();
     let task = tokio::spawn(async move {
         login_backend
-            .authenticate(Credentials::Token(TokenCredentials {
-                token,
-                group_deletion_protocol: Some(1),
-            }))
+            .authenticate(Credentials::Token(TokenCredentials { token }))
             .await
             .unwrap()
             .unwrap()

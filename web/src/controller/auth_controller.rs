@@ -48,19 +48,10 @@ pub async fn me(
 
 pub async fn password(
     auth_session: AuthSession,
-    session: tower_sessions::Session,
     Json(credentials): Json<crate::user::PasswordCredentials>,
 ) -> Response {
-    if credentials.group_deletion_protocol != Some(1) {
-        return (
-            StatusCode::UPGRADE_REQUIRED,
-            "Upgrade the app to continue syncing",
-        )
-            .into_response();
-    }
     login_inner(
         auth_session,
-        session,
         Credentials::Password(credentials),
         "Invalid username or password",
     )
@@ -69,20 +60,10 @@ pub async fn password(
 
 pub async fn token(
     auth_session: AuthSession,
-    session: tower_sessions::Session,
     Json(credentials): Json<crate::user::TokenCredentials>,
 ) -> Response {
-    if credentials.group_deletion_protocol != Some(1) {
-        return (
-            StatusCode::UPGRADE_REQUIRED,
-            "Upgrade the app to continue syncing",
-        )
-            .into_response();
-    }
-
     login_inner(
         auth_session,
-        session,
         Credentials::Token(credentials),
         "Invalid token",
     )
@@ -93,7 +74,6 @@ pub async fn token(
 /// message differs between the password and token endpoints, so it is a parameter.
 async fn login_inner(
     auth_session: AuthSession,
-    session: tower_sessions::Session,
     credentials: Credentials,
     invalid_message: &'static str,
 ) -> Response {
@@ -104,14 +84,6 @@ async fn login_inner(
     };
 
     if auth_session.login(&user).await.is_err() {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    }
-
-    if session
-        .insert(crate::user::SESSION_GROUP_DELETION_PROTOCOL, 1_u32)
-        .await
-        .is_err()
-    {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 

@@ -15,7 +15,6 @@ export class WebUserLoginApi implements IUserLoginApi, IUserLogoutApi {
     await this.requestApi.request<void>("/login/password", HttpMethod.POST, {
       email: email,
       password: password,
-      group_deletion_protocol: 1,
     });
   }
 

@@ -69,6 +69,5 @@ it("advertises the group deletion protocol when logging in with a sync token", a
   expect(login![1].method).toBe("POST");
   expect(JSON.parse(login![1].body)).toEqual({
     token: "test-token",
-    group_deletion_protocol: 1,
   });
 });

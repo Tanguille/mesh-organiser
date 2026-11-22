@@ -40,8 +40,7 @@ Two ways to read it:
   ```bash
   base=https://mesh.example.com
   curl -c jar -X POST "$base/api/v1/login/password" -H 'Content-Type: application/json' \
-      -d '{"email":"<email>","password":"<password>","group_deletion_protocol":1}'
-  # The login endpoints reject bodies without "group_deletion_protocol":1 (417), so a client must speak the current protocol.
+      -d '{"email":"<email>","password":"<password>"}'
   curl -b jar "$base/api/v1/users/me" | jq '{id, sync_token}'
   # sync_token is null: create one (this also rotates an existing one), then read it again
   curl -b jar -X DELETE "$base/api/v1/users/<id>/token"
