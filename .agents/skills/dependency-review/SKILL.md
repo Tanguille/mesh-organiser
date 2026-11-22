@@ -27,4 +27,4 @@ description: Repo-specific facts for reviewing Renovate dependency bumps in mesh
 - The Docker image builds the frontend with `VITE_API_PLATFORM=web`, which CI never does. Check web-only code paths for Svelte, Vite and `three` bumps.
 - Rust, as in rust-ci: `cargo fmt --all -- --check`, cargo-machete, `cargo clippy --workspace --all-targets`, `cargo test --workspace --all-targets`. Linux compiles OCCT from source, about 30 minutes.
 - Thumbnails come from `libmeshthumbnail`, which renders with `euc` pinned by git rev. Run `cargo test -p libmeshthumbnail` for `image`, `stl_io`, `threemf`, `wavefront_obj` and `cadrum` bumps.
-- A `deps(npm|cargo|tauri):` title bumps the app patch version. Flag any shipped dependency PR titled `feat`, `fix` or with `!`.
+- Every shipped npm or cargo update, majors included, is titled `deps(<manager>):` and bumps the app patch version. Flag one titled `feat`, `fix` or with `!`: the title rule did not apply and the PR would cut a minor or major release.
