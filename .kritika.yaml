@@ -5,3 +5,9 @@ rules:
       - expr: pr.headRef.startsWith("renovate/")
     rule: >-
       For Tauri, check that a plugin's Rust crate and its npm package, and tauri with @tauri-apps/api, stay on matching versions.
+skills:
+  scope:
+    dependency-review:
+      when:
+        - expr: pr.headRef.startsWith("renovate/")
+      load: true
