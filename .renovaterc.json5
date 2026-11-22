@@ -45,6 +45,14 @@
       commitMessagePrefix: "deps({{manager}}):",
     },
     {
+      // Kritika skips PRs that only change lockfiles; with `auto`, an in-range update touches nothing
+      // else. Bumping rewrites the manifest range too, so every PR has a line to review. It changes
+      // files only: commit type, title, grouping, schedule and automerge come from the rules around it.
+      description: "Bump the manifest range on in-range npm and cargo updates, not only the lockfile",
+      matchManagers: ["npm", "cargo"],
+      rangeStrategy: "bump",
+    },
+    {
       description: "Auto-merge patch bumps once they have aged 1 day",
       matchUpdateTypes: ["patch"],
       minimumReleaseAge: "1 day",
