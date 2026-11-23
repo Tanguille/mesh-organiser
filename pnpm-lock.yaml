@@ -197,7 +197,7 @@ importers:
         specifier: ^8.6.0
         version: 8.7.0(svelte@5.59.1(@typescript-eslint/types@8.72.0))(three@0.187.0)
       '@threlte/extras':
-        specifier: ^9.21.1
+        specifier: ^9.23.1
         version: 9.23.1(@types/three@0.187.0)(svelte@5.59.1(@typescript-eslint/types@8.72.0))(three@0.187.0)
       '@types/qs':
         specifier: ^6.15.1
