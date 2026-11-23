@@ -3,15 +3,9 @@ use std::io::{Read, Write};
 
 use tokio::io::AsyncWriteExt;
 
-use super::*;
+use crate::test_support::no_stage_payload;
 
-fn no_stage_payload(path: &std::path::Path) -> bool {
-    path.is_dir()
-        && std::fs::read_dir(path).unwrap().all(|entry| {
-            let entry = entry.unwrap();
-            entry.file_name() == ".lease" && entry.file_type().unwrap().is_file()
-        })
-}
+use super::*;
 
 fn entries(path: &std::path::Path) -> Vec<String> {
     let mut result: Vec<_> = std::fs::read_dir(path)

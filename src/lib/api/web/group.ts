@@ -14,7 +14,10 @@ import {
 } from "../shared/server_request_api";
 import {
   fetchGroupPage,
+  convertGroupRestoreRequestToRaw,
+  parseRawDeletedGroup,
   parseRawGroupMeta,
+  type RawDeletedGroup,
   type RawGroupMeta,
 } from "../shared/raw_model";
 
@@ -26,32 +29,17 @@ export class WebGroupApi implements IGroupApi {
   }
 
   async getTrashedGroups(): Promise<DeletedGroup[]> {
-    const groups = await this.requestApi.request<
-      {
-        id: number;
-        name: string;
-        deleted: string;
-        group_global_id: string;
-        deletion_operation_id: string | null;
-      }[]
-    >("/groups/trash", HttpMethod.GET);
+    const groups = await this.requestApi.request<RawDeletedGroup[]>(
+      "/groups/trash",
+      HttpMethod.GET,
+    );
 
-    return groups.map((group) => ({
-      id: group.id,
-      name: group.name,
-      deleted: new Date(group.deleted),
-      groupGlobalId: group.group_global_id,
-      deletionOperationId: group.deletion_operation_id,
-    }));
+    return groups.map(parseRawDeletedGroup);
   }
 
   async restoreGroups(groups: GroupRestoreRequest[]): Promise<void> {
     await this.requestApi.request<void>("/groups/restore", HttpMethod.POST, {
-      groups: groups.map((group) => ({
-        id: group.id,
-        group_global_id: group.groupGlobalId,
-        deletion_operation_id: group.deletionOperationId,
-      })),
+      groups: groups.map(convertGroupRestoreRequestToRaw),
     });
   }
 

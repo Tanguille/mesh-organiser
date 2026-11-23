@@ -11,18 +11,12 @@ use service::sync_pull_service::{
     AuthenticatedHub, HubTrust, PublicationOutcome, discard_queued_publication,
 };
 
+use crate::test_support::no_stage_payload;
+
 use super::{
     pull::{TEST_CA, TlsHub},
     *,
 };
-
-fn no_stage_payload(path: &std::path::Path) -> bool {
-    path.is_dir()
-        && std::fs::read_dir(path).unwrap().all(|entry| {
-            let entry = entry.unwrap();
-            entry.file_name() == ".lease" && entry.file_type().unwrap().is_file()
-        })
-}
 
 fn entries_with_payload(dir: &std::path::Path) -> usize {
     std::fs::read_dir(dir)

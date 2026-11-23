@@ -21,24 +21,19 @@ export class DemoLabelApi implements ILabelApi {
     for (const labelMeta of mockLabels.values()) {
       let modelCount = 0;
       let groupCount = 0;
-      let selfModelCount = 0;
-      let selfGroupCount = 0;
       const seenGroups = new Set<number>();
 
       mockModels.forEach((_model, modelId) => {
         const modelLabelIds = modelLabelsMap.get(modelId) || [];
         if (modelLabelIds.includes(labelMeta.id)) {
-          selfModelCount++;
           modelCount++;
 
           const groupId = modelGroupMap.get(modelId);
           if (groupId && !seenGroups.has(groupId)) {
             seenGroups.add(groupId);
-            selfGroupCount++;
             groupCount++;
           } else if (!groupId && includeUngroupedModels) {
             // Ungrouped models count as individual groups
-            selfGroupCount++;
             groupCount++;
           }
         }
@@ -52,8 +47,8 @@ export class DemoLabelApi implements ILabelApi {
         hasParent: false,
         modelCount,
         groupCount,
-        selfModelCount,
-        selfGroupCount,
+        selfModelCount: modelCount,
+        selfGroupCount: groupCount,
       });
     }
 

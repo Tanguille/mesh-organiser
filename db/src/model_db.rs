@@ -261,6 +261,9 @@ async fn query_models(
 
     let query = query_builder.build();
     let rows = query.fetch_all(db).await?;
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
     let mut models = Vec::with_capacity(rows.len());
 
     let min_labels_map: indexmap::IndexMap<_, _> = crate::label_db::get_labels_min(db, user)
@@ -309,7 +312,7 @@ async fn query_models(
 }
 
 /// The bundled SQLite binds at most 32766 variables per statement.
-const MAX_BOUND_IDS: usize = 32_000;
+pub const MAX_BOUND_IDS: usize = 32_000;
 
 /// Every live model of `user` among `ids`, each once and in `model_id` order.
 ///

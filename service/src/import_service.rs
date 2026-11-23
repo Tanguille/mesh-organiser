@@ -93,11 +93,7 @@ pub async fn get_model_count(
     let path_buff = PathBuf::from(path);
 
     if path_buff.is_dir() {
-        if recursive {
-            get_model_count_from_dir_recursive(&path_buff)
-        } else {
-            get_model_count_from_dir(&path_buff)
-        }
+        get_model_count_from_dir(&path_buff, recursive)
     } else if is_zip_path(&path_buff) {
         if import_as_path {
             return Err(ServiceError::InternalError(String::from(
@@ -417,12 +413,22 @@ async fn import_single_model<W>(
 where
     W: AsyncRead + Unpin,
 {
-    let mut file_contents: Vec<u8> = Vec::with_capacity(file_size);
-
-    reader.read_to_end(&mut file_contents).await?;
-
+    let mut file_contents = Vec::new();
     let mut hasher = Sha256::new();
-    hasher.update(&file_contents);
+    if permanent_disk_path.is_some() {
+        let mut chunk = [0u8; 8192];
+        loop {
+            let len = reader.read(&mut chunk).await?;
+            if len == 0 {
+                break;
+            }
+            hasher.update(&chunk[..len]);
+        }
+    } else {
+        file_contents.reserve_exact(file_size);
+        reader.read_to_end(&mut file_contents).await?;
+        hasher.update(&file_contents);
+    }
     let bytes = hasher.finalize();
     // First 128 bits of the digest as 32 hex chars via the shared `db::u128_to_hex_32` (same shape as `db::random_hex_32`).
     let hash = db::u128_to_hex_32(u128::from_be_bytes(
@@ -511,27 +517,27 @@ pub fn is_importable_upload(path: &Path) -> bool {
     is_supported_extension(path) || is_zip_path(path)
 }
 
-fn get_model_count_from_dir_recursive(path: &Path) -> Result<usize, ServiceError> {
-    let entries: Vec<fs::DirEntry> = read_dir(path)?.collect::<Result<_, _>>()?;
+fn get_model_count_from_dir(path: &Path, recursive: bool) -> Result<usize, ServiceError> {
     let mut count = 0;
-
-    for folder in entries.iter().filter(|f| f.path().is_dir()) {
-        // An unreadable subfolder counts as empty, since the recursive import skips it.
-        count += get_model_count_from_dir_recursive(&folder.path()).unwrap_or(0);
+    let mut children = Vec::new();
+    for entry in read_dir(path)? {
+        let path = entry?.path();
+        let Ok(metadata) = path.metadata() else {
+            continue;
+        };
+        if metadata.is_file() && is_supported_extension(&path) {
+            count += 1;
+        } else if recursive && metadata.is_dir() {
+            children.push(path);
+        }
     }
 
-    count += get_model_count_from_dir(path)?;
+    // Drop the directory iterator before descending; unreadable children count as empty.
+    for child in children {
+        count += get_model_count_from_dir(&child, true).unwrap_or(0);
+    }
 
     Ok(count)
-}
-
-fn get_model_count_from_dir(path: &Path) -> Result<usize, ServiceError> {
-    let size = read_dir(path)?
-        .map_ok(|entry| entry.path())
-        .filter_ok(|path| path.is_file() && is_supported_extension(path))
-        .process_results(|paths| paths.count())?;
-
-    Ok(size)
 }
 
 async fn get_model_count_from_zip(path: &str) -> Result<usize, ServiceError> {
@@ -625,6 +631,36 @@ mod tests {
     use crate::service_error::ServiceError;
 
     use super::get_model_count;
+
+    #[tokio::test]
+    async fn linked_import_propagates_a_read_error_after_the_first_chunk() {
+        let (dir, app_state) = crate::export_service::tests::app_state_with_temp_model_dir().await;
+        let chunks = futures::stream::iter([
+            Ok(&b"partial"[..]),
+            Err(std::io::Error::other("source read failed")),
+        ]);
+        let mut reader = tokio_util::io::StreamReader::new(chunks);
+        let result = super::import_single_model(
+            &mut reader,
+            "stl",
+            // A linked import must never reserve memory using its declared file size.
+            usize::MAX,
+            "broken",
+            None,
+            &app_state,
+            &db::model::user::User::default(),
+            Some(dir.path().join("broken.stl")),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ServiceError::FileSystemFault(error)) if error.to_string() == "source read failed")
+        );
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
+            .fetch_one(&*app_state.db)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 
     #[tokio::test]
     async fn get_model_count_unsupported_extension_returns_err() {
