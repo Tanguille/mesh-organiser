@@ -592,7 +592,7 @@ async fn parent_group_count_includes_each_direct_model_once_regardless_of_child_
         .unwrap();
 
     for child_count in 0..=2 {
-        set_childs_on_label(&db, &user, labels[0], labels[1..1 + child_count].to_vec()).await;
+        set_childs_on_label(&db, &user, labels[0], labels[1..=child_count].to_vec()).await;
         for (include_ungrouped, expected) in [(false, 1), (true, 2)] {
             let result = label_db::get_labels(&db, &user, include_ungrouped)
                 .await
