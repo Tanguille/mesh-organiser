@@ -10,7 +10,7 @@ description: Repo-specific facts for reviewing Renovate dependency bumps in mesh
 - npm: one root `package.json`, no pnpm workspace. `vite.config.js` `optimizeDeps.include` names deep imports of `three`, `@lucide/svelte`, `@tauri-apps/*` and `bits-ui`. Check that a bump keeps each entry point.
 - Cargo: versions live in root `Cargo.toml` `[workspace.dependencies]`. Members are `db`, `libmeshthumbnail`, `service`, `web` and `src-tauri`. Test-only crates (`hyper`, `tokio-rustls`, `rcgen`) are versioned in `web/Cargo.toml`.
 - `src-tauri` is the desktop app. `web` is the server that the `Dockerfile` builds with `cargo build -p web --locked`.
-- `mise.toml` pins node and pnpm. The Dockerfile reads node from it, and `package.json` `packageManager` must equal its pnpm.
+- `mise.toml` pins Node for mise and the Dockerfile. Mise and frontend CI read the pnpm pin from `package.json` `packageManager`, which must match the lockfile.
 - Keep the Dockerfile builder `rust:<version>-slim-trixie` and the runtime `debian:trixie-slim` on one Debian release.
 - Keep every GitHub Action on a full SHA with its version comment.
 
