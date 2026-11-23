@@ -252,7 +252,7 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       jsdom:
-        specifier: ^31.0.0
+        specifier: ^31.0.1
         version: 31.0.1
       mode-watcher:
         specifier: ^1.1.0
