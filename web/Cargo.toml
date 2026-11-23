@@ -41,7 +41,7 @@ tower-sessions-core = { workspace = true, features = ["axum-core", "deletion-tas
 hyper = { version = "1.12.0", features = ["http1", "server"] }
 hyper-util = { version = "0.1.21", features = ["tokio", "service"] }
 sha2 = { workspace = true }
-tokio-rustls = "0.26"
+tokio-rustls = "0.26.6"
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 # `util` adds `ServiceExt::oneshot`, to call the MCP router without binding a port.
