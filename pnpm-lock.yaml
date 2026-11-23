@@ -209,7 +209,7 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       qs:
-        specifier: ^6.16.0
+        specifier: ^6.17.1
         version: 6.17.1
       three:
         specifier: 0.187.0
