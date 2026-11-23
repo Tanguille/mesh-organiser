@@ -150,18 +150,69 @@ async fn delete_models_moves_model_to_trash_and_keeps_its_files() {
 }
 
 #[tokio::test]
-async fn delete_models_rejects_a_model_the_user_does_not_own_and_trashes_nothing() {
+async fn delete_models_rejects_foreign_missing_or_trashed_ids_and_trashes_nothing() {
     let (_dir, app_state) = common::test_app_state().await;
     let user = User::default();
     let other_user = add_other_user(&app_state).await;
     let own = add_model_with_files(&app_state, &user, "own").await;
     let foreign = add_model_with_files(&app_state, &other_user, "foreign").await;
 
-    let result = export_service::delete_models(&app_state, &user, vec![own.id, foreign.id]).await;
+    let trashed = add_model_with_files(&app_state, &user, "trashed").await;
+    export_service::delete_models(&app_state, &user, vec![trashed.id, trashed.id])
+        .await
+        .unwrap();
 
-    assert!(result.is_err());
+    for refused_id in [foreign.id, trashed.id, trashed.id + 1000] {
+        let result =
+            export_service::delete_models(&app_state, &user, vec![own.id, refused_id]).await;
+        assert!(
+            matches!(&result, Err(service::ServiceError::InternalError(message)) if message == "Failed to find model to delete"),
+            "id {refused_id}: {result:?}"
+        );
+    }
     assert!(is_visible(&app_state, &user, own.id).await);
     assert!(is_visible(&app_state, &other_user, foreign.id).await);
+}
+
+#[tokio::test]
+async fn empty_trash_selections_preserve_live_and_trashed_models() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let live = add_model_with_files(&app_state, &user, "live").await;
+    let trashed = add_model_with_files(&app_state, &user, "trashed").await;
+    export_service::delete_models(&app_state, &user, vec![trashed.id])
+        .await
+        .unwrap();
+
+    export_service::delete_models(&app_state, &user, vec![])
+        .await
+        .unwrap();
+    export_service::restore_models(&app_state, &user, vec![])
+        .await
+        .unwrap();
+
+    assert!(is_visible(&app_state, &user, live.id).await);
+    assert_eq!(trashed_model_ids(&app_state, &user).await, vec![trashed.id]);
+}
+
+#[tokio::test]
+async fn delete_models_checks_the_last_id_past_the_preflight_bind_limit_before_trashing() {
+    let (_dir, app_state) = common::test_app_state().await;
+    let user = User::default();
+    let mut ids = add_bulk_models(&app_state, &user, 32_767, None).await;
+    let first = ids[0];
+    ids.push(ids.last().unwrap() + 1);
+
+    let result = export_service::delete_models(&app_state, &user, ids).await;
+    assert!(
+        matches!(&result, Err(service::ServiceError::InternalError(message)) if message == "Failed to find model to delete"),
+        "{result:?}"
+    );
+    assert!(is_visible(&app_state, &user, first).await);
+    assert_eq!(
+        trashed_model_ids(&app_state, &user).await,
+        Vec::<i64>::new()
+    );
 }
 
 #[tokio::test]

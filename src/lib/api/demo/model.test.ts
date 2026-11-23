@@ -212,3 +212,38 @@ describe("DemoModelApi trash", () => {
     },
   );
 });
+
+describe("DemoLabelApi.getLabels", () => {
+  it.each([
+    [false, 1],
+    [true, 2],
+  ] as const)(
+    "counts flat labels with includeUngroupedModels=%s",
+    async (includeUngroupedModels, groups) => {
+      const api = new DemoLabelApi();
+      const assigned = await api.addLabel("Assigned", "#ffffff");
+      const empty = await api.addLabel("Empty", "#ffffff");
+      const ids = [...mockModels.keys()].slice(0, 3);
+      for (const id of ids) modelLabelsMap.set(id, [assigned.id]);
+      modelGroupMap.set(ids[0], 17);
+      modelGroupMap.set(ids[1], 17);
+      modelGroupMap.delete(ids[2]);
+
+      const result = await api.getLabels(includeUngroupedModels);
+      expect(
+        result.find((label) => label.meta.id === assigned.id),
+      ).toMatchObject({
+        modelCount: 3,
+        selfModelCount: 3,
+        groupCount: groups,
+        selfGroupCount: groups,
+      });
+      expect(result.find((label) => label.meta.id === empty.id)).toMatchObject({
+        modelCount: 0,
+        selfModelCount: 0,
+        groupCount: 0,
+        selfGroupCount: 0,
+      });
+    },
+  );
+});

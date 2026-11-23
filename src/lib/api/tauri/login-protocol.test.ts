@@ -31,7 +31,7 @@ afterEach(() => {
   mocks.invoke.mockReset();
 });
 
-it("advertises the group deletion protocol when logging in with a sync token", async () => {
+it("sends only the sync token when logging in", async () => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   const user = {
     id: 1,

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use indexmap::IndexMap;
 use itertools::Itertools;
 use sqlx::{QueryBuilder, Row};
@@ -37,20 +39,17 @@ pub async fn get_labels_min(db: &DbContext, user: &User) -> Result<Vec<LabelMeta
 fn get_effective_labels(
     label_id: i64,
     effective_labels: &mut Vec<LabelMeta>,
-    label_map: &mut IndexMap<i64, Label>,
+    label_map: &IndexMap<i64, Label>,
+    visited: &mut HashSet<i64>,
 ) {
-    let label = label_map.get(&label_id).unwrap();
-
-    if !effective_labels.iter().any(|l| l.id == label.meta.id) {
-        effective_labels.push(label.meta.clone());
+    if !visited.insert(label_id) {
+        return;
     }
 
-    let label_child_ids = label.children.iter().map(|l| l.id).collect::<Vec<i64>>();
-
-    for id in &label_child_ids {
-        if !effective_labels.iter().any(|l| &l.id == id) {
-            get_effective_labels(*id, effective_labels, label_map);
-        }
+    let label = &label_map[&label_id];
+    effective_labels.push(label.meta.clone());
+    for child in &label.children {
+        get_effective_labels(child.id, effective_labels, label_map, visited);
     }
 }
 
@@ -60,7 +59,12 @@ fn fill_effective_labels_and_counts(label_map: &mut IndexMap<i64, Label>) {
     let label_ids: Vec<i64> = label_map.keys().copied().collect();
     for label_id in label_ids {
         let mut effective_labels = Vec::new();
-        get_effective_labels(label_id, &mut effective_labels, label_map);
+        get_effective_labels(
+            label_id,
+            &mut effective_labels,
+            label_map,
+            &mut HashSet::new(),
+        );
         let group_count = effective_labels
             .iter()
             .map(|l| label_map.get(&l.id).unwrap().self_group_count)
@@ -132,7 +136,11 @@ pub async fn get_labels(
 
         let parent_label_model_count: i64 = row.get("parent_label_model_count");
         let parent_label_group_count: i64 = row.get("parent_label_group_count");
-        let parent_label_ungrouped_count: i64 = row.get("parent_label_ungrouped_count");
+        let parent_label_group_count = if include_ungrouped_models {
+            parent_label_group_count + row.get::<i64, _>("parent_label_ungrouped_count")
+        } else {
+            parent_label_group_count
+        };
 
         let child_label_id: Option<i64> = row.get("child_label_id");
         let child_label_name: Option<String> = row.get("child_label_name");
@@ -155,10 +163,6 @@ pub async fn get_labels(
             self_model_count: parent_label_model_count,
             self_group_count: parent_label_group_count,
         });
-
-        if include_ungrouped_models {
-            entry.self_group_count += parent_label_ungrouped_count;
-        }
 
         if let Some(child_id) = child_label_id
             && child_id > 0
@@ -488,6 +492,36 @@ mod tests {
             group_count: self_group_count,
             self_model_count,
             self_group_count,
+        }
+    }
+
+    #[test]
+    fn effective_labels_visit_a_shared_descendant_and_cycle_once_in_depth_first_order() {
+        let mut labels = super::IndexMap::new();
+        for (id, children) in [(1, vec![2, 3]), (2, vec![4]), (3, vec![4]), (4, vec![1])] {
+            let children = children
+                .into_iter()
+                .map(|child| meta(child, "child"))
+                .collect();
+            labels.insert(
+                id,
+                label_with_children(meta(id, "node"), children, id, id * 10),
+            );
+        }
+
+        super::fill_effective_labels_and_counts(&mut labels);
+
+        for (root, order) in [(1, [1, 2, 4, 3]), (3, [3, 4, 1, 2])] {
+            let label = &labels[&root];
+            assert_eq!(
+                label
+                    .effective_labels
+                    .iter()
+                    .map(|meta| meta.id)
+                    .collect::<Vec<_>>(),
+                order
+            );
+            assert_eq!((label.group_count, label.model_count), (10, 100));
         }
     }
 

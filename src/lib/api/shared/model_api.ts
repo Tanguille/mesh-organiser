@@ -258,8 +258,8 @@ export class PredefinedModelStreamManager implements IModelStreamManager {
         (!this.fileTypes || this.fileTypes.includes(model.blob.filetype)),
     );
 
-    // Copy before sorting so we never mutate the caller-owned `this.models`.
-    return [...filtered].sort(modelOrderByComparator(this.orderBy));
+    // Filtering already copied the caller-owned array.
+    return filtered.sort(modelOrderByComparator(this.orderBy));
   }
 
   async fetch(): Promise<Model[]> {

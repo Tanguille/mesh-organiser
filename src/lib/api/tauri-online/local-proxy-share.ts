@@ -21,11 +21,11 @@ export class TauriProxyShareApi extends WebShareApi {
   // their remote equivalents by uniqueGlobalId, throwing if any are missing.
   private async mapToRemoteModels(models: Model[]): Promise<Model[]> {
     const allRemoteModels = await getAllModels(this.remoteModelApi);
-    const remoteModels = allRemoteModels.filter((remoteModel) =>
-      models.some(
-        (localModel) =>
-          localModel.uniqueGlobalId === remoteModel.uniqueGlobalId,
-      ),
+    const selectedGlobalIds = new Set(
+      models.map((model) => model.uniqueGlobalId),
+    );
+    const remoteModels = allRemoteModels.filter((model) =>
+      selectedGlobalIds.has(model.uniqueGlobalId),
     );
 
     if (remoteModels.length !== models.length) {
@@ -46,10 +46,17 @@ export class TauriProxyShareApi extends WebShareApi {
       getAllModels(this.remoteModelApi),
     ]);
 
+    const globalIdByRemoteId = new Map<number, string>();
+    for (const model of remoteModels) {
+      // A repeated remote id resolves to the first model in catalog order.
+      if (!globalIdByRemoteId.has(model.id))
+        globalIdByRemoteId.set(model.id, model.uniqueGlobalId);
+    }
+
     for (const share of shares) {
       const remoteGlobalIds = share.modelIds
-        .map((id) => remoteModels.find((m) => m.id === id)?.uniqueGlobalId)
-        .filter((id) => id !== undefined) as string[];
+        .map((id) => globalIdByRemoteId.get(id))
+        .filter((id) => id !== undefined);
 
       if (remoteGlobalIds.length !== share.modelIds.length) {
         console.error(
@@ -57,8 +64,9 @@ export class TauriProxyShareApi extends WebShareApi {
         );
       }
 
+      const memberGlobalIds = new Set(remoteGlobalIds);
       const localModelIds = localModels
-        .filter((m) => remoteGlobalIds.includes(m.uniqueGlobalId))
+        .filter((m) => memberGlobalIds.has(m.uniqueGlobalId))
         .map((m) => m.id);
 
       if (localModelIds.length !== remoteGlobalIds.length) {

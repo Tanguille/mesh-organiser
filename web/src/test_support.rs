@@ -3,6 +3,14 @@
 /// The body limit axum applies to a route that sets none.
 pub const DEFAULT_BODY_LIMIT: usize = 2 * 1024 * 1024;
 
+pub fn no_stage_payload(path: &std::path::Path) -> bool {
+    path.is_dir()
+        && std::fs::read_dir(path).unwrap().all(|entry| {
+            let entry = entry.unwrap();
+            entry.file_name() == ".lease" && entry.file_type().unwrap().is_file()
+        })
+}
+
 /// An app state over a fresh, migrated database and data dir; the `TempDir` must outlive the
 /// test. The migrations seed the local account as user 1, which `User::default()` names.
 pub async fn app_state() -> (tempfile::TempDir, service::AppState) {

@@ -3,9 +3,11 @@ import {
   buildGetGroupsQuery,
   createGroupInstance,
   createGroupMetaInstance,
+  type DeletedGroup,
   type Group,
   type GroupFilter,
   type GroupMeta,
+  type GroupRestoreRequest,
 } from "./group_api";
 import {
   createLabelMetaInstance,
@@ -130,6 +132,32 @@ export function parseRawGroupMeta(raw: RawGroupMeta): GroupMeta {
     raw.last_modified,
     raw.unique_global_id,
   );
+}
+
+export interface RawDeletedGroup {
+  id: number;
+  name: string;
+  deleted: string;
+  group_global_id: string;
+  deletion_operation_id: string | null;
+}
+
+export function parseRawDeletedGroup(raw: RawDeletedGroup): DeletedGroup {
+  return {
+    id: raw.id,
+    name: raw.name,
+    deleted: new Date(raw.deleted),
+    groupGlobalId: raw.group_global_id,
+    deletionOperationId: raw.deletion_operation_id,
+  };
+}
+
+export function convertGroupRestoreRequestToRaw(group: GroupRestoreRequest) {
+  return {
+    id: group.id,
+    group_global_id: group.groupGlobalId,
+    deletion_operation_id: group.deletionOperationId,
+  };
 }
 
 export interface RawGroup {

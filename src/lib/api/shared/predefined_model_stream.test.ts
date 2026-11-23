@@ -2,11 +2,26 @@ import { describe, expect, it } from "vitest";
 import { createBlobInstance } from "./blob_api";
 import {
   createModelInstance,
+  type Model,
   ModelOrderBy,
   PredefinedModelStreamManager,
 } from "./model_api";
 
 describe("PredefinedModelStreamManager", () => {
+  it("sorts without mutating the input and isolates the cached ordering from callers", async () => {
+    const models = [{ name: "B" }, { name: "A" }] as Model[];
+    const stream = new PredefinedModelStreamManager(models, 2);
+    stream.setOrderBy(ModelOrderBy.NameAsc);
+
+    (await stream.getAll()).reverse();
+
+    expect((await stream.getAll()).map((model) => model.name)).toEqual([
+      "A",
+      "B",
+    ]);
+    expect(models.map((model) => model.name)).toEqual(["B", "A"]);
+  });
+
   it("continues paging without skipping models removed from an earlier page", async () => {
     const timestamp = "2026-10-24T12:00:00Z";
     const models = ["A", "B", "C", "D"].map((name, index) =>

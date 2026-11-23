@@ -3,3 +3,6 @@ build
 .svelte-kit
 **/node_modules
 **/target
+.claude
+.remember
+.env

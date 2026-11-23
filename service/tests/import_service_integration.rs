@@ -272,6 +272,61 @@ async fn import_path_single_file_as_path_references_source() {
 }
 
 #[tokio::test]
+async fn linked_and_owned_imports_preserve_digest_size_and_source() {
+    for linked in [true, false] {
+        let (_dir, app_state) = common::test_app_state().await;
+        let root = TempDir::new().unwrap();
+        let path = root.path().join("Referenced.3mf");
+        let user = User::default();
+
+        // Standard SHA-256 vectors exercise EOF immediately and after many reads.
+        for (size, expected_hash) in [
+            (0, "e3b0c44298fc1c149afbf4c8996fb924"),
+            (1_000_000, "cdc76e5c9914fb9281a1c7e284d73e67"),
+        ] {
+            let contents = vec![b'a'; size];
+            fs::write(&path, &contents).unwrap();
+            let result = import_path(
+                path.to_str().unwrap(),
+                &app_state,
+                import_state(false, false, linked),
+            )
+            .await
+            .unwrap();
+            let id = result.imported_models[0].model_ids[0];
+            let model = model_db::get_model_via_id(&app_state.db, &user, id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(model.blob.sha256, expected_hash);
+            assert_eq!(model.blob.size, i64::try_from(size).unwrap());
+            let stored = export_service::get_model_path_for_blob(&model.blob, &app_state);
+            assert_eq!(stored == path, linked);
+            assert_eq!(fs::read(&stored).unwrap(), contents);
+
+            sqlx::query(
+                "UPDATE models SET model_deleted = '2000-01-01T00:00:00Z' WHERE model_id = ?",
+            )
+            .bind(id)
+            .execute(&*app_state.db)
+            .await
+            .unwrap();
+            export_service::purge_expired_trash(&app_state)
+                .await
+                .unwrap();
+            assert!(
+                db::blob_db::get_blob_via_sha256(&app_state.db, expected_hash)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(stored.exists(), linked);
+            assert_eq!(fs::read(&path).unwrap(), contents);
+        }
+    }
+}
+
+#[tokio::test]
 async fn import_path_directory_groups_top_level_models_only() {
     let (_dir, app_state) = common::test_app_state().await;
     let root = TempDir::new().unwrap();

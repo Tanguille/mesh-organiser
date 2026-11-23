@@ -566,3 +566,93 @@ async fn get_models_label_filter_keeps_every_label_of_a_matching_model() {
     carried_label_ids.sort_unstable();
     assert_eq!(carried_label_ids, vec![wanted_label_id, other_label_id]);
 }
+
+#[tokio::test]
+async fn parent_group_count_includes_each_direct_model_once_regardless_of_child_count() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let labels = add_labels(&db, &user, &["parent", "first", "second"]).await;
+    let blob = blob_db::add_blob(&db, "counts", "stl", 1, None)
+        .await
+        .unwrap();
+    let grouped = model_db::add_model(&db, &user, "grouped", blob, None, None)
+        .await
+        .unwrap();
+    let loose = model_db::add_model(&db, &user, "loose", blob, None, None)
+        .await
+        .unwrap();
+    let group = group_db::add_empty_group(&db, &user, "group", None)
+        .await
+        .unwrap();
+    group_db::set_group_id_on_models(&db, &user, Some(group.id), vec![grouped], None)
+        .await
+        .unwrap();
+    label_db::set_label_on_models(&db, &user, labels[0], &[grouped, loose])
+        .await
+        .unwrap();
+
+    for child_count in 0..=2 {
+        set_childs_on_label(&db, &user, labels[0], labels[1..1 + child_count].to_vec()).await;
+        for (include_ungrouped, expected) in [(false, 1), (true, 2)] {
+            let result = label_db::get_labels(&db, &user, include_ungrouped)
+                .await
+                .unwrap();
+            let parent = result
+                .iter()
+                .find(|label| label.meta.id == labels[0])
+                .unwrap();
+            assert_eq!(
+                (parent.self_group_count, parent.group_count),
+                (expected, expected),
+                "{child_count} children, include ungrouped = {include_ungrouped}"
+            );
+            assert_eq!((parent.self_model_count, parent.model_count), (2, 2));
+        }
+    }
+}
+
+#[tokio::test]
+async fn empty_model_results_skip_label_metadata_but_populated_results_use_it() {
+    let (_dir, db) = test_db().await;
+    let user = User::default();
+    let blob = blob_db::add_blob(&db, "page", "stl", 1, None)
+        .await
+        .unwrap();
+    let id = model_db::add_model(&db, &user, "model", blob, None, None)
+        .await
+        .unwrap();
+    let label = add_labels(&db, &user, &["visible"]).await[0];
+    label_db::set_label_on_models(&db, &user, label, &[id])
+        .await
+        .unwrap();
+    let model = model_db::get_model_via_id(&db, &user, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.labels[0].id, label);
+
+    // Only the metadata query uses label_color, so its failure makes any unnecessary read observable.
+    sqlx::query("ALTER TABLE labels RENAME COLUMN label_color TO unavailable_color")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(model_db::get_model_via_id(&db, &user, id).await.is_err());
+    assert!(
+        model_db::get_model_via_id(&db, &user, id + 1)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let page = model_db::get_models(
+        &db,
+        &user,
+        model_db::ModelFilterOptions {
+            page: 2,
+            page_size: 1,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(page.items.is_empty());
+}

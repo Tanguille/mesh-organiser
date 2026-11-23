@@ -224,7 +224,7 @@ If the user confirms that models are the same but their files or details differ,
 
 Local model and project ids now use durable high-water allocation to prevent a stale selection from targeting a replacement created after the upgrade. The previous schema did not retain ids deleted before migration, so the new allocator cannot prove which ids were used before that boundary.
 
-**Current safety gate:** The new client checks `GET /api/v2/sync/capabilities` before any sync write and remains paused even if a server advertises support. Do not enable it until causal reconciliation, retry safety, recovery, and protection against already-authenticated older clients are complete. Legacy password and token logins and writes from old authenticated sessions are rejected, but the full mutation and downgrade audit is still outstanding.
+**Current safety gate:** The new client checks `GET /api/v2/sync/capabilities` before any sync write and remains paused even if a server advertises support. Do not enable it until causal reconciliation, retry safety, recovery, and protection against already-authenticated older clients are complete. The server continues to accept ordinary password and token logins. Existing authenticated sessions can still write, and the full mutation and downgrade audit is outstanding.
 
 **Implementation checkpoints:**
 

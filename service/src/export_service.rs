@@ -317,6 +317,24 @@ fn get_size_of_blobs(blob_sha256s: &[String], app_state: &AppState) -> Result<u6
     Ok(total_size)
 }
 
+async fn count_selected_models(
+    app_state: &AppState,
+    user: &User,
+    ids: &[i64],
+    trashed: bool,
+) -> Result<i64, db::DbError> {
+    model_db::get_filtered_model_count(
+        &app_state.db,
+        user,
+        &ModelFilterOptions {
+            model_ids: Some(ids.to_vec()),
+            trashed,
+            ..Default::default()
+        },
+    )
+    .await
+}
+
 /// Moves models to the trash after verifying every id resolves to a live model of the user.
 ///
 /// Duplicate ids are deduped rather than rejected. Shared by the Tauri commands and
@@ -328,19 +346,16 @@ pub async fn delete_models(
     model_ids: Vec<i64>,
 ) -> Result<(), ServiceError> {
     let model_ids = model_ids.into_iter().unique().collect::<Vec<i64>>();
-    let model_ids_len = model_ids.len();
-    let models = model_db::get_models_via_ids(&app_state.db, user, model_ids).await?;
+    let mut found = 0;
+    for chunk in model_ids.chunks(model_db::MAX_BOUND_IDS) {
+        found += count_selected_models(app_state, user, chunk, false).await?;
+    }
 
-    if models.len() != model_ids_len {
+    if usize::try_from(found).ok() != Some(model_ids.len()) {
         return Err(ServiceError::InternalError(String::from(
             "Failed to find model to delete",
         )));
     }
-
-    let model_ids = models
-        .into_iter()
-        .map(|model| model.id)
-        .collect::<Vec<i64>>();
 
     model_db::trash_models(&app_state.db, user, &model_ids).await?;
 
@@ -355,28 +370,12 @@ pub async fn restore_models(
     model_ids: Vec<i64>,
 ) -> Result<(), ServiceError> {
     let model_ids = model_ids.into_iter().unique().collect::<Vec<i64>>();
-    let model_ids_len = model_ids.len();
-    let models = model_db::get_all_models(
-        &app_state.db,
-        user,
-        ModelFilterOptions {
-            model_ids: Some(model_ids),
-            trashed: true,
-            ..Default::default()
-        },
-    )
-    .await?;
-
-    if models.len() != model_ids_len {
+    let found = count_selected_models(app_state, user, &model_ids, true).await?;
+    if usize::try_from(found).ok() != Some(model_ids.len()) {
         return Err(ServiceError::InternalError(String::from(
             "Failed to find model to restore",
         )));
     }
-
-    let model_ids = models
-        .into_iter()
-        .map(|model| model.id)
-        .collect::<Vec<i64>>();
 
     model_db::restore_models(&app_state.db, user, &model_ids).await?;
 
@@ -472,7 +471,7 @@ pub(crate) async fn delete_dead_blobs_locked(app_state: &AppState) -> Result<(),
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 
     /// Returns a deterministic 32-character hex string (sha256-like) for tests.
     fn fake_sha256_hex() -> String {
@@ -556,7 +555,8 @@ mod tests {
     }
 
     /// Builds an `AppState` with a temp data dir and real DB; model dir is `data_path/models`.
-    async fn app_state_with_temp_model_dir() -> (tempfile::TempDir, crate::app_state::AppState) {
+    pub async fn app_state_with_temp_model_dir() -> (tempfile::TempDir, crate::app_state::AppState)
+    {
         let dir = tempfile::tempdir().unwrap();
         let data_path = dir.path().join("data");
         std::fs::create_dir_all(&data_path).unwrap();

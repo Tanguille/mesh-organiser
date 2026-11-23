@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "**/*.rs"
+      - "db/migrations/*.sql"
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/rust-ci.yaml"
@@ -15,6 +16,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "**/*.rs"
+      - "db/migrations/*.sql"
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/rust-ci.yaml"
