@@ -67,20 +67,20 @@ strum = "0.28.0"
 # gtk-application-prefer-dark-theme. WebKitGTK derives prefers-color-scheme from that GTK
 # setting (or a theme name ending in "-dark"), never from GNOME's color-scheme, so without it
 # a GNOME dark-mode user gets light mode.
-tauri = { version = "2.12.1", features = ["wry", "dbus"], default-features = false }
-tauri-build = { version = "2.7.1", default-features = false }
-tauri-plugin-deep-link = "2.4.10"
-tauri-plugin-dialog = "2.7.3"
-tauri-plugin-fs = "2.5.2"
-tauri-plugin-http = { version = "2.6.0", features = [
+tauri = { version = "2.12.7", features = ["wry", "dbus"], default-features = false }
+tauri-build = { version = "2.7.6", default-features = false }
+tauri-plugin-deep-link = "2.6.3"
+tauri-plugin-dialog = "2.8.4"
+tauri-plugin-fs = "2.7.1"
+tauri-plugin-http = { version = "2.9.0", features = [
     "cookies",
 ], default-features = false }
-tauri-plugin-opener = "2.5.5"
-tauri-plugin-os = "2.3.2"
-tauri-plugin-updater = { version = "2.13.1", features = [
+tauri-plugin-opener = "2.7.3"
+tauri-plugin-os = "2.4.0"
+tauri-plugin-updater = { version = "2.14.1", features = [
     "rustls-tls",
 ], default-features = false }
-tauri-plugin-single-instance = "2.4.5"
+tauri-plugin-single-instance = "2.5.5"
 thiserror = "2.0.21"
 time = "0.3.55"
 tokio = "1.54.1"
