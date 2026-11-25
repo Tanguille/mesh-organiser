@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.1.2](https://github.com/Tanguille/mesh-organiser/compare/v5.1.1...v5.1.2) (2026-11-25)
+
+
+### Dependencies
+
+* **cargo:** Update Rust crate zip (9.8.1 ➔ 9.8.2) ([#697](https://github.com/Tanguille/mesh-organiser/issues/697)) ([827fbba](https://github.com/Tanguille/mesh-organiser/commit/827fbbab12248d9dda261786188f245ce003009e))
+* **npm:** Update dependency @lucide/svelte (1.77.0 ➔ 1.78.0) ([#674](https://github.com/Tanguille/mesh-organiser/issues/674)) ([2f05985](https://github.com/Tanguille/mesh-organiser/commit/2f059851771f463b538579d81e6dd8c950a6526f))
+* **npm:** Update dependency @lucide/svelte (1.78.0 ➔ 1.79.0) ([#701](https://github.com/Tanguille/mesh-organiser/issues/701)) ([d4f5709](https://github.com/Tanguille/mesh-organiser/commit/d4f5709e674aafb247ae4ce34d5d0ffcc43c0e0e))
+* **npm:** Update dependency @sveltejs/vite-plugin-svelte (7.3.1 ➔ 7.3.2) ([#675](https://github.com/Tanguille/mesh-organiser/issues/675)) ([085a405](https://github.com/Tanguille/mesh-organiser/commit/085a405f42a05fefffe4b529d6b697aa6f70ec17))
+* **npm:** Update dependency oxfmt (0.79.0 ➔ 0.80.0) ([#699](https://github.com/Tanguille/mesh-organiser/issues/699)) ([2bd99f8](https://github.com/Tanguille/mesh-organiser/commit/2bd99f8b55215cec5899486a216debecda83fb1e))
+* **npm:** Update dependency oxlint (1.94.0 ➔ 1.95.0) ([#700](https://github.com/Tanguille/mesh-organiser/issues/700)) ([cc8d7bd](https://github.com/Tanguille/mesh-organiser/commit/cc8d7bd23622ecc445587137de5195548ada8994))
+
 ## [5.1.1](https://github.com/Tanguille/mesh-organiser/compare/v5.1.0...v5.1.1) (2026-11-23)
 
 
