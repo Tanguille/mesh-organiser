@@ -2979,14 +2979,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ab1baf72f08796de0260609515130699b890ac25f30e610ad894bc5856cafdb"
 dependencies = [
  "defmt",
- "jiff-core",
- "jiff-static",
+ "jiff-core 0.1.1",
+ "jiff-static 0.2.37",
  "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
  "windows-link",
+]
+
+[[package]]
+name = "jiff"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "107f2e89536b6818514025f6787b0d94d819e54fe3b40365275fc753de485b3f"
+dependencies = [
+ "jiff-core 1.0.2",
+ "jiff-static 1.0.3",
+ "log",
+ "portable-atomic",
+ "portable-atomic-util",
+ "serde_core",
 ]
 
 [[package]]
@@ -3000,15 +3014,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "jiff-core"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d44c923edf2bf456a982253f1a9ee1f6e89e421dffd0065d9b9a581da0def58f"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "jiff-static"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "378268a1116ad67ae6228701118ac9f491d78fda38a40a1f1a9e1348de6f7212"
 dependencies = [
- "jiff-core",
+ "jiff-core 0.1.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jiff-static"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4996f71e569e3a3e32b925c28ef8f0027dc30bb1d594b33eeda409eea185f5c8"
+dependencies = [
+ "jiff-core 1.0.2",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -4853,9 +4888,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "3.11.0"
+version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "391f153431ab68664d946513ea0cb3edbca78eaf99c5a983036cacab6220d85b"
+checksum = "fc4fa9a7558c480e1817c0f02e9a73782001ac1f47fb9d26cc073915963282ea"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -4866,6 +4901,7 @@ dependencies = [
  "http-body",
  "http-body-util",
  "indexmap 2.14.2",
+ "jiff 1.0.3",
  "libc",
  "pastey",
  "percent-encoding",
@@ -4890,9 +4926,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp-macros"
-version = "3.11.0"
+version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3598e3f36f4af2b5219b133baf7d97a2197039225adc3d4acf3dd8805b5a2aef"
+checksum = "43c1bf063ba32333267a8bc282ec33ae0edf56bf74890118cb0c7bf910a7a1c0"
 dependencies = [
  "darling 0.24.1",
  "proc-macro2",
@@ -5383,7 +5419,7 @@ dependencies = [
  "hex",
  "indexmap 1.9.3",
  "indexmap 2.14.2",
- "jiff",
+ "jiff 0.2.37",
  "schemars 0.9.0",
  "schemars 1.2.3",
  "serde_core",
