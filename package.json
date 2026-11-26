@@ -39,7 +39,7 @@
     "threejs-webworker-3mf-loader": "github:manyfold3d/threejs-webworker-3mf-loader"
   },
   "devDependencies": {
-    "@lucide/svelte": "^1.79.0",
+    "@lucide/svelte": "^1.80.0",
     "@sveltejs/adapter-static": "^4.0.1",
     "@sveltejs/kit": "^3.4.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.2",
