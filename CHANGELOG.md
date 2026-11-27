@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.1.4](https://github.com/Tanguille/mesh-organiser/compare/v5.1.3...v5.1.4) (2026-11-27)
+
+
+### Dependencies
+
+* **npm:** Update dependency @lucide/svelte (1.80.0 ➔ 1.81.0) ([#709](https://github.com/Tanguille/mesh-organiser/issues/709)) ([91b5899](https://github.com/Tanguille/mesh-organiser/commit/91b5899c77d275414e0efa9af720d7cf4b4d333c))
+* **npm:** Update dependency @sveltejs/kit (3.4.0 ➔ 3.4.1) ([#689](https://github.com/Tanguille/mesh-organiser/issues/689)) ([0993cf2](https://github.com/Tanguille/mesh-organiser/commit/0993cf2bc6ec4c6227f06552448bf1f9baf1825b))
+* **npm:** Update dependency @types/node (26.6.10 ➔ 26.6.11) ([#708](https://github.com/Tanguille/mesh-organiser/issues/708)) ([82a6226](https://github.com/Tanguille/mesh-organiser/commit/82a62267b8fb023dd42c0dcb280899acff131d4c))
+* **npm:** Update dependency tailwind-variants (4.0.2 ➔ 4.1.0) ([#687](https://github.com/Tanguille/mesh-organiser/issues/687)) ([5ed147d](https://github.com/Tanguille/mesh-organiser/commit/5ed147d5fb8385f2974e3064fb45b8b9c81d754d))
+
 ## [5.1.3](https://github.com/Tanguille/mesh-organiser/compare/v5.1.2...v5.1.3) (2026-11-26)
 
 
